@@ -1,9 +1,13 @@
 # Unity environment for ChickAI: virtual controlled-rearing experiments
+This is a collection of tools for the simulating of virtual agents using the Building a Mind paradigm. The agents
+generated and studied through this pipeline can be compared directly to real chicks recorded by the Building a Mind
+Lab. This pipeline provides all necessary components for simulating and replicating embodied models from our lab.
 
 ## Running experiments using `mlagents-learn`
 ### Setup
 #### Part 1: Set up your virtual environment
 Why use a virtual environment? Virtual environments help keep dependencies required by different projects separate.
+A virtual environment will serve as a container to all the necessary python packages for this pipeline.
 1. Install virtualenv
 
 MAC / LINUX:
