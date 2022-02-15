@@ -43,7 +43,7 @@ Here is an example of what the command will look like with actual flags, paths, 
 mlagents-learn config.yaml --env chickAI.exe --run-id parsing_agent1 --resume --inference --env-args --input-resolution 96 --imprint-video ~/folder/folder/parsing_videos/imprintA.webm --test-video ~/folder/folder/parsing_videos/testB.webm  --log-dir parsing_agent1_testCondition1 --record-agent --record-chamber --test-mode
 ```
 
-#### Part 3: Run ml agents on the server (instead of running locally, as above)
+### Run ml agents on the server (instead of running locally, as above)
 1. Basic Unix Commands (for a more exhaustive set of basic Unix commands see https://kb.iu.edu/d/afsk)
      * cd - "change directory," changes your current directory location (note: cd .. moves to parent directory of current working directory)
      * ls - "list," lists the files stored in a directory
