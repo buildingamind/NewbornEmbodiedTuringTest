@@ -57,7 +57,7 @@ deactivate
 ```
 
 #### Part 2: Compile Unity Environment
-Follow instructions in the Unity subdirectory
+Follow instructions in the Unity subdirectory to compile the unity executables for the environments.
 
 #### Part 3: Run Experiments
-Follow instructions in scripts directory
+Follow instructions in scripts directory to run the individual experiments.
