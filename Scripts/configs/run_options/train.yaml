@@ -1,0 +1,13 @@
+env_settings:
+  seed: ${seed}
+  env_path: ${env_dir}/${env}
+  base_port: 5000
+  env_args:
+    imprint-video: /home/denpak/number/Circles.webm
+    episode-steps: 1000
+    log-dir: logs/train
+    input-resolution: 96
+checkpoint_settings:
+  run_id: train
+  resume: false
+  inference: false

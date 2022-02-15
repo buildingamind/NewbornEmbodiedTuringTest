@@ -1,0 +1,4 @@
+reward_signals:
+  extrinsic:
+    strength: 1.0
+    gamma: 0.99

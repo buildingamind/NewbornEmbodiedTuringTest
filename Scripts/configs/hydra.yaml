@@ -1,0 +1,20 @@
+# Hydra config.
+hydra:
+  run:
+    dir: experiments/${env}/batch_${batch_size}_lr_${learning_rate}/${hydra.job.override_dirname}/seed_${seed}
+  sweep:
+    dir: ${hydra.run.dir}
+    subdir: ./
+  job:
+    config:
+      override_dirname:
+        kv_sep: "_"
+        item_sep: "-"
+        exclude_keys:
+          - env_dir
+          - env
+          - seed
+          - cuda
+          - run_options
+          - engine_config.width
+          - engine_config.height
