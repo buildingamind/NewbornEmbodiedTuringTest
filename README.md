@@ -52,3 +52,8 @@ python3 -m pip install mlagents==0.26.0
 deactivate
 ```
 
+#### Part 2: Compile Unity Environment
+Follow instructions in the Unity subdirectory
+
+#### Part 3: Run Experiments
+Follow instructions in scripts directory
