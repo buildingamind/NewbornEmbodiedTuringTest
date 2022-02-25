@@ -1,0 +1,23 @@
+trainer:
+  trainer_type: ppo
+  hyperparameters:
+    batch_size: ${batch_size}
+    buffer_size: ${buffer_size}
+    beta: ${beta}
+    epsilon: ${epsilon}
+    lambd: 0.95
+    num_epoch: ${num_epoch}
+    learning_rate: ${learning_rate}
+    learning_rate_schedule: ${learning_rate_schedule}
+  network_settings:
+    normalize: false
+    hidden_units: 128
+    num_layers: 2
+    vis_encode_type: ${policy_encoder}
+
+  max_steps: 1.0e6
+  keep_checkpoints: 200
+  checkpoint_interval: ${buffer_size}
+  time_horizon: 50
+  summary_freq: 1000
+  threaded: false

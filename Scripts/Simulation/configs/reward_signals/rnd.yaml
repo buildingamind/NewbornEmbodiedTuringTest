@@ -1,0 +1,6 @@
+reward_signals:
+  rnd:
+    strength: 1.0
+    gamma: 0.99
+    network_settings:
+      vis_encode_type: ${intrinsic_reward_encoder}
