@@ -1,6 +1,6 @@
 # Set env_path and video_dir.
-env_dir: /home/denpak/BC_NoCam/
-env: Rearing_Chamber
+env_dir: ../../../Executables/Test1
+env: Rearing_Chamber.x86_64
 seed: 0
 cuda: 0 # Set CUDA_VISIBLE_DEVICES.
 
