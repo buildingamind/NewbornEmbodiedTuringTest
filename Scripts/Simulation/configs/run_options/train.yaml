@@ -3,10 +3,11 @@ env_settings:
   env_path: ${env_dir}/${env}
   base_port: 5000
   env_args:
-    imprint-video: /home/denpak/number/Circles.webm
-    episode-steps: 1000
-    log-dir: logs/train
-    input-resolution: 96
+    imprint_video: /home/denpak/number/Circles.webm
+    episode_steps: 1000
+    log_dir: logs/train
+    input_resolution: 96
+    env_seed: 42
 checkpoint_settings:
   run_id: train
   resume: false

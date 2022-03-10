@@ -1,7 +1,7 @@
 # Set env_path and video_dir.
-env_dir: /home/denpak/BC_NoCam/
+env_dir: /home/denpak/pipeline_embodied/Executables/FixedEnvSeed
 env: Rearing_Chamber
-seed: 0
+seed: 1
 cuda: 0 # Set CUDA_VISIBLE_DEVICES.
 
 # Config agents.
