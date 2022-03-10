@@ -11,8 +11,10 @@ public class ChickAcademy : MonoBehaviour
     public String TestVideo;
 
     // Private attributes
-    VideoController rightMonitor;
-    VideoController leftMonitor;
+    VideoPlayer rightMonitor;
+    VideoPlayer leftMonitor;
+    float videoStartTime;
+    public VideoClip DefaultVideo;
 
     public void Awake()
     {
@@ -49,8 +51,8 @@ public class ChickAcademy : MonoBehaviour
 
         if (episodeCount % 2 == 0)
         {
-            rightMonitor.SetVideoSource(ImprintVideo);
-            leftMonitor.SetVideoSource(TestVideo);
+            SetVideoSource(rightMonitor, ImprintVideo);
+            SetVideoSource(leftMonitor, TestVideo);
             SetLayerByName(leftTarget, "Default");
             if (!String.IsNullOrEmpty(ImprintVideo))
             {
@@ -59,8 +61,8 @@ public class ChickAcademy : MonoBehaviour
         }
         else
         {
-            rightMonitor.SetVideoSource(TestVideo);
-            leftMonitor.SetVideoSource(ImprintVideo);
+            SetVideoSource(rightMonitor, TestVideo);
+            SetVideoSource(leftMonitor, ImprintVideo);
             SetLayerByName(rightTarget, "Default");
             if (!String.IsNullOrEmpty(ImprintVideo))
             {
@@ -81,8 +83,6 @@ public class ChickAcademy : MonoBehaviour
     {
         videoPlayer.Pause();
         videoStartTime = Time.time;
-        Debug.Log("Video Restarted");
-        Debug.Log(videoPlayer.length);
     }
 
     private void SetVideoSource(VideoPlayer videoPlayer, String videoUrl)
@@ -99,6 +99,13 @@ public class ChickAcademy : MonoBehaviour
             videoPlayer.source = VideoSource.Url;
         }
     }
+
+    public void Update()
+    {
+        UpdateVideoFrames(rightMonitor);
+        UpdateVideoFrames(leftMonitor);
+    }
+
 
     private void UpdateVideoFrames(VideoPlayer videoPlayer)
     {
@@ -124,11 +131,14 @@ public class ChickAcademy : MonoBehaviour
                 videoPlayer.StepForward();
                 double lastFrame = videoPlayer.time;
                 if (videoPlayer.length - lastFrame < 1){
-                    Debug.Log("Time to reset");
                     videoPlayer.Stop();
                     videoPlayer.Prepare();
                 }
             }
         }
     }
+    public void EnvironmentReset()
+    {
+    }
+
 }

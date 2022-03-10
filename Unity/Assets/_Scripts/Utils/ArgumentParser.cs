@@ -9,6 +9,7 @@ public static class ArgumentParser
     {
         public int InputResolution;
         public int EpisodeSteps;    // Number of steps per episode.
+        public int Seed;
         public string LogDir;          // Directory to store log files.
         public string ImprintVideo;
         public string TestVideo;
@@ -38,6 +39,9 @@ public static class ArgumentParser
 
             {"episode-steps=", "number of steps per episode",
                 (int v) => options.EpisodeSteps = v},
+            
+            {"env-seed=", "seed for the unity environment",
+                (int v) => options.Seed = v},
 
             {"log-dir=", "directory to store log files",
                 v => options.LogDir = v},

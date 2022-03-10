@@ -14,7 +14,7 @@ public class AgentLogger : SimpleLogger
 
     public void LogHeader()
     {
-        Log("Episode, Step, {0}.x, {0}.y, {0}.angle", agentName);
+        Log("Episode, Step, agent.x, agent.y, agent.angle", agentName);
     }
 
     public void LogStep(int episode, int step, float x, float z, float angle)

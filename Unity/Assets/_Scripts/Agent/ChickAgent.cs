@@ -27,15 +27,20 @@ public class ChickAgent : Agent
     public bool TestMode;
     public float SpawnRange;
     public bool StickyWalls;
+    public int Seed;
 
     Vector3 lastPosition;
     AgentLogger logger;
     FloatPropertiesChannel agentInfoChannel;
 
+    public void Start()
+    {
+    }
 
     public override void Initialize()
     {
         TestMode |= ArgumentParser.Options.TestMode;
+        Seed = ArgumentParser.Options.Seed;
         SetMaxStep();
         SetCameraResolution();
         SetLogger();
@@ -138,6 +143,9 @@ public class ChickAgent : Agent
 
     public override void OnEpisodeBegin()
     {
+        if (CompletedEpisodes == 0 && StepCount == 0){
+            Random.InitState(Seed);
+        }
         var academy = FindObjectOfType<ChickAcademy>();
         academy.ResetMonitors(CompletedEpisodes);
 
