@@ -1617,10 +1617,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9025e84f9fbef4a608639460def6a7e8, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-
-  DefaultVideo: {fileID: 32900000, guid: 16ce6bf992b4b546f86dfa43c2556cbc, type: 3}
   ImprintVideo: 
   TestVideo: 
+  DefaultVideo: {fileID: 32900000, guid: 16ce6bf992b4b546f86dfa43c2556cbc, type: 3}
 --- !u!1 &2121288961
 GameObject:
   m_ObjectHideFlags: 0
