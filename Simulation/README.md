@@ -95,10 +95,9 @@ python run.py run_id=AgentBarney
 --record_chamber
                       Record the chamber camera if true. (default: False) Unlike most of the other flags, you do not need to provide a value after this flag. If you do not include the flag, it will be false. If you do include the flag, it will be true.
 ```
-These are the main ones. Run `python run.py --help` to the rest
+The above are the most important. Run `python run.py --help` to the rest.
 ```
-python run.py run_id=AgentCool seed=19 
-env_args.record_chamber=false
+python run.py run_id=AgentCool seed=19 env_args.record_chamber=false
 ```
 
 ### Testing
