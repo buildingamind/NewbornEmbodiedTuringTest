@@ -3,6 +3,3 @@ mlagents-envs==0.16.1
 hydra-core==1.0.1
 gym-unity==0.16.1
 tensorflow==1.14.0
-matplotlib
-numpy
-pandas
