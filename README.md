@@ -35,7 +35,7 @@ The table below lists the projects and publications using this pipeline.
 | Project/Publication | Date | Authors                                | Branch | Webpage |
 |---------------------|------|----------------------------------------|--------|---------|
 |Twin Studies           |      | Denizhan Pak, Samantha Wood, Justin Wood |        |         |
-|Embodied Imprinting |      | Denizhan Pak, Justin Wood        |        |         |
+|Binding Recognition |      | Denizhan Pak, Justin Wood        |        |         |
 
 ## How to Install.
 In this section, you will pull this repository from Github, open the Unity environment, and build the ChickAI environment as an executable.
