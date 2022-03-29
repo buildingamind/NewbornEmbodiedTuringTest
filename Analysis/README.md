@@ -13,9 +13,7 @@ this package is still being developed.
 ## Running an analysis
 To run an analysis the user simply puts the run_id of their agent.
 ```
-python run.py get_performance run_id
-```
-In the command above `get_performance` is a subcommand of run.py. Users may choose to try other subcommands which can be listed using the command
+python run.py run_id
 ```
 python run.py --help
 ```
