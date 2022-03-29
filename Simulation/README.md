@@ -122,7 +122,8 @@ Below is a list of the additional env_args options that you'll need for testing:
      * pwd - "print working directory," reports the current directory path
      * scp - "secure copy" a copy program to transfer files across servers.
 2. Git clone this repo onto the server as described in the main README.
-3. Transfer executable to server using `scp -r /PATH/TO/Executable/ username@servername.luddy.indiana.edu`.
+3. Transfer executable to server using `scp -r /PATH/TO/Executable/ username@servername.luddy.indiana.edu`. Make sure to transfer all the directory the 
+executable is in rather than just the executable.
 4. Start a screen by running the command [tmux](https://www.hostinger.com/tutorials/tmux-beginners-guide-and-cheat-sheet/)
 4. Check for available GPUs on server. The one with no process is the one you should use.
 ```nvidia-smi```
