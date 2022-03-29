@@ -1,7 +1,7 @@
 # Hydra config.
 hydra:
   run:
-    dir: experiments/${env}/batch_${batch_size}_lr_${learning_rate}/${hydra.job.override_dirname}/seed_${seed}
+    dir: ../Data/${run_id}
   sweep:
     dir: ${hydra.run.dir}
     subdir: ./

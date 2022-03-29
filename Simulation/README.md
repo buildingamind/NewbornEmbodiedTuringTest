@@ -106,7 +106,7 @@ the testing
 flag as true and in most cases include a path to the 
 distractor stimulus. Test runs also take much shorter. You should test your agent across multiple test_video stimuli including a case where the test stimuli is left blank (called a rest trial).
 ```
-python run.py test=true env_args.test_video=/path/to/video
+python run.py run_id=AgentBarney test=true env_args.test_video=/path/to/video
 ```
 Below is a list of the additional env_args options that you'll need for testing:
 ```

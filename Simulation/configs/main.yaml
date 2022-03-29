@@ -1,6 +1,6 @@
 # Set env_path and video_dir.
-env_dir: /home/denpak/pipeline_embodied/Executables/FixedEnvSeed
-env: Rearing_Chamber
+env_dir: /PATH/TO/ENVIRONMENT
+env: EXECTUABLE NAME without .exe
 seed: 1
 cuda: 0 # Set CUDA_VISIBLE_DEVICES.
 
@@ -16,6 +16,7 @@ epsilon: 0.2
 beta: 1.0e-2
 learning_rate: 1.0e-4
 learning_rate_schedule: linear
+run_id: DefaultRun
 
 defaults:
   - run_options: train # train or test
