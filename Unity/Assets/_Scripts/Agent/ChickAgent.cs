@@ -32,6 +32,7 @@ public class ChickAgent : Agent
     Vector3 lastPosition;
     AgentLogger logger;
     FloatPropertiesChannel agentInfoChannel;
+    public Transform target;
 
     public void Start()
     {
@@ -92,6 +93,10 @@ public class ChickAgent : Agent
         var rotateDir = Vector3.zero;
         var move = Mathf.FloorToInt(actions.DiscreteActions[0]);
         var rotate = Mathf.FloorToInt(actions.DiscreteActions[1]);
+        float reward = 1f/Vector3.Distance(lastPosition, target.position);
+        reward *= reward;
+        AddReward(reward);
+
 
         switch (move)
         {

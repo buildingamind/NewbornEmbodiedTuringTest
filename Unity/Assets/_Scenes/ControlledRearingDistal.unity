@@ -136,9 +136,9 @@ GameObject:
   - component: {fileID: 62760817}
   - component: {fileID: 62760822}
   - component: {fileID: 62760821}
-  m_Layer: 0
+  m_Layer: 9
   m_Name: RightMonitor
-  m_TagString: Wall
+  m_TagString: RightTarget
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 4294967295
@@ -429,7 +429,7 @@ GameObject:
   - component: {fileID: 413978187}
   m_Layer: 0
   m_Name: LeftMonitor
-  m_TagString: Wall
+  m_TagString: LeftTarget
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 4294967295
@@ -1368,31 +1368,31 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: -9.27
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.5
+      value: 0.4999994
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 0
+      value: 1.81
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalRotation.x
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalRotation.y
-      value: 0
+      value: 0.7065273
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalRotation.z
-      value: 0
+      value: -0
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalRotation.w
-      value: 1
+      value: 0.7076858
       objectReference: {fileID: 0}
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_RootOrder
@@ -1413,6 +1413,10 @@ PrefabInstance:
     - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_LocalScale.z
       value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 400016, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 89.906006
       objectReference: {fileID: 0}
     - target: {fileID: 2300000, guid: 537e31087403d1d47ab4544301aaee92, type: 3}
       propertyPath: m_Materials.Array.data[0]
@@ -1504,13 +1508,14 @@ MonoBehaviour:
   MaxStep: 1000
   MoveSpeed: 10
   RotateSpeed: 180
-  ForwardCost: -0.001
-  BackwardCost: -0.01
-  RotateCost: -0.0005
+  ForwardCost: 0
+  BackwardCost: 0
+  RotateCost: 0
   TestMode: 0
   SpawnRange: 5
   StickyWalls: 0
   Seed: 0
+  target: {fileID: 0}
 --- !u!114 &1953213594
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1541,26 +1546,6 @@ MonoBehaviour:
   m_UseChildSensors: 1
   m_UseChildActuators: 1
   m_ObservableAttributeHandling: 0
---- !u!114 &1953213595
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1953213590}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 282f342c2ab144bf38be65d4d0c4e07d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
-  m_Camera: {fileID: 2121288964}
-  m_SensorName: Agent Camera
-  m_Width: 64
-  m_Height: 64
-  m_Grayscale: 0
-  m_ObservationType: 0
-  m_ObservationStacks: 1
-  m_Compression: 1
 --- !u!114 &1953213596
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1575,6 +1560,32 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   DecisionPeriod: 2
   TakeActionsBetweenDecisions: 1
+--- !u!114 &1953213597
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1953213590}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6bb6b867a41448888c1cd4f99643ad71, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  m_SensorName: RayPerceptionSensor
+  m_DetectableTags: []
+  m_RaysPerDirection: 0
+  m_MaxRayDegrees: 19.9
+  m_SphereCastRadius: 0.5
+  m_RayLength: 30
+  m_RayLayerMask:
+    serializedVersion: 2
+    m_Bits: 512
+  m_ObservationStacks: 1
+  rayHitColor: {r: 1, g: 0, b: 0, a: 1}
+  rayMissColor: {r: 1, g: 1, b: 1, a: 1}
+  m_StartVerticalOffset: 1.2
+  m_EndVerticalOffset: 0
 --- !u!1 &2084797806
 GameObject:
   m_ObjectHideFlags: 0
@@ -1621,6 +1632,7 @@ MonoBehaviour:
   ImprintVideo: 
   TestVideo: 
   DefaultVideo: {fileID: 32900000, guid: 16ce6bf992b4b546f86dfa43c2556cbc, type: 3}
+  agent: {fileID: 1953213593}
 --- !u!1 &2121288961
 GameObject:
   m_ObjectHideFlags: 0

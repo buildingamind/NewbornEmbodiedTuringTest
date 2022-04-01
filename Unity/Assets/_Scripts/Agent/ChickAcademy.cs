@@ -15,6 +15,7 @@ public class ChickAcademy : MonoBehaviour
     VideoPlayer leftMonitor;
     float videoStartTime;
     public VideoClip DefaultVideo;
+    public ChickAgent agent;
 
     public void Awake()
     {
@@ -42,6 +43,7 @@ public class ChickAcademy : MonoBehaviour
         {
             TestVideo = ArgumentParser.Options.TestVideo;
         }
+
     }
 
     public void ResetMonitors(int episodeCount)
@@ -54,9 +56,10 @@ public class ChickAcademy : MonoBehaviour
             SetVideoSource(rightMonitor, ImprintVideo);
             SetVideoSource(leftMonitor, TestVideo);
             SetLayerByName(leftTarget, "Default");
-            if (!String.IsNullOrEmpty(ImprintVideo))
+            if (!String.IsNullOrEmpty(ImprintVideo) || true)
             {
                 SetLayerByName(rightTarget, "ImprintTarget");
+                agent.target = rightTarget.transform;
             }
         }
         else
@@ -64,9 +67,10 @@ public class ChickAcademy : MonoBehaviour
             SetVideoSource(rightMonitor, TestVideo);
             SetVideoSource(leftMonitor, ImprintVideo);
             SetLayerByName(rightTarget, "Default");
-            if (!String.IsNullOrEmpty(ImprintVideo))
+            if (!String.IsNullOrEmpty(ImprintVideo) || true)
             {
                 SetLayerByName(leftTarget, "ImprintTarget");
+                agent.target = leftTarget.transform;
             }
         }
     }
