@@ -1,0 +1,10 @@
+ChickAI:
+  Environment:
+    testEpisodes: 100
+    useShip: false
+    sideView: false
+  Model:
+    trainingEpisodes: 1000
+    intrinsicReward: null
+  Experiment:
+    runID: Agent1

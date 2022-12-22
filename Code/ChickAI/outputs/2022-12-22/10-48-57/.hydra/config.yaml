@@ -1,0 +1,4 @@
+ChickAI:
+  runID: mysql
+  user: omry
+  pass: secret
