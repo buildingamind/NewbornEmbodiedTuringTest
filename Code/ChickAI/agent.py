@@ -6,21 +6,21 @@ import os #Used for model saving and loading
 #Agent class as specified in the config file. Models are stored as files rather than
 #being kept in memory for performance reasons.
 class Agent:
-    def __init__(self, agent_id="Default Agent", reward="supervised", path="./Brains", **kwargs):
+    def __init__(self, agent_id="Default Agent", reward="supervised", log_path="./Brains", **kwargs):
         self.reward = reward
         self.id = agent_id
         self.model = None
         
         #If path does not exist, create it as a directory
-        if not os.path.exists(path):
-            os.makedirs(path)
+        if not os.path.exists(log_path):
+            os.makedirs(log_path)
 
         #If path is a saved model assign to path
-        if os.path.isfile(path):
-            self.path = path
+        if os.path.isfile(log_path):
+            self.path = log_path
         else:
             #If path is a directory create a file in the directory name after the agent
-            self.path = os.path.join(path, self.id)
+            self.path = os.path.join(log_path, self.id)
 
     #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
     def train(self, env, eps):

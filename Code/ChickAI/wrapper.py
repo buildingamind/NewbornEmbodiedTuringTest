@@ -20,7 +20,7 @@ test_eps = 12
 ep_steps = 1000//5
 test_steps = ep_steps * test_eps
 rest_steps = ep_steps * 2#test_eps
-env_path = None#"../../Env/rearing_chamber"
+env_path = "../Env/rearing_chamber"
 
 def port_in_use(port):
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

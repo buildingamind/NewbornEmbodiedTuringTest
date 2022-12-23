@@ -28,7 +28,7 @@ class Logger(SideChannel):
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         self.log_dir = log_dir
-        f_name = os.path.join(log_dir,run_name + ".csv")
+        f_name = os.path.join(log_dir,log_title + ".csv")
         self.f = open(f_name, 'w')
 
     #Method from Sidechannel interface. This method gets a message from unity
@@ -79,11 +79,10 @@ class ViewpointEnv(gym.Wrapper):
         self.log = Logger(run_id, log_dir=log_path)
 
         #Create environment and connect it to logger
-        env = UnityEnvironment(env_path, side_channels=[self.string_log], 
-                additional_args=args, base_port=base_port)
+        env = UnityEnvironment(env_path, side_channels=[self.log], additional_args=args, base_port=base_port)
         self.env = UnityToGymWrapper(env, uint8_visual=True)
         super().__init__(self.env)
-   
+        
     #Step the environment for one timestep
     def step(self, action):
         next_state, reward, done, info = self.env.step(action)

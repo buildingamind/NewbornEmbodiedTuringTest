@@ -1,17 +1,12 @@
-ChickAI:
-  Environment:
-    use_ship: false
-    side_view: false
-    base_port: 5000
-    env_path: ../Env/rearing_chamber
- 
-  Agent:
-    reward: supervised
+agent_count: 13
+mode: full
+run_id: test_agent
+train_eps: 1000
+test_eps: 100
+hydra.job.chdir: true
+log_path: ./Run1
 
-  Experiment:
-    agentCount: 13
-    mode: full
-    run_id: test_agent
-    train_eps: 1000
-    test_eps: 100
-    log_path: ./Example/Logs/
+defaults:
+  - _self_
+  - Agent: basic
+  - Environment: basic

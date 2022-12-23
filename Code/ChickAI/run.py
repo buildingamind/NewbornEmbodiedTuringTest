@@ -1,28 +1,27 @@
 import chickai_wrapper
 import agent
 import hydra
-from omegaconf import DictConfig, OmegaConf
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 class ViewpointExperiment:
     def __init__(self, config):
         #Save configuration for the environment and agent
         self.env_config = config["Environment"]
-        self.env_config["log_path"] = self.log_path
         agent_config = config["Agent"]
         
         #Get experiment configuration
-        agent_count = config["Experiment"]["agent_count"]
-        run_id = config["Experiment"]["run_id"]
-        self.mode = config["Experiment"]["mode"]
-        self.log_path = config["Experiment"]["log_path"]
-        self.test_eps = config["Experiment"]["test_eps"]
-        self.train_eps = config["Experiment"]["train_eps"]
+        agent_count = config["agent_count"]
+        run_id = config["run_id"]
+        self.mode = config["mode"]
+        self.log_path = config["log_path"]
+        self.test_eps = config["test_eps"]
+        self.train_eps = config["train_eps"]
         self.agents = []
 
         #Create the agents that will be used
-        agent_config["path"] = self.log_path + "/Brains/"
         for i in range(agent_count):
-            agent_config["agent_id"] = f"{run_id}_Agent_{i}"
+            with open_dict(agent_config):
+                agent_config.agent_id = f"{run_id}_Agent_{i}"
             self.agents.append(self.new_agent(agent_config))
 
     #Run the experiment with the specified mode
@@ -45,9 +44,10 @@ class ViewpointExperiment:
     #run learn for as many agents as set for the experiment
     def train_agents(self):
         for agent in self.agents:
-            env_config = self.get_env_config
-            env_config["mode"] = "rest"
-            env_config["run_id"] = agent.id + "_" + "rest"
+            env_config = self.env_config
+            with open_dict(env_config):
+                env_config["mode"] = "rest"
+                env_config["run_id"] = agent.id + "_" + "rest"
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
             agent.save(self.log_path)
@@ -56,23 +56,24 @@ class ViewpointExperiment:
     #Run the specified test trials for every agent
     def test_agents(self, mode):
         for agent in self.agents:
-            env_config = self.get_env_config
-            env_config["mode"] = mode
-            env_config["run_id"] = agent.id + "_" + mode
+            env_config = self.env_config
+            with open_dict(env_config):
+                env_config["mode"] = mode
+                env_config["run_id"] = agent.id + "_" + mode
             env = self.generate_environment(env_config)
             agent.test(env, self.test_eps)
             env.close()
     
     def generate_environment(self, mode="rest"):
-        env = chickai_wrapper.ChickEnv(**self.env_config)
+        env = chickai_wrapper.ViewpointEnv(**self.env_config)
         return env
 
     def new_agent(self, config):
-        return agent.Agent(self.log_path**config)
+        return agent.Agent(**config)
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
-def run_experiment():
-    ve = ViewpointExperiment(config)
+def run_experiment(cfg: DictConfig):
+    ve = ViewpointExperiment(cfg)
     ve.run()
 
 if __name__ == '__main__':
