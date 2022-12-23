@@ -1,13 +1,17 @@
 ChickAI:
   Environment:
-    testEpisodes: 100
-    useShip: false
-    sideView: false
+    use_ship: false
+    side_view: false
+    base_port: 5000
+    env_path: ../Env/rearing_chamber
  
-  Model:
-    trainingEpisodes: 1000
-    intrinsicReward: null
+  Agent:
+    reward: supervised
 
   Experiment:
     agentCount: 13
     mode: full
+    run_id: test_agent
+    train_eps: 1000
+    test_eps: 100
+    log_path: ./Example/Logs/

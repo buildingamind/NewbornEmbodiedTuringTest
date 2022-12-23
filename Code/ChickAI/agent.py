@@ -1,77 +1,74 @@
-#Packages for opening unity package
-import gym
-from mlagents_envs.environment import UnityEnvironment
-from gym_unity.envs import UnityToGymWrapper
-import socket
-
+#Stable baselines is a well-maintained rl library
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
-from mlagents_envs.environment import UnityEnvironment
-from mlagents_envs.side_channel.side_channel import (
-    SideChannel,
-    IncomingMessage,
-    OutgoingMessage,
-)
-import numpy as np
-import uuid
-import os
-import hydra
-from omegaconf import DictConfig, OmegaConf
+import os #Used for model saving and loading
 
-test_eps = 1200
-ep_steps = 1000
-test_steps = ep_steps * test_eps
-rest_steps = ep_steps * 100#test_eps
-env_path = "../../Env/rearing_chamber"
-
+#Agent class as specified in the config file. Models are stored as files rather than
+#being kept in memory for performance reasons.
 class Agent:
-    def __init__(self, brain=None, path=None):
-        #Either read in an existing brain or create a new one
-        #Including a rewarder is needed
+    def __init__(self, agent_id="Default Agent", reward="supervised", path="./Brains", **kwargs):
+        self.reward = reward
+        self.id = agent_id
+        self.model = None
+        
+        #If path does not exist, create it as a directory
+        if not os.path.exists(path):
+            os.makedirs(path)
 
-    def train(self, environment):
-        #Run training in environment with reward wrapper is needed
+        #If path is a saved model assign to path
+        if os.path.isfile(path):
+            self.path = path
+        else:
+            #If path is a directory create a file in the directory name after the agent
+            self.path = os.path.join(path, self.id)
+
+    #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
+    def train(self, env, eps):
+        steps = env.steps_from_eps(eps)
+        if self.reward == "supervised":
+            self.model = PPO("CNNPolicy", env, verbose=1)
+        else:
+            print("Please use the supervised reward until I implement rlexplore correctly.")
+            return
+        self.model.learn(total_timesteps=steps)
+        self.save()
+        del self.model
+        self.model = None
 
     #Test the agent in the given environment for the set number of steps
-    def test(self, env, steps):
+    def test(self, env, eps):
+        self.load()
+        if self.model == None:
+            print("Usage Error: model is not specified either train a new model or load a trained model")
+            return
+        
+        #Run the testing
+        steps = env.steps_from_eps(eps)
         obs = env.reset()
         for i in range(steps):
             action, _states = self.model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
             if done:
                 env.reset()
+        del self.model
+        self.model = None
 
-    def save(self, path):
-        #Save the brains into a file
+    #Saves brains to the specified path
+    def save(self, path=None):
+        if path is None:
+            path = self.path
+        self.model.save(path)
 
-    def load(self, path):
-        #Load brains from the file
+    #Load brains from the file
+    def load(self, path=None):
+        if path == None:
+            path = self.path
+        if not os.path.exists(path):
+            print(f"Usage Error: The path {path} does not exist")
+            self.model = None
+            return
+        self.model = PPO.load(path)
 
-
-def train(agent_id, useShip=False, sideView=False, steps=1e2):
-    global env_path
-    env = ChickEnv(agent_id, useShip=useShip, sideView=sideView, path=env_path)
-    model = PPO("CnnPolicy", env, verbose=1)
-    print("Training")
-    model.learn(total_timesteps=steps)
-    env.log("Rest Trials")
-    obs = env.reset()
-    global rest_steps
-    print("Rest trials")
-    for i in range(rest_steps):
-        action, _states = model.predict(obs, deterministic=True)
-        obs, reward, done, info = env.step(action)
-        if done:
-            env.reset()
-    env.close()
-    return model
-
-def run(agent_id, useShip, sideView):
-    model = train(agent_id, useShip, sideView)
-    print("Exp 1")
-    exp1(model, agent_id, useShip, sideView)
-    print("Exp 2")
-    exp2(model, agent_id, useShip, sideView)
 
 def intrinsic_train(model,ep_steps,episodes,envs,module):
     _, callback = model._setup_learn(total_timesteps=ep_steps*episodes, eval_env=None)
@@ -90,10 +87,3 @@ def intrinsic_train(model,ep_steps,episodes,envs,module):
         model.rollout_buffer.rewards = intrinsic_rewards
         # Update policy using the currently gathered rollout buffer.
         model.train()
-
-def main():
-    run("test_agent", True, True)
-
-if __name__ == '__main__':
-    my_app()
-    #main()
