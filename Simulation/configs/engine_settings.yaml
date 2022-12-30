@@ -1,7 +1,0 @@
-# Unity engine config.
-engine_settings:
-  capture_frame_rate: 60
-  quality_level: 5
-  time_scale: 20
-  width: 64
-  height: 64

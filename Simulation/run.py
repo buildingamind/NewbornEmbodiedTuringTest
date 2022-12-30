@@ -1,84 +1,81 @@
-import os
-import socket
-import yaml
-from omegaconf import DictConfig, OmegaConf
+import chickai_wrapper
+import agent
 import hydra
+from omegaconf import DictConfig, OmegaConf, open_dict
 
-from mlagents.trainers.learn import RunOptions, run_cli
+class ViewpointExperiment:
+    def __init__(self, config):
+        #Save configuration for the environment and agent
+        self.env_config = config["Environment"]
+        agent_config = config["Agent"]
+        
+        #Get experiment configuration
+        agent_count = config["agent_count"]
+        run_id = config["run_id"]
+        self.mode = config["mode"]
+        self.log_path = config["log_path"]
+        self.test_eps = config["test_eps"]
+        self.train_eps = config["train_eps"]
+        self.agents = []
 
+        #Create the agents that will be used
+        for i in range(agent_count):
+            with open_dict(agent_config):
+                agent_config.agent_id = f"{run_id}_Agent_{i}"
+            self.agents.append(self.new_agent(agent_config))
 
-import signal
-from contextlib import contextmanager
+    #Run the experiment with the specified mode
+    def run(self):
+        if self.mode == "train": #train agents
+            self.train_agents()
+        elif self.mode == "test": #run all tests
+            self.test_agents("rest")
+            self.test_agents("exp1")
+            self.test_agents("exp2")
+        elif self.mode == "full": #train and run all tests
+            self.train_agents()
+            self.test_agents("rest")
+            self.test_agents("exp1")
+            self.test_agents("exp2")
+        else:
+            self.test_agents(self.mode) #run specified test
+        
 
+    #run learn for as many agents as set for the experiment
+    def train_agents(self):
+        for agent in self.agents:
+            env_config = self.env_config
+            with open_dict(env_config):
+                env_config["mode"] = "rest"
+                env_config["run_id"] = agent.id + "_" + "rest"
+            env = self.generate_environment(env_config)
+            agent.train(env, self.train_eps)
+            agent.save(self.log_path)
+            env.close()
+    
+    #Run the specified test trials for every agent
+    def test_agents(self, mode):
+        for agent in self.agents:
+            env_config = self.env_config
+            with open_dict(env_config):
+                env_config["mode"] = mode
+                env_config["run_id"] = agent.id + "_" + mode
+            env = self.generate_environment(env_config)
+            agent.test(env, self.test_eps)
+            env.close()
+    
+    def generate_environment(self, mode="rest"):
+        env = chickai_wrapper.ViewpointEnv(**self.env_config)
+        return env
 
-def port_in_use(port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("localhost", port))
-    except socket.error:
-        return True
-    return False
+    def new_agent(self, config):
+        return agent.Agent(**config)
 
+@hydra.main(version_base=None, config_path="conf", config_name="config")
+def run_experiment(cfg: DictConfig):
+    print(cfg.log_dir)
+    #ve = ViewpointExperiment(cfg)
+    #ve.run()
 
-def process_env_args(env_args_dict):
-    env_args_list = []
-    for k, v in env_args_dict.items():
-        env_args_list.extend([f"--{k}", str(v)])
-    return env_args_list
-
-
-def build_trainer_settings(config):
-    trainer_settings = config["trainer"]
-    trainer_settings["reward_signals"] = config["reward_signals"]
-    if config["checkpoint_settings"]["run_id"].startswith("test"):
-        trainer_settings["hyperparameters"].update(
-            {"learning_rate": 0, "num_epoch": 0}
-        )
-        trainer_settings.update(
-            {"max_steps": trainer_settings["max_steps"] + 100000}
-        )
-    return trainer_settings
-
-
-def build_run_options(config):
-    # Convert DictConfig object into mlagents RunOptions.
-    config = OmegaConf.to_container(config, resolve=True)
-
-    checkpoint_settings = config["checkpoint_settings"]
-    env_settings = config["env_settings"]
-    engine_settings = config["engine_settings"]
-    trainer_settings = build_trainer_settings(config)
-
-    # Build env_args list.
-    env_settings["env_args"] = process_env_args(env_settings["env_args"])
-
-    config_dict = {
-        "default_settings": trainer_settings,
-        "checkpoint_settings": checkpoint_settings,
-        "env_settings": env_settings,
-        "engine_settings": engine_settings,
-        "torch_settings": {"device": "cuda"}
-    }
-
-    run_options = RunOptions.from_dict(config_dict)
-    return run_options
-
-
-@hydra.main(config_path="configs", config_name="main")
-def run(config: DictConfig) -> None:
-    #print(OmegaConf.to_yaml(config, resolve=True))
-    # Find a port that is not in use.
-    while port_in_use(config.env_settings.base_port):
-        config.env_settings.base_port += 1
-
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(config.cuda)
-    os.environ["DISPLAY"] = ":0"
-
-    # Convert DictConfig to a python dictionary.
-    options = build_run_options(config)
-
-    run_cli(options)
-
-if __name__ == "__main__":
-    run()
-
+if __name__ == '__main__':
+    run_experiment()

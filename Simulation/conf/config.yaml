@@ -1,0 +1,14 @@
+agent_count: 13
+now_dir: &nowdir ${now:%Y-%m-%d}/${now:%H-%M-%S}
+mode: full
+run_id: test_agent
+train_eps: 1000
+test_eps: 100
+hydra.job.chdir: true
+log_path: ../Data/*now_dir
+hydra.output_subdir: ../Data/*now_dir/hydra
+
+defaults:
+  - _self_
+  - Agent: basic
+  - Environment: basic
