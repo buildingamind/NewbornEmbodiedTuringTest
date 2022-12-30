@@ -1,4 +1,5 @@
 import chickai_wrapper
+import os
 import agent
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
@@ -73,6 +74,9 @@ class ViewpointExperiment:
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def run_experiment(cfg: DictConfig):
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(cfg.cuda)
+    os.environ["DISPLAY"] = ":0"
+
     ve = ViewpointExperiment(cfg)
     ve.run()
 

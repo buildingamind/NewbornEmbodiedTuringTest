@@ -96,6 +96,9 @@ class ViewpointEnv(gym.Wrapper):
     def close(self):
         self.env.close()
         del self.log
+
+    def reset(self, **kwargs):
+        return self.env.reset(**kwargs)
     
     #This function is needed since episode lengths and the number of stimuli are determined in unity
     def steps_from_eps(self, eps):
@@ -105,6 +108,3 @@ class ViewpointEnv(gym.Wrapper):
             return step_per_episode * eps
         else:
             return step_per_episode * eps * numb_conditions
-        
-    def reset():
-        self.env.reset()

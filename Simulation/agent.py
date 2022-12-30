@@ -1,6 +1,7 @@
 #Stable baselines is a well-maintained rl library
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
+from stable_baselines3.common.env_util import make_vec_env
 import os #Used for model saving and loading
 
 #Agent class as specified in the config file. Models are stored as files rather than
@@ -25,8 +26,10 @@ class Agent:
     #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
     def train(self, env, eps):
         steps = env.steps_from_eps(eps)
+        e_gen = lambda : env
+        envs = make_vec_env(env_id=e_gen, n_envs=1)
         if self.reward == "supervised":
-            self.model = PPO("CNNPolicy", env, verbose=1)
+            self.model = PPO("CnnPolicy", envs, verbose=1)
         else:
             print("Please use the supervised reward until I implement rlexplore correctly.")
             return
