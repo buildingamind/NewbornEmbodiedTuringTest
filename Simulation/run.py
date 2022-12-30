@@ -73,9 +73,8 @@ class ViewpointExperiment:
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def run_experiment(cfg: DictConfig):
-    print(cfg.log_dir)
-    #ve = ViewpointExperiment(cfg)
-    #ve.run()
+    ve = ViewpointExperiment(cfg)
+    ve.run()
 
 if __name__ == '__main__':
     run_experiment()
