@@ -2,4 +2,4 @@ use_ship: false
 side_view: false
 base_port: 5000
 env_path: ../Env/rearing_chamber
-log_path: ${log_path}/env_logs
+log_path: ${log_path}/Env_Logs
