@@ -47,7 +47,7 @@ class ViewpointExperiment:
             env_config = self.env_config
             with open_dict(env_config):
                 env_config["mode"] = "rest"
-                env_config["run_id"] = agent.id + "_" + "rest"
+                env_config["run_id"] = agent.id + "_" + "train"
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
             agent.save(self.log_path)

@@ -6,7 +6,6 @@ attrs==22.1.0
 AutoROM==0.4.2
 AutoROM.accept-rom-license==0.4.2
 backcall==0.2.0
-certifi @ file:///croot/certifi_1665076670883/work/certifi
 cffi==1.15.1
 charset-normalizer==2.1.1
 click==8.0.4
