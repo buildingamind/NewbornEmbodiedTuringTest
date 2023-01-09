@@ -68,16 +68,33 @@ class Agent:
     def save(self, path=None):
         if path is None:
             path = self.path
+        else:
+            if not os.path.exists(path):
+                os.makedirs(path)
+            #If path is a directory make a file named after id
+            if not os.path.isfile(path):
+                path = os.path.join(path, self.id)
+        if self.model == None:
+            self.load(path)
+            print(path)
+        
+        print("save called")
+        print(path)
         self.model.save(path)
 
     #Load brains from the file
     def load(self, path=None):
+        print("load called")
         if path == None:
             path = self.path
+        if os.path.isdir(path):
+            path = os.path.join(path, self.id)
+        if path[-4:] != ".zip":
+            print(path)
+            path = path + ".zip"
+            print(path)
         if not os.path.exists(path):
             print(f"Usage Error: The path {path} does not exist")
             self.model = None
             return
         self.model = PPO.load(path)
-
-

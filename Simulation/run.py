@@ -51,7 +51,7 @@ class ViewpointExperiment:
                 env_config["run_id"] = agent.id + "_" + "train"
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
-            agent.save(self.log_path)
+            agent.save()
             env.close()
     
     #Run the specified test trials for every agent
