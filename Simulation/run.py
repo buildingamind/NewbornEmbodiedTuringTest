@@ -48,6 +48,8 @@ class ViewpointExperiment:
             env_config = self.env_config
             with open_dict(env_config):
                 env_config["mode"] = "rest"
+                env_config["random_pos"] = True
+                env_config["rewarded"] = True
                 env_config["run_id"] = agent.id + "_" + "train"
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
@@ -74,8 +76,8 @@ class ViewpointExperiment:
 
 @hydra.main(version_base=None, config_path="conf", config_name="config")
 def run_experiment(cfg: DictConfig):
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(cfg.cuda)
-    os.environ["DISPLAY"] = ":0"
+    #os.environ["CUDA_VISIBLE_DEVICES"] = str(cfg.cuda)
+    #os.environ["DISPLAY"] = ":0"
 
     ve = ViewpointExperiment(cfg)
     ve.run()

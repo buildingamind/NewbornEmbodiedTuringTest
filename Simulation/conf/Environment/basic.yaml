@@ -3,3 +3,7 @@ side_view: false
 base_port: 5000
 env_path: ../Env/rearing_chamber
 log_path: ${log_path}/Env_Logs
+rec_path: ${log_path}/Recordings/
+record_chamber: True
+record_agent: True
+recording_frames: 10

@@ -1,6 +1,6 @@
 agent_count: 13
 run_id: test_agent
-log_path: &now_dir ../Data/${run_id} #${now:%Y-%m-%d}/${now:%H-%M-%S}
+log_path: ../Data/${run_id}
 mode: full
 train_eps: 1000
 test_eps: 100

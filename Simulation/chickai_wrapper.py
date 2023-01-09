@@ -56,18 +56,27 @@ class Logger(SideChannel):
 #Gym wrapper for the viewpoint environment. New gym wrapper (specifically for argument parsing) needs to be made for
 #a different experiment setup.
 class ViewpointEnv(gym.Wrapper):
-    def __init__(self, run_id: str, use_ship=False, side_view=False, mode="rest", log_path="./Env_Logs/", env_path=None, base_port=5004, **kwargs):
+    def __init__(self, run_id: str, env_path=None, base_port=5004, **kwargs):
+        
         #Parse arguments and determine which version of the environment to use.
         args = []
-        if use_ship: args.extend(["--use-ship", "true"])
-        if side_view: args.extend(["--side-view", "true"])
-        self.mode = mode
-        if mode == "exp1": 
+        if "rec_path" in kwargs: args.extend(["--log-dir", kwargs["rec_path"]])
+        if "recording_frames" in kwargs: args.extend(["--recording-steps", str(kwargs["recording_frames"])])
+        if kwargs["use_ship"]: args.extend(["--use-ship", "true"])
+        if kwargs["side_view"]: args.extend(["--side-view", "true"])
+        if kwargs["record_chamber"]: args.extend(["--record-chamber", "true"])
+        if kwargs["record_agent"]: args.extend(["--record-agent", "true"])
+        if kwargs["random_pos"]: 
+            print("Positions ramdomized mon capitan")
+            args.extend(["--random-pos", "true"])
+        if kwargs["rewarded"]: args.extend(["--rewarded", "true"])
+        self.mode = kwargs["mode"]
+        if self.mode == "exp1": 
             args.extend(["--test-mode","true"])
-        elif mode == "exp2":
+        elif self.mode == "exp2":
             args.extend(["--test-mode" ,"true"])
             args.extend(["--experiment-2","true"])
-        elif mode != "rest":
+        elif self.mode != "rest":
             print("Running in rest (imprint) mode, mode must be in [exp1,exp2,rest]")
             self.mode = "rest"
 
@@ -76,7 +85,7 @@ class ViewpointEnv(gym.Wrapper):
             base_port += 1
 
         #Create logger
-        self.log = Logger(run_id, log_dir=log_path)
+        self.log = Logger(run_id, log_dir=kwargs["log_path"])
 
         #Create environment and connect it to logger
         env = UnityEnvironment(env_path, side_channels=[self.log], additional_args=args, base_port=base_port)
