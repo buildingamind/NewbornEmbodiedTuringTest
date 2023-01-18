@@ -2,6 +2,7 @@
 from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.utils import get_device
 import os #Used for model saving and loading
 
 #Agent class as specified in the config file. Models are stored as files rather than

@@ -62,14 +62,12 @@ class ViewpointEnv(gym.Wrapper):
         args = []
         if "rec_path" in kwargs: args.extend(["--log-dir", kwargs["rec_path"]])
         if "recording_frames" in kwargs: args.extend(["--recording-steps", str(kwargs["recording_frames"])])
-        if kwargs["use_ship"]: args.extend(["--use-ship", "true"])
-        if kwargs["side_view"]: args.extend(["--side-view", "true"])
-        if kwargs["record_chamber"]: args.extend(["--record-chamber", "true"])
-        if kwargs["record_agent"]: args.extend(["--record-agent", "true"])
-        if kwargs["random_pos"]: 
-            print("Positions ramdomized mon capitan")
-            args.extend(["--random-pos", "true"])
-        if kwargs["rewarded"]: args.extend(["--rewarded", "true"])
+        if "use_ship" in kwargs: args.extend(["--use-ship", "true"])
+        if "side_view" in kwargs: args.extend(["--side-view", "true"])
+        if "record_chamber" in kwargs: args.extend(["--record-chamber", "true"])
+        if "record_agent" in kwargs: args.extend(["--record-agent", "true"])
+        if "random_pos" in kwargs: args.extend(["--random-pos", "true"])
+        if "rewarded" in kwargs: args.extend(["--rewarded", "true"])
         self.mode = kwargs["mode"]
         if self.mode == "exp1": 
             args.extend(["--test-mode","true"])
