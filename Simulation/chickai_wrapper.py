@@ -93,7 +93,7 @@ class ViewpointEnv(gym.Wrapper):
     #Step the environment for one timestep
     def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        return next_state, reward, done, info
+        return next_state, reward * 10, done, info
     
     #Write to the log file
     def log(self, msg: str) -> None:

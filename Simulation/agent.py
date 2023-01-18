@@ -1,5 +1,5 @@
 #Stable baselines is a well-maintained rl library
-from stable_baselines3.common.vec_env import DummyVecEnv
+from stable_baselines3.common.env_checker import check_env
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.utils import get_device
@@ -60,6 +60,9 @@ class Agent:
         for i in range(steps):
             action, _states = self.model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
+            if reward != 0:
+                print(f"{reward} at {i}")
+                print(obs)
             if done:
                 env.reset()
         del self.model
@@ -77,10 +80,7 @@ class Agent:
                 path = os.path.join(path, self.id)
         if self.model == None:
             self.load(path)
-            print(path)
         
-        print("save called")
-        print(path)
         self.model.save(path)
 
     #Load brains from the file

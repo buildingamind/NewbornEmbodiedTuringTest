@@ -2,7 +2,7 @@ agent_count: 2
 run_id: test_agent
 log_path: ../Data/${run_id}
 mode: full
-train_eps: 500
+train_eps: 1000
 test_eps: 100
 hydra.job.chdir: True
 cuda: 0
