@@ -93,7 +93,7 @@ class ViewpointEnv(gym.Wrapper):
     #Step the environment for one timestep
     def step(self, action):
         next_state, reward, done, info = self.env.step(action)
-        return next_state, reward * 10, done, info
+        return next_state, reward, done, info
     
     #Write to the log file
     def log(self, msg: str) -> None:
@@ -109,7 +109,7 @@ class ViewpointEnv(gym.Wrapper):
     
     #This function is needed since episode lengths and the number of stimuli are determined in unity
     def steps_from_eps(self, eps):
-        step_per_episode = 1000
+        step_per_episode = 200
         numb_conditions = 12
         if self.mode == "rest":
             return step_per_episode * eps
