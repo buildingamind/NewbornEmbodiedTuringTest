@@ -68,15 +68,10 @@ class ViewpointEnv(gym.Wrapper):
         if "record_agent" in kwargs: args.extend(["--record-agent", "true"])
         if "random_pos" in kwargs: args.extend(["--random-pos", "true"])
         if "rewarded" in kwargs: args.extend(["--rewarded", "true"])
-        self.mode = kwargs["mode"]
-        if self.mode == "exp1": 
-            args.extend(["--test-mode","true"])
-        elif self.mode == "exp2":
-            args.extend(["--test-mode" ,"true"])
-            args.extend(["--experiment-2","true"])
-        elif self.mode != "rest":
-            print("Running in rest (imprint) mode, mode must be in [exp1,exp2,rest]")
-            self.mode = "rest"
+        if "mode" in kwargs: 
+            args.extend(["--mode", kwargs["mode"]])
+            self.mode = kwargs["mode"]
+        else: self.mode = "rest"
 
         #Find unused port 
         while port_in_use(base_port):
