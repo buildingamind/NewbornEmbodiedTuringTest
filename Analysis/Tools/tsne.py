@@ -11,10 +11,10 @@ plt.style.use("dark_background")
 
 
 
-models = ["rnd","contrastive","pathak"]
+models = ["rnd","contrastive","pathak","chicks"]
 objs = ["ship","fork"]
 angles = ["front","side"]
-trials = ["Training","Fixed","Matched"]
+trials = ["Training","Fixed"]#,"Matched"]
 
 for trial in trials:
     vals = {}
