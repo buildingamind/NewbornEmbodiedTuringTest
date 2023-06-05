@@ -1,7 +1,8 @@
 use_ship: false
 side_view: false
-base_port: 5000
-env_path: ../Env/rearing_chamber
+base_port: 5600
+#env_path: ../Env/chickai-benchmark/parsing_app.x86_64
+env_path: /home/mchivuku/projects/visual_parsing/pipeline_embodied_sb/data/executables/chickai-benchmark-dp5/parsing_app.x86_64
 log_path: ${log_path}/Env_Logs
 rec_path: ${log_path}/Recordings/
 record_chamber: False

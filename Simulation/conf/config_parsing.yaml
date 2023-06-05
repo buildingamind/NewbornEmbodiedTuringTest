@@ -1,5 +1,5 @@
 agent_count: 1
-run_id: parsing_agent_1A
+run_id: test_parsing_exp1
 log_path: /data/mchivuku/embodiedai/benchmark_experiments/${run_id}
 mode: train
 train_eps: 1000
@@ -10,5 +10,5 @@ cuda: 0
 defaults:
   - _self_
   - Agent: basic
-  - Environment: basic
+  - Environment: parsing
   - hydra
