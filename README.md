@@ -5,7 +5,7 @@ Lab. This pipeline provides all necessary components for simulating and replicat
 
  The figure below shows the experiment setup for the three experiments discussed in the guide.
 
-<img src="Info/Digital Twin.jpg" style="zoom:30%;" align="center" />
+<img src="Info/Digital Twin.jpg" width="40%;" align="center" />
 
 ## How to Use this Repository
 This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in thevirtual world, and a set of programs to visualize the data coming from the experiments.Once users download this repo they will most likely need to open Unity at least once to generate an executable of the environment. After an executable is available, the user should run the necessary simulations. This will result in data that can be analyzed using the scripts in the analysis folder.
