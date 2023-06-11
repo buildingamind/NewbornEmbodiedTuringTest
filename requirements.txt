@@ -1,10 +1,14 @@
 gym==0.21.0
+stable-baselines3==1.8
+stable-baselines3[extra]==1.8
 gym-unity==0.26.0
-stable-baselines3[extra]==1.8.0
 mlagents==0.26.0
 mlagents-envs==0.26.0
 hydra
 hydra-core
 ffmpeg
 imageio-ffmpeg
+protobuf==3.20
+torch==2.0.1
+torchvision==0.15.2
 
