@@ -56,13 +56,6 @@ Following the directory structure of the code.
   used in contolled-rearing studies from the lab. This folder should be opened as a Unity
   project in the Unity Editor.
 
-## Projects
-The table below lists the projects and publications using this pipeline.
-| Project/Publication | Date | Authors                                | Branch | Webpage |
-|---------------------|------|----------------------------------------|--------|---------|
-|Twin Studies           |      | Denizhan Pak, Samantha Wood, Justin Wood |        |         |
-|Binding Recognition |      | Denizhan Pak, Justin Wood        |        |         |
-
 ## How to Install
 In this section, you will pull this repository from Github, open the Unity environment, and build the ChickAI environment as an executable.
 
@@ -86,7 +79,7 @@ In this section, you will pull this repository from Github, open the Unity envir
     **steps described below :**
 
     ```bash
-    conda create -n pipeline_embodied_env python=3.9
+    conda create -n pipeline_embodied_env python=3.8
     conda activate pipeline_embodied_env
     git clone git@github.com:buildingamind/pipeline_embodied.git
     cd pipeline_embodied
@@ -112,7 +105,7 @@ After running the experiments, the pipeline will generate a collection of datafi
 python3 Analysis/run.py
 ```
 
-This will generate a collection of graphs in the folder `Data/Results`
+This will generate a collection of graphs in the folder `Data/Results`.
 
 ### Running an Experiment (custom configuration)
 
