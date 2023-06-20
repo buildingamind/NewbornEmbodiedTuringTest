@@ -1,11 +1,11 @@
-from Simulation.env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
 import gym
 from mlagents_envs.environment import UnityEnvironment
 from gym_unity.envs import UnityToGymWrapper
 
+from env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
 
-from Simulation.logger import Logger
-from Simulation.utils import port_in_use
+from logger import Logger
+from utils import port_in_use
 
 
 #Gym wrapper for the viewpoint environment. New gym wrapper (specifically for argument parsing) needs to be made for

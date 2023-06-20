@@ -1,8 +1,8 @@
-agent_count: 1
-run_id: test_parsing_exp1
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/${run_id}
+agent_count: 2
+run_id: ship_recording_backgroundA
+log_path: Data/${run_id}
 mode: train
-train_eps: 1000
+train_eps: 1
 test_eps: 40
 hydra.job.chdir: True
 cuda: 0

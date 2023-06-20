@@ -1,4 +1,3 @@
-#Stable baselines is a well-maintained rl library
 import logging
 import pdb
 import os
@@ -31,7 +30,7 @@ class Agent:
         self.id = agent_id
         self.model = None
         summary_freq = 30000
-        self.rec_path = kwargs['rec_path']
+        self.rec_path = kwargs['rec_path'] if 'rec_path' in kwargs else ""
         self.encoder_type = kwargs['encoder']
         
         #If path does not exist, create it as a directory
@@ -54,10 +53,11 @@ class Agent:
         self.save_bestmodel_callback = SupervisedSaveBestModelCallback(summary_freq=summary_freq,\
             log_dir=self.path, \
             env_log_path = self.env_log_path, agent_id = self.id)
+        
         self.model_save_path = os.path.join(self.path, "supervised_agent")
         
         ## record video for rest
-        self.video_record_path = os.path.join(self.rec_path,"rest")
+        self.video_record_path = os.path.join(self.rec_path,"test")
         os.makedirs(self.video_record_path, exist_ok=True)
         
         ## set cuda device if available
@@ -87,7 +87,7 @@ class Agent:
             ## Add small, medium and large network
             policy = "CnnPolicy"
             policy_kwargs = dict(features_extractor_kwargs=dict(features_dim=128))
-            
+            print(self.encoder_type)
             if self.encoder_type == "small":
                 self.model = PPO(policy, envs, tensorboard_log=self.path, device=self.device)
             elif self.encoder_type == "medium":
@@ -133,7 +133,7 @@ class Agent:
         #Need to figure out how to make this generic and use it.
 
     #Test the agent in the given environment for the set number of steps
-    def test(self, env, eps, record = False):
+    def test(self, env, eps, record_prefix = "rest"):
         self.load()
         if self.model == None:
             print("Usage Error: model is not specified either train a new model or load a trained model")
@@ -143,26 +143,23 @@ class Agent:
         steps = env.steps_from_eps(eps)
         
         ## record - rest video
-        if record:
-            vr = VideoRecorder(env=env,
-            path="{}/{}_rest.mp4".format(self.video_record_path, str(self.id)),
-            enabled=True)
+        vr = VideoRecorder(env=env,
+        path="{}/{}_{}.mp4".format(self.video_record_path, str(self.id), record_prefix),
+        enabled=True)
 
         
         obs = env.reset()
         for i in range(steps):
             action, _states = self.model.predict(obs, deterministic=True)
             obs, reward, done, info = env.step(action)
-            if reward != 0:
-                print(f"{reward} at {i}")
+            
             if done:
                 env.reset()
-            if record:
-                vr.capture_frame()    
+            vr.capture_frame()    
             
-        if record:
-            vr.close()
-            vr.enabled = False
+        
+        vr.close()
+        vr.enabled = False
                
         del self.model
         self.model = None

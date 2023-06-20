@@ -4,8 +4,9 @@ import gym
 from mlagents_envs.environment import UnityEnvironment
 from gym_unity.envs import UnityToGymWrapper
 
-from Simulation.logger import Logger
-from Simulation.utils import port_in_use
+from logger import Logger
+from utils import port_in_use
+import pdb
 
 class ChickAIEnvWrapper(gym.Wrapper):
     def __init__(self, run_id: str, env_path=None, base_port=5004, **kwargs):
@@ -13,6 +14,7 @@ class ChickAIEnvWrapper(gym.Wrapper):
         #Parse arguments and determine which version of the environment to use.
         args = []
         if "rec_path" in kwargs: args.extend(["--log-dir", kwargs["rec_path"]])
+        
         if "recording_frames" in kwargs: args.extend(["--recording-steps", str(kwargs["recording_frames"])])
         #if "use_ship" in kwargs: args.extend(["--use-ship", "true"])
         #if "side_view" in kwargs: args.extend(["--side-view", "true"])

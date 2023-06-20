@@ -1,11 +1,13 @@
 import json
-from Simulation.env_wrapper.parsing_env_wrapper import ParsingEnv
-import Simulation.logger as logger
 import os
 import agent
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pdb
+
+from env_wrapper.parsing_env_wrapper import ParsingEnv
+import logger as logger
+
 class ParsingExperiment:
     def __init__(self, config):
         #Save configuration for the environment and agent
@@ -27,7 +29,8 @@ class ParsingExperiment:
             with open_dict(agent_config):
                 agent_config.agent_id = f"{run_id}_Agent_{i}"
                 agent_config.env_log_path = self.env_config['log_path']
-                agent_config.rec_path = self.env_config["rec_path"]
+                agent_config.rec_path = os.path.join(self.env_config["rec_path"] , f"Agent_{i}/")
+                agent_config.recording_frames = self.env_config["recording_frames"]
             self.agents.append(self.new_agent(agent_config))
 
     #Run the experiment with the specified mode
@@ -56,6 +59,8 @@ class ParsingExperiment:
                 env_config["random_pos"] = True
                 env_config["rewarded"] = True
                 env_config["run_id"] = agent.id + "_" + "train"
+                env_config["rec_path"] = agent.rec_path 
+                
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
             agent.save()
@@ -65,7 +70,7 @@ class ParsingExperiment:
     def test_agents(self, mode):
         for agent in self.agents:
             env_config = self.env_config
-            record = True if mode == "rest" else False
+            record = "rest" if mode == "rest" else "test"
             with open_dict(env_config):
                 object =  "ship" if env_config["use_ship"] else "fork"
                 env_config["mode"] = mode + "-"+ object +"-"+env_config["background"]

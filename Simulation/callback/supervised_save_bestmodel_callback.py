@@ -11,7 +11,7 @@ from stable_baselines3.common.results_plotter import load_results, ts2xy
 
 from stable_baselines3.common.callbacks import BaseCallback
 
-from Simulation.utils import compute_train_performance
+from utils import compute_train_performance
 
 class SupervisedSaveBestModelCallback(BaseCallback):
     def __init__(self, summary_freq:int, log_dir:str, env_log_path:str, agent_id:str) -> None:

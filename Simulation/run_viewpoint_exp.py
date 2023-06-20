@@ -1,8 +1,11 @@
-import Simulation.logger as logger
 import os
 import agent
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
+
+from env_wrapper import viewpoint_env_wrapper
+import logger as logger
+
 
 class ViewpointExperiment:
     def __init__(self, config):
@@ -23,6 +26,8 @@ class ViewpointExperiment:
         for i in range(agent_count):
             with open_dict(agent_config):
                 agent_config.agent_id = f"{run_id}_Agent_{i}"
+                agent_config.env_log_path = self.env_config['log_path']
+                agent_config.rec_path = os.path.join(self.env_config["rec_path"] , f"Agent_{i}/")
             self.agents.append(self.new_agent(agent_config))
 
     #Run the experiment with the specified mode
@@ -69,7 +74,7 @@ class ViewpointExperiment:
             env.close()
     
     def generate_environment(self, mode="rest"):
-        env = logger.ViewpointEnv(**self.env_config)
+        env = viewpoint_env_wrapper.ViewpointEnv(**self.env_config)
         return env
 
     def new_agent(self, config):

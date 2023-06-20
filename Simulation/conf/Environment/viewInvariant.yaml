@@ -1,0 +1,8 @@
+use_ship: True
+side_view: false
+base_port: 6000
+env_path: Data/Executables/ViewInvariant/ViewInvariant.x86_64
+log_path: ${log_path}/Env_Logs
+rec_path: ${log_path}/Recordings/
+record_chamber: False
+record_agent: False
