@@ -6,7 +6,7 @@ Lab. This pipeline provides all necessary components for simulating and replicat
 
  The figure below shows the experiment setup for the three experiments discussed in the guide.
 
-`<img src="./docs/digital_twin.jpg" width="40%;" align="center" />`
+`<img src="docs/digital_twin.jpg" width="40%;" align="center" />`
 
 ## How to Use this Repository
 

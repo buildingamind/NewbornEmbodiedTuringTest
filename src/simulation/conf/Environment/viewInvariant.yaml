@@ -1,0 +1,8 @@
+use_ship: True
+side_view: True
+base_port: 5500
+env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/viewpoint_benchmark/viewpoint_app.x86_64 
+log_path: ${log_path}/Env_Logs
+rec_path: ${log_path}/Recordings/
+record_chamber: False
+record_agent: False
