@@ -1,4 +1,4 @@
-# Unity environment for ChickAI: virtual controlled-rearing experiments
+# Unity environment for ChickAI: Virtual Controlled-Rearing Experiments
 
 This is a collection of tools for simulating virtual agents under controlled-rearing conditions. The agents
 generated and studied through this pipeline can be compared directly to real chicks recorded by the Building a Mind
@@ -6,7 +6,7 @@ Lab. This pipeline provides all necessary components for simulating and replicat
 
  The figure below shows the experiment setup for the three experiments discussed in the guide.
 
-`<img src="./docs/digital_twin.jpg" width="40%;" align="center" />`
+<img src="./docs/digital_twin.jpg" width="500"/>
 
 ## How to Use this Repository
 
@@ -16,48 +16,38 @@ If users are unfamiliar with how to install a git repository or have never used 
 
 ## Directory Structure
 
-Following the directory structure of the code.
+Following the directory structure of the code inside the src/ folder.
 
 ```tree
-├── Analysis
-│   ├── README.md
-│   ├── Tools
-│   ├── organized
-│   └── run.py
-├── Data
-│   └── Executables
-├── Env
-│   ├── rearing_chamber.x86_64
-│   └── rearing_chamber_Data
-├── Info
-│   └── Digital\ Twin.jpg
-├── README.md
-├── Simulation
-│   ├── agent.py
-│   ├── callback
-│   ├── conf
-│   ├── env_wrapper
-│   ├── logger.py
-│   ├── networks
-│   ├── run_parsing_exp.py
-│   ├── run_viewpoint_exp.py
-│   └── utils.py
-├── directory_tree.sh
-├── newbornembodied_0131_V1.docx
-├── requirements-old.txt
-└── requirements.txt
+
+├── analysis
+│   ├── organized
+│   ├── README.md
+│   ├── run.py
+│   └── Tools
+├── __init__.py
+└── simulation
+    ├── agent.py
+    ├── callback
+    ├── conf
+    ├── env_wrapper
+    ├── icm
+    ├── icm_agent.py
+    ├── logger.py
+    ├── networks
+    ├── run_parsing_exp.py
+    ├── run_viewpoint_exp.py
+    └── utils.py
 
 ```
 
-* `Analysis`: Contains the code for visualizing and analyzing results from the
+* `analysis`: Contains the code for visualizing and analyzing results from the
   simulation experiments.
-* `Data`: This folder contains executables, experimental results, and analysis results.
-  A user will rarely interact with this folder directly. Most scripts assume this directory and all its contents exist.
-* `Simulation`: Contains the code for running experiments with simulated agents.
-* `Unity`: Contains a Unity project which is a virtual replication of the VR Chambers
-  used in contolled-rearing studies from the lab. This folder should be opened as a Unity
-  project in the Unity Editor.
+* `simulation`: Contains the code for running experiments with simulated agents.
 
+The data folder on the main folder level:
+* `data`: This folder contains executables, experimental results, and analysis results.
+  A user will rarely interact with this folder directly. Most scripts assume this directory and all its contents exist.
 ## How to Install
 
 In this section, you will pull this repository from Github, open the Unity environment, and build the ChickAI environment as an executable.
@@ -95,7 +85,7 @@ In this section, you will pull this repository from Github, open the Unity envir
 After having followed steps 1-5 above once experiments can be run with a few lines of code
 
 ```python
-  python3 Simulation/run.py --experiment EXPERIMENT_NAME
+  python3 src/simulation/run.py --experiment EXPERIMENT_NAME
 ```
 
 where `EXPERIMENT_NAME` is one of the experiments (`viewpoint`, `binding`, `parsing`).
@@ -105,7 +95,7 @@ where `EXPERIMENT_NAME` is one of the experiments (`viewpoint`, `binding`, `pars
 After running the experiments, the pipeline will generate a collection of datafiles in the `Data` folder. To run the analyses performed in the papers you can use the following command
 
 ```
-python3 Analysis/run.py
+python3 src/analysis/run.py
 ```
 
 This will generate a collection of graphs in the folder `Data/Results`.
@@ -126,7 +116,7 @@ Note that if you change the size of the encoder, you may also consider changing 
 train_eps: NEW_EPISODE_COUNT
 ```
 
-If you wish to experiment with custom architectures or a new policy network, this can be done by modifying the agent script (`Simulation/agent.py`). `self.model` is the policy network and `self.encoder` is the encoder network. Both can be assigned any appropriately sized `torch.nn.module`.
+If you wish to experiment with custom architectures or a new policy network, this can be done by modifying the agent script (`src/simulation/agent.py`). `self.model` is the policy network and `self.encoder` is the encoder network. Both can be assigned any appropriately sized `torch.nn.module`.
 
 ## Experiment Configuration
 
