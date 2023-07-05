@@ -18,9 +18,10 @@ from mlagents_envs.exception import (UnityEnvironmentException,
                                      UnityWorkerInUseException)
 from omegaconf import DictConfig, OmegaConf, open_dict
 
+
 from src.simulation.env_wrapper.parsing_env_wrapper import ParsingEnv
 from src.simulation.env_wrapper.viewpoint_env_wrapper import ViewpointEnv
-
+from stable_baselines3.common.env_checker import check_env
 from hydra import initialize, compose
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 import warnings; 
@@ -86,6 +87,13 @@ def test_cont_env_parsing(env_cls):
         env = env_cls(**env_config)   
     else:
         env = None
+    
+    with warnings.catch_warnings(record=True) as record:
+        check_env(env)  
+    
+    # No warnings for custom envs
+    assert len(record) == 0 
+    
     obs = env.reset()
     print(env.observation_space, env.action_space)
 

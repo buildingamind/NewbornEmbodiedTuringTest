@@ -1,69 +1,129 @@
 #!/usr/bin/env python3
 
+from typing import Tuple
 from torch import nn, optim
-import torch
+import torch as th
+import pdb
+import torch.nn.functional as F
 
-class InverseForwardDynamicsModels(nn.Module):
-    def __init__(self, kwargs):
-        super(InverseForwardDynamicsModels, self).__init__()
-        
-        ## define inverse model - state, next state - predict action
-        self.inverse_model = nn.Sequential(
-            nn.Linear(kwargs['latent_dim'] * 2, 64), nn.LeakyReLU(),
-            nn.Linear(64, kwargs['action_dim'])
-        )
 
-        ## forward model - takes state, next state - predicts action
-        self.forward_model = nn.Sequential(
-            nn.Linear(kwargs['latent_dim'] + kwargs['action_dim'], 64), nn.LeakyReLU(),
-            nn.Linear(64, kwargs['latent_dim'])
-        )
+class Encoder(nn.Module):
+    """Encoder for encoding observations
+
+    Args:
+        obs_shape (Tuple): data shape of observations
+        action_shape: data shape for action space
+        latent_dim: dimension for encoding vectors
         
-        self.softmax = nn.Softmax()
+    Returns:
+        instance of the encoder
+    
+    """
+    def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int) -> None:
+        super().__init__()
         
-    def forward(self, obs, action, next_obs, training = True):
-        if training:
-            ## inverse prediction
-            im_input_tensor = torch.cat([obs, next_obs], dim=1)
-            pred_action = self.inverse_model(im_input_tensor)
-        
-            # forward prediction
-            fm_input_tensor = torch.cat([obs, action], dim=-1)
-            pred_next_obs = self.forward_model(fm_input_tensor)
+        self.main = nn.Sequential(
+                nn.Conv2d(obs_shape[0], 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+                nn.ELU(),
+                nn.Flatten(),
+            )
+        with th.no_grad():
+            sample = th.ones(size = tuple(obs_shape))
+            n_flatten = self.main(sample.unsqueeze(0)).shape[1]
             
-            return pred_action, pred_next_obs
+        self.linear = nn.Linear(n_flatten, latent_dim)
+        
+    def forward(self, obs: th.Tensor) -> th.Tensor:
+        """Encode input observations
 
-        else:
-            # forward prediction
-            fm_input_tensor = torch.cat([obs, action], dim=-1)
-            pred_next_obs = self.forward_model(fm_input_tensor)
+        Args:
+            obs (torch.Tensor): _description_
 
-            return pred_next_obs
+        Returns:
+            torch.Tensor: _description_
+        """
+            
+        return self.linear(self.main(obs))
+    
+    def feature_size(self,device):
+        with th.no_grad():
+            x = self.forward(th.zeros(1,64,64,3).to(device))
+            return x.view(1, -1).size(1)
+        
     
 
-## CNN encoder
+class InverseDynamicsModel(nn.Module):
+    """Inverse model for reconstructing transition process.
 
-class CnnEncoder(nn.Module):
-    def __init__(self, kwargs):
-        super(CnnEncoder, self).__init__()
+    Args:
+        latent_dim (int): The dimension of encoding vectors of the observations.
+        action_dim (int): The dimension of predicted actions.
 
+    Returns:
+        Model instance.
+    """
+    
+    def __init__(self, latent_dim, action_dim)-> None:
+        super(InverseDynamicsModel, self).__init__()
+        
+        dim = 2 * latent_dim
+        
         self.main = nn.Sequential(
-            nn.Conv2d(kwargs['in_channels'], 32, kernel_size=3, stride=2),
-            nn.BatchNorm2d(32), nn.LeakyReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, stride=2),
-            nn.BatchNorm2d(32), nn.LeakyReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2),
-            nn.BatchNorm2d(64), nn.LeakyReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=2),
-            nn.BatchNorm2d(64), nn.LeakyReLU()
+            nn.Linear(latent_dim * 2, 256),
+            nn.ReLU(),
+            nn.Linear(256, action_dim),
         )
+        
+        
+    
+    def forward(self, obs: th.Tensor, next_obs:th.Tensor) -> th.Tensor:
+        """Forward functions to predict actions
 
-    def forward(self, obs, next_obs=None):
-        if next_obs is not None:
-            input_tensor = torch.cat([obs, next_obs], dim=1)
-        else:
-            input_tensor = obs
+        Args:
+            obs (th.Tensor): current observations
+            next_obs (th.Tensor): next observations
 
-        latent_vectors = self.main(input_tensor)
+        Returns:
+            th.Tensor: Predicted observations
+        """
+        return self.main(th.cat([obs,next_obs],dim=1))
+    
+class ForwardDynamicsModel(nn.Module):
+    """Forward model for reconstructing transistion process
 
-        return latent_vectors.view(latent_vectors.size(0), -1)
+    Args:
+        latent_dim (int): The dimension of encoding vectors of the observations.
+        action_dim (int): The dimension of predicted actions.
+
+    Returns:
+        Model instance.
+    """
+    
+    def __init__(self, latent_dim, action_dim) -> None:
+        super(ForwardDynamicsModel, self).__init__()
+        self.action_dim = action_dim
+        
+        self.main = nn.Sequential(
+            nn.Linear(latent_dim + action_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, latent_dim),
+        )
+        
+    def forward(self, obs: th.Tensor, action: th.Tensor) -> th.Tensor:
+        """Forward function for outputing predicted next-obs.
+
+        Args:
+            obs (th.Tensor): Current observations.
+            pred_actions (th.Tensor): Predicted observations.
+
+        Returns:
+            Predicted next-obs.
+        """
+        #pdb.set_trace()
+        return self.main(th.cat([obs, action], dim=1))

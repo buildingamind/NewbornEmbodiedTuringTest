@@ -10,7 +10,7 @@ from PIL import Image
 import os
 import cv2
 
-class dvs_wrapper(gym.ObservationWrapper):
+class DVSWrapper(gym.ObservationWrapper):
     def __init__(self, env, change_threshold=60, kernel_size=(3, 3), sigma=1 ):
         super().__init__(env)
         

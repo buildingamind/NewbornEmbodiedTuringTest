@@ -3,7 +3,7 @@ from mlagents_envs.environment import UnityEnvironment
 from gym_unity.envs import UnityToGymWrapper
 
 
-from src.simulation.logger import Logger
+from src.simulation.common.logger import Logger
 from src.simulation.utils import port_in_use
 from src.simulation.env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
 
@@ -18,7 +18,7 @@ class ViewpointEnv(ChickAIEnvWrapper):
     def steps_from_eps(self, eps):
         step_per_episode = 200
         numb_conditions = 12
-        if self.mode == "rest":
+        if "rest" in self.mode:
             return step_per_episode * eps
         else:
             return step_per_episode * eps * numb_conditions

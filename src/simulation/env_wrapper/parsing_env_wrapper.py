@@ -4,7 +4,7 @@ from gym_unity.envs import UnityToGymWrapper
 
 from src.simulation.env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
 
-from src.simulation.logger import Logger
+from src.simulation.common.logger import Logger
 from src.simulation.utils import port_in_use
 
 
@@ -17,7 +17,7 @@ class ParsingEnv(ChickAIEnvWrapper):
     #This function is needed since episode lengths and the number of stimuli are determined in unity
     def steps_from_eps(self, eps):
         step_per_episode = 200
-        numb_conditions = 27
+        numb_conditions = 28
         if "rest" in self.mode:
             return step_per_episode * eps
         else:

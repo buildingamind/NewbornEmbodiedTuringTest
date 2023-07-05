@@ -1,6 +1,6 @@
 agent_count: 1
-run_id: viewpoint_agent_ship_sideview_exp5
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/${run_id}
+run_id: viewpoint_test_refactor_exp1
+log_path: data/${run_id}
 mode: full
 train_eps: 1000
 test_eps: 40
@@ -10,5 +10,5 @@ cuda: 0
 defaults:
   - _self_
   - Agent: basic
-  - Environment: viewInvariant
+  - Environment: basic
   - hydra
