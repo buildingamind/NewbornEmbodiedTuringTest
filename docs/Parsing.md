@@ -2,7 +2,7 @@
 
 Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wood
 
-<video src="parsing.mp4"></video>
+<video src="[parsing.mp4](https://github.com/buildingamind/pipeline_embodied/blob/benchmark_experiments/docs/Parsing.md)"></video>
 
 ### Abstract
 
