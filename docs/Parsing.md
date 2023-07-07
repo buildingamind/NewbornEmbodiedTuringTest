@@ -2,7 +2,7 @@
 
 Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wood
 
-[![Parsing](parsing.jpg)](parsing.mp4)
+[![Parsing](parsing.png)](parsing.mp4)
 
 ### Abstract
 
