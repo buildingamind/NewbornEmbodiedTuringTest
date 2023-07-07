@@ -2,11 +2,7 @@
 
 Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wood
 
-<video controls autoplay>
-  <source src="parsing.mp4" type="video/mp4">
-  <source src="parsing.ogg" type="video/ogg">
-  Your browser does not support the video tag.
-</video>
+[![Parsing](parsing.jpg)](parsing.mp4)
 
 ### Abstract
 
