@@ -2,7 +2,7 @@
 
 Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wood
 
-<video src="/Users/Manju/Documents/Documents - Manju's MacBook Pro/PhD-Documents/Research/projects/Embodied AI/unity/generalized_pipeline/code/pipeline_embodied_benchmark/docs/parsing.mp4"></video>
+<video src="parsing.mp4"></video>
 
 ### Abstract
 
@@ -41,6 +41,5 @@ Environment:
   record_agent: false
   recording_frames: 0
 ```
-
 
 ### Links
