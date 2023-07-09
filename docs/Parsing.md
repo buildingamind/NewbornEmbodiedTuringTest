@@ -4,6 +4,11 @@ Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wo
 
 [![Parsing](parsing.png)](parsing.mp4)
 
+
+
+https://github.com/buildingamind/pipeline_embodied/assets/1686251/839bd04c-8853-44c4-b275-5e61413a3904
+
+
 ### Abstract
 
 *Newborn brains exhibit remarkable abilities in rapid and generative learning, including the ability to parse objects from backgrounds and recognize those objects across substantial changes to their appearance (i.e., novel backgrounds and novel viewing angles). How can we build machines that can learn as efficiently as newborns? To accurately compare biological and artificial intelligence, researchers need to provide machines with the same training data that an organism has experienced since birth. Here, we present an experimental benchmark that enables researchers to raise artificial agents in the same controlled-rearing environments as newborn chicks. First, we raised newborn chicks in controlled environments with visual access to only a single object on a single background and tested their ability to recognize their object across novel viewing conditions. Then, we performed “digital twin” experiments in which we reared a variety of artificial neural networks in virtual environments that mimicked the rearing conditions of the chicks and measured whether they exhibited the same object recognition behavior as the newborn chicks. We found that biological chicks developed background-invariant object recognition, while the artificial chicks developed background-dependent recognition. Our benchmark exposes the limitations of current unsupervised and supervised algorithms in achieving the learning abilities of newborn animals. Ultimately, we anticipate that this approach will contribute to the development of AI systems that can learn with the same efficiency as newborn animals.*
