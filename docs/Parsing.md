@@ -21,8 +21,8 @@ Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wo
 
 ```
 agent_count: 1
-run_id:ship_backgroundA_exp
-log_path: data/ship_backgroundA_exp
+run_id:exp1
+log_path: data/exp1
 mode: full
 train_eps: 1000
 test_eps: 40
@@ -42,6 +42,27 @@ Environment:
   record_agent: false
   recording_frames: 0
 ```
+##### Run script
+
+```bash
+python src/simulation/run_parsing_exp.py ++run_id=exp1 ++Environment.env_path=data/executables/parsing_benchmark/parsing_app.x86_64 ++mode=full ++train_eps=1000 ++test_eps=40 ++Agent.encoder="small" ++Environment.use_ship="true" ++Environment.background="A"
+
+where
+Environment.use_ship = True or False (to choose between Ship and Fork);
+Environment.background = A, B, C (to choose between the three background);
+mode = full or train or test (to choose between the three modes to run);
+Agent.encoder = "small", "medium" or "large" to choose between the three different types of encoders: NatureCNN, resnet10 and resnet18
+Agent.reward="supervised" default
+
+```
+
+##### Custom Configuration:
+
+- Update train episode count; test episode count
+- Encoder types - small, medium and large
+- Reward types - supervised or 'unsupervised'
 
 ### Links
+
 [Exectuables can be found here](https://origins.luddy.indiana.edu/unity/executables/)
+
