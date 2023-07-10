@@ -131,5 +131,5 @@ If you wish to experiment with custom architectures or a new policy network, thi
 
 More information related to details on the experiment can be found on following pages.
 
-* [**Parsing Experiment**](Parsing.md)
-* [**ViewPoint Experiment**](Viewpoint.md)
+* [**Parsing Experiment**](docs/Parsing.md)
+* [**ViewPoint Experiment**](docs/Viewpoint.md)
