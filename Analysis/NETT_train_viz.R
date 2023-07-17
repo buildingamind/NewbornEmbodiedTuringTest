@@ -1,0 +1,60 @@
+# NETT_train_viz.R
+
+# Before running this script, you need to run merge_csvs to merge all of the agents'
+# output into a single, standardized format dataframe for training and test data
+
+# Variables --------------------------------------------------------------------
+
+# USER-SPECIFIED VARIABLES
+data_loc <- "/Users/samanthawood/Documents/WoodLab/AI Papers/EmbodiedPipeline/segmentation_data.R"
+results_wd <- "/Users/samanthawood/Documents/WoodLab/AI Papers/EmbodiedPipeline/"
+ep_bucket_size <- 100
+
+# Set Up -----------------------------------------------------------------------
+
+library(tidyverse)
+
+load(data_loc)
+rm(test_data)
+setwd(results_wd)
+
+train_data_fixed <- train_data %>%
+  # Create variables for correct/incorrect calculations
+  mutate(correct_steps = if_else(right.monitor == "White", left_steps, right_steps)) %>%
+  mutate(incorrect_steps = if_else(right.monitor == "White", right_steps, left_steps)) %>%
+  mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps)) %>%
+  # Summarise data by condition, agent, and episode bucket for graphing
+  mutate(episode_block = Episode%/%ep_bucket_size) %>%
+  group_by(imprinting, agent, episode_block) %>%
+  summarise(avgs = mean(percent_correct, na.rm = TRUE),
+            sd = sd(percent_correct, na.rm = TRUE),
+            count = length(percent_correct)) %>%
+  mutate(se = sd / sqrt(count)) %>%
+  # Convert numerical variables into correct type
+  mutate(episode_block = as.numeric(episode_block)) %>%
+  mutate(agent = as.numeric(agent)) %>%
+  ungroup()
+
+
+# Plot line graphs by imprinting condition -------------------------------------
+
+for (cond in unique(train_data_fixed$imprinting))
+{
+  data <- train_data_fixed %>%
+    filter(imprinting == cond)
+  
+  ggplot(data=data, aes(x=episode_block, y=avgs, color=as.factor(agent))) +
+    geom_line() +
+    theme_classic(base_size = 16) +
+    geom_hline(yintercept = .5) + 
+    ggtitle("Imprinting Performance") + 
+    xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) + 
+    ylab("Average Time with Imprinted Object") +
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 1), breaks=seq(0,1,.1), labels = scales::percent) + 
+    scale_x_discrete(labels = label_wrap(10)) +
+    theme(legend.position="none") 
+  
+  img_name <- paste0(cond, "_train.png")
+  ggsave(img_name)
+}
+
