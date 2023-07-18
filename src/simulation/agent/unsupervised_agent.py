@@ -26,15 +26,20 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from src.simulation.algorithms.icm import ICM
 
+from tqdm import tqdm
 
-#Agent class as specified in the config file. Models are stored as files rather than
-#being kept in memory for performance reasons.
 class ICMAgent(BaseAgent):
+    """ICM agent with callback to implement intrinsic curiosity reward
+    
+    Args:
+        BaseAgent (_type_): _description_
+    """
     def __init__(self, agent_id="Default Agent", \
         reward="icm", log_path="./Brains", **kwargs):
         
         self.reward = reward
         self.id = agent_id
+
         self.model = None
         summary_freq = 30000
         self.rec_path = kwargs['rec_path'] if 'rec_path' in kwargs else ""
@@ -73,7 +78,7 @@ class ICMAgent(BaseAgent):
         
     #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
     def train(self, env, eps):
-        steps = env.steps_from_eps(eps)
+        steps = 1000000
         env = Monitor(env, self.path)
         
         e_gen = lambda : env
@@ -83,36 +88,41 @@ class ICMAgent(BaseAgent):
         
         ## setup tensorboard logger
         new_logger = configure(self.path, ["csv", "tensorboard"])
-        icm = ICM(train_env.observation_space, train_env.action_space,self.device)
+        icm = ICM(train_env.observation_space, train_env.action_space,\
+            self.device)
         
         
         policy = "CnnPolicy"
-        self.model = PPO(policy, train_env, tensorboard_log=self.path,n_steps=200, device=self.device)
+        self.model = PPO(policy, train_env, tensorboard_log=self.path,\
+            n_steps=2048, device=self.device)
         self.model.set_logger(new_logger)
         print(f"Total training steps:{steps}")
         
         # Set info buffer
-        all_eps_rewards = list()
-        eps_rewards = deque([0.] * 10, maxlen=10)
-        mean_eps_rewards = list()
+        # reset the env
+        episode_rewards = deque(maxlen=10)
+        episode_steps = deque(maxlen=10)
         
-        _ = train_env.reset()
+        
         # Number of updates
         num_train_steps = steps
         self.num_envs = 1
-        self.num_steps = 200
-        
+        self.num_steps = 2048
         num_updates = num_train_steps // self.num_envs // self.num_steps
+
+        
+        _ = train_env.reset()
+        
         
         self.model.ep_info_buffer = deque(maxlen=10)
-        _, callback = self.model._setup_learn(total_timesteps=steps)
+        _, callback = self.model._setup_learn(total_timesteps=num_train_steps)
 
 
-        for update in range(num_updates):
+        for update in tqdm(range(num_updates)):
             self.model.collect_rollouts(
                 env=train_env,
                 rollout_buffer=self.model.rollout_buffer,
-                n_rollout_steps=200,
+                n_rollout_steps=2048,
                 callback=callback
             )
             
@@ -132,26 +142,22 @@ class ICMAgent(BaseAgent):
             self.global_step +=self.num_envs * self.num_steps
             
             
-            eps_rewards.extend([ep_info["r"] for ep_info in self.model.ep_info_buffer])
-            all_eps_rewards.append(list(eps_rewards.copy()))
-            mean_eps_rewards.append(np.mean(eps_rewards))
+            episode_rewards.extend([ep_info["r"] for ep_info in self.model.ep_info_buffer])
             
-            print('ENV:steps/total timesteps {}/{}, \n \
-                MEAN|MEDIAN REWARDS {:.2f}|{:.2f}, MIN|MAX REWARDS {:.2f}|{:.2f}\n'.format(
-                steps, self.global_step,
-                np.mean(eps_rewards), 
-                np.median(eps_rewards),
-                np.min(eps_rewards), 
-                np.max(eps_rewards)
-            ))
+            if update%10 == 0:
+                print('ENV:steps/total timesteps {}/{}, \n \
+                    MEAN|MEDIAN REWARDS {:.2f}|{:.2f}, MIN|MAX REWARDS {:.2f}|{:.2f}\n'.format(
+                    steps, self.global_step,
+                    np.mean(episode_rewards), 
+                    np.median(episode_rewards),
+                    np.min(episode_rewards), 
+                    np.max(episode_rewards)
+                ))
          
-        #np.save(os.path.join(self.plots_path, 'episode_rewards.npy'), eps_rewards)
-        #np.save(os.path.join(self.plots_path, 'mean_episode_rewards.npy'), mean_eps_rewards)
         
         self.save()
         del self.model
         self.model = None
         
         ## plot reward graph
-        self.plot_results(steps, \
-            plot_name=f"reward_graph_{self.id}")
+        self.plot_results(steps, plot_name=f"reward_graph_{self.id}")

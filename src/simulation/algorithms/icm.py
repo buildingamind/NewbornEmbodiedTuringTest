@@ -34,11 +34,11 @@ class ICM(object):
         observation_space: gym.Space,
         action_space: gym.Space,
         device: str = "cpu",
-        beta: float = 0.05,
+        beta: float = 0.01,
         kappa: float = 0.000025,
         latent_dim: int = 128,
-        lr: float = 0.001,
-        batch_size: int = 64,
+        lr: float = 3e-4,
+        batch_size: int = 500,
     ) -> None:
         
         self._obs_shape = observation_space.shape
@@ -155,7 +155,10 @@ class ICM(object):
             pred_next_obs = self.fm(encoded_obs,actions )
             
             fm_loss = F.mse_loss(pred_next_obs, encoded_next_obs)
+            
+            #unclip_intr_loss = 10 * (0.2 * fm_loss + 0.8 * im_loss)
             (im_loss + fm_loss).backward()
+            #unclip_intr_loss.backward()
 
             self.encoder_opt.step()
             self.im_opt.step()

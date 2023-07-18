@@ -25,6 +25,10 @@ class ViewpointExperiment(Experiment):
     def new_agent(self, config):
         return SupervisedAgent(**config)
     
+    def generate_log_title(self, env_config):
+        object =  "ship" if env_config["use_ship"] else "fork"
+        side_view= "side" if env_config["side_view"] else "front"
+        return "_".join([object, side_view]) + "-" + env_config["run_id"]
     
     #Run the experiment with the specified mode
     def run(self):

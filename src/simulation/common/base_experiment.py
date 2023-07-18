@@ -50,7 +50,7 @@ class Experiment(abc.ABC):
                 env_config["rewarded"] = self.rewarded
                 env_config["run_id"] = agent.id + "_" + "train"
                 env_config["rec_path"] = agent.rec_path 
-                
+                env_config["log_title"] = self.generate_log_title(env_config)
             env = self.generate_environment(env_config)
             agent.train(env, self.train_eps)
             agent.save()
@@ -64,6 +64,7 @@ class Experiment(abc.ABC):
                 env_config["mode"] = self.generate_mode_parameter(mode, env_config)
                 env_config["run_id"] = agent.id + "_" + mode
                 env_config["rewarded"] = self.rewarded
+                env_config["log_title"] = self.generate_log_title(env_config)
             env = self.generate_environment(env_config)
             agent.test(env, self.test_eps, mode)
             env.close()
@@ -92,3 +93,7 @@ class Experiment(abc.ABC):
     def generate_mode_parameter(self, mode, env_config):
         pass
         
+    @abc.abstractmethod
+    def generate_log_title(self, env_config):
+        pass
+    

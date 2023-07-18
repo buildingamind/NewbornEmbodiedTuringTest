@@ -1,3 +1,3 @@
-reward: supervised
+reward: icm
 log_path: ${log_path}/Brains/
 encoder: small

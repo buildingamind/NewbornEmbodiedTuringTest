@@ -35,7 +35,8 @@ class ChickAIEnvWrapper(gym.Wrapper):
             base_port += 1
 
         #Create logger
-        self.log = Logger(run_id, log_dir=kwargs["log_path"])
+        log_title = kwargs["log_title"] if "log_title" in kwargs else run_id
+        self.log = Logger(log_title, log_dir=kwargs["log_path"])
         
         #Create environment and connect it to logger
         env = UnityEnvironment(env_path, side_channels=[self.log], additional_args=args, \

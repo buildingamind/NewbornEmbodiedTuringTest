@@ -1,5 +1,5 @@
 agent_count: 1
-run_id: viewpoint_test_refactor_exp1
+run_id: parsing_icm_lr_dp1_exp1
 log_path: data/${run_id}
 mode: full
 train_eps: 1000

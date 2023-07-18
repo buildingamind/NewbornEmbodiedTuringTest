@@ -20,13 +20,14 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 
-
 class BaseAgent(ABC):
     def __init__(self, agent_id="Default Agent", \
         log_path="./Brains",
         **kwargs):
         
         self.id = agent_id
+        
+        
         self.model = None
         self.summary_freq = 30000 
         self.rec_path = kwargs['rec_path'] if 'rec_path' in kwargs else ""
@@ -64,7 +65,6 @@ class BaseAgent(ABC):
     def train(self, env, eps)->None:
         pass
 
-    #Test the agent in the given environment for the set number of steps
     def test(self, env, eps, record_prefix = "rest"):
         """
         Test the agent in the given environment for the set number of steps
@@ -86,7 +86,7 @@ class BaseAgent(ABC):
         vr = VideoRecorder(env=env,
         path="{}/{}_{}.mp4".format(self.video_record_path, str(self.id), record_prefix),
         enabled=True)
-
+        env.render(mode='rgb_array')
         
         obs = env.reset()
         for i in range(steps):
