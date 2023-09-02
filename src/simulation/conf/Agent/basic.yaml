@@ -1,3 +1,8 @@
-reward: icm
+reward: supervised
 log_path: ${log_path}/Brains/
-encoder: small
+encoder: medium
+mini_batchsize: 512
+buffer_size: 2048
+frame_stack: False
+n_stack: 2
+policy: LSTM

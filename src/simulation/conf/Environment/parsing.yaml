@@ -1,0 +1,10 @@
+use_ship: True
+background: A
+base_port: 6000
+env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/parsing_benchmark/parsing.x86_64
+log_path: ${log_path}/Env_Logs
+rec_path: ${log_path}/Recordings/
+record_chamber: False
+record_agent: False
+recording_frames: 1000
+dvs_wrapper: False

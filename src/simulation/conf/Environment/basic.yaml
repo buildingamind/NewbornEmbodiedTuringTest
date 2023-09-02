@@ -1,10 +1,10 @@
 use_ship: True
 side_view: false
 background: A
-base_port: 6000
+base_port: 6600
 #env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/parsing_benchmark/parsing.x86_64
-#env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/icm_experiment_nohead/icm_experiment.x86_64
-env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/parsing_dp1_benchmark/parsing.x86_64
+env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/icm_experiment_nohead/icm_experiment.x86_64
+#env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/parsing_benchmark/parsing.x86_64
 log_path: ${log_path}/Env_Logs
 rec_path: ${log_path}/Recordings/
 record_chamber: False

@@ -1,12 +1,13 @@
 import abc
 import os
-import src.simulation.common.base_agent as base_agent
+from pprint import pprint
 import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pdb
 
-from src.simulation.env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
-import src.simulation.common.logger as logger
+import common.base_agent as base_agent
+from env_wrapper.chickai_env_wrapper import ChickAIEnvWrapper
+import common.logger as logger
 
 
 class Experiment(abc.ABC):
@@ -29,9 +30,9 @@ class Experiment(abc.ABC):
 
         for i in range(agent_count):
             with open_dict(agent_config):
-                agent_config.agent_id = f"{run_id}_agent_{i}"
+                agent_config.agent_id = f"{run_id}_Agent_{i}"
                 agent_config.env_log_path = self.env_config['log_path']
-                agent_config.rec_path = os.path.join(self.env_config["rec_path"], f"agent_{i}/")
+                agent_config.rec_path = os.path.join(self.env_config["rec_path"], agent_config.agent_id)
                 agent_config.recording_frames = self.env_config["recording_frames"]
             self.agents.append(self.new_agent(agent_config))
 
@@ -47,11 +48,17 @@ class Experiment(abc.ABC):
                 mode = "rest"
                 env_config["mode"] = self.generate_mode_parameter(mode,env_config)
                 env_config["random_pos"] = True
-                env_config["rewarded"] = self.rewarded
+                
+                
+                if self.rewarded:
+                    env_config["rewarded"] = self.rewarded
+                
                 env_config["run_id"] = agent.id + "_" + "train"
-                env_config["rec_path"] = agent.rec_path 
+                env_config["rec_path"] = agent.rec_path + "/"
                 env_config["log_title"] = self.generate_log_title(env_config)
+            
             env = self.generate_environment(env_config)
+            
             agent.train(env, self.train_eps)
             agent.save()
             env.close()
@@ -63,7 +70,11 @@ class Experiment(abc.ABC):
             with open_dict(env_config):
                 env_config["mode"] = self.generate_mode_parameter(mode, env_config)
                 env_config["run_id"] = agent.id + "_" + mode
-                env_config["rewarded"] = self.rewarded
+                
+                if self.rewarded:
+                    env_config["rewarded"] = self.rewarded
+                env_config["reward"] = self.reward
+                
                 env_config["log_title"] = self.generate_log_title(env_config)
             env = self.generate_environment(env_config)
             agent.test(env, self.test_eps, mode)
@@ -74,7 +85,6 @@ class Experiment(abc.ABC):
             self.train_agents()
             ## rest inside the test
         elif self.mode == "test":
-            #self.test_agents("rest")
             self.test_agents("exp")
         elif self.mode == "full":
             self.train_agents()

@@ -14,25 +14,30 @@ def copy(srcpaths, destpath, object, type, background):
 
 # ship small
 s = "/data/mchivuku/embodiedai/benchmark_experiments"    
-m =  "/data/mchivuku/samantha_output"
-backgroundA_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundA_exp*/Env_Logs/*.csv")
-backgroundB_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundB_exp*/Env_Logs/*.csv")
-backgroundC_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundC_exp*/Env_Logs/*.csv")
+m =  "/data/mchivuku/samantha_output/new"
+backgroundA_paths = glob.glob("/data/mchivuku/embodiedai/new_benchmark_experiments/ship_backgndA_small/*backgroundA_exp*/Env_Logs/*.csv")
 
 copy(backgroundA_paths, m, "ship","small", "backgroundA")   
-copy(backgroundB_paths, m, "ship","small", "backgroundB")   
-copy(backgroundC_paths, m, "ship","small", "backgroundC")   
 
-backgroundA_mpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundA_med_exp*/Env_Logs/*.csv")
-backgroundB_mpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundB_med_exp*/Env_Logs/*.csv")
-backgroundC_mpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundC_med_exp*/Env_Logs/*.csv")
+backgroundA_mpaths = glob.glob("/data/mchivuku/embodiedai/new_benchmark_experiments/ship_backgndA_med/*backgroundA_med_exp*/Env_Logs/*.csv")
+#backgroundB_mpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundB_med_exp*/Env_Logs/*.csv")
+#backgroundC_mpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/ship*backgroundC_med_exp*/Env_Logs/*.csv")
 
 
 copy(backgroundA_mpaths, m, "ship","medium", "backgroundA")   
-copy(backgroundB_mpaths, m, "ship","medium", "backgroundB")   
-copy(backgroundC_mpaths, m, "ship","medium", "backgroundC") 
+#copy(backgroundB_mpaths, m, "ship","medium", "backgroundB")   
+#copy(backgroundC_mpaths, m, "ship","medium", "backgroundC") 
+
+backgroundA_lpaths = glob.glob("/data/mchivuku/embodiedai/new_benchmark_experiments/ship_backgndA_large/*backgroundA_large_exp*/Env_Logs/*.csv")
+copy(backgroundA_lpaths, m, "ship","large", "backgroundA")   
+
+## LSTM
+#backgroundA_slpaths = glob.glob("/data/mchivuku/embodiedai/new_benchmark_experiments/ship_backgndA_small_lstm/*backgroundA_lstm_small_exp*/Env_Logs/*.csv")
+#copy(backgroundA_lpaths, m, "ship","small", "lstm", "backgroundA")   
 
 
+
+'''
 fbackgroundA_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/fork*backgroundA_exp*/Env_Logs/*.csv")
 fbackgroundB_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/fork*backgroundB_exp*/Env_Logs/*.csv")
 fbackgroundC_paths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments/fork*backgroundC_exp*/Env_Logs/*.csv")
@@ -71,3 +76,4 @@ fbackgroundC_lpaths = glob.glob("/data/mchivuku/embodiedai/benchmark_experiments
 copy(fbackgroundA_lpaths, m, "fork","large", "backgroundA")   
 copy(fbackgroundB_lpaths, m, "fork","large", "backgroundB")   
 copy(fbackgroundC_lpaths, m, "fork","large", "backgroundC") 
+'''

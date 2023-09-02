@@ -1,5 +1,6 @@
-# merge_csvs.R
+#!/usr/bin/env Rscript
 
+# merge_csvs.R
 # For a specified directory (see below), takes all of the csv files
 # and compiles them into a single data file
 
@@ -16,10 +17,28 @@
 
 # Variables --------------------------------------------------------------------
 
-# USER-SPECIFIED VARIABLES
-data_wd <- "/home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/parsing_analysis/"
-results_wd <- "/home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/parsing_analysis/"
-results_name <- "segmentation_data.R"
+# Read in the user-specified variables:
+library(argparse)
+parser <- ArgumentParser(description="An executable R script for the Newborn Embodied Turing Tests to merge the log files across many agents")
+parser$add_argument("--logs-dir", type="character", dest="logs_dir",
+                    help="Working directory of the agents' log files",
+                    required=TRUE)
+parser$add_argument("--results-dir", type="character", dest="results_dir",
+                    help="Working directory to store the merged output",
+                    required=TRUE)
+parser$add_argument("--results-name", type="character", dest="results_name",
+                    help="File name for the R file storing the results",
+                    required=TRUE)
+parser$add_argument("--csv-train", type="character", dest="csv_train_name",
+                    help="File name for the csv file storing the training results",
+                    required=FALSE)
+parser$add_argument("--csv-test", type="character", dest="csv_test_name",
+                    help="File name for the csv file storing the testing results",
+                    required=FALSE)
+args <- parser$parse_args()
+data_wd <- args$logs_dir; results_wd <- args$results_dir; results_name <- args$results_name
+csv_train_name <- args$csv_train_name; csv_test_name <- args$csv_test_name
+
 # If you don't want to save a csv of the train and/or test results, set to NULL
 csv_train_name <- NULL
 csv_test_name <- "test.csv"
@@ -40,15 +59,18 @@ library(tidyverse)
 # Get all of the subdirectory csv filenames
 setwd(data_wd)
 train_files <- list.files(pattern="train.csv", recursive = TRUE)
-test_files <- list.files(pattern="exp.csv", recursive = TRUE)
+#test_files <- list.files(pattern="exp.csv", recursive = TRUE)
 
 # Main Function ----------------------------------------------------------------
 
 # This function reads in a single csv (later we'll lapply it across all files)
 read_data <- function(filename)
 {
+  print(paste0(filename))
   # Read the csv file
   data <- read.csv(filename)
+
+  #data <- read.table(filename, sep=",",quote="\"",header=T,fill=T)
   
   # Summarize by zones
   data <- data %>%
@@ -73,22 +95,24 @@ read_data <- function(filename)
   data$filename <- basename(filename)
   data$agent <- gsub("\\D", "", data$filename)
   data$imprinting <- strsplit(basename(filename), "-")[[1]][1]
-  print(strsplit(basename(filename), "-")[[1]][1],zero.print = ".")
+  #write.csv(data, paste0("train_",data$agent,".csv"))
   return(data)
 }
 
 # Combine csv's and save results -----------------------------------------------
 
 # Combine all the training
+print(paste0(train_files))
 train_data <- lapply(train_files, FUN = read_data)
 train_data <- bind_rows(train_data)
-
+#
 # Combine all the testing
-test_data <- lapply(test_files, FUN = read_data)
-test_data <- bind_rows(test_data)
+#test_data <- lapply(test_files, FUN = read_data)
+#test_data <- bind_rows(test_data)
 
 # Save it
 setwd(results_wd)
-save(train_data, test_data, file=results_name)
+#save(train_data, test_data, file=results_name)
+save(train_data, file=results_name)
 if( !is.null(csv_train_name) ) write.csv(train_data, csv_train_name)
-if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)
+#if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)

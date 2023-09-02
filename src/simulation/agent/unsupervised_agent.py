@@ -1,7 +1,10 @@
 import logging
 import pdb
 import os
-from src.simulation.common.base_agent import BaseAgent
+from algorithms.rnd import RND
+from callback.hyperparam_callback import HParamCallback
+from common.base_agent import BaseAgent
+from utils import to_dict, write_to_file
 
 
 import torch
@@ -18,13 +21,15 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common import results_plotter
 from stable_baselines3.common.vec_env import VecMonitor
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EvalCallback
+
 
 from collections import deque
 import numpy as np
 
 import matplotlib.pyplot as plt
 import pandas as pd
-from src.simulation.algorithms.icm import ICM
+from algorithms.icm import ICM
 
 from tqdm import tqdm
 
@@ -36,6 +41,7 @@ class ICMAgent(BaseAgent):
     """
     def __init__(self, agent_id="Default Agent", \
         reward="icm", log_path="./Brains", **kwargs):
+        super().__init__(agent_id, log_path, **kwargs)
         
         self.reward = reward
         self.id = agent_id
@@ -75,10 +81,18 @@ class ICMAgent(BaseAgent):
         self.global_step = 0
         
         
+        self.hparamcallback = HParamCallback()
+        self.checkpoint_callback = CheckpointCallback(save_freq=summary_freq,save_path=os.path.join(self.path, "checkpoints"),
+                                                      name_prefix="unsupervised_model",
+                                                      save_replay_buffer=True,
+                                                      save_vecnormalize=True)
         
-    #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
+        self.callback_list = CallbackList([self.hparamcallback, self.checkpoint_callback])
+        
+        
+        
     def train(self, env, eps):
-        steps = 1000000
+        steps = env.steps_from_eps(eps)
         env = Monitor(env, self.path)
         
         e_gen = lambda : env
@@ -88,13 +102,14 @@ class ICMAgent(BaseAgent):
         
         ## setup tensorboard logger
         new_logger = configure(self.path, ["csv", "tensorboard"])
-        icm = ICM(train_env.observation_space, train_env.action_space,\
-            self.device)
         
+        print(self.reward)
+        explore_reward = self.initialize_reward_algo(train_env)
+                
         
         policy = "CnnPolicy"
         self.model = PPO(policy, train_env, tensorboard_log=self.path,\
-            n_steps=2048, device=self.device)
+            n_steps=self.buffer_size, device=self.device)
         self.model.set_logger(new_logger)
         print(f"Total training steps:{steps}")
         
@@ -107,26 +122,31 @@ class ICMAgent(BaseAgent):
         # Number of updates
         num_train_steps = steps
         self.num_envs = 1
-        self.num_steps = 2048
+        self.num_steps = self.buffer_size
         num_updates = num_train_steps // self.num_envs // self.num_steps
 
+        
+        ## write model properties to the file
+        d = to_dict(self.model.__dict__)
+        write_to_file(os.path.join(self.path, "model_dump.json"), d)
+        
         
         _ = train_env.reset()
         
         
         self.model.ep_info_buffer = deque(maxlen=10)
-        _, callback = self.model._setup_learn(total_timesteps=num_train_steps)
+        _, callback = self.model._setup_learn(total_timesteps=num_train_steps,callback=[self.callback_list])
 
 
         for update in tqdm(range(num_updates)):
             self.model.collect_rollouts(
                 env=train_env,
                 rollout_buffer=self.model.rollout_buffer,
-                n_rollout_steps=2048,
+                n_rollout_steps=self.buffer_size,
                 callback=callback
             )
             
-            intrinsic_rewards = icm.compute_irs(samples={
+            intrinsic_rewards = explore_reward.compute_irs(samples={
                         "obs": self.model.rollout_buffer.observations,
                         "actions": self.model.rollout_buffer.actions,
                         "next_obs": self.model.rollout_buffer.observations[1:]
@@ -135,6 +155,8 @@ class ICMAgent(BaseAgent):
             
             
             self.model.rollout_buffer.rewards += intrinsic_rewards[:,:].numpy()
+            
+            
             
             # Update policy using the currently gathered rollout buffer.
             self.model.train()
@@ -161,3 +183,17 @@ class ICMAgent(BaseAgent):
         
         ## plot reward graph
         self.plot_results(steps, plot_name=f"reward_graph_{self.id}")
+
+    def initialize_reward_algo(self, train_env):
+        if self.reward.lower() == "icm":
+            explore_reward = ICM(train_env.observation_space, train_env.action_space,\
+                self.device, batch_size=self.batch_size)
+        elif self.reward.lower() == "rnd":
+            explore_reward = RND(train_env.observation_space, train_env.action_space,\
+                self.device, batch_size=self.batch_size)
+        else:
+            explore_reward = ICM(train_env.observation_space, train_env.action_space,\
+                self.device, batch_size=self.batch_size)
+                
+        print(explore_reward)
+        return explore_reward

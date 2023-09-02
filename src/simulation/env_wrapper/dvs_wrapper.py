@@ -9,7 +9,7 @@ import pdb
 from PIL import Image
 import os
 import cv2
-
+import pdb
 class DVSWrapper(gym.ObservationWrapper):
     def __init__(self, env, change_threshold=60, kernel_size=(3, 3), sigma=1 ):
         super().__init__(env)
@@ -17,7 +17,7 @@ class DVSWrapper(gym.ObservationWrapper):
         self.change_threshold = change_threshold
         self.kernel_size = kernel_size
         self.sigma = sigma
-        self.num_stack = 2
+        self.num_stack = 2 ## default
         self.env = gym.wrappers.FrameStack(env,self.num_stack)
         self.stack = collections.deque(maxlen=self.num_stack)
         
@@ -25,6 +25,7 @@ class DVSWrapper(gym.ObservationWrapper):
         self.shape=(1, width, height)
         self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
         
+        print("In dvs wrapper")
         
     def create_grayscale(self, image):
         return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)

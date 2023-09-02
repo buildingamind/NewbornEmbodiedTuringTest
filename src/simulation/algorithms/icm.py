@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 
 import  gym
 import numpy as np
-from src.simulation.networks.inverse_forward_networks import Encoder, ForwardDynamicsModel, InverseDynamicsModel
+from networks.inverse_forward_networks import Encoder, ForwardDynamicsModel, InverseDynamicsModel
 import torch as th
 from torch import nn
 from torch.nn import functional as F
@@ -88,7 +88,6 @@ class ICM(object):
         
         obs = th.from_numpy(samples["obs"])
         actions = th.from_numpy(samples["actions"])
-        next_obs = th.from_numpy(samples["next_obs"])
         
         
         num_steps = obs.size()[0]
@@ -96,14 +95,16 @@ class ICM(object):
         
         obs_tensor =  obs.to(self._device)
         actions_tensor = actions.to(self._device)
-        next_obs_tensor = next_obs.to(self._device)
+        
+        
+        
         
         intrinsic_rewards = th.zeros(size=(num_steps, num_envs))
         
         with th.no_grad():
             for i in range(num_envs):
                 encoded_obs = self.encoder(obs_tensor[:, i])
-                encoded_next_obs = self.encoder(next_obs_tensor[:, i])
+                encoded_next_obs = encoded_obs[:-1]
                 pred_next_obs = self.fm(encoded_obs[:-1], actions_tensor[:-1, i])
                 dist = th.linalg.vector_norm(encoded_next_obs - pred_next_obs, ord=2, dim=1)
                 intrinsic_rewards[:-1,i] = dist.cpu()
@@ -134,36 +135,31 @@ class ICM(object):
         obs_tensor = th.from_numpy(samples["obs"]).view((num_envs * num_steps, *self._obs_shape)).to(self._device)
         actions_tensor = th.from_numpy(samples["actions"]).to(self._device)
 
+        encoded_obs = self.encoder(obs_tensor)
         
-        
-        dataset = TensorDataset(obs_tensor[:-1], actions_tensor[:-1], obs_tensor[1:])
+        dataset = TensorDataset(encoded_obs[:-1], actions_tensor[:-1], encoded_obs[1:])
         loader = DataLoader(dataset = dataset, batch_size = self.batch_size)
         
         for _idx, batch in enumerate(loader):
             obs, actions, next_obs = batch
             actions = actions.squeeze(1)
+            
             #db.set_trace()
-            self.encoder_opt.zero_grad()
+            pred_actions = self.im(obs, next_obs)
+            im_loss = self.im_loss(pred_actions, actions)
+            
+            pred_next_obs = self.fm(obs,actions )
+            
+            fm_loss = F.mse_loss(pred_next_obs, next_obs)
+            loss = (im_loss + fm_loss)
+            
             self.im_opt.zero_grad()
             self.fm_opt.zero_grad()
 
-            encoded_obs = self.encoder(obs)
-            encoded_next_obs = self.encoder(next_obs)
-
-            pred_actions = self.im(encoded_obs, encoded_next_obs)
-            im_loss = self.im_loss(pred_actions, actions)
-            pred_next_obs = self.fm(encoded_obs,actions )
-            
-            fm_loss = F.mse_loss(pred_next_obs, encoded_next_obs)
-            
-            #unclip_intr_loss = 10 * (0.2 * fm_loss + 0.8 * im_loss)
-            (im_loss + fm_loss).backward()
-            #unclip_intr_loss.backward()
-
-            self.encoder_opt.step()
+            loss.backward(retain_graph = True)
             self.im_opt.step()
             self.fm_opt.step()
     
-    
+        
 
     

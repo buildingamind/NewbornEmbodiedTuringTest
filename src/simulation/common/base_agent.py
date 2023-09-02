@@ -15,9 +15,11 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common import results_plotter
 from stable_baselines3.common.vec_env import VecMonitor
+from stable_baselines3.common.vec_env import VecFrameStack
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 
 
 class BaseAgent(ABC):
@@ -26,39 +28,37 @@ class BaseAgent(ABC):
         **kwargs):
         
         self.id = agent_id
-        
-        
         self.model = None
         self.summary_freq = 30000 
         self.rec_path = kwargs['rec_path'] if 'rec_path' in kwargs else ""
         self.encoder_type = kwargs['encoder']
-        
-        ## set cuda device if available
+        self.batch_size = kwargs['mini_batchsize']
+        self.buffer_size = kwargs['buffer_size']
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.frame_stack = kwargs["frame_stack"]
+        self.n_stack = kwargs["n_stack"]
+        self.policy = kwargs["policy"]
         
         
         #If path does not exist, create it as a directory
         if not os.path.exists(log_path):
             os.makedirs(log_path)
-
         self.log_dir = log_path
         
-        
-        #If path is a saved model assign to path
         if os.path.isfile(log_path):
             self.path = log_path
         else:
-            #If path is a directory create a file in the directory name after the agent
             self.path = os.path.join(log_path, self.id)
-        
         self.plots_path = os.path.join(self.path , "plots")
         os.makedirs(self.plots_path, exist_ok = True)
-        
-        self.env_log_path = os.path.join(kwargs['env_log_path'])
         self.model_save_path = os.path.join(self.path, "model")
         
-        ## record video for rest
-        self.video_record_path = os.path.join(self.rec_path,"test")
+        
+        ## env logs - train and test logs
+        self.env_log_path = os.path.join(kwargs['env_log_path'])
+        
+        ## recordings path - recordings
+        self.video_record_path = os.path.join(self.rec_path,"Test")
         os.makedirs(self.video_record_path, exist_ok=True)
         
     @abstractmethod   
@@ -82,24 +82,65 @@ class BaseAgent(ABC):
         #Run the testing
         steps = env.steps_from_eps(eps)
         
-        ## record - rest video
-        vr = VideoRecorder(env=env,
-        path="{}/{}_{}.mp4".format(self.video_record_path, str(self.id), record_prefix),
-        enabled=True)
-        env.render(mode='rgb_array')
+        e_gen = lambda : env
+        envs = make_vec_env(env_id=e_gen, n_envs=1)
         
-        obs = env.reset()
-        for i in range(steps):
-            action, _states = self.model.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
-            
-            if done:
-                env.reset()
-            vr.capture_frame()    
-            
+        if self.frame_stack:
+            env = VecFrameStack(env, n_stack=self.n_stack)
         
-        vr.close()
-        vr.enabled = False
+        
+        
+        ## record - test video
+        vr = VideoRecorder(env=envs,
+        path="{}/{}_{}.mp4".format(self.video_record_path, \
+            str(self.id), record_prefix), enabled=True)
+        
+        
+        if self.policy.lower()=="ppo":
+            obs = envs.reset()
+            for i in range(steps):
+                action, _states = self.model.predict(obs, deterministic=True)
+                obs, reward, done, info = envs.step(action)
+                
+                if done:
+                    env.reset()
+                
+                env.render(mode="rgb_array")
+                vr.capture_frame()    
+
+            vr.close()
+            vr.enabled = False
+        else:
+            obs = envs.reset()
+            for c in range(28):
+                for i in range(eps):
+                    ## cell and hidden states for lSTM
+                    lstm_states = None
+                    num_envs = 1
+                    max_episode_steps = 1000
+                    # Episode start signals are used to reset the lstm states
+                    episode_starts = np.ones((num_envs,), dtype=bool)
+                    done = False
+                    episode_rewards, episode_steps = 0, 0
+                    while not done and episode_steps < max_episode_steps:
+                        action, lstm_states = self.model.predict(obs, state=lstm_states,
+                                                            episode_start=episode_starts, 
+                                                            deterministic=True)
+                        
+                        next_obs, rewards, done, info = env.step(action)
+                        env.render(mode="rgb_array")
+                        vr.capture_frame()
+                        obs = next_obs
+                        episode_rewards += rewards
+                        episode_steps += 1
+                    
+                    if done:
+                        env.reset()
+                        
+                    #print('Reward = %.3f | Step = %d | episode_cnt = %d' % (episode_rewards, episode_steps,i))
+                
+                
+            
                
         del self.model
         self.model = None
@@ -132,6 +173,7 @@ class BaseAgent(ABC):
         if path == None:
             path = self.model_save_path
         
+        print(self.model_save_path)
         self.model = PPO.load(self.model_save_path, print_system_info=True)
         
     def check_env(self, env):

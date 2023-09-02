@@ -144,3 +144,22 @@ def moving_average(values, window):
     return np.convolve(values, weights, 'valid')
     
     
+def to_dict(d):
+    output = {}
+    for k, v in d.items():
+        if isinstance(v, list):
+            l = []
+            for item in v:
+                d = output(item)
+                l.append(d)
+            output[k] = l
+        elif isinstance(v, str) or isinstance(v, int):
+            output[k] = v
+        else:
+            continue
+    return output
+
+def write_to_file(file_path, d):
+    with open(file_path, 'w') as file:
+        file.write(json.dumps(d)) 
+    return True

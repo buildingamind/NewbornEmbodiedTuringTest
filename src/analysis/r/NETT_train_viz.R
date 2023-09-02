@@ -1,3 +1,5 @@
+#!/usr/bin/env Rscript
+
 # NETT_train_viz.R
 
 # Before running this script, you need to run merge_csvs to merge all of the agents'
@@ -5,16 +7,25 @@
 
 # Variables --------------------------------------------------------------------
 
-# USER-SPECIFIED VARIABLES
-data_loc <- "/home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/parsing_analysis/segmentation_data.R"
-results_wd <- "/home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/parsing_analysis/"
-ep_bucket_size <- 100
+# Read in the user-specified variables:
+library(argparse)
+parser <- ArgumentParser(description="An executable R script for the Newborn Embodied Turing Tests to analyze test trials")
+parser$add_argument("--data-loc", type="character", dest="data_loc",
+                    help="Full filename (inc working directory) of the merged R data",
+                    required=TRUE)
+parser$add_argument("--results-wd", type="character", dest="results_wd",
+                    help="Working directory to save the resulting visualizations",
+                    required=TRUE)
+parser$add_argument("--ep-bucket", type="integer", dest="ep_bucket_size",
+                    help="How many episodes to group the x-axis by",
+                    required=TRUE)
+args <- parser$parse_args()
+data_loc <- args$data_loc; results_wd <- args$results_wd; ep_bucket_size <- args$ep_bucket_size 
+
 
 # Set Up -----------------------------------------------------------------------
 
 library(tidyverse)
-library(ggplot2)
-library(stringr)
 
 load(data_loc)
 rm(test_data)
@@ -53,11 +64,9 @@ for (cond in unique(train_data_fixed$imprinting))
     xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) + 
     ylab("Average Time with Imprinted Object") +
     scale_y_continuous(expand = c(0, 0), limits = c(0, 1), breaks=seq(0,1,.1), labels = scales::percent) + 
-    scale_x_discrete(labels = label_wrap(10)) +
+    scale_x_discrete(labels = scales::label_wrap(10)) +
     theme(legend.position="none") 
   
   img_name <- paste0(cond, "_train.png")
-  print(c(img_name, cond), zero.print = ".") # quite nicer,
   ggsave(img_name)
 }
-
