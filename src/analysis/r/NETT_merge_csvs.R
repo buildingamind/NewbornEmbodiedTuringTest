@@ -59,14 +59,13 @@ library(tidyverse)
 # Get all of the subdirectory csv filenames
 setwd(data_wd)
 train_files <- list.files(pattern="train.csv", recursive = TRUE)
-#test_files <- list.files(pattern="exp.csv", recursive = TRUE)
+test_files <- list.files(pattern="exp.csv", recursive = TRUE)
 
 # Main Function ----------------------------------------------------------------
 
 # This function reads in a single csv (later we'll lapply it across all files)
 read_data <- function(filename)
 {
-  print(paste0(filename))
   # Read the csv file
   data <- read.csv(filename)
 
@@ -102,17 +101,15 @@ read_data <- function(filename)
 # Combine csv's and save results -----------------------------------------------
 
 # Combine all the training
-print(paste0(train_files))
 train_data <- lapply(train_files, FUN = read_data)
 train_data <- bind_rows(train_data)
 #
 # Combine all the testing
-#test_data <- lapply(test_files, FUN = read_data)
-#test_data <- bind_rows(test_data)
+test_data <- lapply(test_files, FUN = read_data)
+test_data <- bind_rows(test_data)
 
 # Save it
 setwd(results_wd)
-#save(train_data, test_data, file=results_name)
-save(train_data, file=results_name)
+save(train_data, test_data, file=results_name)
 if( !is.null(csv_train_name) ) write.csv(train_data, csv_train_name)
-#if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)
+if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)
