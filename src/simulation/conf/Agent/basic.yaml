@@ -1,8 +1,8 @@
 reward: supervised
 log_path: ${log_path}/Brains/
-encoder: medium
+encoder: small
 mini_batchsize: 512
 buffer_size: 2048
-frame_stack: False
+frame_stack: True
 n_stack: 2
 policy: LSTM

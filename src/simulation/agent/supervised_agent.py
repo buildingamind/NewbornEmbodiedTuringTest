@@ -66,8 +66,8 @@ class SupervisedAgent(BaseAgent):
         envs = make_vec_env(env_id=e_gen, n_envs=1)
         
         ## if dvs_wrapper is enabled
-        if self.frame_stack:
-            envs = VecFrameStack(envs, n_stack=self.n_stack)
+        #if self.frame_stack:
+        #    envs = VecFrameStack(envs, n_stack=self.n_stack)
            
         
         ## setup tensorboard logger

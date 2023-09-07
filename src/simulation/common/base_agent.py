@@ -85,8 +85,9 @@ class BaseAgent(ABC):
         e_gen = lambda : env
         envs = make_vec_env(env_id=e_gen, n_envs=1)
         
-        if self.frame_stack:
-            env = VecFrameStack(env, n_stack=self.n_stack)
+        ## no need for another framestack
+        #if self.frame_stack:
+        #    env = VecFrameStack(env, n_stack=self.n_stack)
         
         
         

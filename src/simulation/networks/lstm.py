@@ -43,12 +43,15 @@ class CustomCNNLSTM(BaseFeaturesExtractor):
          # define LSTM layer
         hidden_size = 512
         self.lstm = nn.LSTM(input_size = n_flatten, hidden_size = hidden_size,
-                            num_layers = 1)
-        
+                            num_layers = 2, batch_first = True)
+        # outputs
         self.linear = nn.Sequential(nn.Linear(hidden_size, features_dim), nn.ReLU())
         
+        
     def forward(self, observations: th.Tensor) :
+        """
         observations = observations.unsqueeze(0)
+        
         batch_size, seq_length, c, h, w = observations.shape
         ii = 0
         y = self.cnn((observations[:,ii]))
@@ -57,7 +60,28 @@ class CustomCNNLSTM(BaseFeaturesExtractor):
         out, (hn, cn) = self.lstm(y.unsqueeze(1))
         out = self.linear(out[:,-1]) 
         
-        return out 
+        Args:
+            observations (th.Tensor): _description_
+
+        Returns:
+            _type_: _description_
+        """
+        x = observations # original shape -> (length, batchsize, obs_size)
+        T,B, *_ = x.shape
+        
+        # Pass through CNN layers
+        x = self.cnn(x)
+        
+        # Flatten the output for LSTM
+        x = x.view(x.size(0), x.size(1), -1)
+        
+        # Pass through LSTM layer
+        x, _ = self.lstm(x)
+        
+        # Get the last time step's output and apply the fully connected layer
+        x = self.linear(x[:, -1, :])
+        
+        return x 
 
     
 

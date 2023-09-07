@@ -1,5 +1,5 @@
 agent_count: 1
-run_id: parsing_ship_A_lstm_medium_exp5
+run_id: parsing_fork_C_lstm_small_exp1
 log_path: /data/mchivuku/embodiedai/benchmark_experiments/${run_id}
 #log_path: data/${run_id}
 mode: full

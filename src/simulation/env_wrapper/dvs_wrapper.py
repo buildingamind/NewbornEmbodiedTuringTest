@@ -50,7 +50,7 @@ class DVSWrapper(gym.ObservationWrapper):
         
         ## threshold
         dc = self.threshold(change)
-          
+        
         return np.swapaxes(dc, 2, 0).astype(np.uint8)
 
     def threshold(self, change):
