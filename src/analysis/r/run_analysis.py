@@ -117,8 +117,7 @@ def run_R(script_name,args):
     print('R ERROR:\n {0}'.format(error))
     raise Exception(f"Error occurred in the Rscript:" + script_name)
     
-    
-    
+  
 
 if __name__=="__main__":
     args = parser.parse_args()

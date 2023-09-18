@@ -7,13 +7,14 @@ import hydra
 from omegaconf import DictConfig, OmegaConf, open_dict
 import pdb
 import pprint
+import torch
 
 from agent.supervised_agent import SupervisedAgent
 from agent.unsupervised_agent import ICMAgent
 from common.base_experiment import Experiment
 from env_wrapper.parsing_env_wrapper import ParsingEnv
 import common.logger as logger
-
+from GPUtil import getFirstAvailable
 
 class ParsingExperiment(Experiment):
     def __init__(self, config):
@@ -57,7 +58,6 @@ class ParsingExperiment(Experiment):
             config_name="config")
 def run_experiment(cfg: DictConfig):
     ve = ParsingExperiment(cfg)
-    pprint.pprint(cfg)
     ve.run()
     
     

@@ -39,9 +39,11 @@ args <- parser$parse_args()
 data_wd <- args$logs_dir; results_wd <- args$results_dir; results_name <- args$results_name
 csv_train_name <- args$csv_train_name; csv_test_name <- args$csv_test_name
 
-# If you don't want to save a csv of the train and/or test results, set to NULL
-csv_train_name <- NULL
-csv_test_name <- "test.csv"
+
+#data_wd <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new"
+#results_wd <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new"
+#results_name <- "segmentation_data.R"
+
 
 # Set Zones:
 upper_x_lim <- 10
@@ -60,6 +62,8 @@ library(tidyverse)
 setwd(data_wd)
 train_files <- list.files(pattern="train.csv", recursive = TRUE)
 test_files <- list.files(pattern="exp.csv", recursive = TRUE)
+print(paste(train_files))
+
 
 # Main Function ----------------------------------------------------------------
 
@@ -68,9 +72,9 @@ read_data <- function(filename)
 {
   # Read the csv file
   data <- read.csv(filename)
-
-  #data <- read.table(filename, sep=",",quote="\"",header=T,fill=T)
   
+  if(nrow(data)>0){
+    
   # Summarize by zones
   data <- data %>%
     mutate(left = case_when( agent.x < lower_bound ~ 1, agent.x >= lower_bound ~ 0)) %>%
@@ -80,22 +84,22 @@ read_data <- function(filename)
   stopifnot(all( (data$left + data$right + data$middle == 1) ))
   # Summarize at the episode level
   data <- data %>%
-    group_by(Episode, left.monitor, right.monitor, correct.monitor) %>%
+    group_by(Episode, left.monitor, right.monitor) %>%
     summarise(left_steps = sum(left), 
               right_steps = sum(right), 
               middle_steps = sum(middle)) %>%
     mutate(Episode = as.numeric(Episode)) %>%
     mutate(left.monitor = sub(" ", "", left.monitor)) %>%
     mutate(right.monitor = sub(" ", "", right.monitor)) %>%
-    mutate(correct.monitor = sub(" ", "", correct.monitor)) %>%
     ungroup()
   
   # Add columns for original filename, agent ID number, and imprinting condition
   data$filename <- basename(filename)
   data$agent <- gsub("\\D", "", data$filename)
   data$imprinting <- strsplit(basename(filename), "-")[[1]][1]
-  #write.csv(data, paste0("train_",data$agent,".csv"))
+
   return(data)
+  }
 }
 
 # Combine csv's and save results -----------------------------------------------
@@ -103,7 +107,7 @@ read_data <- function(filename)
 # Combine all the training
 train_data <- lapply(train_files, FUN = read_data)
 train_data <- bind_rows(train_data)
-#
+
 # Combine all the testing
 test_data <- lapply(test_files, FUN = read_data)
 test_data <- bind_rows(test_data)
@@ -113,3 +117,4 @@ setwd(results_wd)
 save(train_data, test_data, file=results_name)
 if( !is.null(csv_train_name) ) write.csv(train_data, csv_train_name)
 if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)
+

@@ -8,6 +8,7 @@
 # Variables --------------------------------------------------------------------
 
 # Read in the user-specified variables:
+
 library(argparse)
 parser <- ArgumentParser(description="An executable R script for the Newborn Embodied Turing Tests to analyze test trials")
 parser$add_argument("--data-loc", type="character", dest="data_loc",
@@ -27,13 +28,10 @@ args <- parser$parse_args()
 data_loc <- args$data_loc; key_csv <- args$key_csv; results_wd <- args$results_wd
 if( args$color_dots %in% c("t", "T", "true", "TRUE")) {color_dots = TRUE} else { color_dots = FALSE}
 
-
-
 # Set Up -----------------------------------------------------------------------
 
 library(tidyverse)
 library(scales)
-
 cond_key <- read.csv(key_csv)
 cond_key <- select(cond_key, -c(left, right))
 
@@ -76,9 +74,9 @@ by_test_cond <- test_data %>%
   summarise(avgs = mean(percent_correct, na.rm = TRUE), 
             sd = sd(percent_correct, na.rm = TRUE), 
             count = length(percent_correct),
-            tval =  ifelse(is.na(avgs),0.0,t.test(percent_correct, mu=0.5)$statistic),
-            df =  ifelse(is.na(avgs),0.0,t.test(percent_correct, mu=0.5)$parameter),
-            pval = ifelse(is.na(avgs),0.0,t.test(percent_correct, mu=0.5)$p.value))%>%
+            tval = tryCatch({ (t.test(percent_correct, mu=0.5)$statistic)}, error = function(err){NA}), 
+            df = tryCatch({(t.test(percent_correct, mu=0.5)$parameter)},error = function(err){NA}), 
+            pval = tryCatch({(t.test(percent_correct, mu=0.5)$p.value)},error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (avgs - .5) / sd) %>%
   mutate(imp_agent = paste(imprinting, agent, sep="_"))
@@ -96,7 +94,7 @@ for (i in unique(by_test_cond$imp_agent))
                   aes(x = cond_name, 
                       ymin = avgs - se, 
                       ymax = avgs + se))
-    
+  
   img_name <- paste0(i, "_test.png")
   ggsave(img_name)
 }
@@ -108,12 +106,13 @@ for (i in unique(by_test_cond$imp_agent))
 by_imp_cond <- by_test_cond %>%
   ungroup() %>%
   group_by(imprinting, cond_name) %>%
+  filter(length(avgs) >= 2) %>% 
   summarise(avgs_by_imp = mean(avgs, na.rm = TRUE), 
             sd = sd(avgs, na.rm = TRUE), 
             count = length(avgs),
-            tval = ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$statistic), 
-            df = ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$parameter), 
-            pval = ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$p.value))%>%
+            tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}), 
+            df = tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}), 
+            pval = tryCatch({ (t.test(avgs, mu=0.5)$p.value)}, error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (avgs_by_imp - .5) / sd)
 
@@ -136,7 +135,7 @@ for (i in unique(by_imp_cond$imprinting))
                       ymin = avgs_by_imp - se, 
                       ymax = avgs_by_imp + se)) +
     geom_jitter(data = dot_data, aes(x=cond_name, y = avgs), width = .3)
-    
+  
   
   img_name <- paste0(i, "_test.png")
   ggsave(img_name)
@@ -147,13 +146,14 @@ for (i in unique(by_imp_cond$imprinting))
 across_imp_cond <- by_test_cond %>%
   ungroup() %>%
   filter(cond_name != "Rest") %>%
+  filter(length(avgs) >= 2) %>% 
   group_by(cond_name) %>%
   summarise(all_avgs = mean(avgs, na.rm = TRUE), 
             sd = sd(avgs, na.rm = TRUE), 
             count = length(avgs),
-            tval =  ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$statistic), 
-            df = ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$parameter), 
-            pval = ifelse(is.na(avgs),0.0,t.test(avgs, mu=0.5)$p.value)) %>%
+            tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}), 
+            df = tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}), 
+            pval = tryCatch({ (t.test(avgs, mu=0.5)$p.value)}, error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (all_avgs - .5) / sd)
 

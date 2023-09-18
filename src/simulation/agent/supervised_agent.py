@@ -27,6 +27,7 @@ from utils import to_dict, write_to_file
 from callback.hyperparam_callback import HParamCallback
 from common.base_agent import BaseAgent
 from networks.lstm import CustomCNNLSTM
+from GPUtil import getFirstAvailable
 
 class SupervisedAgent(BaseAgent):
     def __init__(self, agent_id="Default Agent", \
@@ -47,9 +48,6 @@ class SupervisedAgent(BaseAgent):
         
         self.callback_list = CallbackList([self.callback, self.hparamcallback, self.checkpoint_callback])
         
-        
-        
-
         
     #Train an agent. Still need to allow exploration wrappers and non PPO rl algos.
     def train(self, env, eps):
@@ -96,8 +94,8 @@ class SupervisedAgent(BaseAgent):
                              batch_size = self.batch_size, ## minibatch size for one gradient update - https://github.com/gzrjzcx/ML-agents/blob/master/docs/Training-PPO.md
                              n_steps = self.buffer_size, # rollout buffer size
                              tensorboard_log=self.path,
-                             verbose = 0,
-                    policy_kwargs=policy_kwargs, device=self.device)
+                             verbose = 0, policy_kwargs=policy_kwargs, 
+                             device=self.device)
             
 
         else:
@@ -153,3 +151,8 @@ class SupervisedAgent(BaseAgent):
         
         ## plot reward graph
         self.plot_results(steps, plot_name=f"reward_graph_{self.id}")
+        # save encoder and policy network state dict - to perform model analysis
+        self.save_encoder_policy_network()
+
+    
+    

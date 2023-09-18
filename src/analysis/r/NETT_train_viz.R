@@ -22,6 +22,9 @@ parser$add_argument("--ep-bucket", type="integer", dest="ep_bucket_size",
 args <- parser$parse_args()
 data_loc <- args$data_loc; results_wd <- args$results_wd; ep_bucket_size <- args$ep_bucket_size 
 
+#data_loc <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new/segmentation_data.R"
+#results_wd <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new"
+#ep_bucket_size <- 100
 
 # Set Up -----------------------------------------------------------------------
 

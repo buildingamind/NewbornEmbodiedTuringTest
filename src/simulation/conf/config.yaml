@@ -1,16 +1,16 @@
 agent_count: 1
-run_id: parsing_fork_C_lstm_small_exp1
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/${run_id}
+run_id: viewinvariant_fork_front_exp5
+log_path: /data/mchivuku/embodiedai/benchmark_experiments/viewinvariant/fork/${run_id}
 #log_path: data/${run_id}
 mode: full
 train_eps: 1000
 test_eps: 40
 hydra.job.chdir: True
 cuda: 0
-experiment: parsing
+experiment: viewpoint
 
 defaults:
   - _self_
   - Agent: basic
-  - Environment: parsing
+  - Environment: viewpoint
   - hydra

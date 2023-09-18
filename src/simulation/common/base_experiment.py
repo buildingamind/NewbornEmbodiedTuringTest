@@ -34,6 +34,7 @@ class Experiment(abc.ABC):
                 agent_config.env_log_path = self.env_config['log_path']
                 agent_config.rec_path = os.path.join(self.env_config["rec_path"], agent_config.agent_id)
                 agent_config.recording_frames = self.env_config["recording_frames"]
+                agent_config.num_conditions = self.env_config["num_conditions"]
             self.agents.append(self.new_agent(agent_config))
 
     
@@ -45,6 +46,7 @@ class Experiment(abc.ABC):
         for agent in self.agents:
             env_config = self.env_config
             with open_dict(env_config):
+                
                 mode = "rest"
                 env_config["mode"] = self.generate_mode_parameter(mode,env_config)
                 env_config["random_pos"] = True
@@ -56,9 +58,9 @@ class Experiment(abc.ABC):
                 env_config["run_id"] = agent.id + "_" + "train"
                 env_config["rec_path"] = agent.rec_path + "/"
                 env_config["log_title"] = self.generate_log_title(env_config)
+                
             
             env = self.generate_environment(env_config)
-            
             agent.train(env, self.train_eps)
             agent.save()
             env.close()
@@ -68,6 +70,7 @@ class Experiment(abc.ABC):
         for agent in self.agents:
             env_config = self.env_config
             with open_dict(env_config):
+                
                 env_config["mode"] = self.generate_mode_parameter(mode, env_config)
                 env_config["run_id"] = agent.id + "_" + mode
                 
@@ -80,6 +83,7 @@ class Experiment(abc.ABC):
             agent.test(env, self.test_eps, mode)
             env.close()
 
+    
     def run(self):
         if self.mode == "train":
             self.train_agents()
@@ -90,7 +94,7 @@ class Experiment(abc.ABC):
             self.train_agents()
             self.test_agents("exp")
         else:
-            self.test_agents(self.mode)
+            self.test_agents("exp")
 
     @abc.abstractmethod
     def generate_environment(self, env_config):
