@@ -22,6 +22,7 @@ from GPUtil import getFirstAvailable
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from sb3_contrib import RecurrentPPO
 
 
 class BaseAgent(ABC):
@@ -122,35 +123,22 @@ class BaseAgent(ABC):
 
             vr.close()
             vr.enabled = False
+            
         else:
-            obs = envs.reset()
-            for c in range(self.num_test_conditions):
-                for i in range(eps):
-                    ## cell and hidden states for lSTM
-                    lstm_states = None
-                    num_envs = 1
-                    max_episode_steps = 1000
-                    # Episode start signals are used to reset the lstm states
-                    episode_starts = np.ones((num_envs,), dtype=bool)
-                    done = False
-                    episode_rewards, episode_steps = 0, 0
-                    while not done and episode_steps < max_episode_steps:
-                        action, lstm_states = self.model.predict(obs, state=lstm_states,
-                                                            episode_start=episode_starts, 
-                                                            deterministic=True)
-                        
-                        next_obs, rewards, done, info = env.step(action)
-                        env.render(mode="rgb_array")
-                        vr.capture_frame()
-                        obs = next_obs
-                        episode_rewards += rewards
-                        episode_steps += 1
+            
+            for i in range(steps):
+                obs = env.reset()
+                done, lstm_states = False, None
+                while not done:
+                    action, lstm_states = self.model.predict(obs, state=lstm_states, deterministic=True)
+                    obs, reward, done, _info = env.step(action)
+                    env.render(mode="rgb_array")
+                    vr.capture_frame()
                     
-                    if done:
-                        env.reset()
+            vr.close()
+            vr.enabled = False       
                         
-                    #print('Reward = %.3f | Step = %d | episode_cnt = %d' % (episode_rewards, episode_steps,i))
-                
+                    
                 
             
         
@@ -186,7 +174,11 @@ class BaseAgent(ABC):
             path = self.model_save_path
         
         print(self.model_save_path)
-        self.model = PPO.load(self.model_save_path, print_system_info=True)
+        if self.policy.lower() == "ppo":
+            self.model = PPO.load(self.model_save_path, print_system_info=True)
+        else:
+            print("Loading recurrent agent:" + self.model_save_path)
+            self.model = RecurrentPPO.load(self.model_save_path, print_system_info=True)
         
     def check_env(self, env):
         """

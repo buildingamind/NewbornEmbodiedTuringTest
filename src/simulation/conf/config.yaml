@@ -1,16 +1,16 @@
 agent_count: 1
-run_id: viewinvariant_fork_front_exp5
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/viewinvariant/fork/${run_id}
+run_id: parsing_fork_C_exp5
+log_path: /data/mchivuku/samantha_output/base_agents/small/${run_id}
 #log_path: data/${run_id}
-mode: full
+mode: test
 train_eps: 1000
 test_eps: 40
 hydra.job.chdir: True
 cuda: 0
-experiment: viewpoint
+experiment: parsing
 
 defaults:
   - _self_
   - Agent: basic
-  - Environment: viewpoint
+  - Environment: parsing
   - hydra

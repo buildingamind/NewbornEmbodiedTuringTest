@@ -1,6 +1,6 @@
 use_ship: False
 background: C
-base_port: 5700
+base_port: 7900
 env_path: /home/mchivuku/projects/embodied_pipeline/benchmark_experiments/data/executables/parsing_new_benchmark/parsing.x86_64
 log_path: ${log_path}/Env_Logs
 rec_path: ${log_path}/Recordings/
