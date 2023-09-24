@@ -57,6 +57,9 @@ class ParsingExperiment(Experiment):
 @hydra.main(version_base=None, config_path="conf",
             config_name="config")
 def run_experiment(cfg: DictConfig):
+    with open_dict(cfg):
+        print(cfg)
+    
     ve = ParsingExperiment(cfg)
     ve.run()
     

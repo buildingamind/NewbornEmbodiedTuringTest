@@ -104,10 +104,18 @@ def validate_test(path,key):
                 else:
                     status = "invalid"
                 
+                group_row = filtered_df.loc[(filtered_df[' correct.monitor'].str.contains("right"))]
+                
+                
                 k = "_".join([distract, imprint]) 
                 cnt = len(filtered_df.groupby("Episode"))
                 print(f"{k}:{cnt}")
-                test_status["_".join([distract, imprint])] = {"epsiodes":len(filtered_df.groupby("Episode")), "status":status}
+                print({"epsiodes":len(filtered_df.groupby("Episode")), 
+                                                              "status":status, 'correct_monitor':len(group_row), 
+                                                              'imprint':imprint, 'right.monitor':len(filtered_df.loc[(filtered_df[' right.monitor'].str.contains(imprint))])})
+                test_status["_".join([distract, imprint])] = {"epsiodes":len(filtered_df.groupby("Episode")), 
+                                                              "status":status, 'correct_monitor':len(group_row), 
+                                                              'imprint':imprint, 'right.monitor':len(filtered_df.loc[(filtered_df[' right.monitor'].str.contains(imprint))])}
             else:
                 
                 filtered_df = df.loc[(
@@ -123,8 +131,14 @@ def validate_test(path,key):
                 k = "_".join([imprint, distract]) 
                 cnt = len(filtered_df.groupby("Episode"))
                 print(f"{k}:{cnt}")
-                test_status["_".join([imprint, distract])] = {"epsiodes":len(filtered_df.groupby("Episode")), "status":status}
-
+                group_row = filtered_df.loc[(filtered_df[' correct.monitor'].str.contains("left"))]
+                print({"epsiodes":len(filtered_df.groupby("Episode")), 
+                                                              "status":status, 'correct_monitor':len(group_row), 
+                                                              'imprint':imprint, 'left.monitor':len(filtered_df.loc[(filtered_df[' left.monitor'].str.contains(imprint))])})
+                test_status["_".join([imprint, distract])] = {"epsiodes":len(filtered_df.groupby("Episode")), 
+                                                              "status":status, 'correct_monitor':len(group_row), 
+                                                              'imprint':imprint,
+                                                              'left.monitor':len(filtered_df.loc[(filtered_df[' left.monitor'].str.contains(imprint))])}
     
     test_status["num_conditions"] = len(keys)
     return test_status

@@ -1,5 +1,5 @@
 agent_count: 1
-run_id: parsing_fork_C_exp5
+run_id: parsing_fork_B_exp4
 log_path: /data/mchivuku/samantha_output/base_agents/small/${run_id}
 #log_path: data/${run_id}
 mode: test
