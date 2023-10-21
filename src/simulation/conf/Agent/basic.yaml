@@ -1,8 +1,11 @@
+policy: PPO
 reward: supervised
 log_path: ${log_path}/Brains/
-encoder: small
 mini_batchsize: 512
 buffer_size: 2048
 frame_stack: True
 n_stack: 2
-policy: PPO
+encoder:
+  name: vit
+  frozen: True
+  train: False

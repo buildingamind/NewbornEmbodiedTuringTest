@@ -63,7 +63,6 @@ def run_experiment(cfg: DictConfig):
     ve = ParsingExperiment(cfg)
     ve.run()
     
-    
 
 if __name__ == '__main__':
     run_experiment()

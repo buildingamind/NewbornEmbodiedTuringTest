@@ -93,12 +93,16 @@ class ICMAgent(BaseAgent):
         
     def train(self, env, eps):
         steps = env.steps_from_eps(eps)
+        print(steps)
+        
         env = Monitor(env, self.path)
         
         e_gen = lambda : env
         train_env = make_vec_env(env_id=e_gen, n_envs=1)
         train_env = RecordEpisodeStatistics(train_env)
         train_env = VecTransposeImage(train_env)
+        print(train_env.observation_space.shape)
+        
         
         ## setup tensorboard logger
         new_logger = configure(self.path, ["csv", "tensorboard"])
@@ -106,7 +110,7 @@ class ICMAgent(BaseAgent):
         print(self.reward)
         explore_reward = self.initialize_reward_algo(train_env)
                 
-        
+        print(self.buffer_size)
         policy = "CnnPolicy"
         self.model = PPO(policy, train_env, tensorboard_log=self.path,\
             n_steps=self.buffer_size, device=self.device)
@@ -136,8 +140,9 @@ class ICMAgent(BaseAgent):
         
         self.model.ep_info_buffer = deque(maxlen=10)
         _, callback = self.model._setup_learn(total_timesteps=num_train_steps,callback=[self.callback_list])
-
-
+        eps_rewards = deque([0.] * 10, maxlen=10)
+        all_eps_rewards = list()
+        
         for update in tqdm(range(num_updates)):
             self.model.collect_rollouts(
                 env=train_env,
@@ -148,41 +153,37 @@ class ICMAgent(BaseAgent):
             
             intrinsic_rewards = explore_reward.compute_irs(samples={
                         "obs": self.model.rollout_buffer.observations,
-                        "actions": self.model.rollout_buffer.actions,
-                        "next_obs": self.model.rollout_buffer.observations[1:]
+                        "actions": self.model.rollout_buffer.actions
                     },
                 step = self.global_episode * self.num_envs * self.num_steps)
             
-            
-            self.model.rollout_buffer.rewards += intrinsic_rewards[:,:].numpy()
-            
-            
+            #pdb.set_trace()
+            self.model.rollout_buffer.rewards += intrinsic_rewards
+            self.model.train()
             
             # Update policy using the currently gathered rollout buffer.
-            self.model.train()
             self.global_episode+=1
             self.global_step +=self.num_envs * self.num_steps
+            eps_rewards.extend([ep_info["r"] for ep_info in self.model.ep_info_buffer])
+            all_eps_rewards.append(list(eps_rewards.copy()))
+            times_steps = update * self.num_steps 
             
+            print('TOTAL TIME STEPS {} \n \
+                MEAN|MEDIAN REWARDS {:.2f}|{:.2f}, MIN|MAX REWARDS {:.2f}|{:.2f}\n'.format(
+                times_steps,
+                np.mean(eps_rewards), np.median(eps_rewards), np.min(eps_rewards), np.max(eps_rewards)
+            ))
             
-            episode_rewards.extend([ep_info["r"] for ep_info in self.model.ep_info_buffer])
-            
-            if update%10 == 0:
-                print('ENV:steps/total timesteps {}/{}, \n \
-                    MEAN|MEDIAN REWARDS {:.2f}|{:.2f}, MIN|MAX REWARDS {:.2f}|{:.2f}\n'.format(
-                    steps, self.global_step,
-                    np.mean(episode_rewards), 
-                    np.median(episode_rewards),
-                    np.min(episode_rewards), 
-                    np.max(episode_rewards)
-                ))
-         
         
         self.save()
         del self.model
         self.model = None
         
+        np.save(os.path.join(self.log_dir, 'episode_rewards.npy'), all_eps_rewards)
+        
         ## plot reward graph
         self.plot_results(steps, plot_name=f"reward_graph_{self.id}")
+        
 
     def initialize_reward_algo(self, train_env):
         if self.reward.lower() == "icm":

@@ -12,7 +12,7 @@ args = parser.parse_args()
 
 def read_log(name,version="train"):
     if version == "test": version = "test/1"
-    path = f"../Data/Runs/{name}/logs/{version}/ChickAgent.txt"
+    path = "/data/mchivuku/embodiedai/benchmark_experiments/icm_discrete_2d/agent-4_icm_discrete2d/Env_Logs/agent-4_icm_discrete2d_Agent_0_train.csv"
     log = pd.read_csv(path, skipinitialspace=True)
     return log
 
@@ -82,6 +82,7 @@ if args.train:
     kernel = np.ones(kernel_size)/kernel_size
     val = np.convolve(val,kernel,mode='valid')
     plt.ylim([0,1])
+    plt.axhline(y=0.5, color='r', linestyle='-')
     plt.plot(val,alpha=0.3)
     plt.savefig("train.png")
     plt.clf()
