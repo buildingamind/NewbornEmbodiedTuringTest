@@ -1,4 +1,4 @@
-policy: PPO
+policy: LSTM
 reward: supervised
 log_path: ${log_path}/Brains/
 mini_batchsize: 512
@@ -8,4 +8,4 @@ n_stack: 2
 encoder:
   name: vit
   frozen: True
-  train: False
+  train: True

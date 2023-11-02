@@ -86,7 +86,14 @@ class SupervisedAgent(BaseAgent):
         
         if self.use_frozen_encoder and not self.retrain_encoder:
             self.model = self.set_feature_extractor_require_grad(self.model)
-
+        
+        print(self.model.policy)
+        requires_grad_str = ""
+        for param in self.model.policy.features_extractor.parameters():
+            requires_grad_str+=str(param.requires_grad)
+        
+        print(requires_grad_str)
+        
         #pdb.set_trace()
         # start training
         self.model.learn(total_timesteps=steps, tb_log_name=f"{self.id}", progress_bar=True, callback=[self.callback_list])
@@ -129,7 +136,7 @@ class SupervisedAgent(BaseAgent):
             return CustomFrozenNetwork
         elif self.encoder_type == "simclr":
             return CustomFrozenNetwork
-        elif self.encoder_type == "resnet50":
+        elif self.encoder_type in ["resnet50","resnet18"]:
             return CustomFrozenNetwork
         elif self.encoder_type == "random":
             return CustomFrozenNetwork

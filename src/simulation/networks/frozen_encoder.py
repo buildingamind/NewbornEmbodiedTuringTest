@@ -46,12 +46,12 @@ def _get_frozen_encoder(observation_space, encoder_name = "natureCNN", train = F
     dummy_x = torch.zeros((1, 3, 64, 64))
     
     ## resnet model transforms - Default transforms: https://pytorch.org/vision/stable/models.html
-    #transforms = nn.Sequential(
-    #    T.Resize(256),
-    #    T.CenterCrop(224),
-    #    T.ConvertImageDtype(torch.float),
-    #    T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-    #)
+    transforms = nn.Sequential(
+        T.Resize(256),
+        T.CenterCrop(224),
+        T.ConvertImageDtype(torch.float),
+        T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
+    )
 
     
     ## if encoder is random - 5 layer convolution network with relu activation and initialization
@@ -96,6 +96,11 @@ def _get_frozen_encoder(observation_space, encoder_name = "natureCNN", train = F
     elif encoder_name == 'resnet50':
         # resnet50(weights=ResNet50_Weights.DEFAULT)
         model = models.resnet50(pretrained=True, progress=False)
+        model.fc = Identity()
+        
+    elif encoder_name == 'resnet18':
+        # resnet50(weights=ResNet50_Weights.DEFAULT)
+        model = models.resnet18(pretrained=True, progress=False)
         model.fc = Identity()
     
     elif encoder_name == "retinalwaves":
@@ -145,7 +150,7 @@ def _get_frozen_encoder(observation_space, encoder_name = "natureCNN", train = F
         model.train()
     
     
-    return model
+    return model,transforms
     
 
 class FrozenEncoderNetwork(nn.Module):
@@ -161,7 +166,7 @@ class FrozenEncoderNetwork(nn.Module):
         self.encoder_name = encoder_name
         
         self.in_channels = 3
-        self.encoder = _get_frozen_encoder(observation_space, encoder_name, train)
+        self.encoder, self.transforms = _get_frozen_encoder(observation_space, encoder_name, train)
         
         if self.encoder == None:
             print("Encoder not found!")
@@ -176,8 +181,8 @@ class FrozenEncoderNetwork(nn.Module):
         dummy_in = torch.zeros(1, self.in_channels, 64, 64)
         
         ## tranform for resnet50
-        #if self.encoder_name == "resnet50":
-        #    dummy_in = self.transforms(dummy_in)
+        if self.encoder_name == ["resnet50","resnet18"]:
+            dummy_in = self.transforms(dummy_in)
         
         self.in_shape = dummy_in.shape[1:]
         dummy_in = dummy_in.to(self.device)
@@ -190,17 +195,17 @@ class FrozenEncoderNetwork(nn.Module):
         observation = observation.to(device=self.device)
         
         ## apply transform on the image
-        #if self.encoder_name == "resnet50":
+        if self.encoder_name in ["resnet50","resnet18"]:
             #observation = observation.transpose(1, 3).contiguous()
-        #    observation = self.transforms(observation)
+            observation = self.transforms(observation)
         
         #observation = observation.reshape(-1, *self.in_shape)
         
         #pdb.set_trace()
         #with torch.no_grad():
         out = self.encoder(observation)
-        
-        return out.view(-1, self.out_size).squeeze()
+        return out
+        #return out.view(-1, self.out_size).squeeze()
 
 class CustomFrozenNetwork(BaseFeaturesExtractor):
     """

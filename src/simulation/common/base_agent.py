@@ -112,16 +112,28 @@ class BaseAgent(ABC):
             vr.enabled = False
             
         else:
-            
+            obs = env.reset()
+            max_steps_count = 1000
             for i in range(steps):
-                obs = env.reset()
-                done, lstm_states = False, None
-                while not done:
-                    action, lstm_states = self.model.predict(obs, state=lstm_states, deterministic=True)
-                    obs, reward, done, _info = env.step(action)
+                # Cell and hidden state of the LSTM
+                lstm_states = None
+                num_envs = 1
+                
+                # Episode start signals are used to reset the lstm states
+                episode_starts = np.ones((num_envs,), dtype=bool)
+                num_steps = 0
+                while num_steps < max_steps_count:
+                    action, lstm_states = self.model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
+                    # Note: vectorized environment resets automatically
+                    obs, rewards, dones, info = env.step(action)
+                    episode_starts = dones
                     env.render(mode="rgb_array")
-                    vr.capture_frame()
-                    
+                    vr.capture_frame()  
+                    num_steps+=1
+                    if dones:
+                        obs = env.reset()
+                        break
+                        
             vr.close()
             vr.enabled = False       
         
@@ -179,7 +191,7 @@ class BaseAgent(ABC):
 
     def setup_cuda_device(self):
         print(torch.cuda.device_count())
-        self.device_num = getFirstAvailable(attempts=5, interval=5, maxMemory=0.5, verbose=True)
+        self.device_num = getFirstAvailable(attempts=5, interval=5, maxMemory=0.7, verbose=True)
         print(self.device_num)
         torch.cuda.set_device(self.device_num[0])
         assert torch.cuda.current_device() == self.device_num[0]

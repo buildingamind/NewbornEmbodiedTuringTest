@@ -1,8 +1,8 @@
 agent_count: 1
-run_id: parsing_vit_random_frozen_exp5
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/frozen_encoders/${run_id}
+run_id: parsing_lstm_vit_train_exp5
+log_path: /data/mchivuku/embodiedai/benchmark_experiments/frozen_encoders/lstm_vit_train/${run_id}
 mode: full
-train_eps: 10000
+train_eps: 1000
 test_eps: 40
 hydra.job.chdir: True
 cuda: 0
