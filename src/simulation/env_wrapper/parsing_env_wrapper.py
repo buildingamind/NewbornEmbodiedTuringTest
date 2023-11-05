@@ -17,7 +17,7 @@ class ParsingEnv(ChickAIEnvWrapper):
     #This function is needed since episode lengths and the number of stimuli are determined in unity
     def steps_from_eps(self, eps):
         step_per_episode = 200
-        numb_conditions = 28
+        numb_conditions = 56
         if "rest" in self.mode:
             return step_per_episode * eps
         else:

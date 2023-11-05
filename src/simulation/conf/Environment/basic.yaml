@@ -1,4 +1,4 @@
-use_ship: True
+use_ship: False
 side_view: false
 background: A
 base_port: 6600

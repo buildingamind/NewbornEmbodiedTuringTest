@@ -26,7 +26,8 @@ class ParsingExperiment(Experiment):
 
     def generate_mode_parameter(self,mode, env_config):
         object = "ship" if env_config["use_ship"] else "fork"
-        return mode + "-" + object + "-" + env_config["background"]
+        ##"exp-a-ship".Split("-");
+        return mode + "-" + env_config["background"] + "-" + object
     
     
     def new_agent(self, config):
