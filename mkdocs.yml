@@ -1,7 +1,5 @@
 site_name: Embodied Pipeline Benchmarks
-site_url: https://origin.luddy.indiana.edu
 nav:
     - Home: index.md
-    - Experiments: experiments.md
     - Parsing: Parsing.md
 theme: readthedocs
