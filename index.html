@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" >
+<head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="description" content="None" />
+      <link rel="shortcut icon" href="img/favicon.ico" />
+    <title>Embodied Pipeline Benchmarks</title>
+    <link rel="stylesheet" href="css/theme.css" />
+    <link rel="stylesheet" href="css/theme_extra.css" />
+        <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github.min.css" />
+    
+      <script>
+        // Current page data
+        var mkdocs_page_name = "Home";
+        var mkdocs_page_input_path = "index.md";
+        var mkdocs_page_url = null;
+      </script>
+    
+    <!--[if lt IE 9]>
+      <script src="js/html5shiv.min.js"></script>
+    <![endif]-->
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script> 
+</head>
+
+<body class="wy-body-for-nav" role="document">
+
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side stickynav">
+    <div class="wy-side-scroll">
+      <div class="wy-side-nav-search">
+          <a href="." class="icon icon-home"> Embodied Pipeline Benchmarks
+        </a><div role="search">
+  <form id ="rtd-search-form" class="wy-form" action="./search.html" method="get">
+      <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" title="Type search term here" />
+  </form>
+</div>
+      </div>
+
+      <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+                <li class="toctree-l1 current"><a class="reference internal current" href=".">Home</a>
+    <ul class="current">
+    <li class="toctree-l2"><a class="reference internal" href="#how-to-use-this-repository">How to Use this Repository</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#directory-structure">Directory Structure</a>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#how-to-install">How to Install</a>
+        <ul>
+    <li class="toctree-l3"><a class="reference internal" href="#codebase-installation">Codebase Installation</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running-an-experiment-default-configuration">Running an Experiment (default configuration)</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running-standard-analysis">Running Standard Analysis</a>
+    </li>
+    <li class="toctree-l3"><a class="reference internal" href="#running-an-experiment-custom-configuration">Running an Experiment (custom configuration)</a>
+    </li>
+        </ul>
+    </li>
+    <li class="toctree-l2"><a class="reference internal" href="#experiment-configuration">Experiment Configuration</a>
+    </li>
+    </ul>
+                </li>
+              </ul>
+              <ul>
+                <li class="toctree-l1"><a class="reference internal" href="Parsing/">Parsing</a>
+                </li>
+              </ul>
+      </div>
+    </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+      <nav class="wy-nav-top" role="navigation" aria-label="Mobile navigation menu">
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href=".">Embodied Pipeline Benchmarks</a>
+        
+      </nav>
+      <div class="wy-nav-content">
+        <div class="rst-content"><div role="navigation" aria-label="breadcrumbs navigation">
+  <ul class="wy-breadcrumbs">
+    <li><a href="." class="icon icon-home" aria-label="Docs"></a></li>
+      <li class="breadcrumb-item active">Home</li>
+    <li class="wy-breadcrumbs-aside">
+    </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+            <div class="section" itemprop="articleBody">
+              
+                <h1 id="unity-environment-for-chickai-virtual-controlled-rearing-experiments"><strong>Unity environment for ChickAI: virtual controlled-rearing experiments</strong></h1>
+<p>This is a collection of tools for simulating virtual agents under controlled-rearing conditions. The agents
+generated and studied through this pipeline can be compared directly to real chicks recorded by the <strong><a href="http://buildingamind.com/"><strong>Building a Mind
+Lab</strong></a></strong>. This pipeline provides all necessary components for simulating and replicating embodied models from the lab.</p>
+<p>The figure below shows the experiment setup for the three experiments discussed in the guide.</p>
+<p><img src="digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" /></p>
+<h2 id="how-to-use-this-repository"><strong>How to Use this Repository</strong></h2>
+<p>This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in the virtual world, and a set of programs to visualize the data coming from the experiments. Once users download this repo they will most likely need to open Unity at least once to generate an executable of the environment. After an executable is available, the user should be able to run the necessary simulations. This will result in data that can be analyzed using the scripts in the analysis folder.</p>
+<p>If users are unfamiliar with how to install a git repository or have never used unity before please scroll down to how to the how to install section.</p>
+<h2 id="directory-structure"><strong>Directory Structure</strong></h2>
+<p><strong>Following the directory structure of the code.</strong></p>
+<pre><code>├── data
+│   ├── executables
+├── docs
+├── mkdocs.yml
+├── README.md
+├── requirements.txt
+├── scripts
+│   ├── parsing_sup.sh
+│   ├── parsing_unsup.sh
+│   └── viewpoint_sup.sh
+├── src
+│   ├── analysis
+│   └── simulation
+└── tests
+
+</code></pre>
+<ul>
+<li><code>src/analysis</code><strong>: </strong>Contains the code for visualizing and analyzing results from the simulation experiments.</li>
+<li><code>data</code>: This folder contains executables, experimental results, and analysis results. A user will rarely interact with this folder directly. Most scripts assume this directory and all its contents exist.</li>
+<li><code>src/simulation</code>: Contains the code for running experiments with simulated agents. Following is the structure of simulation folder:</li>
+</ul>
+<p>```
+  ├── agent
+  ├── algorithms
+  ├── callback
+  ├── common
+  ├── conf
+  ├── env_wrapper
+  ├── networks
+  ├── <strong>pycache</strong>
+  ├── run_parsing_exp.py
+  ├── run_parsing_icm.py
+  ├── run_viewpoint_exp.py
+  └── utils.py</p>
+<p><code>``
+*</code>Unity<code>: Contains a Unity project which is a virtual replication of the VR Chambers used in contolled-rearing studies from the lab. This folder should be opened as a Unity project in the Unity Editor.
+*</code>tests<code>: Contains unit tests to test the environment and others
+*</code>docs<code>: Contains project documentation
+*</code>scripts`: Contains bash scripts to run the respective experiment</p>
+<h2 id="how-to-install"><strong>How to Install</strong></h2>
+<p>In this section, you will pull this repository from Github, open the Unity environment, and build the ChickAI environment as an executable.</p>
+<h3 id="codebase-installation"><strong>Codebase Installation</strong></h3>
+<ol>
+<li>Install Git and/or Github Desktop. If you install Git, you'll be able to interact with Github through the command line. You can download Git using the directions here: <strong><a href="https://git-scm.com/downloads">https://git-scm.com/downloads</a></strong>. If you install Git Desktop, you can use a GUI to interact with Github. You can install Github Desktop by following the directions here: <strong><a href="https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/">https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/</a></strong>. For the following steps, I will provide the command line arguments (but you can use the GUI to find the same options in Github Desktop).</li>
+<li>To download the repository, click the Code button on the pipeline_embodied repo. Copy the provided web URL. Then follow the code below to change to directory where you want the repo (denoted here as MY_FOLDER) and then clone the repo.</li>
+</ol>
+<p><code>cd MY_FOLDER
+   git clone URL_YOU_COPIED_GOES_HERE</code>
+3. Checkout the branch you want to be extra sure that you're using the right branch.</p>
+<p><code>cd pipeline_embodied
+   git checkout DESIRED_BRANCH</code>
+4. <strong>(Highly Recommended) </strong><a href="https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/" title="Link for how to set-up a virtual env">create and configure a virtual environment</a>
+   <strong><em>*steps described below :</em></strong>*</p>
+<p>```
+   conda create -n pipeline_embodied_env python=3.8
+   conda activate pipeline_embodied_env
+   git clone git@github.com:buildingamind/pipeline_embodied.git
+   cd pipeline_embodied
+   pip install -r requirements.txt</p>
+<p>```</p>
+<h3 id="running-an-experiment-default-configuration"><strong>Running an Experiment (default configuration)</strong></h3>
+<p>After having followed steps 1-5 above once experiments can be run with a few lines of code</p>
+<pre><code>  bash scripts/&lt;EXPERIMENT_NAME&gt;_sup.sh
+</code></pre>
+<p>where <code>EXPERIMENT_NAME</code> is one of the experiments (<code>viewpoint</code>, <code>binding</code>, <code>parsing</code>) using supervised reward.**</p>
+<h3 id="running-standard-analysis"><strong>Running Standard Analysis</strong></h3>
+<p>After running the experiments, the pipeline will generate a collection of datafiles in the <code>Data</code> folder. To run the analyses performed in the papers you can use the following command</p>
+<pre><code>python3 src/analysis/run.py
+</code></pre>
+<p>This will generate a collection of graphs in the folder <code>data/Results</code>.</p>
+<h3 id="running-an-experiment-custom-configuration">Running an Experiment (custom configuration)</h3>
+<p>After having replicated the results with the default configuration, you may wish to experiment by plugging in different brains for the agent. We have included a few different possible brains for the agent. To plug these in simply modify the <code>yaml</code> file in <code>src/simulation/conf/Agent/basic.yaml</code>.</p>
+<pre><code>encoder: BRAIN
+</code></pre>
+<p>where <strong><code>BRAIN</code></strong> can be set to <strong><code>small</code></strong>, <strong><code>medium</code></strong>, or <strong><code>large</code></strong> which correspond to a 4-layer CNN, 10-Layer ResNet, and 18-layer ResNet respectively.</p>
+<p>Note that if you change the size of the encoder, you may also consider changing the number of training episodes. This can be done in the config file <code>src/simulation/conf/config.yaml</code>.</p>
+<pre><code>train_eps: NEW_EPISODE_COUNT
+</code></pre>
+<p>If you wish to experiment with custom architectures or a new policy network, this can be done by modifying the agent script (<code>Simulation/agent.py</code><strong>). </strong><code>self.model</code> is the policy network and <strong><code>self.encoder</code></strong> is the encoder network. Both can be assigned any appropriately sized <strong><code>torch.nn.module</code></strong>.</p>
+<h2 id="experiment-configuration"><strong>Experiment Configuration</strong></h2>
+<p>More information related to details on the experiment can be found on following pages.</p>
+<ul>
+<li><a href="Parsing/"><strong>Parsing Experiment</strong></a></li>
+<li><strong>ViewPoint Experiment</strong></li>
+</ul>
+              
+            </div>
+          </div><footer>
+    <div class="rst-footer-buttons" role="navigation" aria-label="Footer Navigation">
+        <a href="Parsing/" class="btn btn-neutral float-right" title="Parsing">Next <span class="icon icon-circle-arrow-right"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <!-- Copyright etc -->
+  </div>
+
+  Built with <a href="https://www.mkdocs.org/">MkDocs</a> using a <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>.
+</footer>
+          
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+
+  <div class="rst-versions" role="note" aria-label="Versions">
+  <span class="rst-current-version" data-toggle="rst-current-version">
+    
+    
+    
+      <span><a href="Parsing/" style="color: #fcfcfc">Next &raquo;</a></span>
+    
+  </span>
+</div>
+    <script src="js/jquery-3.6.0.min.js"></script>
+    <script>var base_url = ".";</script>
+    <script src="js/theme_extra.js"></script>
+    <script src="js/theme.js"></script>
+      <script src="search/main.js"></script>
+    <script>
+        jQuery(function () {
+            SphinxRtdTheme.Navigation.enable(true);
+        });
+    </script>
+
+</body>
+</html>
+
+<!--
+MkDocs version : 1.5.3
+Build Date UTC : 2023-11-05 23:56:19.849299+00:00
+-->
