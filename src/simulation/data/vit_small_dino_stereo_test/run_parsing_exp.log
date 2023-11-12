@@ -1,0 +1,36 @@
+[2023-11-12 01:35:43,625][mlagents_envs.environment][WARNING] - Environment timed out shutting down. Killing...
+[2023-11-12 01:36:27,184][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 01:36:27,980][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 01:36:27,983][mlagents_envs.envs.unity_gym_env][WARNING] - The environment contains multiple observations. You must define allow_multiple_obs=True to receive them all. Otherwise, only the first visual observation (or vector observation ifthere are no visual observations) will be provided in the observation.
+[2023-11-12 01:42:41,149][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 01:42:41,804][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 01:47:04,816][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 01:47:05,470][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 01:48:37,403][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 01:48:38,060][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 02:26:26,442][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 02:26:27,096][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 02:29:32,752][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 02:29:33,408][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 02:44:15,301][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 02:44:15,954][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 02:56:12,372][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 02:56:13,025][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:10:05,647][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:10:06,300][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:18:10,523][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:18:11,176][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:18:57,688][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:18:58,343][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:21:42,042][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:21:42,694][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:28:25,303][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:28:25,956][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:39:36,169][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:39:36,822][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:47:07,465][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:47:08,118][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:47:09,553][timm.models._builder][INFO] - Loading pretrained weights from Hugging Face hub (timm/vit_small_patch8_224.dino)
+[2023-11-12 03:47:09,728][timm.models._hub][INFO] - [timm/vit_small_patch8_224.dino] Safe alternative available for 'pytorch_model.bin' (as 'model.safetensors'). Loading weights using safetensors.
+[2023-11-12 03:51:04,870][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:51:05,524][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0

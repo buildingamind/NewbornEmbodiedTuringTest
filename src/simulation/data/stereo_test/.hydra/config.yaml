@@ -1,0 +1,30 @@
+agent_count: 1
+run_id: stereo_test
+log_path: data/${run_id}
+mode: full
+train_eps: 1000
+test_eps: 40
+hydra.job.chdir: true
+cuda: 0
+experiment: parsing
+Agent:
+  reward: supervised
+  log_path: ${log_path}/Brains/
+  encoder: vit
+  encoding_dim: 384
+  mini_batchsize: 512
+  buffer_size: 2048
+  frame_stack: true
+  n_stack: 2
+  policy: PPO
+Environment:
+  use_ship: false
+  background: C
+  base_port: 5100
+  env_path: /home/desabh/pipeline_embodied/data/executables/parsing_stereo/parsingstereo_linux.x86_64
+  log_path: ${log_path}/Env_Logs/
+  rec_path: ${log_path}/Recordings/
+  record_chamber: false
+  record_agent: false
+  recording_frames: 1000
+  dvs_wrapper: false

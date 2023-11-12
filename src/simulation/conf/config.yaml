@@ -1,0 +1,16 @@
+agent_count: 1
+run_id: stereo_test_vit_small_224
+log_path: data/${run_id}
+#log_path: data/${run_id}
+mode: full
+train_eps: 1000
+test_eps: 40
+hydra.job.chdir: True
+cuda: 1
+experiment: parsing
+
+defaults:
+  - _self_
+  - Agent: basic
+  - Environment: parsing
+  - hydra

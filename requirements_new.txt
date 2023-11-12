@@ -1,0 +1,12 @@
+torch==1.11.0+cu113
+torchvision==0.12.0+cu113
+stable-baselines3[extra]==1.8.0
+git+https://github.com/Unity-Technologies/ml-agents.git@release_20#subdirectory=ml-agents
+gym-unity==0.26.0
+hydra-core==1.3.2
+imageio-ffmpeg
+opencv-python
+sb3-contrib==1.8.0
+scikit-learn==1.3.0
+tqdm
+protobuf==3.20.0

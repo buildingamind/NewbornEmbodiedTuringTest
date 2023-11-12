@@ -1,0 +1,4 @@
+[2023-11-12 03:53:16,990][mlagents_envs.environment][INFO] - Connected to Unity environment with package version 3.0.0-exp.1 and communication version 1.5.0
+[2023-11-12 03:53:17,645][mlagents_envs.environment][INFO] - Connected new brain: ChickAgent?team=0
+[2023-11-12 03:53:19,075][timm.models._builder][INFO] - Loading pretrained weights from Hugging Face hub (timm/vit_small_patch8_224.dino)
+[2023-11-12 03:53:19,231][timm.models._hub][INFO] - [timm/vit_small_patch8_224.dino] Safe alternative available for 'pytorch_model.bin' (as 'model.safetensors'). Loading weights using safetensors.
