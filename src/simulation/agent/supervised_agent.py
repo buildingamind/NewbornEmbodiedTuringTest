@@ -22,6 +22,12 @@ from callback.supervised_save_bestmodel_callback import SupervisedSaveBestModelC
 from networks.resnet10 import CustomResnet10CNN
 from networks.resnet10 import CustomResnet10CNN
 from networks.resnet18 import CustomResnet18CNN
+from networks.dino import DinoV1, DinoV2
+from networks.ego4d import Ego4D
+from networks.cotracker import CoTracker
+from networks.frozensimclr import FrozenSimCLR
+
+
 from utils import to_dict, write_to_file
 
 from callback.hyperparam_callback import HParamCallback
@@ -66,24 +72,39 @@ class SupervisedAgent(BaseAgent):
         ## setup tensorboard logger
         new_logger = configure(self.path, ["stdout", "csv", "tensorboard"])
         
+        ## Setup the encoder
+        policy_kwargs = dict(features_extractor_kwargs=dict(features_dim=self.feature_dimensions))
+        if self.encoder_type == "small":
+                policy_kwargs = {}
+        elif self.encoder_type == "medium":
+                policy_kwargs["features_extractor_class"] = CustomResnet10CNN
+        elif self.encoder_type == "large":
+            policy_kwargs["features_extractor_class"] = CustomResnet18CNN
+        
+        elif self.encoder_type == "dinov1":
+            policy_kwargs["features_extractor_class"] = DinoV1
+            
+        elif self.encoder_type == "dinov2":
+            policy_kwargs["features_extractor_class"] = DinoV2
+        
+        elif self.encoder_type == "ego4d":
+            policy_kwargs["features_extractor_class"] = Ego4D
+        
+        elif self.encoder_type == "cotracker":
+            policy_kwargs["features_extractor_class"] = CoTracker
+        
+        elif self.encoder_type == 'simclr':
+            policy_kwargs["features_extractor_class"] = FrozenSimCLR
+               
+        else:
+            raise Exception(f"unknown network size: {self.encoder_type}")
+        
+        
+        
+        
         ## Add small, medium and large network
         if self.policy.lower() == "ppo":
             policy_model = "CnnPolicy"
-            policy_kwargs = dict(features_extractor_kwargs=dict(features_dim=128))
-            
-            if self.encoder_type == "small":
-                policy_kwargs = {}
-            elif self.encoder_type == "medium":
-                policy_kwargs["features_extractor_class"] = CustomResnet10CNN
-            elif self.encoder_type == "large":
-                policy_kwargs["features_extractor_class"] = CustomResnet18CNN
-                
-            elif self.encoder_type == "lstm":
-                policy_kwargs["features_extractor_class"] = CustomCNNLSTM
-                
-            else:
-                raise Exception(f"unknown network size: {self.encoder_type}")
-
             
             self.model = PPO(policy_model, envs, 
                              batch_size = self.batch_size, ## minibatch size for one gradient update - https://github.com/gzrjzcx/ML-agents/blob/master/docs/Training-PPO.md
@@ -95,21 +116,7 @@ class SupervisedAgent(BaseAgent):
 
         else:
             policy = "CnnLstmPolicy"
-            policy_kwargs = dict(features_extractor_kwargs=dict(features_dim=128))
             
-            if self.encoder_type == "small":
-                policy_kwargs = {}
-            elif self.encoder_type == "medium":
-                policy_kwargs["features_extractor_class"] = CustomResnet10CNN
-            elif self.encoder_type == "large":
-                policy_kwargs["features_extractor_class"] = CustomResnet18CNN
-                
-            elif self.encoder_type == "lstm":
-                policy_kwargs["features_extractor_class"] = CustomCNNLSTM
-                
-            else:
-                raise Exception(f"unknown network size: {self.encoder_type}")
-
             self.model = RecurrentPPO(policy,\
                 envs,
                 batch_size=self.batch_size,
@@ -120,20 +127,26 @@ class SupervisedAgent(BaseAgent):
                 policy_kwargs = policy_kwargs)
             print(self.model)
         
+        
+        
         self.model.set_logger(new_logger)
         print(f"Total training steps:{steps}")
         
+        ## Set Encoder requires grad
+        if not self.train_encoder:
+            self.model = self.set_feature_extractor_require_grad(self.model)
+        
+        
         ## write model properties to the file
-        d = to_dict(self.model.__dict__)
-        x = {"encoder_type":self.encoder_type, "batch_size":self.batch_size,
-                  "buffer_size":self.buffer_size,
-                  "policy":self.policy,
-                  "total_timesteps":steps,
-                  "tensorboard_path":self.path,
-                  "frame_stack": "true" if self.frame_stack else "false",
-                  "logpath":self.path, "env_log_path":self.env_log_path, "agent_id":self.id}
-        d.update(x)  
-        write_to_file(os.path.join(self.path, "model_agent_dump.json"), d)
+        self.write_model_properties(self.model, steps)
+        
+        ## check if everything is initialized correctly        
+        requires_grad_str = ""
+        for param in self.model.policy.features_extractor.parameters():
+            requires_grad_str+=str(param.requires_grad)
+        
+        print("Features Extractor Grad:"+ requires_grad_str)
+        
         
         
         self.model.learn(total_timesteps=steps, tb_log_name=f"{self.id}",\
@@ -147,7 +160,7 @@ class SupervisedAgent(BaseAgent):
         ## plot reward graph
         self.plot_results(steps, plot_name=f"reward_graph_{self.id}")
         # save encoder and policy network state dict - to perform model analysis
-        self.save_encoder_policy_network()
+        #self.save_encoder_policy_network()
 
     
     

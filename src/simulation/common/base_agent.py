@@ -22,6 +22,7 @@ from GPUtil import getFirstAvailable
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+from utils import to_dict, write_to_file
 from sb3_contrib import RecurrentPPO
 
 
@@ -34,20 +35,20 @@ class BaseAgent(ABC):
         self.model = None
         self.summary_freq = 30000 
         self.rec_path = kwargs['rec_path'] if 'rec_path' in kwargs else ""
-        self.encoder_type = kwargs['encoder']
+        
+        ## get encoder configuration
+        encoder = kwargs.get('encoder', {})
+        self.encoder_type = encoder.get('name', '')
+        self.train_encoder = encoder.get('train', True)
+        self.feature_dimensions = encoder.get('feature_dimensions',512)
+        
+        
         self.batch_size = kwargs['mini_batchsize']
         self.buffer_size = kwargs['buffer_size']
         
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        
-        
-        
-        
-        self.frame_stack = kwargs["frame_stack"]
-        self.n_stack = kwargs["n_stack"]
         self.policy = kwargs["policy"]
-        self.num_test_conditions = kwargs["num_conditions"]
         
         
         #If path does not exist, create it as a directory
@@ -72,7 +73,6 @@ class BaseAgent(ABC):
         os.makedirs(self.video_record_path, exist_ok=True)
         
         ## set cuda device if available
-        print(torch.cuda.device_count())
         self.device_num = getFirstAvailable(attempts=5, interval=5, maxMemory=0.5, verbose=True)
         print(self.device_num)
         torch.cuda.set_device(self.device_num[0])
@@ -110,6 +110,7 @@ class BaseAgent(ABC):
         
         
         if self.policy.lower()=="ppo":
+            print(f"Total number of steps:{steps}")
             obs = envs.reset()
             for i in range(steps):
                 action, _states = self.model.predict(obs, deterministic=True)
@@ -125,15 +126,27 @@ class BaseAgent(ABC):
             vr.enabled = False
             
         else:
-            
-            for i in range(steps):
+            total_number_of_episodes = env.total_number_of_test_eps(eps)
+            print(total_number_of_episodes)
+            num_envs = 1
+            for i in range(total_number_of_episodes):
                 obs = env.reset()
-                done, lstm_states = False, None
-                while not done:
-                    action, lstm_states = self.model.predict(obs, state=lstm_states, deterministic=True)
-                    obs, reward, done, _info = env.step(action)
+                # cell and hidden state of the LSTM
+                dones,lstm_states =False, None
+                num_envs = 1
+                
+                # Episode start signals are used to reset the lstm states
+                episode_starts = np.ones((num_envs,), dtype=bool)
+                episode_length = 0
+                while not dones:
+                    action, lstm_states = self.model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
+                    obs, rewards, dones, info = env.step(action)
+                    episode_starts = dones
+                    episode_length+=1
                     env.render(mode="rgb_array")
-                    vr.capture_frame()
+                    vr.capture_frame()    
+                    
+                #print(f"Episode length:{episode_length}, num_episode = {i}")
                     
             vr.close()
             vr.enabled = False       
@@ -238,4 +251,29 @@ class BaseAgent(ABC):
         print(f"Saved feature_extrator:{save_path}")
         return
     
+    def set_feature_extractor_require_grad(self, model, require_grad = False):
+        model.policy.features_extractor.eval()
+        for param in model.policy.features_extractor.parameters():
+            param.requires_grad = False
+            
+        return model
     
+    
+    def write_model_properties(self, model, steps):
+        model_props = {
+            "encoder_type": self.encoder_type,
+            "batch_size": self.batch_size,
+            "buffer_size": self.buffer_size,
+            "policy": self.policy,
+            "total_timesteps": steps,
+            "tensorboard_path": self.path,
+            "logpath": self.path,
+            "env_log_path": self.env_log_path,
+            "agent_id": self.id
+        }
+
+        model_dict = to_dict(model.__dict__)
+        model_dict.update(model_props)
+
+        file_path = os.path.join(self.path, "model_agent_dump.json")
+        write_to_file(file_path, model_dict)

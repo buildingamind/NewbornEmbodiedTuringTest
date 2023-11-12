@@ -1,16 +1,17 @@
 agent_count: 1
-run_id: oneshot_small_front_ship_small_exp5
-log_path: /data/mchivuku/embodiedai/benchmark_experiments/oneshot/base_agents/small/${run_id}
-#log_path: data/${run_id}
+run_id: parsing_simclr_ship_A_exp
+#log_path: /data/mchivuku/embodiedai/benchmark_experiments/oneshot/base_agents/small/${run_id}
+log_path: data/${run_id}
 mode: full
 train_eps: 1000
-test_eps: 40
+test_eps: 20
+num_conditions: 28
 hydra.job.chdir: True
 cuda: 0
-experiment: oneshot
+experiment: parsing
 
 defaults:
   - _self_
   - Agent: basic
-  - Environment: oneshot
+  - Environment: parsing
   - hydra

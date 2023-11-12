@@ -34,7 +34,6 @@ class Experiment(abc.ABC):
                 agent_config.env_log_path = self.env_config['log_path']
                 agent_config.rec_path = os.path.join(self.env_config["rec_path"], agent_config.agent_id)
                 agent_config.recording_frames = self.env_config["recording_frames"]
-                agent_config.num_conditions = self.env_config["num_conditions"]
             self.agents.append(self.new_agent(agent_config))
 
     
@@ -89,12 +88,12 @@ class Experiment(abc.ABC):
             self.train_agents()
             ## rest inside the test
         elif self.mode == "test":
-            self.test_agents("exp")
+            self.test_agents("test")
         elif self.mode == "full":
             self.train_agents()
-            self.test_agents("exp")
+            self.test_agents("test")
         else:
-            self.test_agents("exp")
+            self.test_agents("test")
 
     @abc.abstractmethod
     def generate_environment(self, env_config):
