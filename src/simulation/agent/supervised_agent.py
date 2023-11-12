@@ -26,6 +26,7 @@ from networks.dino import DinoV1, DinoV2
 from networks.ego4d import Ego4D
 from networks.cotracker import CoTracker
 from networks.frozensimclr import FrozenSimCLR
+from networks.segmentanything import SegmentAnything
 
 
 from utils import to_dict, write_to_file
@@ -95,11 +96,12 @@ class SupervisedAgent(BaseAgent):
         
         elif self.encoder_type == 'simclr':
             policy_kwargs["features_extractor_class"] = FrozenSimCLR
+        
+        elif self.encoder_type == 'sam':
+            policy_kwargs["features_extractor_class"] = SegmentAnything
                
         else:
             raise Exception(f"unknown network size: {self.encoder_type}")
-        
-        
         
         
         ## Add small, medium and large network

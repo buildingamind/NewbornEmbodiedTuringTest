@@ -1,6 +1,7 @@
 agent_count: 1
-run_id: parsing_simclr_ship_A_exp
+run_id: parsing_sam_ship_A_Test
 #log_path: /data/mchivuku/embodiedai/benchmark_experiments/oneshot/base_agents/small/${run_id}
+#log_path: /data/mchivuku/samantha_output/ego4d/ppo/${run_id}
 log_path: data/${run_id}
 mode: full
 train_eps: 1000

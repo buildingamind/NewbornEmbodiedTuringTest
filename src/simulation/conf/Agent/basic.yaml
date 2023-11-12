@@ -4,6 +4,6 @@ mini_batchsize: 32
 buffer_size: 2048
 policy: PPO
 encoder:
-  name: simclr
-  feature_dimensions: 512
+  name: sam
+  feature_dimensions: 256
   train: False
