@@ -143,13 +143,11 @@ class SupervisedAgent(BaseAgent):
         self.write_model_properties(self.model, steps)
         
         ## check if everything is initialized correctly        
-        requires_grad_str = ""
-        for param in self.model.policy.features_extractor.parameters():
-            requires_grad_str+=str(param.requires_grad)
+        # requires_grad_str = ""
+        # for param in self.model.policy.features_extractor.parameters():
+        #     requires_grad_str+=str(param.requires_grad)
         
-        print("Features Extractor Grad:"+ requires_grad_str)
-        
-        
+        # print("Features Extractor Grad:"+ requires_grad_str)
         
         self.model.learn(total_timesteps=steps, tb_log_name=f"{self.id}",\
                          progress_bar=True,\
