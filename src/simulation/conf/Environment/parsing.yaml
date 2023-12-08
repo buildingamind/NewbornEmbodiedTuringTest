@@ -1,0 +1,10 @@
+use_ship: False
+background: B
+base_port: 5100
+env_path: /home/desabh/iclr/NewbornEmbodiedTuringTest/data/executables/parsing_twoeyed/parsing_twoeyed.x86_64
+log_path: ${log_path}/Env_Logs
+rec_path: ${log_path}/Recordings/
+record_chamber: False
+record_agent: False
+recording_frames: 1000
+dvs_wrapper: False

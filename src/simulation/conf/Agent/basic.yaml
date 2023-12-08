@@ -1,0 +1,9 @@
+reward: supervised
+log_path: ${log_path}/Brains/
+mini_batchsize: 512
+buffer_size: 2048
+policy: PPO
+encoder:
+  name: small
+  feature_dimensions: 128
+  train: True

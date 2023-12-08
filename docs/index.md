@@ -6,7 +6,7 @@ Lab**](http://buildingamind.com/)**. This pipeline provides all necessary compon
 
 The figure below shows the experiment setup for the three experiments discussed in the guide.
 
-<img src="docs/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+<img src="digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
 
 ## **How to Use this Repository**
 
@@ -19,7 +19,6 @@ If users are unfamiliar with how to install a git repository or have never used 
 **Following the directory structure of the code.**
 
 ```
-
 ├── data
 │   ├── executables
 ├── docs
@@ -40,7 +39,7 @@ If users are unfamiliar with how to install a git repository or have never used 
 * `src/analysis`**: **Contains the code for visualizing and analyzing results from the simulation experiments.
 * `data`: This folder contains executables, experimental results, and analysis results. A user will rarely interact with this folder directly. Most scripts assume this directory and all its contents exist.
 * `src/simulation`: Contains the code for running experiments with simulated agents. Following is the structure of simulation folder:
-  
+
   ```
   ├── agent
   ├── algorithms
@@ -54,11 +53,11 @@ If users are unfamiliar with how to install a git repository or have never used 
   ├── run_parsing_icm.py
   ├── run_viewpoint_exp.py
   └── utils.py
-  
+
   ```
 * `Unity`: Contains a Unity project which is a virtual replication of the VR Chambers used in contolled-rearing studies from the lab. This folder should be opened as a Unity project in the Unity Editor.
 * `tests`: Contains unit tests to test the environment and others
-* `docs`: Contains project documentation 
+* `docs`: Contains project documentation
 * `scripts`: Contains bash scripts to run the respective experiment
 
 ## **How to Install**
@@ -69,24 +68,27 @@ In this section, you will pull this repository from Github, open the Unity envir
 
 1. Install Git and/or Github Desktop. If you install Git, you'll be able to interact with Github through the command line. You can download Git using the directions here: **[https://git-scm.com/downloads](https://git-scm.com/downloads)**. If you install Git Desktop, you can use a GUI to interact with Github. You can install Github Desktop by following the directions here: **[https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/](https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/)**. For the following steps, I will provide the command line arguments (but you can use the GUI to find the same options in Github Desktop).
 2. To download the repository, click the Code button on the pipeline_embodied repo. Copy the provided web URL. Then follow the code below to change to directory where you want the repo (denoted here as MY_FOLDER) and then clone the repo.
+
    ```
    cd MY_FOLDER
    git clone URL_YOU_COPIED_GOES_HERE
    ```
-3. Checkout the branch you want to be extra sure that you're using the right branch. 
+3. Checkout the branch you want to be extra sure that you're using the right branch.
+
    ```
    cd pipeline_embodied
    git checkout DESIRED_BRANCH
    ```
 4. **(Highly Recommended) **[create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/ "Link for how to set-up a virtual env")
    ****steps described below :****
+
    ```
    conda create -n pipeline_embodied_env python=3.8
    conda activate pipeline_embodied_env
    git clone git@github.com:buildingamind/pipeline_embodied.git
    cd pipeline_embodied
    pip install -r requirements.txt
-   
+
    ```
 
 ### **Running an Experiment (default configuration)**
@@ -131,5 +133,5 @@ If you wish to experiment with custom architectures or a new policy network, thi
 
 More information related to details on the experiment can be found on following pages.
 
-* [**Parsing Experiment**](docs/Parsing.md)
-* [**ViewPoint Experiment**](docs/ViewInvariant.md)
+* [**Parsing Experiment**](Parsing.md)
+* **ViewPoint Experiment**
