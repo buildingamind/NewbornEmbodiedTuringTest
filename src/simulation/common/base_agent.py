@@ -251,7 +251,7 @@ class BaseAgent(ABC):
         print(f"Saved feature_extrator:{save_path}")
         return
     
-    def set_feature_extractor_require_grad(self, model, require_grad = False):
+    def set_feature_extractor_require_grad(self, model):
         model.policy.features_extractor.eval()
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False

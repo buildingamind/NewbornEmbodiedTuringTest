@@ -1,16 +1,16 @@
-from abc import ABC, abstractmethod
-from pprint import pprint
+from abc import abstractmethod
+import numpy as np
 from typing import Optional
 
 import gym
 
 from mlagents_envs.environment import UnityEnvironment
-from gym_unity.envs import UnityToGymWrapper
+from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
 
 from common.logger import Logger
 from env_wrapper.dvs_wrapper import DVSWrapper
+
 from utils import port_in_use
-import pdb
 
 
 class ChickAIEnvWrapper(gym.Wrapper):
@@ -42,14 +42,13 @@ class ChickAIEnvWrapper(gym.Wrapper):
         self.log = Logger(log_title, log_dir=kwargs["log_path"])
         
         #Create environment and connect it to logger
-        env = UnityEnvironment(env_path, side_channels=[self.log], additional_args=args, \
-            base_port=base_port)
-        self.env = UnityToGymWrapper(env, uint8_visual=True)
+        env = UnityEnvironment(env_path, side_channels=[self.log], additional_args=args, base_port=base_port)
+        env = UnityToGymWrapper(env, uint8_visual=True)
         
         if "dvs_wrapper" in kwargs and kwargs["dvs_wrapper"]:
-            self.env = DVSWrapper(self.env)
+            self.env = DVSWrapper(env)
         
-        super().__init__(self.env)
+        super().__init__(env)
         
     #Step the environment for one timestep
     def step(self, action):
@@ -73,4 +72,8 @@ class ChickAIEnvWrapper(gym.Wrapper):
     @abstractmethod
     def steps_from_eps(self, eps):
         pass
+
+    # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c) expected by gym==0.21.0
+    def render(self, mode="rgb_array"):
+        return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
     

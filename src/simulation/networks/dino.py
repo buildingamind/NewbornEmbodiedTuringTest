@@ -74,7 +74,7 @@ class DinoV2(BaseFeaturesExtractor):
         print("N_input_channels", n_input_channels)
         
         
-        self.model = th.hub.load('facebookresearch/dinov2', 'dinov2_vits14',pretrained=True)
+        self.model = th.hub.load('facebookresearch/dinov2', 'dinov2_vits14', pretrained=True)
         
         # get model specific transforms (normalization, resize)
         #data_config = timm.data.resolve_model_data_config(self.model)

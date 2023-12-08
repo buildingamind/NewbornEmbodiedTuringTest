@@ -1,18 +1,16 @@
 agent_count: 1
-run_id: parsing_sam_ship_A_Test
-#log_path: /data/mchivuku/embodiedai/benchmark_experiments/oneshot/base_agents/small/${run_id}
-#log_path: /data/mchivuku/samantha_output/ego4d/ppo/${run_id}
-log_path: data/${run_id}
+run_id: identityandview_1H_small
+log_path: /home/desabh/iclr/NewbornEmbodiedTuringTest/data/models/${run_id}
 mode: full
 train_eps: 1000
 test_eps: 20
-num_conditions: 28
+num_conditions: 50
 hydra.job.chdir: True
 cuda: 0
-experiment: parsing
+experiment: identityandview
 
 defaults:
   - _self_
   - Agent: basic
-  - Environment: parsing
+  - Environment: identityandview
   - hydra

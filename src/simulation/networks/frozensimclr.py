@@ -9,7 +9,7 @@ import torchvision
 import timm
 from torchvision.transforms import Compose
 from torchvision.transforms import Resize, CenterCrop, Normalize, InterpolationMode
-from networks.disembodied_models.models.simclr import SimCLR
+# from networks.disembodied_models.models.simclr import SimCLR
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
