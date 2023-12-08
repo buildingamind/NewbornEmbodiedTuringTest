@@ -7,3 +7,4 @@ scipy
 torchvision
 timm
 git+https://github.com/ir413/mvp
+kornia
