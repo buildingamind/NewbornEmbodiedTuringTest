@@ -45,6 +45,7 @@ class BaseAgent(ABC):
         
         self.batch_size = kwargs['mini_batchsize']
         self.buffer_size = kwargs['buffer_size']
+        self.seed = kwargs['seed']
         
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

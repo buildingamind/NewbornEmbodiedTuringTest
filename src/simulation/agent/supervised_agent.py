@@ -68,7 +68,7 @@ class SupervisedAgent(BaseAgent):
             return
         
         e_gen = lambda : env
-        envs = make_vec_env(env_id=e_gen, n_envs=1)
+        envs = make_vec_env(env_id=e_gen, n_envs=1, seed=self.seed)
         
         ## setup tensorboard logger
         new_logger = configure(self.path, ["stdout", "csv", "tensorboard"])
