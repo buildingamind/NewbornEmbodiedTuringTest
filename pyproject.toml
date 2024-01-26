@@ -1,0 +1,28 @@
+[build-system]
+requires = ["setuptools<=65.5.0", "pip<=21"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nett-benchmarks"
+version = "0.1"
+authors = [
+  { name="Bhargav Desai", email="desabh@iu.edu" },
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.10.12, <3.10.13"
+dependencies = [
+    "mlagents==1.0.0",
+    "stable-baselines3[extra]==1.8.0",
+    "sb3-contrib==1.8.0",
+    "imageio-ffmpeg",
+    "torchvision",
+    "scipy",
+    "timm",
+    "nvidia-ml-py",
+    "ipywidgets"
+]
+
+[project.urls]
+"Homepage" = "https://github.com/pypa/sampleproject"
+"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
