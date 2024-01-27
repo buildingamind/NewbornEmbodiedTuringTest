@@ -8,7 +8,7 @@ version = "0.1"
 authors = [
   { name="Bhargav Desai", email="desabh@iu.edu" },
 ]
-description = "A small example package"
+description = "A testbed for comparing the learning abilities of newborn animals and autonomous artificial agents."
 readme = "README.md"
 requires-python = ">=3.10.12, <3.10.13"
 dependencies = [
