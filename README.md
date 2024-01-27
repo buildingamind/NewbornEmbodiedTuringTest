@@ -1,4 +1,3 @@
-=======
 # **Unity environment for ChickAI: virtual controlled-rearing experiments**
 
 This is a collection of tools for simulating virtual agents under controlled-rearing conditions. The agents
@@ -134,4 +133,3 @@ More information related to details on the experiment can be found on following 
 
 * [**Parsing Experiment**](docs/Parsing.md)
 * [**ViewPoint Experiment**](docs/ViewInvariant.md)
->>>>>>> 8cdfb7978c954597cb94be383b38228f3e6f342e
