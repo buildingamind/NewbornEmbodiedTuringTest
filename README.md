@@ -56,7 +56,7 @@ In this section, you will learn to use the repository to benchmark your first em
    pip install nett-benchmarks
    ```
 
-Note if not installing in a a virtual environment, the install might fail because of conflicting dependency versions. `mlagents` uses `gym==0.21` which in-turn has dependencies on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding. 
+Note if not installing in a virtual environment, the install might fail because of conflicting dependency versions. `mlagents` uses `gym==0.21` which in-turn has dependencies on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding. 
 
 ### **Running a NETT**
 
