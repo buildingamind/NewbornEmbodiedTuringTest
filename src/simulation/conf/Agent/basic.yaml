@@ -1,0 +1,9 @@
+reward: supervised
+log_path: ${log_path}/Brains/
+encoder: vit
+encoding_dim: 384
+mini_batchsize: 512
+buffer_size: 2048
+frame_stack: True
+n_stack: 2
+policy: PPO

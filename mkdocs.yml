@@ -1,0 +1,5 @@
+site_name: Embodied Pipeline Benchmarks
+nav:
+    - Home: index.md
+    - Parsing: Parsing.md
+theme: readthedocs
