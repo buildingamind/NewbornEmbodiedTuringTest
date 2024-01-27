@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-# Example Package
-
-This is a simple example package. You can use
-[GitHub-flavored Markdown](https://guides.github.com/features/mastering-markdown/)
-to write your content.
 =======
 # **Unity environment for ChickAI: virtual controlled-rearing experiments**
 
