@@ -10,9 +10,7 @@ The figure below shows the experiment setup for the three experiments discussed 
 
 ## **How to Use this Repository**
 
-This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in the virtual world, and a set of programs to visualize the data coming from the experiments. Once users download this repo they will most likely need to open Unity at least once to generate an executable of the environment. After an executable is available, the user should be able to run the necessary simulations. This will result in data that can be analyzed using the scripts in the analysis folder.
-
-If users are unfamiliar with how to install a git repository or have never used unity before please scroll down to how to the how to install section.
+This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in the virtual world, and a set of programs to visualize the data coming from the experiments.
 
 ## **Directory Structure**
 
@@ -20,112 +18,121 @@ If users are unfamiliar with how to install a git repository or have never used 
 
 ```
 
-├── data
-│   ├── executables
 ├── docs
 ├── mkdocs.yml
 ├── README.md
-├── requirements.txt
-├── scripts
-│   ├── parsing_sup.sh
-│   ├── parsing_unsup.sh
-│   └── viewpoint_sup.sh
-├── src
-│   ├── analysis
-│   └── simulation
+├── notebooks
+│   ├── Getting Started.ipynb
+├── src/netts
+│   ├── body
+│   └── brain
+│   ├── environment
+│   └── utils
+│   ├── nett.py
+│   └── __init__.py
 └── tests
 
 ```
 
-* `src/analysis`**: **Contains the code for visualizing and analyzing results from the simulation experiments.
-* `data`: This folder contains executables, experimental results, and analysis results. A user will rarely interact with this folder directly. Most scripts assume this directory and all its contents exist.
-* `src/simulation`: Contains the code for running experiments with simulated agents. Following is the structure of simulation folder:
-  
-  ```
-  ├── agent
-  ├── algorithms
-  ├── callback
-  ├── common
-  ├── conf
-  ├── env_wrapper
-  ├── networks
-  ├── __pycache__
-  ├── run_parsing_exp.py
-  ├── run_parsing_icm.py
-  ├── run_viewpoint_exp.py
-  └── utils.py
-  
-  ```
-* `Unity`: Contains a Unity project which is a virtual replication of the VR Chambers used in contolled-rearing studies from the lab. This folder should be opened as a Unity project in the Unity Editor.
-* `tests`: Contains unit tests to test the environment and others
+* `src/netts`**: **Contains the code for running experiments with simulated agents. Following is the structure of `src/netts` folder:
+* `tests`: Contains unit tests
 * `docs`: Contains project documentation 
-* `scripts`: Contains bash scripts to run the respective experiment
 
-## **How to Install**
+## **Getting Started**
 
-In this section, you will pull this repository from Github, open the Unity environment, and build the ChickAI environment as an executable.
+In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs! 
 
 ### **Codebase Installation**
 
-1. Install Git and/or Github Desktop. If you install Git, you'll be able to interact with Github through the command line. You can download Git using the directions here: **[https://git-scm.com/downloads](https://git-scm.com/downloads)**. If you install Git Desktop, you can use a GUI to interact with Github. You can install Github Desktop by following the directions here: **[https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/](https://docs.github.com/en/desktop/installing-and-configuring-github-desktop/)**. For the following steps, I will provide the command line arguments (but you can use the GUI to find the same options in Github Desktop).
-2. To download the repository, click the Code button on the pipeline_embodied repo. Copy the provided web URL. Then follow the code below to change to directory where you want the repo (denoted here as MY_FOLDER) and then clone the repo.
+1. **(Highly Recommended)** [create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env")
+   **steps described below :**
    ```
-   cd MY_FOLDER
-   git clone URL_YOU_COPIED_GOES_HERE
+   conda create -n netts python=3.10.12
+   conda activate netts
    ```
-3. Checkout the branch you want to be extra sure that you're using the right branch. 
+2. Install the needed versions of `setuptools` and `pip`:
    ```
-   cd pipeline_embodied
-   git checkout DESIRED_BRANCH
+   pip install setuptools==65.5.0 pip==21
    ```
-4. **(Highly Recommended) **[create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/ "Link for how to set-up a virtual env")
-   ****steps described below :****
+   **NOTE:** More recent versions of `setuptools` and `pip` are incompatible with the multiple dependencies due to a subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
+3. Install the repository using `pip`:
    ```
-   conda create -n pipeline_embodied_env python=3.8
-   conda activate pipeline_embodied_env
-   git clone git@github.com:buildingamind/pipeline_embodied.git
-   cd pipeline_embodied
-   pip install -r requirements.txt
-   
+   pip install nett-benchmarks
    ```
 
-### **Running an Experiment (default configuration)**
+**NOTE:** If not installing in a virtual environment, the install might fail because of conflicting dependency versions (see note under Step #2). `gym==0.21` has a dependency on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding. 
 
-After having followed steps 1-5 above once experiments can be run with a few lines of code
+### **Running a NETT**
+
+After having followed steps above, NETTs can be run with a few lines of code:
+
+1. Download the executable from the hosted webpage or build your own executable following the steps mentioned in {placeholder}. Additionally, a video walkthrough of creating an executable from scratch is made available {here}. 
+
+2. The package defines three components–the `Brain`, `Body` and `Environment`. For a detailed description of the division of responsibilities of each component, please refer to the {documentation}. 
+```
+from netts import Brain, Body, Environment
+from netts import NETT
+```
+
+3. Define each component as required. Let’s start with the `Brain`. This component holds all the parts concerned with “learning”. This includes the architecture itself along with its many parameters, as well as the reward function and learning algorithm, such as `PPO`. The package is designed to make each component flexible. Specifically, each constituent of the Brain such as the encoder, policy networks or the reward function can be customized. The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the documentation. 
+
+Consider a rather simple definition: 
+```
+brain = Brain(policy="CnnPolicy", algorithm="PPO")
+```
+
+This defines the policy network and the learning algorithm, the rest of the arguments are left to defaults. Please refer to the repository for a complete list of supported arguments and customizations. This document will be updated with appropriate links to tutorials planned as part of future releases too. Note that the repository uses modules from `stable-baselines3` underneath and the value specified as arguments directly correspond with it. 
+
+4. Next, define the `Body`. Technically, the body is a medium through which all information passes through before reaching the brain. Hence, this component is primarily concerned with the application of `gym.Wrappers` (such as the DVS wrapper) that modify the information from the environment before they “reach” the brain for processing. 
+
+Consider a simple definition: 
+```
+body = Body(type="basic", dvs=False, wrappers=None)
+```
+
+In this example, we do not pass any wrappers. Or, we let the information from the environment reach the brain "as is". 
+
+While the `Body` abstraction is thin and mostly conceptual as of now, different types of agents (`two-eyed`, `rag-doll`) with complex action spaces are planned which lead to `Body` taking on more sophisticated customization. 
+
+5. The `Environment` component constructs a live environment (via the Python `mlagents` library) which is then wrapped inside a `Gym` environment. Since this is part of the environment initialization, the wrapping is not included as part of the `Body` component, but kept within the `Environment`. The definition takes an executable path which must be available on the system. 
+```
+# a valid Unity executable downloaded from {} must be present at `executable_path`
+environment = Environment(config="identityandview", executable_path=executable_path)
+```
+
+6. For a full list of the NETT configs available, one can simply do the following. 
+```
+from netts.environment.configs import list_configs
+list_configs()
+```
+
+Similar analogues for listing the encoders, policies, algorithms are also available: 
+```
+from netts.brain import list_algorithms, list_policies, list_encoders
+```
+
+7. In order to orchestrate the benchmarking, all three components are brought together under one umbrella, the `NETT` object. This allows for storing details of the runs, serving as a reproducible artifact, automatic distribution of runs with different imprinting conditions, central logging, among other things. 
+```
+nett = NETT(brain=brain, body=body, environment=environment)
+```
+
+7. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
 
 ```
-  bash scripts/<EXPERIMENT_NAME>_sup.sh
+run = netts.run(dir=run_dir, num_brains=5, trains_eps=10)
 ```
 
-where `EXPERIMENT_NAME` is one of the experiments (`viewpoint`, `binding`, `parsing`) using supervised reward.**
+8. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 
+```
+nett.status(job_sheet)
+```
+
+Note that the `.run()` call executes in the background and does not block until its completion. This means the `run`` object is returned immediately and can be checked on a regular basis (programmatically or manually) to infer the completion of the run (or individual jobs).
+
 
 ### **Running Standard Analysis**
 
-After running the experiments, the pipeline will generate a collection of datafiles in the `Data` folder. To run the analyses performed in the papers you can use the following command
-
-```
-python3 src/analysis/run.py
-```
-
-This will generate a collection of graphs in the folder `data/Results`.
-
-### Running an Experiment (custom configuration)
-
-After having replicated the results with the default configuration, you may wish to experiment by plugging in different brains for the agent. We have included a few different possible brains for the agent. To plug these in simply modify the `yaml` file in `src/simulation/conf/Agent/basic.yaml`.
-
-```
-encoder: BRAIN
-```
-
-where **`BRAIN`** can be set to **`small`**, **`medium`**, or **`large`** which correspond to a 4-layer CNN, 10-Layer ResNet, and 18-layer ResNet respectively.
-
-Note that if you change the size of the encoder, you may also consider changing the number of training episodes. This can be done in the config file `src/simulation/conf/config.yaml`.
-
-```
-train_eps: NEW_EPISODE_COUNT
-```
-
-If you wish to experiment with custom architectures or a new policy network, this can be done by modifying the agent script (`Simulation/agent.py`**). **`self.model` is the policy network and **`self.encoder`** is the encoder network. Both can be assigned any appropriately sized **`torch.nn.module`**.
+TO BE UPDATED.
 
 ## **Experiment Configuration**
 
