@@ -40,7 +40,9 @@ This directory provides three components for building embodied virtual agents. T
 
 ## **Getting Started**
 
-In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs! 
+In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs!
+
+**NOTE:** The dependency `mlagents==1.0.0` is not compatible with Apple Silicon (M1, M2, etc.) devices. Please use a different device to run the codebase.
 
 ### **Codebase Installation**
 
