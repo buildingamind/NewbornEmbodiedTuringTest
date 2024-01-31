@@ -23,7 +23,7 @@ class NETT:
         nvmlInit()
 
     def run(self, 
-            dir: Path | str,
+            output_dir: Path | str,
             num_brains: int = 1, 
             mode: str = "full", 
             train_eps: int = 1000, 
@@ -35,7 +35,7 @@ class NETT:
             step_per_episode: int = 200,
             memory_per_brain: float = 0.5):
         # set up the run_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
-        self.run_dir = Path(dir)
+        self.run_dir = Path(output_dir)
         self.run_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.run_dir.resolve()}")
 

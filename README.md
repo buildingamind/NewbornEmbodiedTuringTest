@@ -119,7 +119,7 @@ nett = NETT(brain=brain, body=body, environment=environment)
 7. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
 
 ```
-run = nett.run(dir=run_dir, num_brains=5, trains_eps=10)
+run = nett.run(output_dir=run_dir, num_brains=5, trains_eps=10)
 ```
 
 8. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 
