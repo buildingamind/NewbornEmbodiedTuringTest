@@ -5,9 +5,9 @@ import numpy as np
 import subprocess
 
 from typing import Any, Optional
-from netts.environment.configs import NETTConfig, list_configs
-from netts.environment import configs
-from netts.utils.environment import Logger, port_in_use
+from nett.environment.configs import NETTConfig, list_configs
+from nett.environment import configs
+from nett.utils.environment import Logger, port_in_use
 from gym import Wrapper
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
@@ -21,7 +21,7 @@ class Environment(Wrapper):
                  record_chamber: bool = False, 
                  record_agent: bool = False, 
                  recording_frames: int = 1000) -> None:
-        from netts import logger
+        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
         # TO DO (v0.4) what might be a way to check if it is a valid executable path? 

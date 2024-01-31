@@ -1,7 +1,7 @@
 import torch
 
-from netts import Brain, Body, Environment
-from netts.utils.gpu import getFirstAvailable
+from nett import Brain, Body, Environment
+from nett.utils.gpu import getFirstAvailable
 
 class Benchmark:
     def __init__(self, Brain, Body, Environment) -> None:

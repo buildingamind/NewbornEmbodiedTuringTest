@@ -1,7 +1,7 @@
 import time
 import pandas as pd
 
-from netts import Brain, Body, Environment
+from nett import Brain, Body, Environment
 from pathlib import Path
 from typing import Any
 from copy import deepcopy
@@ -14,7 +14,7 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 
 class NETT:
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
-        from netts import logger
+        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
