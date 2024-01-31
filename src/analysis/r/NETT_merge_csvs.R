@@ -39,9 +39,9 @@ args <- parser$parse_args()
 data_wd <- args$logs_dir; results_wd <- args$results_dir; results_name <- args$results_name
 csv_train_name <- args$csv_train_name; csv_test_name <- args$csv_test_name
 
-
-#data_wd <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new"
-#results_wd <- "/data/mchivuku/embodiedai/benchmark_experiments/parsing-new"
+# TODO: Is this needed?
+#data_wd <- "<INPUT_DIR_PATH>"
+#results_wd <- "<OUTPUT_DIR_PATH>"
 #results_name <- "segmentation_data.R"
 
 

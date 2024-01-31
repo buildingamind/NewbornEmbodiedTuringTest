@@ -25,8 +25,8 @@ parser.add_argument("--key-csv", type=str, dest="key_csv",
 def build_r_script_for_merge(args):
     """
     Build R script cmd for MERGE
-    --logs-dir /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/ 
-    --results-dir /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/ 
+    --logs-dir <INPUT_DATA_PATH> 
+    --results-dir <OUTPUT_DATA_PATH> 
     --results-name 'data'
 
     Args:
@@ -46,8 +46,8 @@ def build_r_script_for_merge(args):
     return cmd, "NETT_merge_csvs.R"
 
 def build_r_script_for_train(args):
-    """Rscript NETT_train_viz.R --data-loc /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/data 
-    --results-wd /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/ --ep-bucket "100"
+    """Rscript NETT_train_viz.R --data-loc <INPUT_DATA_PATH>
+    --results-wd <OUTPUT_DATA_PATH> --ep-bucket "100"
 
     Args:
         args (_type_): _description_
@@ -67,9 +67,9 @@ def build_r_script_for_train(args):
     return cmd, script_name
 
 def build_r_script_for_test(args):
-    """Rscript NETT_test_viz.R --data-loc /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/data 
+    """Rscript NETT_test_viz.R --data-loc <INPUT_DATA_PATH> 
     --key-csv segmentation_key_new.csv 
-    --results-wd /data/mchivuku/embodiedai/benchmark_experiments/ship/backgroundA/small/ 
+    --results-wd <OUTPUT_DATA_PATH>
     --color-dots T 
 
     Args:
