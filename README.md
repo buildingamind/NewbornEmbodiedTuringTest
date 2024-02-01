@@ -70,13 +70,25 @@ After having followed steps above, NETTs can be run with a few lines of code:
 
 1. Download the executable from the hosted webpage or build your own executable following the steps mentioned in {placeholder}. Additionally, a video walkthrough of creating an executable from scratch is made available {here}. 
 
-2. The package defines three components–the `Brain`, `Body` and `Environment`. For a detailed description of the division of responsibilities of each component, please refer to the {documentation}. 
+2. If you are running the code on a machine without a display (i.e. a server), you will need to install a virtual display. This can be done using the following command:
+```
+export DISPLAY=:0
+```
+
+3. The package defines three components: `Brain`, `Body` and `Environment`. For a detailed description of the division of responsibilities of each component, please refer to the {documentation}. 
 ```
 from netts import Brain, Body, Environment
 from netts import NETT
 ```
 
-3. Define each component as required. Let’s start with the `Brain`. This component holds all the parts concerned with “learning”. This includes the architecture itself along with its many parameters, as well as the reward function and learning algorithm, such as `PPO`. The package is designed to make each component flexible. Specifically, each constituent of the Brain such as the encoder, policy networks or the reward function can be customized. The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the documentation. 
+4. Define each component as required. 
+  - `Brain`: holds all the parts concerned with _learning_. This includes:
+    - the architecture itself along with its many parameters
+    - the reward function
+    - learning algorithm (such as `PPO`) 
+
+ Specifically, each constituent of the Brain such as the `encoder`, `policy networks` or the `reward function` can be customized. 
+ The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the {documentation}. 
 
 Consider a rather simple definition: 
 ```
@@ -85,7 +97,7 @@ brain = Brain(policy="CnnPolicy", algorithm="PPO")
 
 This defines the policy network and the learning algorithm, the rest of the arguments are left to defaults. Please refer to the repository for a complete list of supported arguments and customizations. This document will be updated with appropriate links to tutorials planned as part of future releases too. Note that the repository uses modules from `stable-baselines3` underneath and the value specified as arguments directly correspond with it. 
 
-4. Next, define the `Body`. Technically, the body is a medium through which all information passes through before reaching the brain. Hence, this component is primarily concerned with the application of `gym.Wrappers` (such as the DVS wrapper) that modify the information from the environment before they “reach” the brain for processing. 
+5. Next, define the `Body`. Technically, the body is a medium through which all information passes through before reaching the brain. Hence, this component is primarily concerned with the application of `gym.Wrappers` (such as the DVS wrapper) that modify the information from the environment before they “reach” the brain for processing. 
 
 Consider a simple definition: 
 ```
@@ -96,13 +108,13 @@ In this example, we do not pass any wrappers. Or, we let the information from th
 
 While the `Body` abstraction is thin and mostly conceptual as of now, different types of agents (`two-eyed`, `rag-doll`) with complex action spaces are planned which lead to `Body` taking on more sophisticated customization. 
 
-5. The `Environment` component constructs a live environment (via the Python `mlagents` library) which is then wrapped inside a `Gym` environment. Since this is part of the environment initialization, the wrapping is not included as part of the `Body` component, but kept within the `Environment`. The definition takes an executable path which must be available on the system. 
+6. The `Environment` component constructs a live environment (via the Python `mlagents` library) which is then wrapped inside a `Gym` environment. Since this is part of the environment initialization, the wrapping is not included as part of the `Body` component, but kept within the `Environment`. The definition takes an executable path which must be available on the system. 
 ```
 # a valid Unity executable downloaded from {} must be present at `executable_path`
 environment = Environment(config="identityandview", executable_path=executable_path)
 ```
 
-6. For a full list of the NETT configs available, one can simply do the following. 
+7. For a full list of the NETT configs available, one can simply do the following. 
 ```
 from netts.environment.configs import list_configs
 list_configs()
@@ -113,18 +125,18 @@ Similar analogues for listing the encoders, policies, algorithms are also availa
 from netts.brain import list_algorithms, list_policies, list_encoders
 ```
 
-7. In order to orchestrate the benchmarking, all three components are brought together under one umbrella, the `NETT` object. This allows for storing details of the runs, serving as a reproducible artifact, automatic distribution of runs with different imprinting conditions, central logging, among other things. 
+8. In order to orchestrate the benchmarking, all three components are brought together under one umbrella, the `NETT` object. This allows for storing details of the runs, serving as a reproducible artifact, automatic distribution of runs with different imprinting conditions, central logging, among other things. 
 ```
 nett = NETT(brain=brain, body=body, environment=environment)
 ```
 
-7. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
+9. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
 
 ```
 run = netts.run(dir=run_dir, num_brains=5, trains_eps=10)
 ```
 
-8. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 
+10. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 
 ```
 nett.status(job_sheet)
 ```
