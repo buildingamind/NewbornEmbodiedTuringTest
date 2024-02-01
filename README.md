@@ -81,14 +81,7 @@ from netts import Brain, Body, Environment
 from netts import NETT
 ```
 
-4. Define each component as required. 
-  - `Brain`: holds all the parts concerned with _learning_. This includes:
-    - the architecture itself along with its many parameters
-    - the reward function
-    - learning algorithm (such as `PPO`) 
-
- Specifically, each constituent of the Brain such as the `encoder`, `policy networks` or the `reward function` can be customized. 
- The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the {documentation}. 
+3. Define each component as required. Let’s start with the `Brain`. This component holds all the parts concerned with “learning”. This includes the architecture itself along with its many parameters, as well as the reward function and learning algorithm, such as `PPO`. The package is designed to make each component flexible. Specifically, each constituent of the Brain such as the encoder, policy networks or the reward function can be customized. The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the documentation. 
 
 Consider a rather simple definition: 
 ```
