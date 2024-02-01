@@ -4,7 +4,7 @@ import os
 import numpy as np
 import subprocess
 
-from typing import Any
+from typing import Any, Optional
 from netts.environment.configs import NETTConfig, list_configs
 from netts.environment import configs
 from netts.utils.environment import Logger, port_in_use
@@ -68,7 +68,7 @@ class Environment(Wrapper):
     # TO DO (v0.3) Critical refactor, don't like how this works, extremely error prone.  
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TO DO (v0.3) fix random_pos logic inside of Unity code
-    def initialize(self, **kwargs) -> Environment:
+    def initialize(self, mode: str, **kwargs) -> Environment:
         # from environment arguments
         args = []
         if self.recording_frames:
@@ -80,7 +80,7 @@ class Environment(Wrapper):
 
         # from runtime
         if kwargs.get('mode', None):
-            args.extend(["--mode", kwargs['mode']])
+            args.extend(["--mode", f"{mode}-{kwargs['mode']}"])
         if kwargs.get('rec_path', None):
             args.extend(["--log-dir", f"{kwargs['rec_path']}/"])
         # needs to fixed in Unity code where the default is always false
@@ -98,8 +98,7 @@ class Environment(Wrapper):
             self.base_port += 1
 
         # create logger
-        self.log = Logger(f"{kwargs['run_id']}-{'train' if kwargs['mode'].split('-')[0] != 'test' else 'test'}", 
-                          log_dir=f"{kwargs['log_path']}/")
+        self.log = Logger(f"{kwargs['mode']}-{kwargs['run_id']}-{mode}", log_dir=f"{kwargs['log_path']}/")
         
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)

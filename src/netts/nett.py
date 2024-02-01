@@ -77,6 +77,10 @@ class NETT:
         filtered_job_sheet = [self._filter_job_record(job_record, selected_columns) for job_record in job_sheet]
         return pd.json_normalize(filtered_job_sheet)
 
+    def analyze(self):
+        
+        raise NotImplementedError
+
     def _schedule_jobs(self):
         # get the free memory status for each device in list
         free_device_memory = {device: memory_status['free'] for device, memory_status in self._get_memory_status().items()}
@@ -138,13 +142,14 @@ class NETT:
         kwargs = {'rewarded': True if self.brain.reward else False, 
                   'rec_path': str(job['paths']['env_recs']), 
                   'log_path': str(job['paths']['env_logs']), 
+                  'mode': str(job['mode']),
                   'run_id': str(job['brain_id'])}
         
         # for train
         if self.mode in ["train", "full"]:
             # initialize environment with necessary arguments
             train_environment = deepcopy(job['environment'])
-            train_environment.initialize(mode=f"train-{job['mode']}", **kwargs)
+            train_environment.initialize(mode="train", **kwargs)
             # apply wrappers (body)
             train_environment = job['body'](train_environment)
             # train
@@ -158,7 +163,7 @@ class NETT:
         if self.mode in ["test", "full"]:
             # initialize environment with necessary arguments
             test_environment = deepcopy(job['environment'])
-            test_environment.initialize(mode=f"test-{job['mode']}", **kwargs)
+            test_environment.initialize(mode="test", **kwargs)
             # apply wrappers (body)
             test_environment = job['body'](test_environment)
             # test
@@ -234,46 +239,3 @@ class NETT:
     # generate toml file and save to run directory
     def summary():
         raise NotImplementedError
-
-    
-    # not sure why this is needed
-    # can i just delete this?
-    # def steps_from_eps(self, eps):
-    #     if "rest" in self.mode:
-    #         return self.step_per_episode * eps
-    #     else:
-    #         return self.step_per_episode * eps * self.num_conditions
-
-    # def total_number_of_test_eps(self, eps):
-    #     return self.num_conditions * eps
-
-    # slowness_run_id
-
-
-    # Job(brain, body, environment, mode, brain_id, device)
-    # job.create_dirs():
-        # create internal structure such as Brains, Env_Logs, Recordings
-    # job.execute():
-        # single execution
-        # brain.
-
-
-        # with ProcessPoolExecutor(max_workers) as executor:
-        #     future_to_job = {}
-        #     for job in jobs:
-        #         future_to_job[executor.submit(self._execute_job, job)] = job
-        #         time.sleep(1)
-        #     for future in as_completed(future_to_job):
-        #         job = future_to_job[future]
-        #         try:
-        #             data = future.result()
-        #         except Exception as exc:
-        #             print('%r generated an exception: %s' % (job['brain_id'], exc))
-
-            # future_to_job = {executor.submit(self._execute_job, job): job for job in jobs}
-            # for future in as_completed(future_to_job):
-            #     job = future_to_job[future]
-            #     try:
-            #         data = future.result()
-            #     except Exception as exc:
-            #         print('%r generated an exception: %s' % (job, exc))
