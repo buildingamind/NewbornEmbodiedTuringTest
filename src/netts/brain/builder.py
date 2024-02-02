@@ -70,7 +70,7 @@ class Brain:
                                     envs, 
                                     batch_size=self.batch_size,
                                     n_steps=self.buffer_size,
-                                    verbose=1, 
+                                    verbose=0, 
                                     policy_kwargs=policy_kwargs, 
                                     device=torch.device(device_type, device))
 
@@ -84,11 +84,11 @@ class Brain:
             self.logger.info(f'Encoder training is set to {str(self.train_encoder).upper()}')
 
         # initialize callbacks
-        save_best_model_callback = SupervisedSaveBestModelCallback(summary_freq=2100,  
+        save_best_model_callback = SupervisedSaveBestModelCallback(summary_freq=30000,  
                                                                    save_dir=paths['model'],
                                                                    env_log_path=paths['env_logs'])
         hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(save_freq=2100,
+        checkpoint_callback = CheckpointCallback(save_freq=30000,
                                                  save_path=paths["checkpoints"],
                                                  name_prefix=self.algorithm.__name__,
                                                  save_replay_buffer=True,

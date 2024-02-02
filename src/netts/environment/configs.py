@@ -4,18 +4,17 @@ import inspect
 from abc import ABC, abstractmethod
 from itertools import product
 
-# TO DO: v0.3 change modes (picked up from legacy) to specs or conditions or similiar
 # the naming is confusing since it is used for train or test too. 
 class NETTConfig(ABC):
     def __init__(self, param_defaults: dict[str, str], **params) -> None:
         self.param_defaults = param_defaults
         self.params = self._validate_params(params)
-        self.modes = self._create_modes_from_params(self.params)
+        self.conditions = self._create_conditions_from_params(self.params)
 
-    def _create_modes_from_params(self, params: dict[str, str]) -> list[str]:
+    def _create_conditions_from_params(self, params: dict[str, str]) -> list[str]:
         combination_params = list(product(*params.values()))
-        modes = ['-'.join(combination).lower() for combination in combination_params]
-        return modes
+        conditions = ['-'.join(combination).lower() for combination in combination_params]
+        return conditions
     
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:
         # add a list if a param has a singleton value (to make sure it works with itertools.product())
