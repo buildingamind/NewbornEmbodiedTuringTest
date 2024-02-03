@@ -7,11 +7,8 @@
 # NOTE: For ease of use across many different experimental designs, 
 # this script assumes that all files use a common naming scheme with the 
 # following criteria:
-# 1) The conditions are specified at the beginning of the filename
-# 2) The conditions are followed by a dash
-# 3) There are no other dashes in the name
-# 4) The agent ID number is the only number in the file name
-# 5) The filename ends with either train.csv or test.csv
+# 1) The agent ID number is the only number in the file name
+# 2) The filename ends with either train.csv or test.csv
 # for example "fork_side-agent3_train.csv"
 
 
@@ -83,9 +80,9 @@ read_data <- function(filename)
     mutate(right.monitor = sub(" ", "", right.monitor)) %>%
     ungroup()
   
-  # Add columns for original filename, agent ID number, and imprinting condition
+  # Add columns for original filename and agent ID number
   data$filename <- basename(filename)
-  data$agent <- gsub("\\D", "", data$filename)
+  data$agent <- gsub("\\D", "", data$filename) # Only keep the number
 
   return(data)
 }
