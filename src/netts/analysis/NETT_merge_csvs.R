@@ -86,7 +86,6 @@ read_data <- function(filename)
   # Add columns for original filename, agent ID number, and imprinting condition
   data$filename <- basename(filename)
   data$agent <- gsub("\\D", "", data$filename)
-  data$imprinting <- strsplit(basename(filename), "-")[[1]][1]
 
   return(data)
 }

@@ -41,7 +41,7 @@ train_data_fixed <- train_data %>%
   mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps)) %>%
   # Summarise data by condition, agent, and episode bucket for graphing
   mutate(episode_block = Episode%/%ep_bucket_size + 1) %>%
-  group_by(imprinting, agent, episode_block) %>%
+  group_by(imprint.cond, agent, episode_block) %>%
   summarise(avgs = mean(percent_correct, na.rm = TRUE),
             sd = sd(percent_correct, na.rm = TRUE),
             count = length(percent_correct)) %>%
@@ -54,10 +54,10 @@ train_data_fixed <- train_data %>%
 
 # Plot line graphs by imprinting condition -------------------------------------
 
-for (cond in unique(train_data_fixed$imprinting))
+for (cond in unique(train_data_fixed$imprint.cond))
 {
   data <- train_data_fixed %>%
-    filter(imprinting == cond)
+    filter(imprint.cond == cond)
   
   ggplot(data=data, aes(x=episode_block, y=avgs, color=as.factor(agent))) +
     geom_line() +
