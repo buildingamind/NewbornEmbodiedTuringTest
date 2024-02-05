@@ -1,0 +1,44 @@
+name: Python Lint
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - lint
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.10.12  
+            # Install your linters here
+
+      - name: Change setuptools version
+        run: pip install setuptools==65.5.0
+
+      - name: Change pip version
+        run: pip install pip==21
+
+      - name: Install pylint
+        run: pip install pylint
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Linter
+        uses: wearerequired/lint-action@v2
+        with:
+          pylint: true
+          # Enable your linters here
