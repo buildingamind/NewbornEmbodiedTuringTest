@@ -5,3 +5,4 @@ imageio-ffmpeg
 torchvision
 scipy
 timm
+nvidia-ml-py
