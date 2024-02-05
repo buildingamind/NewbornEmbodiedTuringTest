@@ -1,0 +1,46 @@
+name: Run Python script
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+      - tests
+  pull_request:
+    branches:
+      - main
+      - dev
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.10.12
+
+    - name: Change setuptools version
+      run: pip install setuptools==65.5.0
+
+    - name: Change pip version
+      run: pip install pip==21
+
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+
+    - name: Export display
+      run: export DISPLAY=:0
+
+    - name: Run script
+      run: python tests/test.py
+
+    - name: Check output
+      run: ls tests/output
+
+    - name: Print output
+      run: cat tests/output/*
