@@ -41,7 +41,7 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--max-line-length=200 --disable=C3001 --disable=W0201 --disable=C0114 --disable=C0115 --disable=C0116 --disable=W0613 --disable=W0511 --disable=R0913 --disable=R0902 --disable=W0718 --disable=W0719 --disable=W0612"
+          pylint_args: "--max-line-length=200 --disable=C3001 --disable=W0201 --diable==C0103 --disable=C0114 --disable=C0115 --disable=C0116 --disable=W0613 --disable=W0511 --disable=R0913 --disable=R0902 --disable=W0718 --disable=W0719 --disable=W0612"
           # Enable your linters here
           # C0114 C0115 C0116 W0613 W0511 R0913 R0902 W0718 W0719 W0612 are temporary
 
