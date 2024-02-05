@@ -7,26 +7,26 @@ def compute_train_performance(path):
     x,y = [], []
     try:
         training_files = glob.glob(os.path.join(path, "*.csv"))
-        
+
         if len(training_files) == 0:
             raise Exception(f"Training file: {training_files} was not found in the {path}")
-        
-        
+
+
         for file_name in training_files:
-            
+
             log_df = pd.read_csv(file_name, skipinitialspace=True)
-            
+
             percents,df,values = average_in_episode_three_region(log_df,"agent.x")
             y = moving_average(values, window=100)
             x = list([i for i in range(0,len(y))])
-            
+
             break
-            
-        
+
+
         return x, y
     except Exception as ex:
         print(str(ex))
-        
+
     return x,y
 
 def average_in_episode_three_region(log,column='agent.x',transient=90):
@@ -63,12 +63,12 @@ def average_in_episode_three_region(log,column='agent.x',transient=90):
         rv = []
         for key in percents:
             rv.append(percents[key])
-        
+
         return (percents,log,rv)
     except Exception as ex:
         print(str(ex))
         return (None, None)
-    
+
 def moving_average(values, window):
     """
     Smooth values by doing a moving average

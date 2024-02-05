@@ -22,7 +22,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
-          python-version: 3.10.12  
+          python-version: 3.10.12
             # Install your linters here
 
       - name: Change setuptools version

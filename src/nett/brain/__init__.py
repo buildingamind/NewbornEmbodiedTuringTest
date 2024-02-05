@@ -37,7 +37,7 @@ def get_encoder_dict():
     # iterate through all files in the directory
     for encoder_path in encoder_dir.iterdir():
         if encoder_path.suffix == '.py' and "__" not in str(encoder_path):
-            module_name = encoder_path.stem 
+            module_name = encoder_path.stem
             # read the source
             with open(encoder_path) as f:
                 source = f.read()
@@ -51,12 +51,12 @@ def get_encoder_dict():
 
 # TO DO (v0.3) return all available encoder classes programmatically
 # def get_encoder_dict():
-#     return {'cnnlstm': 'CNNLSTM', 
-#             'cotracker': 'CoTracker', 
+#     return {'cnnlstm': 'CNNLSTM',
+#             'cotracker': 'CoTracker',
 #             'dinov1': 'DinoV1',
 #             'dinov2': 'DinoV2',
 #             'vit': 'ViT',
-#             'resnet18': 'Resnet18CNN', 
-#             'sam': 'SegmentAnything', 
+#             'resnet18': 'Resnet18CNN',
+#             'sam': 'SegmentAnything',
 #             'rnd': 'RND'}
 encoder_dict = get_encoder_dict()

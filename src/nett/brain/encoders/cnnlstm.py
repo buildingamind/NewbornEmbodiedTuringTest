@@ -17,12 +17,12 @@ class CNNLSTM(BaseFeaturesExtractor):
     :param features_dim: (int) Number of features extracted.
         This corresponds to the number of unit for the last layer.
     """
-    def __init__(self, observation_space: gym.spaces.Box, 
+    def __init__(self, observation_space: gym.spaces.Box,
                   features_dim: int = 256):
         rnn_hidden_size = 100
         rnn_num_layers = 1
         super(CNNLSTM, self).__init__(observation_space, features_dim)
-        
+
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
         n_input_channels = observation_space.shape[0]
@@ -46,20 +46,20 @@ class CNNLSTM(BaseFeaturesExtractor):
                             num_layers = 2, batch_first = True)
         # outputs
         self.linear = nn.Sequential(nn.Linear(hidden_size, features_dim), nn.ReLU())
-        
-        
+
+
     def forward(self, observations: th.Tensor) :
         """
         observations = observations.unsqueeze(0)
-        
+
         batch_size, seq_length, c, h, w = observations.shape
         ii = 0
         y = self.cnn((observations[:,ii]))
-        
+
         #outputs = [sen_len, batch_size, hid_dim * n_directions]
         out, (hn, cn) = self.lstm(y.unsqueeze(1))
-        out = self.linear(out[:,-1]) 
-        
+        out = self.linear(out[:,-1])
+
         Args:
             observations (th.Tensor): _description_
 
@@ -68,22 +68,22 @@ class CNNLSTM(BaseFeaturesExtractor):
         """
         x = observations # original shape -> (length, batchsize, obs_size)
         T,B, *_ = x.shape
-        
+
         # Pass through CNN layers
         x = self.cnn(x)
-        
+
         # Flatten the output for LSTM
         x = x.view(x.size(0), x.size(1), -1)
-        
+
         # Pass through LSTM layer
         x, _ = self.lstm(x)
-        
+
         # Get the last time step's output and apply the fully connected layer
         x = self.linear(x[:, -1, :])
-        
-        return x 
 
-    
+        return x
+
+
 
 class Identity(nn.Module):
     def __init__(self):

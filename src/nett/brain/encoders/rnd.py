@@ -18,12 +18,12 @@ class RND(nn.Module):
 
     Returns:
         Encoder instance.
-        
+
     """
-    
+
     def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int) -> None:
         super().__init__()
-        
+
         ## visual
         self.main = nn.Sequential(
             nn.Conv2d(obs_shape[0], 32, kernel_size = 3, stride = 2, padding = 1),
@@ -36,13 +36,13 @@ class RND(nn.Module):
             nn.ELU(),
             nn.Flatten()
         )
-        
+
         with th.no_grad():
             sample = th.ones(size = tuple(obs_shape))
             n_flatten = self.main(sample.unsqueeze(0)).shape[1]
-        
+
         self.linear = nn.Linear(n_flatten, latent_dim)
-        
+
     def forward(self, obs: th.Tensor) -> th.Tensor:
         """Encode the input tensors
 
@@ -53,9 +53,8 @@ class RND(nn.Module):
             Encoding tensors
         """
         return self.linear(self.main(obs))
-    
-    
-    
-        
-     
-    
+
+
+
+
+

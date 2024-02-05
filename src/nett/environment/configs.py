@@ -4,7 +4,7 @@ import inspect
 from abc import ABC, abstractmethod
 from itertools import product
 
-# the naming is confusing since it is used for train or test too. 
+# the naming is confusing since it is used for train or test too.
 class NETTConfig(ABC):
     def __init__(self, param_defaults: dict[str, str], **params) -> None:
         self.param_defaults = param_defaults
@@ -15,14 +15,14 @@ class NETTConfig(ABC):
         combination_params = list(product(*params.values()))
         conditions = ['-'.join(combination).lower() for combination in combination_params]
         return conditions
-    
+
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:
         # add a list if a param has a singleton value (to make sure it works with itertools.product())
         params = {param: (value if isinstance(value, list) else [value]) for param, value in params.items()}
         # typecast values to str
         params = {param: [str(item) for item in value] for param, value in params.items()}
         return params
-    
+
     def _validate_params(self, params: dict[str, str]):
         params = self._normalize_params(params)
         for (values, default_values) in zip(params.values(), self.param_defaults.values()):
@@ -36,7 +36,7 @@ class NETTConfig(ABC):
     @property
     def defaults(self):
         signature = inspect.signature(self.__init__)
-        return {param: value.default for param, value in signature.parameters.items() 
+        return {param: value.default for param, value in signature.parameters.items()
                 if value.default is not inspect.Parameter.empty}
 
     @property
@@ -50,10 +50,10 @@ class IdentityAndView(NETTConfig):
     NETT description goes here
     """
     def __init__(self,
-                 object: str | list[str] = ['object1', 'object2'], 
+                 object: str | list[str] = ['object1', 'object2'],
                  rotation: str | list[str] = ['horizontal', 'vertical']) -> None:
-        super().__init__(param_defaults=self.defaults, 
-                         object=object, 
+        super().__init__(param_defaults=self.defaults,
+                         object=object,
                          rotation=rotation)
 
     @property
@@ -67,7 +67,7 @@ class Binding(NETTConfig):
     """
     def __init__(self,
                  object: str | list[str] = ['object1', 'object2']) -> None:
-        super().__init__(param_defaults=self.defaults, 
+        super().__init__(param_defaults=self.defaults,
                          object=object)
 
     @property
@@ -79,10 +79,10 @@ class Parsing(NETTConfig):
     NETT description goes here
     """
     def __init__(self,
-                 background: str | list[str] = ['A', 'B', 'C'], 
+                 background: str | list[str] = ['A', 'B', 'C'],
                  object: str | list[str] = ['ship', 'fork']) -> None:
-        super().__init__(param_defaults=self.defaults, 
-                         background=background, 
+        super().__init__(param_defaults=self.defaults,
+                         background=background,
                          object=object)
 
     @property
@@ -94,10 +94,10 @@ class Slowness(NETTConfig):
     NETT description goes here
     """
     def __init__(self,
-                 experiment: str | list[int] = [1, 2], 
+                 experiment: str | list[int] = [1, 2],
                  object: str | list[str] = ['obj1', 'obj2'],
                  speed: str | list[str] = ['slow', 'med', 'fast']) -> None:
-        super().__init__(param_defaults=self.defaults, 
+        super().__init__(param_defaults=self.defaults,
                          experiment=experiment,
                          object=object,
                          speed=speed)
@@ -116,7 +116,7 @@ class Smoothness(NETTConfig):
     def __init__(self,
                  object: str | list[str] = ['obj1'],
                  temporal: str | list[str] = ['norm', 'scram']) -> None:
-        super().__init__(param_defaults=self.defaults, 
+        super().__init__(param_defaults=self.defaults,
                          object=object,
                          temporal=temporal)
 
@@ -130,9 +130,9 @@ class OneShotViewInvariant(NETTConfig):
     """
     def __init__(self,
                  object: str | list[str] = ['fork', 'ship'],
-                 range: str | list[str] = ['360', 'small', '1'], 
+                 range: str | list[str] = ['360', 'small', '1'],
                  view: str | list[str] = ['front', 'side']) -> None:
-        super().__init__(param_defaults=self.defaults, 
+        super().__init__(param_defaults=self.defaults,
                          object=object,
                          range=range,
                          view=view)
@@ -140,7 +140,7 @@ class OneShotViewInvariant(NETTConfig):
     @property
     def num_conditions(self):
         return 50
-    
+
 
 # get all available NETT configs
 def list_configs() -> set[str]:

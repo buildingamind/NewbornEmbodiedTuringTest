@@ -25,38 +25,38 @@ class CoTracker(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         super(CoTracker, self).__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
-        
-        
-        self.transforms = Compose([Resize(size=256, 
-                                          interpolation=InterpolationMode.BICUBIC, 
-                                          max_size=None, 
+
+
+        self.transforms = Compose([Resize(size=256,
+                                          interpolation=InterpolationMode.BICUBIC,
+                                          max_size=None,
                                           antialias=True),
                                    CenterCrop(size=(224, 224)),
-                                   Normalize(mean=th.tensor([0.485, 0.456, 0.406]), 
+                                   Normalize(mean=th.tensor([0.485, 0.456, 0.406]),
                                              std=th.tensor([0.229, 0.224, 0.225]))])
-        
-        
+
+
         n_input_channels = observation_space.shape[0]
         print("N_input_channels", n_input_channels)
-        
+
         model = th.hub.load("facebookresearch/co-tracker", "cotracker_w8")
         modules = []
         for name, layer in model.named_modules():
             if name == 'model.fnet':
                 modules.append(layer)
-                
+
         self.cnn = (th.nn.Sequential(*modules))
         self.linear = th.nn.Sequential(th.nn.Linear(128*16*16, 512),
                                             th.nn.ReLU())
-        
+
         #dummy_x = th.zeros((1, 1, 3, 64, 64))
         #conv_out_size = (self.model(dummy_x))
         #pdb.set_trace()
         ## remove classifier
         #self.model = th.nn.Sequential(OrderedDict([*(list(model.named_children())[:-1])]))
-        
-        
-        
+
+
+
     def forward(self, observations: th.Tensor) -> th.Tensor:
         # Cut off image
         # reshape to from vector to W*H

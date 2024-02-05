@@ -19,19 +19,19 @@ class NETT:
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
-        self.environment = environment     
-        # for NVIDIA memory management   
+        self.environment = environment
+        # for NVIDIA memory management
         nvmlInit()
 
-    def run(self, 
+    def run(self,
             dir: Path | str,
-            num_brains: int = 1, 
-            mode: str = "full", 
-            train_eps: int = 1000, 
-            test_eps: int = 20, 
+            num_brains: int = 1,
+            mode: str = "full",
+            train_eps: int = 1000,
+            test_eps: int = 20,
             device_type: str = "cuda",
-            devices: list[int] | int =  -1, 
-            description: str = None, 
+            devices: list[int] | int =  -1,
+            description: str = None,
             buffer: float = 1.2,
             step_per_episode: int = 200,
             verbosity: int = 0,
@@ -61,10 +61,10 @@ class NETT:
         # launch jobs
         self.logger.info(f"Launching")
         job_sheet = self.launch_jobs(jobs)
-        
+
         # return control back to the user after launching jobs, do not block
         return job_sheet
-    
+
     def launch_jobs(self, jobs: list[dict]) -> list[Future]:
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
@@ -86,7 +86,7 @@ class NETT:
         #         except Exception as exc:
         #             print('%r generated an exception: %s' % (job['brain_id'], exc))
         return job_sheet
-    
+
     def status(self, job_sheet: dict[Future, dict]) -> pd.DataFrame:
         selected_columns = ['brain_id', 'condition', 'device']
         filtered_job_sheet = [self._filter_job_record(job_record, selected_columns) for job_record in job_sheet]
@@ -97,9 +97,9 @@ class NETT:
     # Discussion v0.3 is print okay or should we have it log using nett' logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
     @staticmethod
-    def analyze(run_dir: str | Path, 
-                output_dir: str | Path | None = None, 
-                ep_bucket: int = 100, 
+    def analyze(run_dir: str | Path,
+                output_dir: str | Path | None = None,
+                ep_bucket: int = 100,
                 num_episodes: int = 1000):
         # set paths
         run_dir = Path(run_dir).resolve()
@@ -115,32 +115,32 @@ class NETT:
 
         # merge
         print(f"Running merge")
-        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_merge_csvs.R')), 
-                        '--logs-dir', str(run_dir), 
+        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_merge_csvs.R')),
+                        '--logs-dir', str(run_dir),
                         '--results-dir', str(output_dir),
                         '--results-name', 'analysis_data',
-                        '--csv-train', 'train_results.csv', 
+                        '--csv-train', 'train_results.csv',
                         '--csv-test', 'test_results.csv'])
-        
+
         # train
         print(f"Running analysis for [train]")
-        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_train_viz.R')), 
-                        '--data-loc', str(output_dir.joinpath('analysis_data')), 
+        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_train_viz.R')),
+                        '--data-loc', str(output_dir.joinpath('analysis_data')),
                         '--results-wd', str(output_dir),
                         '--ep-bucket', str(ep_bucket),
                         '--num-episodes', str(num_episodes)])
 
         # test
         print(f"Running analysis for [test]")
-        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_test_viz.R')), 
-                        '--data-loc', str(output_dir.joinpath('analysis_data')), 
+        subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_test_viz.R')),
+                        '--data-loc', str(output_dir.joinpath('analysis_data')),
                         '--results-wd', str(output_dir),
                         '--key-csv', str(analysis_dir.joinpath('Keys', 'segmentation_key_new.csv')),
-                        '--color-bars', 'true', 
+                        '--color-bars', 'true',
                         '--chick-file', str(analysis_dir.joinpath('ChickData', 'ChickData_Parsing.csv'))])
-        
+
         print(f"Analysis complete. See results at {output_dir}")
-                        
+
     def _schedule_jobs(self):
         # get the free memory status for each device in list
         free_device_memory = {device: memory_status['free'] for device, memory_status in self._get_memory_status().items()}
@@ -151,7 +151,7 @@ class NETT:
         # create jobs
         task_list = list(product(self.environment.config.conditions, list(range(1, self.num_brains + 1))))
         # assign devices based on memory to a condition and brain combination
-        # TO DO (v0.5) what's better than a loop / brute force here? 
+        # TO DO (v0.5) what's better than a loop / brute force here?
         # TO DO (v0.3) replace explicit loop with .map() if does not sacrifice readability
         jobs = []
         # brute force iterate through devices
@@ -174,23 +174,23 @@ class NETT:
         if task_list:
             raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
         return jobs
-    
+
     def _create_job(self, device: int, condition: str, brain_id: int) -> dict:
         # creates brain, env copies for a job
         brain_copy = deepcopy(self.brain)
 
-        # configure paths for the job 
+        # configure paths for the job
         paths = self._configure_job_paths(condition=condition, brain_id=brain_id)
 
         # create job
-        return {'brain': brain_copy, 
-                'environment': self.environment, 
-                'body': self.body, 
-                'device': device, 
+        return {'brain': brain_copy,
+                'environment': self.environment,
+                'body': self.body,
+                'device': device,
                 'condition': condition,
                 'brain_id': brain_id,
                 'paths': paths}
-    
+
     def _configure_job_paths(self, condition: str, brain_id: int) -> dict:
         subdirs = ['model', 'checkpoints', 'plots', 'logs', 'env_recs', 'env_logs']
         job_dir = Path.joinpath(self.run_dir, condition, f'brain_{brain_id}')
@@ -199,12 +199,12 @@ class NETT:
 
     def _execute_job(self, job: dict[str, Any]) -> Future:
         # common environment kwargs
-        kwargs = {'rewarded': True if self.brain.reward else False, 
-                  'rec_path': str(job['paths']['env_recs']), 
-                  'log_path': str(job['paths']['env_logs']), 
+        kwargs = {'rewarded': True if self.brain.reward else False,
+                  'rec_path': str(job['paths']['env_recs']),
+                  'log_path': str(job['paths']['env_logs']),
                   'condition': str(job['condition']),
                   'run_id': str(job['brain_id'])}
-        
+
         # for train
         if self.mode in ["train", "full"]:
             # initialize environment with necessary arguments
@@ -213,10 +213,10 @@ class NETT:
             # apply wrappers (body)
             train_environment = job['body'](train_environment)
             # train
-            job['brain'].train(env=train_environment, 
-                               iterations=self.step_per_episode * self.train_eps, 
-                               device_type=self.device_type, 
-                               device=job['device'], 
+            job['brain'].train(env=train_environment,
+                               iterations=self.step_per_episode * self.train_eps,
+                               device_type=self.device_type,
+                               device=job['device'],
                                paths=job['paths'])
             return "Job completed successfully"
 
@@ -233,42 +233,42 @@ class NETT:
                 iterations = self.test_eps * test_environment.config.num_conditions
             else:
                 iterations = self.step_per_episode * self.test_eps * job['environment'].config.num_conditions
-            job['brain'].test(env=test_environment, 
-                              iterations=iterations, 
+            job['brain'].test(env=test_environment,
+                              iterations=iterations,
                               model_path=f"{job['paths']['model'].joinpath('latest_model.zip')}")
-            
+
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
-        
+
         return "Job Successfully Concluded"
-    
+
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {'free': memory_status.free, 'used': memory_status.used, 'total': memory_status.total}
-        memory_status = {device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+        memory_status = {device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id)))
                          for device_id in self.devices}
         return memory_status
 
     def _estimate_job_memory(self, device_memory_status: dict) -> int:
         # # get device with the maxmium memory available
-        # max_memory_device = max(device_memory_status, 
+        # max_memory_device = max(device_memory_status,
         #                         key=lambda device: device_memory_status[device].free)
         # # send a dummy job to gauge memory consumption
-        # dummy_job = self._create_job(device=max_memory_device, 
-        #                              mode=random.choice(self.environment.config.modes), 
+        # dummy_job = self._create_job(device=max_memory_device,
+        #                              mode=random.choice(self.environment.config.modes),
         #                              brain_id=-1)
 
         # # send the job
         # self.logger.info("Estimating memory by executing a single job")
-        
+
         # return a hurestic value for now (4GiB per job)
         # multiply to return in bytes
         memory_allocated = 4 * (1024 * 1024 * 1024)
         return memory_allocated
-    
+
     def _filter_job_record(self, job_record: dict, selected_columns: list[str]) -> dict:
         filter_specification = lambda specification: {key: value for key, value in specification.items() if key in selected_columns}
         return {key: (filter_specification(value) if isinstance(value, dict) else value.running()) for key, value in job_record.items()}
-    
+
     def _validate_device_type(self, device_type: str):
         # TO DO (v0.4) add automatic type checking usimg pydantic or similar
         if device_type in ["cuda", "cpu"]:

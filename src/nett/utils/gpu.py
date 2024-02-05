@@ -67,15 +67,15 @@ def safeFloatCast(strNumber):
 
 def getGPUs():
     if platform.system() == "Windows":
-        # If the platform is Windows and nvidia-smi 
-        # could not be found from the environment path, 
+        # If the platform is Windows and nvidia-smi
+        # could not be found from the environment path,
         # try to find it from system drive with default installation path
         nvidia_smi = spawn.find_executable('nvidia-smi')
         if nvidia_smi is None:
             nvidia_smi = "%s\\Program Files\\NVIDIA Corporation\\NVSMI\\nvidia-smi.exe" % os.environ['systemdrive']
     else:
         nvidia_smi = "nvidia-smi"
-	
+
     # Get ID, processing and memory utilization for all GPUs
     try:
         p = Popen([nvidia_smi,"--query-gpu=index,uuid,utilization.gpu,memory.total,memory.used,memory.free,driver_version,name,gpu_serial,display_active,display_mode,temperature.gpu", "--format=csv,noheader,nounits"], stdout=PIPE)
@@ -227,7 +227,7 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                          {'attr':'memoryFree','name':'Memory free','suffix':'MB','precision':0}],
                         [{'attr':'display_mode','name':'Display mode'},
                          {'attr':'display_active','name':'Display active'}]]
-        
+
     else:
         if (useOldCode):
             print(' ID  GPU  MEM')
@@ -240,7 +240,7 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                          {'attr':'load','name':'GPU','suffix':'%','transform': lambda x: x*100,'precision':0},
                          {'attr':'memoryUtil','name':'MEM','suffix':'%','transform': lambda x: x*100,'precision':0}],
                         ]
-        
+
     if (not useOldCode):
         if (attrList is not None):
             headerString = ''
@@ -251,15 +251,15 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                     headerString = headerString + '| ' + attrDict['name'] + ' '
                     headerWidth = len(attrDict['name'])
                     minWidth = len(attrDict['name'])
-                    
+
                     attrPrecision = '.' + str(attrDict['precision']) if ('precision' in attrDict.keys()) else ''
                     attrSuffix = str(attrDict['suffix']) if ('suffix' in attrDict.keys()) else ''
                     attrTransform = attrDict['transform'] if ('transform' in attrDict.keys()) else lambda x : x
                     for gpu in GPUs:
                         attr = getattr(gpu,attrDict['attr'])
-                        
+
                         attr = attrTransform(attr)
-                        
+
                         if (isinstance(attr,float)):
                             attrStr = ('{0:' + attrPrecision + 'f}').format(attr)
                         elif (isinstance(attr,int)):
@@ -271,20 +271,20 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                                 attrStr = attr.encode('ascii','ignore')
                         else:
                             raise TypeError('Unhandled object type (' + str(type(attr)) + ') for attribute \'' + attrDict['name'] + '\'')
-                                            
+
                         attrStr += attrSuffix
-                        
+
                         minWidth = max(minWidth,len(attrStr))
-    
+
                     headerString += ' '*max(0,minWidth-headerWidth)
-                    
+
                     minWidthStr = str(minWidth - len(attrSuffix))
-                    
+
                     for gpuIdx,gpu in enumerate(GPUs):
                         attr = getattr(gpu,attrDict['attr'])
-                        
+
                         attr = attrTransform(attr)
-                        
+
                         if (isinstance(attr,float)):
                             attrStr = ('{0:'+ minWidthStr + attrPrecision + 'f}').format(attr)
                         elif (isinstance(attr,int)):
@@ -296,15 +296,15 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                                 attrStr = ('{0:' + minWidthStr + 's}').format(attr.encode('ascii','ignore'))
                         else:
                             raise TypeError('Unhandled object type (' + str(type(attr)) + ') for attribute \'' + attrDict['name'] + '\'')
-                                            
+
                         attrStr += attrSuffix
-                        
+
                         GPUstrings[gpuIdx] += '| ' + attrStr + ' '
-                                            
+
                 headerString = headerString + '|'
                 for gpuIdx,gpu in enumerate(GPUs):
                     GPUstrings[gpuIdx] += '|'
-                    
+
             headerSpacingString = '-' * len(headerString)
             print(headerString)
             print(headerSpacingString)

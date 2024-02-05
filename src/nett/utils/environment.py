@@ -3,8 +3,8 @@ from mlagents_envs.side_channel.side_channel import (
     IncomingMessage,
     OutgoingMessage,
 )
-import uuid 
-import os 
+import uuid
+import os
 import socket
 
 
@@ -38,7 +38,7 @@ class Logger(SideChannel):
         msg.write_string(data)
         # We call this method to queue the data we want to send
         super().queue_message_to_send(msg)
-    
+
     #This method writes a custom string to the log file
     def log_str(self, msg: str) -> None:
         self.f.write(msg)
