@@ -2,7 +2,7 @@ import time
 import subprocess
 import pandas as pd
 
-from nett import Brain, Body, Environment
+from nett import Brain, Body, Environment, logger
 from nett.utils.io import mute
 from pathlib import Path
 from typing import Any
@@ -15,7 +15,6 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 
 class NETT:
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
-        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
@@ -24,7 +23,7 @@ class NETT:
         nvmlInit()
 
     def run(self,
-            dir: Path | str,
+            output_dir: Path | str,
             num_brains: int = 1,
             mode: str = "full",
             train_eps: int = 1000,
@@ -35,11 +34,11 @@ class NETT:
             buffer: float = 1.2,
             step_per_episode: int = 200,
             verbosity: int = 0,
-            memory_per_brain: float = 0.5):
-        # set up the run_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
-        self.run_dir = Path(dir)
-        self.run_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Set up run directory at: {self.run_dir.resolve()}")
+            memory_per_brain: float = 0.5): # TODO: add memory_per_brain to the run method
+        # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
         # TO DO (v0.3) upgrade to toml format
         # register run config
@@ -56,10 +55,10 @@ class NETT:
 
         # schedule jobs
         jobs = self._schedule_jobs()
-        self.logger.info(f"Scheduled jobs")
+        self.logger.info("Scheduled jobs")
 
         # launch jobs
-        self.logger.info(f"Launching")
+        self.logger.info("Launching")
         job_sheet = self.launch_jobs(jobs)
 
         # return control back to the user after launching jobs, do not block
@@ -114,7 +113,7 @@ class NETT:
         print(output_dir)
 
         # merge
-        print(f"Running merge")
+        print("Running merge")
         subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_merge_csvs.R')),
                         '--logs-dir', str(run_dir),
                         '--results-dir', str(output_dir),
@@ -123,21 +122,21 @@ class NETT:
                         '--csv-test', 'test_results.csv'])
 
         # train
-        print(f"Running analysis for [train]")
+        print("Running analysis for [train]")
         subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_train_viz.R')),
                         '--data-loc', str(output_dir.joinpath('analysis_data')),
                         '--results-wd', str(output_dir),
                         '--ep-bucket', str(ep_bucket),
-                        '--num-episodes', str(num_episodes)])
+                        '--num-episodes', str(num_episodes)], check=True)
 
         # test
-        print(f"Running analysis for [test]")
+        print("Running analysis for [test]")
         subprocess.run(['Rscript', str(analysis_dir.joinpath('NETT_test_viz.R')),
                         '--data-loc', str(output_dir.joinpath('analysis_data')),
                         '--results-wd', str(output_dir),
                         '--key-csv', str(analysis_dir.joinpath('Keys', 'segmentation_key_new.csv')),
                         '--color-bars', 'true',
-                        '--chick-file', str(analysis_dir.joinpath('ChickData', 'ChickData_Parsing.csv'))])
+                        '--chick-file', str(analysis_dir.joinpath('ChickData', 'ChickData_Parsing.csv'))], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 
@@ -193,13 +192,13 @@ class NETT:
 
     def _configure_job_paths(self, condition: str, brain_id: int) -> dict:
         subdirs = ['model', 'checkpoints', 'plots', 'logs', 'env_recs', 'env_logs']
-        job_dir = Path.joinpath(self.run_dir, condition, f'brain_{brain_id}')
+        job_dir = Path.joinpath(self.output_dir, condition, f'brain_{brain_id}')
         paths = {subdir: Path.joinpath(job_dir, subdir) for subdir in subdirs}
         return paths
 
     def _execute_job(self, job: dict[str, Any]) -> Future:
         # common environment kwargs
-        kwargs = {'rewarded': True if self.brain.reward else False,
+        kwargs = {'rewarded': bool(self.brain.reward),
                   'rec_path': str(job['paths']['env_recs']),
                   'log_path': str(job['paths']['env_logs']),
                   'condition': str(job['condition']),
@@ -248,7 +247,7 @@ class NETT:
                          for device_id in self.devices}
         return memory_status
 
-    def _estimate_job_memory(self, device_memory_status: dict) -> int:
+    def _estimate_job_memory(self, device_memory_status: dict) -> int: # TODO Add device_memory_status
         # # get device with the maxmium memory available
         # max_memory_device = max(device_memory_status,
         #                         key=lambda device: device_memory_status[device].free)
@@ -280,22 +279,24 @@ class NETT:
     def _validate_devices(self, devices: list[int] | int):
         if self.device_type == "cpu" and isinstance(devices, list):
             raise ValueError("Custom device lists not supported for 'cpu' device")
+
+        available_devices = list(range(nvmlDeviceGetCount()))
+        if isinstance(devices, list) and len(devices) > nvmlDeviceGetCount():
+            raise ValueError("Custom device lists not supported for 'cpu' device")
+
+        if devices == -1:
+            devices = available_devices
+            self.logger.info(f"Devices that will be used: {devices}")
+        elif isinstance(devices, list):
+            for device in devices:
+                if not isinstance(device, int) or device not in available_devices:
+                    raise ValueError(f"Device [{device}] is invalid. Available devices are: {available_devices}")
+            self.logger.info(f"Devices that will be used: {devices}")
         else:
-            available_devices = list(range(nvmlDeviceGetCount()))
-            if isinstance(devices, list) and len(devices) > nvmlDeviceGetCount():
-                raise ValueError("Custom device lists not supported for 'cpu' device")
-            elif devices == -1:
-                devices = available_devices
-                self.logger.info(f"Devices that will be used: {devices}")
-            elif isinstance(devices, list):
-                for device in devices:
-                    if not isinstance(device, int) or device not in available_devices:
-                        raise ValueError(f"Device [{device}] is invalid. Available devices are: {available_devices}")
-                self.logger.info(f"Devices that will be used: {devices}")
-            else:
-                pass
+            pass
         return devices
 
     # generate toml file and save to run directory
-    def summary():
+    def summary(self):
         raise NotImplementedError
+    

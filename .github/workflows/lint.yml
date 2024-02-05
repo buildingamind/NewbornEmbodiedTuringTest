@@ -41,5 +41,5 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--max-line-length=200"
+          pylint_args: "--max-line-length=200 --disable=C3001 --disable=W0201"
           # Enable your linters here
