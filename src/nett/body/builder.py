@@ -1,5 +1,5 @@
-from netts.body import types
-from netts.body import ascii_art
+from nett.body import types
+from nett.body import ascii_art
 
 from typing import Any
 from gym import Wrapper, Env
@@ -15,7 +15,7 @@ class Body:
     def __init__(self, type: str = "basic", 
                  wrappers: list[Any] | None = None, 
                  dvs: bool = False) -> None:
-        from netts import logger
+        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.type = type
         self.wrappers = self._validate_wrappers(wrappers)

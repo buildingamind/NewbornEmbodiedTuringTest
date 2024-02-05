@@ -15,16 +15,16 @@
 import logging
 from pathlib import Path
 # simplify imports
-from netts.brain.builder import Brain
-from netts.body.builder import Body
-from netts.environment.builder import Environment
-from netts.nett import NETT
+from nett.brain.builder import Brain
+from nett.body.builder import Body
+from nett.environment.builder import Environment
+from nett.nett import NETT
 
 # release version
 __version__ = "0.1"
 
 # path to store library cache (such as configs etc)
-cache_dir = Path.joinpath(Path.home(), '.cache', 'netts')
+cache_dir = Path.joinpath(Path.home(), '.cache', 'nett')
 
 # set up logging
 logging.basicConfig(format='[%(name)s] %(levelname)s:  %(message)s', level=logging.INFO)

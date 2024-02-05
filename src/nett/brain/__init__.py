@@ -3,7 +3,7 @@ import inspect
 import stable_baselines3
 import sb3_contrib
 
-from netts.brain import encoders
+from nett.brain import encoders
 from pathlib import Path
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
