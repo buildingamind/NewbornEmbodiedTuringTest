@@ -39,4 +39,3 @@ class Logger(SideChannel):
     #This is called when the environment is shut down
     def __del__(self):
         self.f.close()
-

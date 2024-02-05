@@ -11,4 +11,3 @@ def write_to_file(file_path, d):
 def mute():
     sys.stdout = open(os.devnull, 'w')
     sys.stderr = open(os.devnull, 'w')
-

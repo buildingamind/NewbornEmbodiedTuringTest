@@ -2,7 +2,6 @@
 import pdb
 import gym
 
-
 import torch as th
 import torch.nn as nn
 import torchvision
@@ -46,4 +45,3 @@ class SegmentAnything(BaseFeaturesExtractor):
         # Concat features to the rest of observation vector
         # return
         return self.model(self.transforms(observations))
-

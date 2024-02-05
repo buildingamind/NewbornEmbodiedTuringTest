@@ -256,5 +256,3 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return "{}({!r})".format(self.__class__.__name__, attrs)
-
-

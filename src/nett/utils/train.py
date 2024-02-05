@@ -18,7 +18,7 @@ def compute_train_performance(path):
 
             percents,df,values = average_in_episode_three_region(log_df,"agent.x")
             y = moving_average(values, window=100)
-            x = list([i for i in range(0,len(y))])
+            x = list(range(0, len(y)))
 
             break
 
@@ -61,8 +61,8 @@ def average_in_episode_three_region(log,column='agent.x',transient=90):
                 percents[ep] = 0.5
 
         rv = []
-        for key in percents:
-            rv.append(percents[key])
+        for val in percents.values():
+            rv.append(val)
 
         return (percents,log,rv)
     except Exception as ex:

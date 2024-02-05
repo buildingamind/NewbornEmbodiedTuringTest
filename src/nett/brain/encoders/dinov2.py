@@ -4,7 +4,6 @@ import torch
 from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, InterpolationMode
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-
 class DinoV2(BaseFeaturesExtractor):
     """
     :param observation_space: (gym.Space)

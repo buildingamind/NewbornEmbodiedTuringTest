@@ -1,17 +1,17 @@
 import time
 import subprocess
-import pandas as pd
-
-from nett import Brain, Body, Environment, logger
-from nett.utils.io import mute
 from pathlib import Path
 from typing import Any
 from copy import deepcopy
 from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future
+
+import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
+from nett import Brain, Body, Environment, logger
+from nett.utils.io import mute
 
 class NETT:
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
@@ -119,7 +119,7 @@ class NETT:
                         '--results-dir', str(output_dir),
                         '--results-name', 'analysis_data',
                         '--csv-train', 'train_results.csv',
-                        '--csv-test', 'test_results.csv'])
+                        '--csv-test', 'test_results.csv'], check=True)
 
         # train
         print("Running analysis for [train]")

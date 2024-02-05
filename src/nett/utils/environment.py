@@ -1,11 +1,11 @@
+import uuid
+import os
+import socket
 from mlagents_envs.side_channel.side_channel import (
     SideChannel,
     IncomingMessage,
     OutgoingMessage,
 )
-import uuid
-import os
-import socket
 
 
 def port_in_use(port):
@@ -47,4 +47,3 @@ class Logger(SideChannel):
     #This is called when the environment is shut down
     def __del__(self):
         self.f.close()
-

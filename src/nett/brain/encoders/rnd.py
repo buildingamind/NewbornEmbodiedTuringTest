@@ -7,7 +7,6 @@ from torch import nn
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-
 class RND(nn.Module):
     """Encoder for encoding observations.
 
@@ -53,8 +52,3 @@ class RND(nn.Module):
             Encoding tensors
         """
         return self.linear(self.main(obs))
-
-
-
-
-

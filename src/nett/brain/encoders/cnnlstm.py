@@ -3,13 +3,11 @@
 import pdb
 import gym
 
-
 import torch as th
 import torch.nn as nn
 import torchvision
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-
 
 class CNNLSTM(BaseFeaturesExtractor):
     """
@@ -47,7 +45,6 @@ class CNNLSTM(BaseFeaturesExtractor):
         # outputs
         self.linear = nn.Sequential(nn.Linear(hidden_size, features_dim), nn.ReLU())
 
-
     def forward(self, observations: th.Tensor) :
         """
         observations = observations.unsqueeze(0)
@@ -82,8 +79,6 @@ class CNNLSTM(BaseFeaturesExtractor):
         x = self.linear(x[:, -1, :])
 
         return x
-
-
 
 class Identity(nn.Module):
     def __init__(self):
