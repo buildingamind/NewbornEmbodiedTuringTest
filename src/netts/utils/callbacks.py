@@ -4,7 +4,7 @@ from pathlib import Path
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
-from netts.utils.train import compute_train_performance
+from nett.utils.train import compute_train_performance
 
 # TO DO (v0.3): refactor needed, especially logging
 class HParamCallback(BaseCallback):
