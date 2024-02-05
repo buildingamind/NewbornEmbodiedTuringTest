@@ -40,7 +40,7 @@ This directory provides three components for building embodied virtual agents. T
 
 ## **Getting Started**
 
-In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs! 
+In this section, you will learn to use the repository to benchmark your first embodied agent with NETT! 
 
 ### **Codebase Installation**
 
@@ -60,7 +60,7 @@ Note if not installing in a virtual environment, the install might fail because 
 
 ### **Running a NETT**
 
-After having followed steps above, NETTs can be run with a few lines of code:
+After having followed steps above, NETT can be run with a few lines of code:
 
 1. Download the executable from the hosted webpage or build your own executable following the steps mentioned in {placeholder}. Additionally, a video walkthrough of creating an executable from scratch is made available {here}. 
 
