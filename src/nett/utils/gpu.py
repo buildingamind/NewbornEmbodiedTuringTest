@@ -121,7 +121,7 @@ def getGPUs():
             elif i == 10:
                 display_mode = vals[i]
             elif i == 11:
-                temp_gpu = safeFloatCast(vals[i]);
+                temp_gpu = safeFloatCast(vals[i])
         GPUs.append(GPU(deviceIds, uuid, gpuUtil, memTotal, memUsed, memFree, driver, gpu_name, serial, display_mode, display_active, temp_gpu))
     return GPUs  # (deviceIds, gpuUtil, memUtil)
 
@@ -141,20 +141,20 @@ def getAvailable(order = 'first', limit=1, maxLoad=0.5, maxMemory=0.5, memoryFre
 
     # Determine, which GPUs are available
     GPUavailability = getAvailability(GPUs, maxLoad=maxLoad, maxMemory=maxMemory, memoryFree=memoryFree, includeNan=includeNan, excludeID=excludeID, excludeUUID=excludeUUID)
-    availAbleGPUindex = [idx for idx in range(0,len(GPUavailability)) if (GPUavailability[idx] == 1)]
+    availAbleGPUindex = [idx for idx in range(0,len(GPUavailability)) if GPUavailability[idx] == 1]
     # Discard unavailable GPUs
     GPUs = [GPUs[g] for g in availAbleGPUindex]
 
     # Sort available GPUs according to the order argument
-    if (order == 'first'):
+    if order == 'first':
         GPUs.sort(key=lambda x: float('inf') if math.isnan(x.id) else x.id, reverse=False)
-    elif (order == 'last'):
+    elif order == 'last':
         GPUs.sort(key=lambda x: float('-inf') if math.isnan(x.id) else x.id, reverse=True)
-    elif (order == 'random'):
+    elif order == 'random':
         GPUs = [GPUs[g] for g in random.sample(range(0,len(GPUs)),len(GPUs))]
-    elif (order == 'load'):
+    elif order == 'load':
         GPUs.sort(key=lambda x: float('inf') if math.isnan(x.load) else x.load, reverse=False)
-    elif (order == 'memory'):
+    elif order == 'memory':
         GPUs.sort(key=lambda x: float('inf') if math.isnan(x.memoryUtil) else x.memoryUtil, reverse=False)
 
     # Extract the number of desired GPUs, but limited to the total number of available GPUs
@@ -174,7 +174,10 @@ def getAvailable(order = 'first', limit=1, maxLoad=0.5, maxMemory=0.5, memoryFre
 
 def getAvailability(GPUs, maxLoad=0.5, maxMemory=0.5, memoryFree=0, includeNan=False, excludeID=[], excludeUUID=[]):
     # Determine, which GPUs are available
-    GPUavailability = [1 if (gpu.memoryFree>=memoryFree) and (gpu.load < maxLoad or (includeNan and math.isnan(gpu.load))) and (gpu.memoryUtil < maxMemory  or (includeNan and math.isnan(gpu.memoryUtil))) and ((gpu.id not in excludeID) and (gpu.uuid not in excludeUUID)) else 0 for gpu in GPUs]
+    GPUavailability = [int((gpu.memoryFree>=memoryFree) and 
+                       (gpu.load < maxLoad or (includeNan and math.isnan(gpu.load))) and 
+                       (gpu.memoryUtil < maxMemory  or (includeNan and math.isnan(gpu.memoryUtil))) and 
+                       ((gpu.id not in excludeID) and (gpu.uuid not in excludeUUID))) for gpu in GPUs] # TODO Clean up
     return GPUavailability
 
 def getFirstAvailable(order = 'first', maxLoad=0.5, maxMemory=0.5, attempts=1, interval=900, verbose=False, includeNan=False, excludeID=[], excludeUUID=[]):
@@ -186,30 +189,29 @@ def getFirstAvailable(order = 'first', maxLoad=0.5, maxMemory=0.5, attempts=1, i
     #        break
     #return firstAvailableGPU
     for i in range(attempts):
-        if (verbose):
+        if verbose:
             print('Attempting (' + str(i+1) + '/' + str(attempts) + ') to locate available GPU.')
         # Get first available GPU
         available = getAvailable(order=order, limit=1, maxLoad=maxLoad, maxMemory=maxMemory, includeNan=includeNan, excludeID=excludeID, excludeUUID=excludeUUID)
         # If an available GPU was found, break for loop.
-        if (available):
-            if (verbose):
+        if available:
+            if verbose:
                 print('GPU ' + str(available) + ' located!')
             break
         # If this is not the last attempt, sleep for 'interval' seconds
-        if (i != attempts-1):
+        if i != (attempts-1):
             time.sleep(interval)
     # Check if an GPU was found, or if the attempts simply ran out. Throw error, if no GPU was found
-    if (not(available)):
+    if not available:
         raise RuntimeError('Could not find an available GPU after ' + str(attempts) + ' attempts with ' + str(interval) + ' seconds interval.')
 
     # Return found GPU
     return available
 
-
 def showUtilization(all=False, attrList=None, useOldCode=False):
     GPUs = getGPUs()
-    if (all):
-        if (useOldCode):
+    if all:
+        if useOldCode:
             print(' ID | Name | Serial | UUID || GPU util. | Memory util. || Memory total | Memory used | Memory free || Display mode | Display active |')
             print('------------------------------------------------------------------------------------------------------------------------------')
             for gpu in GPUs:
@@ -229,7 +231,7 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                          {'attr':'display_active','name':'Display active'}]]
 
     else:
-        if (useOldCode):
+        if useOldCode:
             print(' ID  GPU  MEM')
             print('--------------')
             for gpu in GPUs:
@@ -241,8 +243,8 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
                          {'attr':'memoryUtil','name':'MEM','suffix':'%','transform': lambda x: x*100,'precision':0}],
                         ]
 
-    if (not useOldCode):
-        if (attrList is not None):
+    if not useOldCode:
+        if attrList is not None:
             headerString = ''
             GPUstrings = ['']*len(GPUs)
             for attrGroup in attrList:
@@ -260,14 +262,14 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
 
                         attr = attrTransform(attr)
 
-                        if (isinstance(attr,float)):
+                        if isinstance(attr,float):
                             attrStr = ('{0:' + attrPrecision + 'f}').format(attr)
-                        elif (isinstance(attr,int)):
+                        elif isinstance(attr,int):
                             attrStr = ('{0:d}').format(attr)
-                        elif (isinstance(attr,str)):
-                            attrStr = attr;
-                        elif  (sys.version_info[0] == 2):
-                            if (isinstance(attr,unicode)):
+                        elif isinstance(attr,str):
+                            attrStr = attr
+                        elif sys.version_info[0] == 2:
+                            if isinstance(attr,unicode):
                                 attrStr = attr.encode('ascii','ignore')
                         else:
                             raise TypeError('Unhandled object type (' + str(type(attr)) + ') for attribute \'' + attrDict['name'] + '\'')
@@ -285,14 +287,14 @@ def showUtilization(all=False, attrList=None, useOldCode=False):
 
                         attr = attrTransform(attr)
 
-                        if (isinstance(attr,float)):
+                        if isinstance(attr,float):
                             attrStr = ('{0:'+ minWidthStr + attrPrecision + 'f}').format(attr)
-                        elif (isinstance(attr,int)):
+                        elif isinstance(attr,int):
                             attrStr = ('{0:' + minWidthStr + 'd}').format(attr)
-                        elif (isinstance(attr,str)):
-                            attrStr = ('{0:' + minWidthStr + 's}').format(attr);
-                        elif (sys.version_info[0] == 2):
-                            if (isinstance(attr,unicode)):
+                        elif isinstance(attr,str):
+                            attrStr = ('{0:' + minWidthStr + 's}').format(attr)
+                        elif sys.version_info[0] == 2:
+                            if isinstance(attr,unicode):
                                 attrStr = ('{0:' + minWidthStr + 's}').format(attr.encode('ascii','ignore'))
                         else:
                             raise TypeError('Unhandled object type (' + str(type(attr)) + ') for attribute \'' + attrDict['name'] + '\'')
