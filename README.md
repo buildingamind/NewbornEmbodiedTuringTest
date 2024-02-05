@@ -23,7 +23,7 @@ This directory provides three components for building embodied virtual agents. T
 ├── README.md
 ├── notebooks
 │   ├── Getting Started.ipynb
-├── src/netts
+├── src/nett
 │   ├── body
 │   └── brain
 │   ├── environment
@@ -34,21 +34,21 @@ This directory provides three components for building embodied virtual agents. T
 
 ```
 
-* `src/netts`**: **Contains the code for running experiments with simulated agents. Following is the structure of `src/netts` folder:
+* `src/nett`**: **Contains the code for running experiments with simulated agents. Following is the structure of `src/nett` folder:
 * `tests`: Contains unit tests
 * `docs`: Contains project documentation 
 
 ## **Getting Started**
 
-In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs! 
+In this section, you will learn to use the repository to benchmark your first embodied agent with NETT! 
 
 ### **Codebase Installation**
 
 1. **(Highly Recommended) **[create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/ "Link for how to set-up a virtual env")
    ****steps described below :****
    ```
-   conda create -n netts python=3.10.12
-   conda activate netts
+   conda create -n nett python=3.10.12
+   conda activate nett
    pip install setuptools==65.5.0 pip==21
    ```
 2. To install the repository using `pip`:
@@ -60,14 +60,14 @@ Note if not installing in a virtual environment, the install might fail because 
 
 ### **Running a NETT**
 
-After having followed steps above, NETTs can be run with a few lines of code:
+After having followed steps above, NETT can be run with a few lines of code:
 
 1. Download the executable from the hosted webpage or build your own executable following the steps mentioned in {placeholder}. Additionally, a video walkthrough of creating an executable from scratch is made available {here}. 
 
 2. The package defines three components–the `Brain`, `Body` and `Environment`. For a detailed description of the division of responsibilities of each component, please refer to the {documentation}. 
 ```
-from netts import Brain, Body, Environment
-from netts import NETT
+from nett import Brain, Body, Environment
+from nett import NETT
 ```
 
 3. Define each component as required. Let’s start with the `Brain`. This component holds all the parts concerned with “learning”. This includes the architecture itself along with its many parameters, as well as the reward function and learning algorithm, such as `PPO`. The package is designed to make each component flexible. Specifically, each constituent of the Brain such as the encoder, policy networks or the reward function can be customized. The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the documentation. 
@@ -98,13 +98,13 @@ environment = Environment(config="identityandview", executable_path=executable_p
 
 6. For a full list of the NETT configs available, one can simply do the following. 
 ```
-from netts.environment.configs import list_configs
+from nett.environment.configs import list_configs
 list_configs()
 ```
 
 Similar analogues for listing the encoders, policies, algorithms are also available: 
 ```
-from netts.brain import list_algorithms, list_policies, list_encoders
+from nett.brain import list_algorithms, list_policies, list_encoders
 ```
 
 7. In order to orchestrate the benchmarking, all three components are brought together under one umbrella, the `NETT` object. This allows for storing details of the runs, serving as a reproducible artifact, automatic distribution of runs with different imprinting conditions, central logging, among other things. 
@@ -115,7 +115,7 @@ nett = NETT(brain=brain, body=body, environment=environment)
 7. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
 
 ```
-run = netts.run(dir=run_dir, num_brains=5, trains_eps=10)
+run = nett.run(dir=run_dir, num_brains=5, trains_eps=10)
 ```
 
 8. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 

@@ -9,9 +9,9 @@ import matplotlib.pyplot as plt
 from tqdm.auto import tqdm
 from typing import Any
 from pathlib import Path
-from netts.brain import algorithms, policies, encoders_list, encoder_dict
-from netts.brain import encoders
-from netts.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
+from nett.brain import algorithms, policies, encoders_list, encoder_dict
+from nett.brain import encoders
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -39,7 +39,7 @@ class Brain:
                  train_encoder: bool | None = False,
                  seed: int = 12
                  ) -> None:
-        from netts import logger
+        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
