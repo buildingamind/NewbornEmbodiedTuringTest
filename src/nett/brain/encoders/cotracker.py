@@ -1,17 +1,12 @@
 #!/usr/bin/env python3
 
-import pdb
+# import pdb
 import gym
-
 import torch as th
-import torch.nn as nn
-import torchvision
-import timm
-import numpy as np
 from torchvision.transforms import Compose
 from torchvision.transforms import Resize, CenterCrop, Normalize, InterpolationMode
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from collections import OrderedDict
+# from collections import OrderedDict
 
 class CoTracker(BaseFeaturesExtractor):
     """
@@ -43,7 +38,7 @@ class CoTracker(BaseFeaturesExtractor):
             if name == 'model.fnet':
                 modules.append(layer)
 
-        self.cnn = (th.nn.Sequential(*modules))
+        self.cnn = th.nn.Sequential(*modules)
         self.linear = th.nn.Sequential(th.nn.Linear(128*16*16, 512),
                                             th.nn.ReLU())
 

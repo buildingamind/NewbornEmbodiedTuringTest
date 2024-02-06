@@ -106,8 +106,7 @@ class Slowness(NETTConfig):
     def num_conditions(self):
         if self.params['experiment'] == "1":
             return 5
-        else:
-            return 13
+        return 13
 
 class Smoothness(NETTConfig):
     """

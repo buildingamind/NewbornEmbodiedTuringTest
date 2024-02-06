@@ -10,11 +10,12 @@ import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
-from nett import Brain, Body, Environment, logger
+from nett import Brain, Body, Environment
 from nett.utils.io import mute
 
 class NETT:
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
+        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body

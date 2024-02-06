@@ -1,11 +1,12 @@
 #Packages for making the environment
+import uuid #needed for the communicator
+import os #Files and directories
+
 from mlagents_envs.side_channel.side_channel import (
     SideChannel,
     IncomingMessage,
     OutgoingMessage,
 )
-import uuid #needed for the communicator
-import os #Files and directories
 
 
 # Create the StringLogChannel class. This is how logging info is communicated between python and unity

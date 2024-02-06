@@ -1,16 +1,17 @@
 from __future__ import annotations
 
 import os
-import numpy as np
 import subprocess
+from typing import Optional
 
-from typing import Any, Optional
-from nett.environment.configs import NETTConfig, list_configs
-from nett.environment import configs
-from nett.utils.environment import Logger, port_in_use
+import numpy as np
 from gym import Wrapper
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
+
+from nett.environment.configs import NETTConfig, list_configs
+from nett.environment import configs
+from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
     def __init__(self,
@@ -43,8 +44,8 @@ class Environment(Wrapper):
             config_dict = {config_str.lower(): config_str for config_str in list_configs()}
             if config not in config_dict.keys():
                 raise ValueError(f"Should be one of {config_dict.keys()}")
-            else:
-                config = getattr(configs, config_dict[config])()
+
+            config = getattr(configs, config_dict[config])()
 
         # for when config is a NETTConfig
         elif isinstance(config, NETTConfig):
@@ -56,7 +57,7 @@ class Environment(Wrapper):
         return config
 
     def _set_executable_permission(self) -> None:
-        subprocess.run(['chmod', '-R', '755', self.executable_path])
+        subprocess.run(['chmod', '-R', '755', self.executable_path], check=True)
         self.logger.info("Executable permission is set")
 
     def _set_display(self) -> None:
@@ -126,8 +127,8 @@ class Environment(Wrapper):
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"

@@ -1,17 +1,13 @@
-import torch
-import gym
+from typing import Any
+from pathlib import Path
 import inspect
+
+import torch
 import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-
 from tqdm.auto import tqdm
-from typing import Any
-from pathlib import Path
-from nett.brain import algorithms, policies, encoders_list, encoder_dict
-from nett.brain import encoders
-from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -24,6 +20,9 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 
+from nett.brain import algorithms, policies, encoder_dict
+from nett.brain import encoders
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 
 # TO DO (v0.2): Extend with support for custom policy models
 # TO DO (v0.2): should we move validation checks to utils under validations.py?
@@ -62,8 +61,12 @@ class Brain:
 
         # build model
         if self.encoder:
-            policy_kwargs = dict(features_extractor_class=self.encoder,
-                                 features_extractor_kwargs=dict(features_dim=inspect.signature(self.encoder).parameters['features_dim'].default))
+            policy_kwargs = {
+                "features_extractor_class": self.encoder,
+                "features_extractor_kwargs": {
+                    "features_dim": inspect.signature(self.encoder).parameters['features_dim'].default
+                }
+            }
         else:
             policy_kwargs = {}
         self.model = self.algorithm(self.policy,
@@ -101,7 +104,7 @@ class Brain:
                          tb_log_name=self.algorithm.__name__,
                          progress_bar=True,
                          callback=[callback_list])
-        self.logger.info(f"Training Complete")
+        self.logger.info("Training Complete")
 
         # save
         save_path = f"{paths['model'].joinpath('latest_model.zip')}"
@@ -176,8 +179,7 @@ class Brain:
         if isinstance(encoder, str):
             if encoder not in encoder_dict.keys():
                 raise ValueError(f"If a string, should be one of: {encoder_dict.keys()}")
-            else:
-                encoder = getattr(encoders, encoder_dict[encoder])
+            encoder = getattr(encoders, encoder_dict[encoder])
 
         # for when encoder is a custom PyTorch encoder
         if isinstance(encoder, BaseFeaturesExtractor):
@@ -194,13 +196,12 @@ class Brain:
         if isinstance(algorithm, str):
             if algorithm not in algorithms:
                 raise ValueError(f"If a string, should be one of: {algorithms}")
-            else:
-                # check for the passed policy in stable_baselines3 as well as sb3-contrib
-                # at this point in the code, it is guaranteed to be in either of the two
-                try:
-                    algorithm = getattr(stable_baselines3, algorithm)
-                except:
-                    algorithm = getattr(sb3_contrib, algorithm)
+            # check for the passed policy in stable_baselines3 as well as sb3-contrib
+            # at this point in the code, it is guaranteed to be in either of the two
+            try:
+                algorithm = getattr(stable_baselines3, algorithm)
+            except:
+                algorithm = getattr(sb3_contrib, algorithm)
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
@@ -232,7 +233,7 @@ class Brain:
     def _validate_reward(self, reward: Any | str) -> Any | str:
         # for when reward is a string
         if isinstance(reward, str) and reward not in ['supervised', 'unsupervised']:
-            raise ValueError(f"If a string, should be one of: ['supervised', 'unsupervised']")
+            raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
     # TO DO (v0.2) add typehinting for gym environments
@@ -251,8 +252,8 @@ class Brain:
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"

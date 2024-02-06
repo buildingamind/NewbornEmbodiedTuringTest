@@ -1,11 +1,8 @@
 #!/usr/bin/env python3
 
-from typing import Dict, Tuple
-
+from typing import Tuple
 import torch as th
 from torch import nn
-from torch.nn import functional as F
-from torch.utils.data import DataLoader, TensorDataset
 
 class RND(nn.Module):
     """Encoder for encoding observations.

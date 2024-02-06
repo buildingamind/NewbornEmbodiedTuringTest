@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 
-import pdb
 import gym
 
 import torch as th
-import torch.nn as nn
-import torchvision
+from torch import nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
@@ -17,8 +15,8 @@ class CNNLSTM(BaseFeaturesExtractor):
     """
     def __init__(self, observation_space: gym.spaces.Box,
                   features_dim: int = 256):
-        rnn_hidden_size = 100
-        rnn_num_layers = 1
+        # rnn_hidden_size = 100
+        # rnn_num_layers = 1
         super(CNNLSTM, self).__init__(observation_space, features_dim)
 
         # We assume CxHxW images (channels first)
@@ -64,7 +62,7 @@ class CNNLSTM(BaseFeaturesExtractor):
             _type_: _description_
         """
         x = observations # original shape -> (length, batchsize, obs_size)
-        T,B, *_ = x.shape
+        # T,B, *_ = x.shape
 
         # Pass through CNN layers
         x = self.cnn(x)

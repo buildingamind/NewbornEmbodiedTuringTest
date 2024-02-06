@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
 
-import pdb
+# import pdb
 import gym
 
 import torch as th
-import torch.nn as nn
-import torchvision
+from torch import nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 

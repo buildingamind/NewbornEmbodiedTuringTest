@@ -1,16 +1,16 @@
 import ast
-import inspect
+from pathlib import Path
+
 import stable_baselines3
 import sb3_contrib
-
-from nett.brain import encoders
-from pathlib import Path
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+
+# from nett.brain import encoders
 
 # return all available enconders
 def list_encoders() -> set[str]:
-    encoder_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
-    encoders = [encoder.stem for encoder in list(encoder_dir.iterdir()) if "__" not in str(encoder)]
+    encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
+    encoders = [encoder.stem for encoder in list(encoders_dir.iterdir()) if "__" not in str(encoder)]
     # set is faster to access than a list
     return set(encoders)
 encoders_list = list_encoders()
@@ -32,10 +32,10 @@ policies = list_policies()
 # return encoder string to encoder class mapping
 # TO DO (v0.3) optimized way to calculate and pass this dict around
 def get_encoder_dict():
-    encoder_dict = {}
-    encoder_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
+    encoders_dict = {}
+    encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     # iterate through all files in the directory
-    for encoder_path in encoder_dir.iterdir():
+    for encoder_path in encoders_dir.iterdir():
         if encoder_path.suffix == '.py' and "__" not in str(encoder_path):
             module_name = encoder_path.stem
             # read the source
@@ -46,8 +46,8 @@ def get_encoder_dict():
             # get the first class definition
             encoder_class = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)][0]
             # add to the dictionary
-            encoder_dict[module_name] = encoder_class.name
-    return encoder_dict
+            encoders_dict[module_name] = encoder_class.name
+    return encoders_dict
 
 # TO DO (v0.3) return all available encoder classes programmatically
 # def get_encoder_dict():

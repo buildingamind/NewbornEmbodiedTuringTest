@@ -1,8 +1,7 @@
-from nett.body import types
-from nett.body import ascii_art
-
 from typing import Any
 from gym import Wrapper, Env
+from nett.body import types
+# from nett.body import ascii_art
 
 # this will have the necessary wrappers before the observations interact with the brain,
 # because it is the body that determines how the the observations will be processed.
@@ -12,17 +11,17 @@ from gym import Wrapper, Env
 # the brain is limited by what the body can percieve and no information is objective.
 # NO INFORMATION IS OBJECTIVE (!!!!!!)
 class Body:
-    def __init__(self, type: str = "basic",
+    def __init__(self, agent_type: str = "basic",
                  wrappers: list[Any] | None = None,
                  dvs: bool = False) -> None:
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        self.type = type
+        self.agent_type = agent_type
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
 
-    def _validate_agent_type(self, type: str) -> str:
-        if type not in types:
+    def _validate_agent_type(self, agent_type: str) -> str:
+        if agent_type not in types:
             raise ValueError(f"agent_type must be one of {types}")
 
     def _validate_dvs(self, dvs: bool) -> bool:
@@ -45,11 +44,11 @@ class Body:
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return "{}({!r})".format(self.__class__.__name__, attrs)
+        return f"{self.__class__.__name__}({attrs!r})"
 
     def _register(self) -> None:
         raise NotImplementedError

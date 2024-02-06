@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
-import pdb
 import gym
 
 import torch as th
-import torch.nn as nn
-import torchvision
 import timm
 from torchvision.transforms import Compose
 from torchvision.transforms import Resize, CenterCrop, Normalize, InterpolationMode
@@ -34,7 +31,7 @@ class SegmentAnything(BaseFeaturesExtractor):
 
 
         self.model = timm.create_model('samvit_base_patch16.sa1b',pretrained=True,
-                                  num_classes=0)  # remove classifier nn.Linear)
+                                  num_classes=0)  # remove classifier th.nn.Linear)
 
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
