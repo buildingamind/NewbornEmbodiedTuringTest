@@ -18,7 +18,7 @@ def compute_train_performance(path):
 
             percents,df,values = average_in_episode_three_region(log_df,"agent.x")
             y = moving_average(values, window=100)
-            x = list(range(0, len(y)))
+            x = list(range(len(y)))
 
             break
 
