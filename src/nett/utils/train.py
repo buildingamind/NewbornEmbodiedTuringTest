@@ -60,9 +60,7 @@ def average_in_episode_three_region(log,column='agent.x',transient=90):
             if np.isnan(percents[ep]):
                 percents[ep] = 0.5
 
-        rv = []
-        for val in percents.values():
-            rv.append(val)
+        rv = list(percents.values())
 
         return (percents,log,rv)
     except Exception as ex:
