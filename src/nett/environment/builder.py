@@ -184,6 +184,15 @@ class Environment(Wrapper):
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
     def render(self, mode="rgb_array"): # pylint: disable=unused-argument
+        """
+        Renders the current frame of the environment.
+
+        Args:
+            mode (str, optional): The mode to render the frame in. Defaults to "rgb_array".
+
+        Returns:
+            np.ndarray: The rendered frame of the environment.
+        """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
     def step(self, action):
