@@ -239,7 +239,7 @@ def getAvailability(GPUs, maxLoad=0.5, maxMemory=0.5, memoryFree=0, includeNan=F
                        ((gpu.id not in excludeID) and (gpu.uuid not in excludeUUID))) for gpu in GPUs]
     return GPUavailability
 
-def getFirstAvailable(order="first", maxLoad=0.5, maxMemory=0.5, attempts=1, interval=900, verbose=False, includeNan=False, excludeID=[], excludeUUID=[]):
+def getFirstAvailable(order="first", maxLoad=0.5, maxMemory=0.5, attempts=1, interval=900, verbose=False, includeNan=False, excludeID=[], excludeUUID=[]): # pylint: disable=unused-argument
     """
     Get the first available GPU based on specified criteria.
 
@@ -260,9 +260,6 @@ def getFirstAvailable(order="first", maxLoad=0.5, maxMemory=0.5, attempts=1, int
     Raises:
     - RuntimeError: If no available GPU is found after the specified number of attempts.
     """
-    
-    # Rest of the code...
-def getFirstAvailable(order = "first", maxLoad=0.5, maxMemory=0.5, attempts=1, interval=900, verbose=False, includeNan=False, excludeID=[], excludeUUID=[]):
     
     #GPUs = getGPUs()
     #firstAvailableGPU = np.NaN

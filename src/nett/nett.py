@@ -387,7 +387,7 @@ class NETT:
             pass
         return devices
 
-    # generate toml file and save to run directory
-    def summary(self):
+    def summary(self): # TODO: only raises a NotImplementedError for now
+        '''Generate a toml file and save it to the run directory.'''
         raise NotImplementedError
     

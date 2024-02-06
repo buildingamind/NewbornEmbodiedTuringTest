@@ -12,6 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+'''
+Initialize the NETT library
+'''
+
 import logging
 from pathlib import Path
 # simplify imports

@@ -1,3 +1,4 @@
+""" Module for the Brain class. """
 from typing import Any
 from pathlib import Path
 import inspect
@@ -159,7 +160,7 @@ class Brain:
                           plots_dir=paths['plots'],
                           name="reward_graph")
 
-    def test(self, env, iterations, model_path: str, record_prefix: str | None = None):
+    def test(self, env, iterations, model_path: str, record_prefix: str | None = None): # pylint: disable=unused-argument
         """
         Test the reinforcement learning model.
 
@@ -183,7 +184,7 @@ class Brain:
             self.logger.info(f'Testing with {self.algorithm.__name__}')
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            for episode in tqdm(range(iterations)):
+            for _ in tqdm(range(iterations)):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
                 done, lstm_states = False, None
@@ -192,7 +193,7 @@ class Brain:
                 episode_length = 0
                 while not done:
                     action, lstm_states = self.model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
-                    obs, rewards, done, info = env.step(action)
+                    obs, _, done, _ = env.step(action) # obs, rewards, done, info
                     episode_starts = done
                     episode_length += 1
                     env.render(mode="rgb_array")
@@ -202,9 +203,9 @@ class Brain:
             self.logger.info(f'Testing with {self.algorithm.__name__}')
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            for step in tqdm(range(iterations)):
-                action, states = self.model.predict(obs, deterministic=True)
-                obs, reward, done, info = envs.step(action)
+            for _ in tqdm(range(iterations)):
+                action, _ = self.model.predict(obs, deterministic=True) # action, states
+                obs, _, done, _ = envs.step(action) # obs, reward, done, info
                 if done:
                     env.reset()
                 env.render(mode="rgb_array")

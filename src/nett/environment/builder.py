@@ -23,6 +23,27 @@ from nett.environment import configs
 from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
+    """
+    A wrapper around the UnityEnvironment class from the mlagents_envs library. It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
+
+    The Environment class inherits from the gym.Wrapper class, allowing it to be used as a gym environment.
+
+    Methods:
+        initialize: Initializes the environment with the given mode and arguments.
+        render: Renders the current frame of the environment.
+        step: Takes a step in the environment with the given action.
+        log: Logs a message to the environment.
+        reset: Resets the environment with the given seed and arguments.
+
+    Attributes:
+        config (NETTConfig): The configuration for the environment.
+        executable_path (str): The path to the Unity executable file.
+        base_port (int): The base port number to use for communication with the Unity environment.
+        record_chamber (bool): Whether to record the chamber.
+        record_agent (bool): Whether to record the agent.
+        recording_frames (int): The number of frames to record.
+        display (int): The display number to use for the Unity environment.
+    """
     def __init__(self,
                  config: str | NETTConfig,
                  executable_path: str,
@@ -111,6 +132,16 @@ class Environment(Wrapper):
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.3) fix random_pos logic inside of Unity code
     def initialize(self, mode: str, **kwargs) -> Environment:
+        """
+        Initializes the environment with the given mode and arguments.
+
+        Args:
+            mode (str): The mode to initialize the environment in.
+            **kwargs: The arguments to pass to the environment.
+        
+        Returns:
+            Environment: The initialized environment.
+        """
         args = []
 
         # from environment arguments
@@ -152,18 +183,43 @@ class Environment(Wrapper):
 
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
-    def render(self, mode="rgb_array"):
+    def render(self, mode="rgb_array"): # pylint: disable=unused-argument
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
     def step(self, action):
+        """
+        Takes a step in the environment with the given action.
+        
+        Args:
+            action: The action to take in the environment.
+            
+        Returns:
+            tuple: A tuple containing the next state, reward, done flag, and info dictionary.
+        """
         next_state, reward, done, info = self.env.step(action)
         return next_state, float(reward), done, info
 
     def log(self, msg: str) -> None:
+        """
+        Logs a message to the environment.
+
+        Args:
+            msg (str): The message to log.
+        """
         self.log.log_str(msg)
 
-    def reset(self, seed: Optional[int] = None, **kwargs):
+    def reset(self, seed: Optional[int] = None, **kwargs): # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
+        """
+        Resets the environment with the given seed and arguments.
+        
+        Args:
+            seed (int, optional): The seed to use for the environment. Defaults to None.
+            **kwargs: The arguments to pass to the environment.
+            
+        Returns:
+            np.ndarray: The initial state of the environment.
+        """
         return self.env.reset(**kwargs)
 
     def __repr__(self) -> str:

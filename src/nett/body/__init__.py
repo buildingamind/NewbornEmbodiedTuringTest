@@ -1,3 +1,4 @@
+"""Body module for nett"""
 # all available body types
 types = ["basic", "two-eyed", "ragdoll"]
 

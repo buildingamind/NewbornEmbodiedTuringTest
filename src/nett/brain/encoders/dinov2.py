@@ -1,4 +1,4 @@
-
+"""DinoV2 feature extractor"""
 import gym
 import torch
 

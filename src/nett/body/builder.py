@@ -1,4 +1,4 @@
-
+"""The body of the agent in the environment."""
 from typing import Any
 from gym import Wrapper, Env
 from nett.body import types

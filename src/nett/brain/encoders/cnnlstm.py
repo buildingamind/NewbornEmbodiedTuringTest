@@ -1,3 +1,4 @@
+"""CNNLSTM module for the brain"""
 import gym
 import torch as th
 from torch import nn
@@ -67,8 +68,20 @@ class CNNLSTM(BaseFeaturesExtractor):
         return x
 
 class Identity(nn.Module):
+    """Identity module
+    
+    This module is used to return the input tensor as is.
+    
+    Args:
+        nn.Module: PyTorch module
+
+    Returns:
+        nn.Module: Identity module
+    """
     def __init__(self):
+        """Initialize the Identity module"""
         super(Identity, self).__init__()
 
     def forward(self, x):
+        """Forward pass"""
         return x

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+"""RND encoder module"""
 from typing import Tuple
 import torch as th
 from torch import nn
@@ -16,7 +16,7 @@ class RND(nn.Module):
         Encoder instance.
     """
 
-    def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int) -> None:
+    def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int) -> None: # pylint: disable=unused-argument
         """
         Initialize the RND encoder.
 

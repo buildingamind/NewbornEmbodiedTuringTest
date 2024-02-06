@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-
+"""CoTracker feature extractor"""
 # import pdb
 import gym
 import torch as th
