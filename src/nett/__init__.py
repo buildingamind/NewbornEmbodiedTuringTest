@@ -24,8 +24,8 @@ from nett.nett import NETT
 __version__ = "0.1"
 
 # path to store library cache (such as configs etc)
-cache_dir = Path.joinpath(Path.home(), '.cache', 'nett')
+cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
 
 # set up logging
-logging.basicConfig(format='[%(name)s] %(levelname)s:  %(message)s', level=logging.INFO)
+logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)

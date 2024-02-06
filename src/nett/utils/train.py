@@ -1,9 +1,30 @@
+"""
+Train performance
+
+This module contains the functions to compute the train performance of the agent.
+
+Functions:
+    compute_train_performance: Compute Train performance
+    average_in_episode_three_region: Train performance
+    moving_average: Smooth values by doing a moving average
+"""
+
 import os
 import glob
 import numpy as np
 import pandas as pd
 
 def compute_train_performance(path):
+    """
+    Compute Train performance
+
+    Args:
+        path (Path or String?): path to training files # TODO check the type
+
+    Returns:
+        x (list): list of the episode numbers
+        y (np.array) : the moving averages of the success rate 
+    """
     x,y = [], []
     try:
         training_files = glob.glob(os.path.join(path, "*.csv"))
@@ -16,7 +37,7 @@ def compute_train_performance(path):
 
             log_df = pd.read_csv(file_name, skipinitialspace=True)
 
-            percents,df,values = average_in_episode_three_region(log_df,"agent.x")
+            _, _, values = average_in_episode_three_region(log_df,"agent.x") # percents,df,
             y = moving_average(values, window=100)
             x = list(range(len(y)))
 

@@ -1,3 +1,12 @@
+"""
+This module contains the definition of the Environment class, which is a wrapper around the UnityEnvironment
+class from the mlagents_envs library. It provides a convenient interface for interacting with the Unity environment
+and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment,
+and logging messages.
+
+The Environment class inherits from the gym.Wrapper class, allowing it to be used as a gym environment.
+"""
+
 from __future__ import annotations
 
 import os
@@ -22,10 +31,24 @@ class Environment(Wrapper):
                  record_chamber: bool = False,
                  record_agent: bool = False,
                  recording_frames: int = 1000) -> None:
+        """
+        Initializes the Environment object.
+
+        Args:
+            config (str | NETTConfig): The configuration for the environment. It can be either a string representing
+                the name of a pre-defined configuration, or an instance of the NETTConfig class.
+            executable_path (str): The path to the Unity executable file.
+            display (int, optional): The display number to use for the Unity environment. Defaults to 0.
+            base_port (int, optional): The base port number to use for communication with the Unity environment.
+                Defaults to 5004.
+            record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
+            record_agent (bool, optional): Whether to record the agent. Defaults to False.
+            recording_frames (int, optional): The number of frames to record. Defaults to 1000.
+        """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
-        # TO DO (v0.4) what might be a way to check if it is a valid executable path?
+        # TODO (v0.4) what might be a way to check if it is a valid executable path?
         self.executable_path = executable_path
         self.base_port = base_port
         self.record_chamber = record_chamber
@@ -39,6 +62,18 @@ class Environment(Wrapper):
         self._set_display()
 
     def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
+        """
+        Validates the configuration for the environment.
+
+        Args:
+            config (str | NETTConfig): The configuration to validate.
+
+        Returns:
+            NETTConfig: The validated configuration.
+
+        Raises:
+            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+        """
         # for when config is a str
         if isinstance(config, str):
             config_dict = {config_str.lower(): config_str for config_str in list_configs()}
@@ -57,18 +92,24 @@ class Environment(Wrapper):
         return config
 
     def _set_executable_permission(self) -> None:
-        subprocess.run(['chmod', '-R', '755', self.executable_path], check=True)
+        """
+        Sets the executable permission for the Unity executable file.
+        """
+        subprocess.run(["chmod", "-R", "755", self.executable_path], check=True)
         self.logger.info("Executable permission is set")
 
     def _set_display(self) -> None:
+        """
+        Sets the display environment variable for the Unity environment.
+        """
         os.environ["DISPLAY"] = str(f":{self.display}")
         self.logger.info("Display is set")
 
-
+    
     # copied from __init__() of chickai_env_wrapper.py (legacy)
-    # TO DO (v0.3) Critical refactor, don't like how this works, extremely error prone.
+    # TODO (v0.3) Critical refactor, don"t like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
-    # TO DO (v0.3) fix random_pos logic inside of Unity code
+    # TODO (v0.3) fix random_pos logic inside of Unity code
     def initialize(self, mode: str, **kwargs) -> Environment:
         args = []
 
@@ -82,14 +123,14 @@ class Environment(Wrapper):
 
         # from runtime
         args.extend(["--mode", f"{mode}-{kwargs['condition']}"])
-        if kwargs.get('rec_path', None):
+        if kwargs.get("rec_path", None):
             args.extend(["--log-dir", f"{kwargs['rec_path']}/"])
         # needs to fixed in Unity code where the default is always false
-        if mode == 'train':
+        if mode == "train":
             args.extend(["--random-pos", "true"])
         if kwargs.get("rewarded", False):
             args.extend(["--rewarded", "true"])
-        # TO DO: Discuss this with Manju, may be a MAJOR bug
+        # TODO: Discuss this with Manju, may be a MAJOR bug
         self.step_per_episode = kwargs.get("episode_steps", 200)
         if kwargs.get("episode_steps", False):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
@@ -126,9 +167,9 @@ class Environment(Wrapper):
         return self.env.reset(**kwargs)
 
     def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"

@@ -1,4 +1,9 @@
 #!/usr/bin/env python3
+"""
+This module contains the implementation of the SegmentAnything class, which is a custom feature extractor
+for image observations in a gym environment. It uses a pre-trained model from the timm library to extract
+features from the input images.
+"""
 import gym
 
 import torch as th
@@ -10,9 +15,10 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class SegmentAnything(BaseFeaturesExtractor):
     """
-    :param observation_space: (gym.Space)
-    :param features_dim: (int) Number of features extracted.
-        This corresponds to the number of unit for the last layer.
+    Custom feature extractor for image observations in a gym environment.
+
+    :param observation_space: (gym.Space) The observation space of the environment.
+    :param features_dim: (int) Number of features extracted. This corresponds to the number of units for the last layer.
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
@@ -29,12 +35,16 @@ class SegmentAnything(BaseFeaturesExtractor):
         n_input_channels = observation_space.shape[0]
         print("N_input_channels", n_input_channels)
 
-
-        self.model = timm.create_model('samvit_base_patch16.sa1b',pretrained=True,
-                                  num_classes=0)  # remove classifier th.nn.Linear)
-
+        self.model = timm.create_model("samvit_base_patch16.sa1b", pretrained=True,
+                                       num_classes=0)  # remove classifier th.nn.Linear)
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
+        """
+        Forward pass of the feature extractor.
+
+        :param observations: (th.Tensor) The input observations.
+        :return: (th.Tensor) The extracted features.
+        """
         # Cut off image
         # reshape to from vector to W*H
         # gray to color transform

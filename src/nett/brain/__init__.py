@@ -24,13 +24,13 @@ def list_algorithms() -> set[str]:
     return set(available_policy_algorithms)
 algorithms = list_algorithms()
 
-# TO DO (v0.3) return all available policy models programmatically
+# TODO (v0.3) return all available policy models programmatically
 def list_policies() -> set[str]:
     return ['CnnPolicy', 'MlpPolicy', 'MultiInputPolicy', 'MultiInputLstmPolicy', 'CnnLstmPolicy']
 policies = list_policies()
 
 # return encoder string to encoder class mapping
-# TO DO (v0.3) optimized way to calculate and pass this dict around
+# TODO (v0.3) optimized way to calculate and pass this dict around
 def get_encoder_dict():
     encoders_dict = {}
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
@@ -49,7 +49,7 @@ def get_encoder_dict():
             encoders_dict[module_name] = encoder_class.name
     return encoders_dict
 
-# TO DO (v0.3) return all available encoder classes programmatically
+# TODO (v0.3) return all available encoder classes programmatically
 # def get_encoder_dict():
 #     return {'cnnlstm': 'CNNLSTM',
 #             'cotracker': 'CoTracker',

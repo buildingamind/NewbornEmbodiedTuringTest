@@ -1,3 +1,4 @@
+
 import gym
 import torch
 import timm
@@ -7,9 +8,11 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class DinoV1(BaseFeaturesExtractor):
     """
-    :param observation_space: (gym.Space)
-    :param features_dim: (int) Number of features extracted.
-        This corresponds to the number of unit for the last layer.
+    DinoV1 is a feature extractor based on the DINO (Emerging Properties in Self-Supervised Vision Transformers) model.
+    It extracts features from observations using a pre-trained Vision Transformer model.
+
+    :param observation_space: (gym.Space) The observation space of the environment.
+    :param features_dim: (int) Number of features extracted. This corresponds to the number of units for the last layer.
     """
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         super(DinoV1, self).__init__(observation_space, features_dim)
@@ -27,4 +30,10 @@ class DinoV1(BaseFeaturesExtractor):
                                        pretrained=True)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass of the DinoV1 model.
+
+        :param observations: (torch.Tensor) The input observations.
+        :return: (torch.Tensor) The extracted features.
+        """
         return self.model(self.transforms(observations))

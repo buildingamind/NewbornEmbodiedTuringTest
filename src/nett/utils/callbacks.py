@@ -1,3 +1,10 @@
+"""
+Callbacks for training the agents.
+
+Classes:
+    HParamCallback(BaseCallback)
+    SupervisedSaveBestModelCallback(BaseCallback)
+"""
 from pathlib import Path
 import numpy as np
 from stable_baselines3.common.results_plotter import load_results, ts2xy
@@ -5,7 +12,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
 from nett.utils.train import compute_train_performance
 
-# TO DO (v0.3): refactor needed, especially logging
+# TODO (v0.3): refactor needed, especially logging
 class HParamCallback(BaseCallback):
     """
     Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
@@ -34,6 +41,8 @@ class HParamCallback(BaseCallback):
         return True
 
 class SupervisedSaveBestModelCallback(BaseCallback):
+    """
+    Callback to save the best model based on the mean performance of the last 100 episodes."""
     def __init__(self, summary_freq: int, save_dir: Path, env_log_path: str) -> None:
         super().__init__(verbose= 1)
         self.summary_freq = summary_freq
@@ -51,7 +60,7 @@ class SupervisedSaveBestModelCallback(BaseCallback):
                 # mean performance for last 100 episodes
                 mean_performance  = y[-1]
 
-                x, y = ts2xy(load_results(self.env_log_path), 'timesteps')
+                x, y = ts2xy(load_results(self.env_log_path), "timesteps")
                 if len(x) > 0:
                     # mean reward for last 100 episodes
                     mean_reward  = np.mean(y[-100:])

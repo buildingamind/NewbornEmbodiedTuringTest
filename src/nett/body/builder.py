@@ -1,3 +1,4 @@
+
 from typing import Any
 from gym import Wrapper, Env
 from nett.body import types
@@ -11,25 +12,93 @@ from nett.body import types
 # the brain is limited by what the body can percieve and no information is objective.
 # NO INFORMATION IS OBJECTIVE (!!!!!!)
 class Body:
+    """Represents the body of an agent in an environment.
+
+    The body determines how observations from the environment are processed before they reach the brain.
+    It can apply wrappers to modify the observations and provide a different perception to the brain.
+
+    Attributes:
+        type (str): The type of the agent's body.
+        wrappers (list[Wrapper] | None): List of wrappers to be applied to the environment.
+        dvs (bool): Flag indicating whether the agent uses dynamic vision sensors.
+
+    Methods:
+        __init__: Initializes a new instance of the Body class.
+        __call__: Applies the registered wrappers to the environment.
+        __repr__: Returns a string representation of the Body object.
+        __str__: Returns a string representation of the Body object.
+        _register: Registers the body with the environment.
+
+    """
+
     def __init__(self, type: str = "basic",
                  wrappers: list[Any] | None = None,
                  dvs: bool = False) -> None:
+        """Initializes a new instance of the Body class.
+
+        Args:
+            type (str, optional): The type of the agent's body. Defaults to "basic".
+            wrappers (list[Wrapper] | None, optional): List of wrappers to be applied to the environment. Defaults to None.
+            dvs (bool, optional): Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
+
+        Raises:
+            ValueError: If the agent type is not valid.
+            TypeError: If dvs is not a boolean.
+
+        """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        self.type = type
+        self.type = self._validate_agent_type(type)
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
 
-    def _validate_type(self, type: str) -> str:
+    def _validate_agent_type(self, type: str) -> str:
+        """Validates the agent type.
+
+        Args:
+            type (str): The agent type.
+
+        Returns:
+            str: The validated agent type.
+
+        Raises:
+            ValueError: If the agent type is not valid.
+
+        """
         if type not in types:
-            raise ValueError(f"type must be one of {types}")
+            raise ValueError(f"agent type must be one of {types}")
+        return type
 
     def _validate_dvs(self, dvs: bool) -> bool:
+        """Validates the dvs flag.
+
+        Args:
+            dvs (bool): The dvs flag.
+
+        Returns:
+            bool: The validated dvs flag.
+
+        Raises:
+            TypeError: If dvs is not a boolean.
+
+        """
         if not isinstance(dvs, bool):
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
     def _validate_wrappers(self, wrappers: list[Any] | None) -> list[Any] | None:
+        """Validates the wrappers.
+
+        Args:
+            wrappers (list[Wrapper] | None): The list of wrappers.
+
+        Returns:
+            list[Wrapper] | None: The validated list of wrappers.
+
+        Raises:
+            ValueError: If any wrapper is not an instance of gym.Wrapper.
+
+        """
         if wrappers is not None:
             for wrapper in wrappers:
                 if not isinstance(wrapper, Wrapper):
@@ -37,18 +106,45 @@ class Body:
         return wrappers
 
     def __call__(self, env: Env) -> Env:
+        """Applies the registered wrappers to the environment.
+
+        Args:
+            env (Env): The environment.
+
+        Returns:
+            Env: The modified environment.
+
+        """
         if self.wrappers:
             for wrapper in self.wrappers:
                 env = wrapper(env)
         return env
 
     def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        """Returns a string representation of the Body object.
+
+        Returns:
+            str: The string representation of the Body object.
+
+        """
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        """Returns a string representation of the Body object.
+
+        Returns:
+            str: The string representation of the Body object.
+
+        """
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
 
     def _register(self) -> None:
+        """Registers the body with the environment.
+
+        Raises:
+            NotImplementedError: This method is not implemented.
+
+        """
         raise NotImplementedError

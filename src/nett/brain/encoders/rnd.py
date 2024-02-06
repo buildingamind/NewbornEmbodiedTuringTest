@@ -14,10 +14,17 @@ class RND(nn.Module):
 
     Returns:
         Encoder instance.
-
     """
 
     def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int) -> None:
+        """
+        Initialize the RND encoder.
+
+        Args:
+            obs_shape (Tuple): The data shape of observations.
+            action_dim (int): The dimension of actions.
+            latent_dim (int): The dimension of encoding vectors.
+        """
         super().__init__()
 
         ## visual

@@ -24,9 +24,23 @@ from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 
-# TO DO (v0.2): Extend with support for custom policy models
-# TO DO (v0.2): should we move validation checks to utils under validations.py?
+# TODO (v0.2): Extend with support for custom policy models
+# TODO (v0.2): should we move validation checks to utils under validations.py?
 class Brain:
+    """A class representing a brain for training and testing reinforcement learning models.
+
+    Args:
+        encoder (Any | str, optional): The encoder used to extract features from the environment. Defaults to None.
+        embedding_dim (int | None, optional): The dimension of the embedding space. Defaults to None.
+        policy (Any | str | None, optional): The policy model used for the reinforcement learning algorithm. Defaults to None.
+        algorithm (Any | str | None, optional): The reinforcement learning algorithm used for training the model. Defaults to None.
+        reward (Any | str, optional): The type of reward used for training the model. Defaults to "supervised".
+        batch_size (int, optional): The batch size used for training. Defaults to 512.
+        buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
+        train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
+        seed (int, optional): The random seed used for training. Defaults to 12.
+    """
+
     def __init__(self,
                  encoder: Any | str = None,
                  embedding_dim: int | None = None,
@@ -38,8 +52,25 @@ class Brain:
                  train_encoder: bool | None = False,
                  seed: int = 12
                  ) -> None:
+        """
+        Initialize the Brain object.
+
+        Args:
+            encoder (Any | str, optional): The encoder used to extract features from the environment. Defaults to None.
+            embedding_dim (int | None, optional): The dimension of the embedding space. Defaults to None.
+            policy (Any | str | None, optional): The policy model used for the reinforcement learning algorithm. Defaults to None.
+            algorithm (Any | str | None, optional): The reinforcement learning algorithm used for training the model. Defaults to None.
+            reward (Any | str, optional): The type of reward used for training the model. Defaults to "supervised".
+            batch_size (int, optional): The batch size used for training. Defaults to 512.
+            buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
+            train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
+            seed (int, optional): The random seed used for training. Defaults to 12.
+        """
+        # Initialize logger
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
+        
+        # Set attributes
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.algorithm = self._validate_algorithm(algorithm) if algorithm else None
@@ -51,6 +82,16 @@ class Brain:
         self.seed = seed
 
     def train(self, env, iterations, device_type: str, device: int, paths: dict[str, Path]):
+        """
+        Train the reinforcement learning model.
+
+        Args:
+            env: The environment used for training.
+            iterations (int): The number of training iterations.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
+            paths (dict[str, Path]): The paths for saving logs, models, and plots.
+        """
         # validate environment
         env = self._validate_env(env)
 
@@ -119,6 +160,15 @@ class Brain:
                           name="reward_graph")
 
     def test(self, env, iterations, model_path: str, record_prefix: str | None = None):
+        """
+        Test the reinforcement learning model.
+
+        Args:
+            env: The environment used for testing.
+            iterations (int): The number of testing iterations.
+            model_path (str): The path to the trained model.
+            record_prefix (str | None, optional): The prefix for recording videos of the testing process. Defaults to None.
+        """
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
 
@@ -160,12 +210,36 @@ class Brain:
                 env.render(mode="rgb_array")
 
     def save(self, path: str) -> None:
+        """
+        Save the trained model.
+
+        Args:
+            path (str): The path to save the model.
+        """
         self.model.save(path)
 
     def load(self, model_path: str | Path):
+        """
+        Load a trained model.
+
+        Args:
+            model_path (str | Path): The path to the trained model.
+
+        Returns:
+            The loaded model.
+        """
         return self.algorithm.load(model_path)
 
     def plot_results(self, iterations: int, model_log_dir: Path, plots_dir: Path, name: str) -> None:
+        """
+        Plot the training results.
+
+        Args:
+            iterations (int): The number of training iterations.
+            model_log_dir (Path): The directory containing the training logs.
+            plots_dir (Path): The directory to save the plots.
+            name (str): The name of the plot.
+        """
         results_plotter.plot_results([str(model_log_dir)],
                                      iterations,
                                      results_plotter.X_TIMESTEPS,
@@ -175,6 +249,15 @@ class Brain:
         plt.clf()
 
     def _validate_encoder(self, encoder: Any | str) -> BaseFeaturesExtractor:
+        """
+        Validate the encoder.
+
+        Args:
+            encoder (Any | str): The encoder to validate.
+
+        Returns:
+            The validated encoder.
+        """
         # for when encoder is a string
         if isinstance(encoder, str):
             if encoder not in encoder_dict.keys():
@@ -183,7 +266,7 @@ class Brain:
 
         # for when encoder is a custom PyTorch encoder
         if isinstance(encoder, BaseFeaturesExtractor):
-            # TO DO (v0.2) pass dummy torch.tensor on "meta" device to validate embedding dim
+            # TODO (v0.2) pass dummy torch.tensor on "meta" device to validate embedding dim
             pass
 
         if encoder and not hasattr(self, 'train_encoder'):
@@ -192,6 +275,15 @@ class Brain:
         return encoder
 
     def _validate_algorithm(self, algorithm: Any | str) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+        """
+        Validate the reinforcement learning algorithm.
+
+        Args:
+            algorithm (Any | str): The algorithm to validate.
+
+        Returns:
+            The validated algorithm.
+        """
         # for when policy is a string
         if isinstance(algorithm, str):
             if algorithm not in algorithms:
@@ -205,7 +297,7 @@ class Brain:
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
-            # TO DO (v0.3) determine appropriate validation checks to be performed before passing
+            # TODO (v0.3) determine appropriate validation checks to be performed before passing
             pass
 
         else:
@@ -214,6 +306,15 @@ class Brain:
         return algorithm
 
     def _validate_policy(self, policy: Any | str) -> str | BasePolicy:
+        """
+        Validate the policy model.
+
+        Args:
+            policy (Any | str): The policy model to validate.
+
+        Returns:
+            The validated policy model.
+        """
         # for when policy is a string
         if isinstance(policy, str):
             # support teseted for PPO and RecurrentPPO only
@@ -222,7 +323,7 @@ class Brain:
 
         # for when policy is custom
         elif isinstance(policy, BasePolicy):
-            # TO DO (v0.3) determine appropriate validation checks to be performed before passing
+            # TODO (v0.3) determine appropriate validation checks to be performed before passing
             pass
 
         else:
@@ -231,13 +332,31 @@ class Brain:
         return policy
 
     def _validate_reward(self, reward: Any | str) -> Any | str:
+        """
+        Validate the reward type.
+
+        Args:
+            reward (Any | str): The reward type to validate.
+
+        Returns:
+            The validated reward type.
+        """
         # for when reward is a string
         if isinstance(reward, str) and reward not in ['supervised', 'unsupervised']:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
-    # TO DO (v0.2) add typehinting for gym environments
+    # TODO (v0.2) add typehinting for gym environments
     def _validate_env(self, env) -> Any:
+        """
+        Validate the environment.
+
+        Args:
+            env: The environment to validate.
+
+        Returns:
+            The validated environment.
+        """
         try:
             check_env(env)
         except Exception as ex:
