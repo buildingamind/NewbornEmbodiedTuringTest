@@ -11,18 +11,18 @@ from nett.body import types
 # the brain is limited by what the body can percieve and no information is objective.
 # NO INFORMATION IS OBJECTIVE (!!!!!!)
 class Body:
-    def __init__(self, agent_type: str = "basic",
+    def __init__(self, type: str = "basic",
                  wrappers: list[Any] | None = None,
                  dvs: bool = False) -> None:
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        self.agent_type = agent_type
+        self.type = type
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
 
-    def _validate_agent_type(self, agent_type: str) -> str:
-        if agent_type not in types:
-            raise ValueError(f"agent_type must be one of {types}")
+    def _validate_type(self, type: str) -> str:
+        if type not in types:
+            raise ValueError(f"type must be one of {types}")
 
     def _validate_dvs(self, dvs: bool) -> bool:
         if not isinstance(dvs, bool):
