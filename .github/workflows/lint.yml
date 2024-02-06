@@ -41,16 +41,7 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116"
-          check_name: "Docstrings"
-          # checks for:
-          ## missing module, class, and method docstrings
-
-      - name: Lint Variable Usage
-        uses: wearerequired/lint-action@v2
-        with:
-          pylint: true
-          pylint_args: "--disable=all --enable=W0612 --enable=W0613"
-          check_name: "Variable Usage"
+          pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116 --disable=all --enable=W0612 --enable=W0613"
+          check_name: "Docstrings and Variable Usage"
           # checks for:
           ## unused arguments, and unused variables
