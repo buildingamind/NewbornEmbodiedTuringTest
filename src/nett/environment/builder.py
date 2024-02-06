@@ -10,7 +10,12 @@ from nett.environment import configs
 from nett.utils.environment import Logger, port_in_use
 from gym import Wrapper
 from mlagents_envs.environment import UnityEnvironment
-from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
+
+try :
+    from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
+except PermissionError as _:
+     raise PermissionError("Directory /tmp/ml-agents-binaries is not accessible. Please change permissions of the directory to 1755 or delete the directory and try again.")
+
 
 class Environment(Wrapper):
     def __init__(self, 
