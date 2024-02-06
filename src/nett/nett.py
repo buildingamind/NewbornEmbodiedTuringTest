@@ -94,8 +94,9 @@ class NETT:
 
     # TO DO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TO DO v0.3. add support for user specified output_dir
-    # Discussion v0.3 is print okay or should we have it log using nett' logger?
+    # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
+
     @staticmethod
     def analyze(run_dir: str | Path,
                 output_dir: str | Path | None = None,

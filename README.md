@@ -40,7 +40,7 @@ This directory provides three components for building embodied virtual agents. T
 
 ## **Getting Started**
 
-In this section, you will learn to use the repository to benchmark your first embodied agent with NETT!
+In this section, you will learn to use the repository to benchmark your first embodied agent with NETT! 
 
 ### **Codebase Installation**
 
