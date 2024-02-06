@@ -11,7 +11,7 @@ on:
       - dev
 
 jobs:
-  docstrings:
+  build:
     runs-on: ubuntu-latest
 
     steps:
@@ -37,7 +37,7 @@ jobs:
       # - name: Install dependencies
       #   run: pip install -r requirements.txt
 
-      - name: Run Linter
+      - name: Lint Docstrings
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
@@ -45,33 +45,8 @@ jobs:
           check_name: "Docstrings"
           # checks for:
           ## missing module, class, and method docstrings
-  unused_variables:
-    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.10.12"
-          cache: "pip"  # caching pip dependencies
-            # Install your linters here
-
-      # - name: Change setuptools version
-      #   run: pip install setuptools==65.5.0
-
-      # - name: Change pip version
-      #   run: pip install pip==21
-
-      - name: Install pylint
-        run: pip install pylint
-
-      # - name: Install dependencies
-      #   run: pip install -r requirements.txt
-
-      - name: Run Linter
+      - name: Lint Variable Usage
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
