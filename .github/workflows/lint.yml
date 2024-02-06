@@ -42,6 +42,7 @@ jobs:
         with:
           pylint: true
           pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116"
+          check_name: "Docstrings"
           # checks for:
           ## missing module, class, and method docstrings
   unused_variables:
@@ -75,5 +76,6 @@ jobs:
         with:
           pylint: true
           pylint_args: "--disable=all --enable=W0612 --enable=W0613"
+          check_name: "Variable Usage"
           # checks for:
           ## unused arguments, and unused variables
