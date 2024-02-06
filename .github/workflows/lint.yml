@@ -16,10 +16,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v4
         with:
           python-version: 3.10.12
             # Install your linters here
@@ -40,6 +40,8 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--max-line-length=200 --variable-naming-style=camelCase --disable=all --enable=C0114 --enable=C0115 --enable=C0116 --enable=W0612 --enable=W0613"
-          # Enable your linters here
+          pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116 --enable=W0612 --enable=W0613"
+          # checks for:
+          ## missing module, class, and method docstrings
+          ## unused arguments, and unused variables
 
