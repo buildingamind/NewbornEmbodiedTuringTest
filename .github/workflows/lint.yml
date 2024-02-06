@@ -11,7 +11,7 @@ on:
       - dev
 
 jobs:
-  lint:
+  docstrings:
     runs-on: ubuntu-latest
 
     steps:
@@ -24,24 +24,54 @@ jobs:
           python-version: 3.10.12
             # Install your linters here
 
-      - name: Change setuptools version
-        run: pip install setuptools==65.5.0
+      # - name: Change setuptools version
+      #   run: pip install setuptools==65.5.0
 
-      - name: Change pip version
-        run: pip install pip==21
+      # - name: Change pip version
+      #   run: pip install pip==21
 
       - name: Install pylint
         run: pip install pylint
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      # - name: Install dependencies
+      #   run: pip install -r requirements.txt
 
       - name: Run Linter
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116 --enable=W0612 --enable=W0613"
+          pylint_args: "--disable=all --enable=C0114 --enable=C0115 --enable=C0116"
           # checks for:
           ## missing module, class, and method docstrings
-          ## unused arguments, and unused variables
+  unused_variables:
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: 3.10.12
+            # Install your linters here
+
+      # - name: Change setuptools version
+      #   run: pip install setuptools==65.5.0
+
+      # - name: Change pip version
+      #   run: pip install pip==21
+
+      - name: Install pylint
+        run: pip install pylint
+
+      # - name: Install dependencies
+      #   run: pip install -r requirements.txt
+
+      - name: Run Linter
+        uses: wearerequired/lint-action@v2
+        with:
+          pylint: true
+          pylint_args: "--disable=all --enable=W0612 --enable=W0613"
+          # checks for:
+          ## unused arguments, and unused variables
