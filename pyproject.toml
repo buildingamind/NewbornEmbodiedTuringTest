@@ -12,6 +12,7 @@ description = "A testbed for comparing the learning abilities of newborn animals
 readme = "README.md"
 requires-python = ">=3.10.12, <3.10.13"
 dependencies = [
+    "gym==0.21.0",
     "mlagents==1.0.0",
     "stable-baselines3[extra]==1.8.0",
     "sb3-contrib==1.8.0",
