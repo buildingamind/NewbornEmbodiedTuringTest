@@ -16,7 +16,12 @@ from typing import Optional
 import numpy as np
 from gym import Wrapper
 from mlagents_envs.environment import UnityEnvironment
-from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
+
+# checks to see if ml-agents tmp files have the proper permissions
+try :
+    from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
+except PermissionError as _:
+     raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
 from nett.environment.configs import NETTConfig, list_configs
 from nett.environment import configs

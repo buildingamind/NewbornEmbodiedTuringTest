@@ -26,7 +26,7 @@ class Logger(SideChannel):
         log_str: This method is used to log a string to the file.
     """
     def __init__(self, log_title, log_dir="./EnvLogs/") -> None:
-        super().__init__(uuid.UUID("621f0a70-4f87-11ea-a6bf-784f4387d1f7"))
+        super().__init__(uuid.UUID("621f0a70-4f87-11ea-a6bf-784f4387d1f7")) # TODO why this UUID?
         if not os.path.exists(log_dir):
             os.makedirs(log_dir)
         self.log_dir = log_dir
