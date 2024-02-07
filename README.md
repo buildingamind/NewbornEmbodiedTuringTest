@@ -1,20 +1,20 @@
 # **Unity environment for ChickAI: virtual controlled-rearing experiments**
 
-This is a collection of tools for simulating virtual agents under controlled-rearing conditions. The agents
-generated and studied through this pipeline can be compared directly to real chicks recorded by the **[**Building a Mind
-Lab**](http://buildingamind.com/)**. This pipeline provides all necessary components for simulating and replicating embodied models from the lab.
-
+This repository provides tools for simulating virtual agents under controlled-rearing conditions. The agents generated and studied through this pipeline can be compared directly to real chicks recorded by the **[Building a Mind Lab](http://buildingamind.com/)**. The pipeline includes all necessary components for simulating and replicating embodied models from the lab.
 The figure below shows the experiment setup for the three experiments discussed in the guide.
 
 <img src="docs/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
 
 ## **How to Use this Repository**
 
-This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in the virtual world, and a set of programs to visualize the data coming from the experiments.
+This repository consists of three main components for building embodied virtual agents:
+1. A video game that serves as a virtual world.
+2. Programs for running experiments in the virtual world.
+3. Programs for visualizing the data from the experiments.
 
 ## **Directory Structure**
 
-**Following the directory structure of the code.**
+**The directory structure of the code is as follows:**
 
 ```
 
@@ -42,21 +42,30 @@ This directory provides three components for building embodied virtual agents. T
 
 In this section, you will learn to use the repository to benchmark your first embodied agent with NETT! 
 
+**NOTE:** The dependency `mlagents==1.0.0` is not compatible with Apple Silicon (M1, M2, etc.) devices. Please use a different device to run the codebase.
+
 ### **Codebase Installation**
 
-1. **(Highly Recommended) **[create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/ "Link for how to set-up a virtual env")
-   ****steps described below :****
+1. **(Highly Recommended)** [create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env")
+   **steps described below :**
    ```
-   conda create -n nett python=3.10.12
-   conda activate nett
+   conda create -n netts python=3.10.12
+   conda activate netts
+   ```
+
+2. Install the needed versions of `setuptools` and `pip`:
+   ```
    pip install setuptools==65.5.0 pip==21
    ```
-2. To install the repository using `pip`:
+   **NOTE:** More recent versions of `setuptools` and `pip` are incompatible with the multiple dependencies due to a subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
+
+3. Install the repository using `pip`:
    ```
    pip install nett-benchmarks
    ```
 
-Note if not installing in a virtual environment, the install might fail because of conflicting dependency versions. `mlagents` uses `gym==0.21` which in-turn has dependencies on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding.
+**NOTE:** If not installing in a virtual environment, the install might fail because of conflicting dependency versions (see note under Step #2). `gym==0.21` has a dependency on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding. 
+
 
 ### **Running a NETT**
 
