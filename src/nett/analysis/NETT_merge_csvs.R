@@ -4,8 +4,8 @@
 # For a specified directory (see below), takes all of the csv files
 # and compiles them into a single data file
 
-# NOTE: For ease of use across many different experimental designs, 
-# this script assumes that all files use a common naming scheme with the 
+# NOTE: For ease of use across many different experimental designs,
+# this script assumes that all files use a common naming scheme with the
 # following criteria:
 # 1) The conditions are specified at the beginning of the filename
 # 2) The conditions are followed by a dash
@@ -64,7 +64,7 @@ read_data <- function(filename)
 {
   # Read the csv file
   data <- read.csv(filename)
-  
+
   # Summarize by zones
   data <- data %>%
     mutate(left = case_when( agent.x < lower_bound ~ 1, agent.x >= lower_bound ~ 0)) %>%
@@ -75,14 +75,14 @@ read_data <- function(filename)
   # Summarize at the episode level
   data <- data %>%
     group_by(Episode, left.monitor, right.monitor) %>%
-    summarise(left_steps = sum(left), 
-              right_steps = sum(right), 
+    summarise(left_steps = sum(left),
+              right_steps = sum(right),
               middle_steps = sum(middle)) %>%
     mutate(Episode = as.numeric(Episode)) %>%
     mutate(left.monitor = sub(" ", "", left.monitor)) %>%
     mutate(right.monitor = sub(" ", "", right.monitor)) %>%
     ungroup()
-  
+
   # Add columns for original filename, agent ID number, and imprinting condition
   data$filename <- basename(filename)
   data$agent <- gsub("\\D", "", data$filename)

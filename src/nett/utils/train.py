@@ -1,32 +1,53 @@
+"""
+Train performance
+
+This module contains the functions to compute the train performance of the agent.
+
+Functions:
+    compute_train_performance: Compute Train performance
+    average_in_episode_three_region: Train performance
+    moving_average: Smooth values by doing a moving average
+"""
+
 import os
 import glob
 import numpy as np
 import pandas as pd
 
 def compute_train_performance(path):
+    """
+    Compute Train performance
+
+    Args:
+        path (Path or String?): path to training files # TODO check the type
+
+    Returns:
+        x (list): list of the episode numbers
+        y (np.array) : the moving averages of the success rate 
+    """
     x,y = [], []
     try:
         training_files = glob.glob(os.path.join(path, "*.csv"))
-        
+
         if len(training_files) == 0:
             raise Exception(f"Training file: {training_files} was not found in the {path}")
-        
-        
+
+
         for file_name in training_files:
-            
+
             log_df = pd.read_csv(file_name, skipinitialspace=True)
-            
-            percents,df,values = average_in_episode_three_region(log_df,"agent.x")
+
+            _, _, values = average_in_episode_three_region(log_df,"agent.x") # percents,df,
             y = moving_average(values, window=100)
-            x = list([i for i in range(0,len(y))])
-            
+            x = list(range(len(y)))
+
             break
-            
-        
+
+
         return x, y
     except Exception as ex:
         print(str(ex))
-        
+
     return x,y
 
 def average_in_episode_three_region(log,column='agent.x',transient=90):
@@ -60,15 +81,13 @@ def average_in_episode_three_region(log,column='agent.x',transient=90):
             if np.isnan(percents[ep]):
                 percents[ep] = 0.5
 
-        rv = []
-        for key in percents:
-            rv.append(percents[key])
-        
+        rv = list(percents.values())
+
         return (percents,log,rv)
     except Exception as ex:
         print(str(ex))
         return (None, None)
-    
+
 def moving_average(values, window):
     """
     Smooth values by doing a moving average

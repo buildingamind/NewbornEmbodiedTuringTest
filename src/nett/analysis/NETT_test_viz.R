@@ -29,8 +29,8 @@ parser$add_argument("--color-bars", type = "character", dest="color_bars",
                     help="Should the bars be colored by test condition?",
                     required=TRUE)
 args <- parser$parse_args()
-data_loc <- args$data_loc; chick_file <- args$chick_file; key_csv <- args$key_csv 
-#graphstyle <- args$graphstyle 
+data_loc <- args$data_loc; chick_file <- args$chick_file; key_csv <- args$key_csv
+#graphstyle <- args$graphstyle
 results_wd <- args$results_wd
 if( args$color_bars %in% c("t", "T", "true", "TRUE")) {color_bars <- TRUE} else { color_bars <- FALSE}
 
@@ -55,7 +55,7 @@ rm(train_data)
 # Add test conditions from the key
 test_data <- test_data %>%
   mutate(left_right = paste(left.monitor, right.monitor, sep="-")) %>%
-  left_join(cond_key, 
+  left_join(cond_key,
             by=c("left_right" = "left_right", "imprinting" = "imprinting"))
 # Code each episode correct/incorrect
 test_data <- test_data %>%
@@ -79,15 +79,15 @@ setwd(results_wd)
 custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779")
 chickred <- "#AF264A"
 
-p <- ggplot() + 
-  theme_classic() + 
-  theme(axis.text.x = element_text(size = 6)) + 
-  ylab("Percent Correct") + 
+p <- ggplot() +
+  theme_classic() +
+  theme(axis.text.x = element_text(size = 6)) +
+  ylab("Percent Correct") +
   xlab("Test Condition") +
   scale_y_continuous(expand = c(0, 0), limits = c(0, 1), breaks=seq(0,1,.1), labels = scales::percent) +
   geom_hline(yintercept = .5, linetype = 2) +
   scale_fill_manual(values = custom_palette) +
-  scale_colour_manual(values = custom_palette) + 
+  scale_colour_manual(values = custom_palette) +
   theme(axis.title = element_text(face="bold"),
         axis.text.x = element_text(face="bold", size=8.5),
         axis.text.y = element_text(face="bold", size=8.5))
@@ -96,12 +96,12 @@ p <- ggplot() +
 # Bar Chart Function -----------------------------------------------------------
 make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
 {
-  p + 
-    
+  p +
+
     # Add chicken performance FIRST to sort the bars
     geom_errorbar(data=chick_data, width = 0.7, colour = chickred,
                   aes(x=cond_name, ymin=avg, ymax=avg)) +
-    
+
     # Model performance: bars
     {if(color_bars)geom_col(data = data, width = 0.7, aes(x=cond_name, y = {{aes_y}}, fill = cond_name))}+
     {if(!color_bars)geom_col(data = data, width = 0.7, aes(x=cond_name, y = {{aes_y}}), fill = "gray45")}+
@@ -111,16 +111,16 @@ make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
     # Model performance: dots
     {if(!is.null(dots))geom_jitter(data = dot_data, aes(x=cond_name, y = avgs), width = .3)}+
     theme(legend.position="none") +
-  
+
     # Add chicken performance again so that it shows up on top
     # Chick performance: lines (errorbar) with ribbons (crossbar)
     geom_errorbar(data=chick_data, width = 0.7, colour = chickred,
                 aes(x=cond_name, ymin=avg, ymax=avg)) +
-    geom_crossbar(data=chick_data, width = 0.7, 
+    geom_crossbar(data=chick_data, width = 0.7,
                   linetype = 0, fill = chickred, alpha = 0.2,
-                  aes(x = cond_name, y = avg, 
-                      ymin = avg - avg_dev, ymax = avg + avg_dev)) 
-  
+                  aes(x = cond_name, y = avg,
+                      ymin = avg - avg_dev, ymax = avg + avg_dev))
+
   ggsave(img_name, width = 6, height = 6)
 }
 
@@ -131,11 +131,11 @@ make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
 ## Group data by test conditions
 by_test_cond <- test_data %>%
   group_by(imprinting, agent, cond_name) %>%
-  summarise(avgs = mean(percent_correct, na.rm = TRUE), 
-            sd = sd(percent_correct, na.rm = TRUE), 
+  summarise(avgs = mean(percent_correct, na.rm = TRUE),
+            sd = sd(percent_correct, na.rm = TRUE),
             count = length(percent_correct),
-            tval = tryCatch({ (t.test(percent_correct, mu=0.5)$statistic)}, error = function(err){NA}), 
-            df = tryCatch({(t.test(percent_correct, mu=0.5)$parameter)},error = function(err){NA}), 
+            tval = tryCatch({ (t.test(percent_correct, mu=0.5)$statistic)}, error = function(err){NA}),
+            df = tryCatch({(t.test(percent_correct, mu=0.5)$parameter)},error = function(err){NA}),
             pval = tryCatch({(t.test(percent_correct, mu=0.5)$p.value)},error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (avgs - .5) / sd) %>%
@@ -147,14 +147,14 @@ for (i in unique(by_test_cond$imp_agent))
 {
   bar_data <- by_test_cond %>%
     filter(imp_agent == i)
-  
+
   img_name <- paste0(i, "_test.png")
-  
-  make_bar_charts(data = bar_data, 
+
+  make_bar_charts(data = bar_data,
                   dots = NULL,
-                  aes_y = avgs, 
-                  error_min = avgs - se, 
-                  error_max = avgs + se, 
+                  aes_y = avgs,
+                  error_min = avgs - se,
+                  error_max = avgs + se,
                   img_name = img_name)
 }
 
@@ -165,11 +165,11 @@ for (i in unique(by_test_cond$imp_agent))
 by_imp_cond <- by_test_cond %>%
   ungroup() %>%
   group_by(imprinting, cond_name) %>%
-  summarise(avgs_by_imp = mean(avgs, na.rm = TRUE), 
-            sd = sd(avgs, na.rm = TRUE), 
+  summarise(avgs_by_imp = mean(avgs, na.rm = TRUE),
+            sd = sd(avgs, na.rm = TRUE),
             count = length(avgs),
-            tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}), 
-            df = tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}), 
+            tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}),
+            df = tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}),
             pval = tryCatch({ (t.test(avgs, mu=0.5)$p.value)}, error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (avgs_by_imp - .5) / sd)
@@ -181,19 +181,19 @@ for (i in unique(by_imp_cond$imprinting))
   bar_data <- by_imp_cond %>%
     filter(imprinting == i) %>%
     filter(cond_name != "Rest")
-  
+
   dot_data <- by_test_cond %>%
     filter(imprinting == i) %>%
     filter(cond_name != "Rest")
-  
+
   img_name <- paste0(i, "_test.png")
-  
-  make_bar_charts(data = bar_data, 
+
+  make_bar_charts(data = bar_data,
                   dots = dot_data,
-                  aes_y = avgs_by_imp, 
-                  error_min = avgs_by_imp - se, 
-                  error_max = avgs_by_imp + se, 
-                  img_name = img_name)  
+                  aes_y = avgs_by_imp,
+                  error_min = avgs_by_imp - se,
+                  error_max = avgs_by_imp + se,
+                  img_name = img_name)
 }
 
 
@@ -202,8 +202,8 @@ across_imp_cond <- by_test_cond %>%
   ungroup() %>%
   filter(cond_name != "Rest") %>%
   group_by(cond_name) %>%
-  summarise(all_avgs = mean(avgs, na.rm = TRUE), 
-            sd = sd(avgs, na.rm = TRUE), 
+  summarise(all_avgs = mean(avgs, na.rm = TRUE),
+            sd = sd(avgs, na.rm = TRUE),
             count = length(avgs),
             tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}),
             df =  tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}),
@@ -215,9 +215,9 @@ write.csv(across_imp_cond, "stats_across_all_agents.csv")
 
 dot_data <- filter(by_test_cond, cond_name != "Rest")
 
-make_bar_charts(data = across_imp_cond, 
+make_bar_charts(data = across_imp_cond,
                 dots = dot_data,
-                aes_y = all_avgs, 
-                error_min = all_avgs - se, 
-                error_max = all_avgs + se, 
-                img_name = "all_imprinting_conds_test.png") 
+                aes_y = all_avgs,
+                error_min = all_avgs - se,
+                error_max = all_avgs + se,
+                img_name = "all_imprinting_conds_test.png")
