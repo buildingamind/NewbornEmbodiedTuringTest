@@ -58,19 +58,19 @@ for (cond in unique(train_data_fixed$imprinting))
 {
   data <- train_data_fixed %>%
     filter(imprinting == cond)
-  
+
   ggplot(data=data, aes(x=episode_block, y=avgs, color=as.factor(agent))) +
     geom_line() +
     theme_classic(base_size = 16) +
     geom_hline(yintercept = .5, linetype = 2) +
-    xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) + 
+    xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) +
     ylab("Average Time with Imprinted Object") +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, 1), 
-                       breaks=seq(0,1,.1), labels = scales::percent) + 
-    scale_x_continuous(expand = c(0, 0), limits = c(0, num_episodes/ep_bucket_size), 
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 1),
+                       breaks=seq(0,1,.1), labels = scales::percent) +
+    scale_x_continuous(expand = c(0, 0), limits = c(0, num_episodes/ep_bucket_size),
                        breaks = seq(0, num_episodes / ep_bucket_size, 1)) +
-    theme(legend.position="none") 
-  
+    theme(legend.position="none")
+
   img_name <- paste0(cond, "_train.png")
   ggsave(img_name)
 }

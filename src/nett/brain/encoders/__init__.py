@@ -1,4 +1,4 @@
-# simplify imports
+"""Simplifies imports for encoders"""
 from .resnet18 import Resnet18CNN
 from .dinov1 import DinoV1
 from .dinov2 import DinoV2
