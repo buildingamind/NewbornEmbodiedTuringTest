@@ -31,7 +31,7 @@ __version__ = "0.1"
 # change permissions of the ml-agents binaries directory
 os.chmod('/tmp/ml-agents-binaries', 0o1777)
 os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
-os.chmod('/tmp/ml-agents-binaries/bin', 0o1777)
+os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
 
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
