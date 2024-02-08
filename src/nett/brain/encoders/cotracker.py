@@ -10,13 +10,16 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class CoTracker(BaseFeaturesExtractor):
     """
-    CoTracker is a feature extractor that uses the Co-Tracker model to extract features from observations.
+    Initialize the CoTracker feature extractor.
 
-    :param observation_space: (gym.Space) The observation space of the environment.
-    :param features_dim: (int) Number of features extracted. This corresponds to the number of units for the last layer.
+    :param observation_space: The observation space of the environment.
+    :type observation_space: gym.spaces.Box
+    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
+    :type features_dim: int
     """
-
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
+        """Constructor method
+        """
         super(CoTracker, self).__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
 
@@ -47,14 +50,14 @@ class CoTracker(BaseFeaturesExtractor):
         ## remove classifier
         #self.model = th.nn.Sequential(OrderedDict([*(list(model.named_children())[:-1])]))
 
-
-
     def forward(self, observations: th.Tensor) -> th.Tensor:
         """
         Forward pass of the CoTracker feature extractor.
 
-        :param observations: (th.Tensor) The input observations.
-        :return: (th.Tensor) The extracted features.
+        :param observations: The input observations.
+        :type observations: th.Tensor
+        :return: The extracted features.
+        :rtype: th.Tensor
         """
         # Cut off image
         # reshape to from vector to W*H

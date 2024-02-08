@@ -1,5 +1,9 @@
 """
 This module contains the NETT class, which is the main class for training and testing brains in environments.
+
+.. module:: nett
+   :synopsis: Main class for training and testing brains in environments.
+
 """
 
 import time
@@ -25,36 +29,61 @@ class NETT:
     """
     The NETT class is the main class for training and testing brains in environments.
 
-    Args:
-        brain (Brain): The brain to be trained and tested.
-        body (Body): The body to be used for training and testing the brain.
-        environment (Environment): The environment in which the brain is to be trained and tested.
+    :param brain: The brain to be trained and tested.
+    :type brain: Brain
+    :param body: The body to be used for training and testing the brain.
+    :type body: Body
+    :param environment: The environment in which the brain is to be trained and tested.
+    :type environment: Environment
     
-    Methods:
-        run: Run the training and testing of the brains in the environment.
-        launch_jobs: Launch the jobs in the job sheet.
-        status: Get the status of the jobs in the job sheet.
-        analyze: Analyze the results of a run.
-        summary: Generate a toml file and save it to the run directory.
-    
-    Variables:
-        output_dir (Path): The directory where the run results will be stored.
-        mode (str): The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
-        verbosity (int): The verbosity level of the run.
-        num_brains (int): The number of brains to be trained and tested.
-        train_eps (int): The number of episodes the brains are to be trained for.
-        test_eps (int): The number of episodes the brains are to be tested for.
-        description (str): A description of the run.
-        buffer (float): The buffer for memory allocation.
-        step_per_episode (int): The number of steps per episode.
-        device_type (str): The type of device to be used for training and testing. It can be "cuda" or "cpu".
-        devices (list[int] | int): The list of devices to be used for training and testing. If -1, all available devices will be used.
-        brain (Brain): The brain to be trained and tested.
-        body (Body): The body to be used for training and testing the brain.
-        environment (Environment): The environment in which the brain is to be trained and tested.
-        logger (Logger): The logger for the NETT class.
+    :ivar output_dir: The directory where the run results will be stored.
+    :vartype output_dir: Path
+    :ivar mode: The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
+    :vartype mode: str
+    :ivar verbosity: The verbosity level of the run.
+    :vartype verbosity: int
+    :ivar num_brains: The number of brains to be trained and tested.
+    :vartype num_brains: int
+    :ivar train_eps: The number of episodes the brains are to be trained for.
+    :vartype train_eps: int
+    :ivar test_eps: The number of episodes the brains are to be tested for.
+    :vartype test_eps: int
+    :ivar description: A description of the run.
+    :vartype description: str
+    :ivar buffer: The buffer for memory allocation.
+    :vartype buffer: float
+    :ivar step_per_episode: The number of steps per episode.
+    :vartype step_per_episode: int
+    :ivar device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
+    :vartype device_type: str
+    :ivar devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
+    :vartype devices: list[int] | int
+    :ivar brain: The brain to be trained and tested.
+    :vartype brain: Brain
+    :ivar body: The body to be used for training and testing the brain.
+    :vartype body: Body
+    :ivar environment: The environment in which the brain is to be trained and tested.
+    :vartype environment: Environment
+    :ivar logger: The logger for the NETT class.
+    :vartype logger: Logger
+
+    Example:
+    >>> from nett import NETT
+    >>> # create a brain, body, and environment
+    >>> nett = NETT(brain, body, environment)
     """
+
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
+        """
+        Initialize the NETT class.
+
+        :param brain: The brain to be trained and tested.
+        :type brain: Brain
+        :param body: The body to be used for training and testing the brain.
+        :type body: Body
+        :param environment: The environment in which the brain is to be trained and tested.
+        :type environment: Environment
+        """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
@@ -79,22 +108,36 @@ class NETT:
         """
         Run the training and testing of the brains in the environment.
 
-        Args:
-            output_dir (Path | str): The directory where the run results will be stored.
-            num_brains (int): The number of brains to be trained and tested.
-            mode (str): The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
-            train_eps (int): The number of episodes the brains are to be trained for.
-            test_eps (int): The number of episodes the brains are to be tested for.
-            device_type (str): The type of device to be used for training and testing. It can be "cuda" or "cpu".
-            devices (list[int] | int): The list of devices to be used for training and testing. If -1, all available devices will be used.
-            description (str): A description of the run.
-            buffer (float): The buffer for memory allocation.
-            step_per_episode (int): The number of steps per episode.
-            verbosity (int): The verbosity level of the run.
-            memory_per_brain (float): The memory to be allocated to each brain.
+        :param output_dir: The directory where the run results will be stored.
+        :type output_dir: Path | str
+        :param num_brains: The number of brains to be trained and tested.
+        :type num_brains: int, optional
+        :param mode: The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
+        :type mode: str, optional
+        :param train_eps: The number of episodes the brains are to be trained for.
+        :type train_eps: int, optional
+        :param test_eps: The number of episodes the brains are to be tested for.
+        :type test_eps: int, optional
+        :param device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
+        :type device_type: str, optional
+        :param devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
+        :type devices: list[int] | int, optional
+        :param description: A description of the run.
+        :type description: str, optional
+        :param buffer: The buffer for memory allocation.
+        :type buffer: float, optional
+        :param step_per_episode: The number of steps per episode.
+        :type step_per_episode: int, optional
+        :param verbosity: The verbosity level of the run.
+        :type verbosity: int, optional
+        :param memory_per_brain: The memory to be allocated to each brain.
+        :type memory_per_brain: float, optional
         
-        Returns:
-            list[Future]: A list of futures representing the jobs that have been launched.
+        :return: A list of futures representing the jobs that have been launched.
+        :rtype: list[Future]
+
+        Example:
+        >>> job_sheet = nett.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10)
         """
         # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
         self.output_dir = Path(output_dir)
@@ -129,11 +172,11 @@ class NETT:
         """
         Launch the jobs in the job sheet.
 
-        Args:
-            jobs (list[dict]): The jobs to be launched.
+        :param jobs: The jobs to be launched.
+        :type jobs: list[dict]
         
-        Returns:
-            list[Future]: A list of futures representing the jobs that have been launched.
+        :return: A list of futures representing the jobs that have been launched.
+        :rtype: list[Future]
         """
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
@@ -160,11 +203,11 @@ class NETT:
         """
         Get the status of the jobs in the job sheet.
         
-        Args:
-            job_sheet (dict[Future, dict]): The job sheet returned by the .launch_jobs() method.
+        :param job_sheet: The job sheet returned by the .launch_jobs() method.
+        :type job_sheet: dict[Future, dict]
             
-        Returns:
-            pd.DataFrame: A dataframe containing the status of the jobs in the job sheet.
+        :return: A dataframe containing the status of the jobs in the job sheet.
+        :rtype: pd.DataFrame
         """
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = [self._filter_job_record(job_record, selected_columns) for job_record in job_sheet]
@@ -183,14 +226,17 @@ class NETT:
         """
         Analyze the results of a run. This method is a static method and does not require an instance of the NETT class to be called.
         
-        Args:
-            run_dir (str | Path): The directory where the run results are stored.
-            output_dir (str | Path | None): The directory where the analysis results will be stored. If None, the analysis results will be stored in the run directory.
-            ep_bucket (int): The number of episodes to be grouped together for analysis.
-            num_episodes (int): The number of episodes to be analyzed.
+        :param run_dir: The directory where the run results are stored.
+        :type run_dir: str | Path
+        :param output_dir: The directory where the analysis results will be stored. If None, the analysis results will be stored in the run directory.
+        :type output_dir: str | Path | None, optional
+        :param ep_bucket: The number of episodes to be grouped together for analysis.
+        :type ep_bucket: int, optional
+        :param num_episodes: The number of episodes to be analyzed.
+        :type num_episodes: int, optional
             
-        Returns:
-            None
+        :return: None
+        :rtype: None
         """
         # set paths
         run_dir = Path(run_dir).resolve()

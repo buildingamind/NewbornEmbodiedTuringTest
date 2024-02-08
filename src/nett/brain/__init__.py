@@ -13,8 +13,8 @@ def list_encoders() -> set[str]:
     """
     Return a set of all available encoders.
 
-    Returns:
-        set[str]: Set of encoder names.
+    :return: Set of encoder names.
+    :rtype: set[str]
     """
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     encoders = [encoder.stem for encoder in list(encoders_dir.iterdir()) if "__" not in str(encoder)]
@@ -27,8 +27,8 @@ def list_algorithms() -> set[str]:
     """
     Return a set of all available policy algorithms.
 
-    Returns:
-        set[str]: Set of algorithm names.
+    :return: Set of algorithm names.
+    :rtype: set[str]
     """
     sb3_policy_algorithms = [algorithm for algorithm in dir(stable_baselines3) if algorithm[0].isupper()]
     sb3_contrib_policy_algorithms = [algorithm for algorithm in dir(sb3_contrib) if algorithm[0].isupper()]
@@ -43,8 +43,8 @@ def list_policies() -> set[str]:
     """
     Return a set of all available policy models.
 
-    Returns:
-        set[str]: Set of policy model names.
+    :return: Set of policy model names.
+    :rtype: set[str]
     """
     return {'CnnPolicy', 'MlpPolicy', 'MultiInputPolicy', 'MultiInputLstmPolicy', 'CnnLstmPolicy'}
 
@@ -56,8 +56,8 @@ def get_encoder_dict():
     """
     Return a dictionary mapping encoder names to encoder class names.
 
-    Returns:
-        dict: Dictionary mapping encoder names to encoder class names.
+    :return: Dictionary mapping encoder names to encoder class names.
+    :rtype: dict[str, str]
     """
     encoders_dict = {}
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
