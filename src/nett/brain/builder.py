@@ -105,7 +105,7 @@ class Brain:
         """
         # validate environment
         env = self._validate_env(env)
-
+        self.logger.info(f"Training with {self.algorithm.__name__}")
         # initialize environment
         log_path = paths['env_logs']
         env = Monitor(env, str(log_path))
@@ -183,6 +183,7 @@ class Brain:
         :param record_prefix: The prefix for recording videos of the testing process, defaults to None.
         :type record_prefix: str, optional
         """
+        self.logger.info(f"Testing with {self.algorithm.__name__}")
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
 

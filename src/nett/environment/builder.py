@@ -224,6 +224,7 @@ class Environment(Wrapper):
         :return: The initial state of the environment.
         :rtype: np.ndarray
         """
+        self.log.info("Reset environment")
         return self.env.reset(**kwargs)
 
     def __repr__(self) -> str:
