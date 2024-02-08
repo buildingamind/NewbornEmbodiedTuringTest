@@ -10,7 +10,8 @@ import numpy as np
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
-from nett.utils.train import compute_train_performance
+# NOTE: Import was causing circular import error (nett.utils -> utils)
+from utils.train import compute_train_performance
 
 # TODO (v0.3): refactor needed, especially logging
 class HParamCallback(BaseCallback):

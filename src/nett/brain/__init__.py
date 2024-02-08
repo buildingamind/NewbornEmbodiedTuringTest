@@ -6,7 +6,8 @@ import stable_baselines3
 import sb3_contrib
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-# from nett.brain import encoders
+# NOTE: Import was causing circular import error (nett.brain -> brain)
+# from brain import encoders
 
 def list_encoders() -> set[str]:
     """

@@ -22,10 +22,10 @@ try :
     from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
-
-from nett.environment.configs import NETTConfig, list_configs
-from nett.environment import configs
-from nett.utils.environment import Logger, port_in_use
+# NOTE: Import was causing circular import error (nett.environment -> environment) (nett.utils -> utils)
+from environment.configs import NETTConfig, list_configs
+from environment import configs
+from utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
     """
