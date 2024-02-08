@@ -72,7 +72,7 @@ class NETT:
 
     >>> from nett import NETT
     >>> # create a brain, body, and environment
-    >>> nett = NETT(brain, body, environment)
+    >>> benchmarks = NETT(brain, body, environment)
     """
 
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
@@ -140,7 +140,7 @@ class NETT:
 
         Example:
     
-        >>> job_sheet = nett.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10)
+        >>> job_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
         # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
         self.output_dir = Path(output_dir)
@@ -211,6 +211,10 @@ class NETT:
             
         :return: A dataframe containing the status of the jobs in the job sheet.
         :rtype: pd.DataFrame
+
+        Example:
+
+        >>> status = benchmarks.status(job_sheet) # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = [self._filter_job_record(job_record, selected_columns) for job_record in job_sheet]
@@ -240,6 +244,10 @@ class NETT:
             
         :return: None
         :rtype: None
+
+        Example:
+
+        >>> benchmarks.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
         """
         # set paths
         run_dir = Path(run_dir).resolve()

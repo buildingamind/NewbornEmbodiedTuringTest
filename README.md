@@ -95,21 +95,25 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 4. **Run the Benchmarking**:  Integrate all components into a NETT instance to facilitate experiment execution.
    ```python
-   nett = NETT(brain=brain, body=body, environment=environment)
+   benchmarks = NETT(brain=brain, body=body, environment=environment)
    ```
-   The `nett` instance has a `.run()` method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.
+   The `NETT` instance has a `.run()` method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.
    ```python
-   job_sheet = nett.run(output_dir="path/to/output", num_brains=5, trains_eps=10, test_eps=5)
+   job_sheet = benchmarks.run(output_dir="path/to/output", num_brains=5, trains_eps=10, test_eps=5)
    ```
    The `run` function is asynchronous, returning the list of jobs that may or may not be complete.
 5. **Check Status**: To see the status of the benchmark processes, use the `.status()` method:
    ```python
-   nett.status(job_sheet)
+   benchmarks.status(job_sheet)
    ```
 
 ### **Running Standard Analysis**
 
-TO BE UPDATED.
+After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory. To run the analyses performed in previous experiments, you can use the following command:
+
+   ```python
+   benchmarks.analyze(run_dir="./test_run", output_dir="./results")
+   ```
 
 ## **Experiment Configuration**
 
