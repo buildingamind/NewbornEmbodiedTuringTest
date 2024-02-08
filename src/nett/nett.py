@@ -19,11 +19,12 @@ from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 # NOTE: Import was causing circular import error
-# from nett import Brain, Body, Environment
-from brain.builder import Brain
-from body.builder import Body
-from environment.builder import Environment
-from utils.io import mute
+from nett import Brain, Body, Environment
+from nett.utils.io import mute
+# from brain.builder import Brain
+# from body.builder import Body
+# from environment.builder import Environment
+# from utils.io import mute
 
 class NETT:
     """

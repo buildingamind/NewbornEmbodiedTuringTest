@@ -23,9 +23,9 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 
 # NOTE: Import was causing circular import error (nett.brain -> brain) (nett.utils -> utils)
-from brain import algorithms, policies, encoder_dict
-from brain import encoders
-from utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
+from nett.brain import algorithms, policies, encoder_dict
+from nett.brain import encoders
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 
 # TODO (v0.2): Extend with support for custom policy models
 # TODO (v0.2): should we move validation checks to utils under validations.py?
