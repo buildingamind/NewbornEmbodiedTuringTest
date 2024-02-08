@@ -52,6 +52,7 @@ class Brain:
     :type seed: int, optional
 
     Example:
+
     >>> from nett import Brain
     >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
     """

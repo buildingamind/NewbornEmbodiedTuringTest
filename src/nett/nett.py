@@ -68,6 +68,7 @@ class NETT:
     :vartype logger: Logger
 
     Example:
+
     >>> from nett import NETT
     >>> # create a brain, body, and environment
     >>> nett = NETT(brain, body, environment)
@@ -137,6 +138,7 @@ class NETT:
         :rtype: list[Future]
 
         Example:
+    
         >>> job_sheet = nett.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10)
         """
         # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)

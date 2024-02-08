@@ -6,7 +6,7 @@ Lab**](http://buildingamind.com/)**. This pipeline provides all necessary compon
 
 The figure below shows the experiment setup for the three experiments discussed in the guide.
 
-<img src="digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+<img src="../../assets/images/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
 
 ## **How to Use this Repository**
 

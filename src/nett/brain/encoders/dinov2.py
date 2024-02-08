@@ -3,6 +3,7 @@
 This module provides a feature extractor based on the DINOv2 model. It takes in observations from an environment and extracts features using the DINOv2 model.
 
 Example:
+
     >>> observation_space = gym.spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
     >>> features_dim = 384
     >>> extractor = DinoV2(observation_space, features_dim)

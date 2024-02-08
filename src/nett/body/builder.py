@@ -32,6 +32,7 @@ class Body:
     :raises TypeError: If dvs is not a boolean.
 
     Example:
+
     >>> from nett import Body
     >>> body = Body(type="basic", wrappers=None, dvs=False)
     """

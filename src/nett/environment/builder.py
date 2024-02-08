@@ -46,6 +46,7 @@ class Environment(Wrapper):
     :raises ValueError: If the configuration is not a valid string or an instance of NETTConfig.
 
     Example:
+
     >>> from nett import Environment
     >>> env = Environment(config="identityandview", executable_path="path/to/executable")
     """

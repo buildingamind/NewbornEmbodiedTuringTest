@@ -4,7 +4,7 @@ The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to si
 
 Below is a visual representation of our experimental setup, showcasing the infrastructure for the three primary experiments discussed in this documentation.
 
-<img src="docs/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+<img src="docs/assets/images/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
 
 ## **How to Use this Repository**
 
