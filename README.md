@@ -51,7 +51,13 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```
    See [here](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env") for detailed instructions.
 
-2. **Toolkit Installation**: Install the toolkit using `pip`.
+2. Install the needed versions of `setuptools` and `pip`:
+   ```bash
+   pip install setuptools==65.5.0 pip==21
+   ```
+   **NOTE:** This is a result of incompatibilities with the subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
+
+3. **Toolkit Installation**: Install the toolkit using `pip`.
    ```bash
    pip install nett-benchmarks
    ```
