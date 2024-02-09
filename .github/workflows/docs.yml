@@ -23,9 +23,13 @@ jobs:
           python-version: 3.10.12
           cache: "pip" # caching pip dependencies
 
+      - name: Change setuptools and pip versions
+        run: |
+          pip install setuptools=65.5.0 pip==21
+
       - name: Install dependencies
         run: |
-          pip install docs/requirements.txt
+          pip install -r docs/requirements.txt
 
       - name: Sphinx build
         run: |
