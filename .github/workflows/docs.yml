@@ -3,11 +3,10 @@ name: "Sphinx: Render docs"
 on:
   push:
     branches:
-      - main
+      - gh-pages
   pull_request:
     branches:
-      - main
-      - dev
+      - gh-pages
 
 jobs:
   docs:
