@@ -4,9 +4,7 @@ from gym import Wrapper, Env
 
 # NOTE: Import was causing circular import error
 from nett.body import types
-from nett.body import ascii_art
-# from body import types
-# # from body import ascii_art
+# from nett.body import ascii_art
 
 # this will have the necessary wrappers before the observations interact with the brain,
 # because it is the body that determines how the the observations will be processed.

@@ -5,7 +5,7 @@
 
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../src/nett'))
+sys.path.insert(0, os.path.abspath('../../src/'))
 
 source_suffix = {
     '.rst': 'restructuredtext',
@@ -24,7 +24,6 @@ release = '0.2'
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-  'sphinx.ext.doctest',
   'sphinx.ext.autodoc',
   'myst_parser',
 ]
@@ -43,3 +42,5 @@ html_theme_options = {
 }
 
 html_static_path = ['_static']
+
+# autodoc_mock_imports = ["nett", "nett.Body", "nett.Brain", "nett.Environment", "nett.NETT"]

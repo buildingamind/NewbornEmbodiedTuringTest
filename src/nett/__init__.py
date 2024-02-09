@@ -23,7 +23,6 @@ from pathlib import Path
 from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
-from nett.nett import NETT
 
 # release version
 __version__ = "0.1"
