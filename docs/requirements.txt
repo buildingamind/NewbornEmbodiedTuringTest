@@ -1,0 +1,11 @@
+mlagents==1.0.0
+stable-baselines3[extra]==1.8.0
+sb3-contrib==1.8.0
+torchvision
+scipy
+timm
+nvidia-ml-py
+sphinx
+mkdocs
+sphinx-rtd-theme
+myst-parser

@@ -1,0 +1,46 @@
+name: "Sphinx: Render docs"
+
+on:
+  push:
+    branches:
+      - gh-pages
+  pull_request:
+    branches:
+      - gh-pages
+      - dev
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.10.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.10.12
+          cache: "pip" # caching pip dependencies
+
+      - name: Change setuptools and pip versions
+        run: |
+          pip install setuptools==65.5.0 pip==21
+
+      - name: Install dependencies
+        run: |
+          pip install -r docs/requirements.txt
+
+      - name: Sphinx build
+        run: |
+          sphinx-build -M html docs/source/ docs/build/
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v3
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        with:
+          publish_branch: gh-pages
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: docs/build/
+          force_orphan: true

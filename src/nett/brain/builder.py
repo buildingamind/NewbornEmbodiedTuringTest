@@ -1,4 +1,5 @@
-""" Module for the Brain class. """
+"""Module for the Brain class."""
+
 from typing import Any
 from pathlib import Path
 import inspect
@@ -30,16 +31,29 @@ from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 class Brain:
     """A class representing a brain for training and testing reinforcement learning models.
 
-    Args:
-        encoder (Any | str, optional): The encoder used to extract features from the environment. Defaults to None.
-        embedding_dim (int | None, optional): The dimension of the embedding space. Defaults to None.
-        policy (Any | str | None, optional): The policy model used for the reinforcement learning algorithm. Defaults to None.
-        algorithm (Any | str | None, optional): The reinforcement learning algorithm used for training the model. Defaults to None.
-        reward (Any | str, optional): The type of reward used for training the model. Defaults to "supervised".
-        batch_size (int, optional): The batch size used for training. Defaults to 512.
-        buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-        train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
-        seed (int, optional): The random seed used for training. Defaults to 12.
+    :param encoder: The encoder used to extract features from the environment. Defaults to None.
+    :type encoder: Any | str, optional
+    :param embedding_dim: The dimension of the embedding space. Defaults to None.
+    :type embedding_dim: int | None, optional
+    :param policy: The policy model used for the reinforcement learning algorithm. Defaults to None.
+    :type policy: Any | str | None, optional
+    :param algorithm: The reinforcement learning algorithm used for training the model. Defaults to None.
+    :type algorithm: Any | str | None, optional
+    :param reward: The type of reward used for training the model. Defaults to "supervised".
+    :type reward: Any | str, optional
+    :param batch_size: The batch size used for training. Defaults to 512.
+    :type batch_size: int, optional
+    :param buffer_size: The buffer size used for training. Defaults to 2048.
+    :type buffer_size: int, optional
+    :param train_encoder: Whether to train the encoder or not. Defaults to False.
+    :type train_encoder: bool | None, optional
+    :param seed: The random seed used for training. Defaults to 12.
+    :type seed: int, optional
+
+    Example:
+
+    >>> from nett import Brain
+    >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
     """
 
     def __init__(self,
@@ -53,19 +67,7 @@ class Brain:
                  train_encoder: bool | None = False,
                  seed: int = 12
                  ) -> None:
-        """
-        Initialize the Brain object.
-
-        Args:
-            encoder (Any | str, optional): The encoder used to extract features from the environment. Defaults to None.
-            embedding_dim (int | None, optional): The dimension of the embedding space. Defaults to None.
-            policy (Any | str | None, optional): The policy model used for the reinforcement learning algorithm. Defaults to None.
-            algorithm (Any | str | None, optional): The reinforcement learning algorithm used for training the model. Defaults to None.
-            reward (Any | str, optional): The type of reward used for training the model. Defaults to "supervised".
-            batch_size (int, optional): The batch size used for training. Defaults to 512.
-            buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-            train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
-            seed (int, optional): The random seed used for training. Defaults to 12.
+        """Constructor method
         """
         # Initialize logger
         from nett import logger
@@ -86,12 +88,19 @@ class Brain:
         """
         Train the reinforcement learning model.
 
-        Args:
-            env: The environment used for training.
-            iterations (int): The number of training iterations.
-            device_type (str): The type of device used for training.
-            device (int): The device index used for training.
-            paths (dict[str, Path]): The paths for saving logs, models, and plots.
+        :param env: The environment used for training.
+        :type env: Any
+        :param iterations: The number of training iterations.
+        :type iterations: int
+        :param device_type: The type of device used for training.
+        :type device_type: str
+        :param device: The device index used for training.
+        :type device: int
+        :param paths: The paths for saving logs, models, and plots.
+        :type paths: dict[str, Path]
+
+        :raises ValueError: If the environment fails the validation check.
+        
         """
         # validate environment
         env = self._validate_env(env)
@@ -164,11 +173,14 @@ class Brain:
         """
         Test the reinforcement learning model.
 
-        Args:
-            env: The environment used for testing.
-            iterations (int): The number of testing iterations.
-            model_path (str): The path to the trained model.
-            record_prefix (str | None, optional): The prefix for recording videos of the testing process. Defaults to None.
+        :param env: The environment used for testing.
+        :type env: Any
+        :param iterations: The number of testing iterations.
+        :type iterations: int
+        :param model_path: The path to the trained model.
+        :type model_path: str
+        :param record_prefix: The prefix for recording videos of the testing process, defaults to None.
+        :type record_prefix: str, optional
         """
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
@@ -214,8 +226,8 @@ class Brain:
         """
         Save the trained model.
 
-        Args:
-            path (str): The path to save the model.
+        :param path: The path to save the model.
+        :type path: str
         """
         self.model.save(path)
 
@@ -223,11 +235,11 @@ class Brain:
         """
         Load a trained model.
 
-        Args:
-            model_path (str | Path): The path to the trained model.
+        :param model_path: The path to the trained model.
+        :type model_path: str or Path
 
-        Returns:
-            The loaded model.
+        :return: The loaded model.
+        :rtype: Any
         """
         return self.algorithm.load(model_path)
 
@@ -235,11 +247,14 @@ class Brain:
         """
         Plot the training results.
 
-        Args:
-            iterations (int): The number of training iterations.
-            model_log_dir (Path): The directory containing the training logs.
-            plots_dir (Path): The directory to save the plots.
-            name (str): The name of the plot.
+        :param iterations: The number of training iterations.
+        :type iterations: int
+        :param model_log_dir: The directory containing the training logs.
+        :type model_log_dir: Path
+        :param plots_dir: The directory to save the plots.
+        :type plots_dir: Path
+        :param name: The name of the plot.
+        :type name: str
         """
         results_plotter.plot_results([str(model_log_dir)],
                                      iterations,
@@ -253,11 +268,11 @@ class Brain:
         """
         Validate the encoder.
 
-        Args:
-            encoder (Any | str): The encoder to validate.
+        :param encoder: The encoder to validate.
+        :type encoder: Any or str
 
-        Returns:
-            The validated encoder.
+        :return: The validated encoder.
+        :rtype: BaseFeaturesExtractor
         """
         # for when encoder is a string
         if isinstance(encoder, str):
@@ -279,11 +294,11 @@ class Brain:
         """
         Validate the reinforcement learning algorithm.
 
-        Args:
-            algorithm (Any | str): The algorithm to validate.
+        :param algorithm: The algorithm to validate.
+        :type algorithm: Any or str
 
-        Returns:
-            The validated algorithm.
+        :return: The validated algorithm.
+        :rtype: OnPolicyAlgorithm or OffPolicyAlgorithm
         """
         # for when policy is a string
         if isinstance(algorithm, str):
@@ -310,15 +325,18 @@ class Brain:
         """
         Validate the policy model.
 
-        Args:
-            policy (Any | str): The policy model to validate.
+        :param policy: The policy model to validate.
+        :type policy: Any or str
 
-        Returns:
-            The validated policy model.
+        :return: The validated policy model.
+        :rtype: str or BasePolicy
+
+        :raises ValueError: If the policy is a string and not one of the supported policies.
+        :raises ValueError: If the policy is not a string or a subclass of BasePolicy.
         """
         # for when policy is a string
         if isinstance(policy, str):
-            # support teseted for PPO and RecurrentPPO only
+            # support tested for PPO and RecurrentPPO only
             if policy not in policies:
                 raise ValueError(f"If a string, should be one of: {policies}")
 
@@ -336,11 +354,13 @@ class Brain:
         """
         Validate the reward type.
 
-        Args:
-            reward (Any | str): The reward type to validate.
+        :param reward: The reward type to validate.
+        :type reward: Any or str
 
-        Returns:
-            The validated reward type.
+        :return: The validated reward type.
+        :rtype: Any or str
+
+        :raises ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
         if isinstance(reward, str) and reward not in ['supervised', 'unsupervised']:
@@ -352,11 +372,13 @@ class Brain:
         """
         Validate the environment.
 
-        Args:
-            env: The environment to validate.
+        :param env: The environment to validate.
+        :type env: Any
 
-        Returns:
-            The validated environment.
+        :return: The validated environment.
+        :rtype: Any
+
+        :raises ValueError: If the environment fails the validation check.
         """
         try:
             check_env(env)
@@ -365,6 +387,13 @@ class Brain:
         return env
 
     def _set_encoder_as_eval(self, model):
+        """
+        Set the encoder as evaluation mode and freeze its parameters.
+
+        :param model: The model containing the encoder.
+
+        :return: The model with the encoder set as evaluation mode.
+        """
         model.policy.features_extractor.eval()
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False

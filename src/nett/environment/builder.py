@@ -1,11 +1,4 @@
-"""
-This module contains the definition of the Environment class, which is a wrapper around the UnityEnvironment
-class from the mlagents_envs library. It provides a convenient interface for interacting with the Unity environment
-and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment,
-and logging messages.
-
-The Environment class inherits from the gym.Wrapper class, allowing it to be used as a gym environment.
-"""
+"""Module for the Environment class."""
 
 from __future__ import annotations
 
@@ -23,31 +16,39 @@ try :
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
-from nett.environment.configs import NETTConfig, list_configs
 from nett.environment import configs
+from nett.environment.configs import NETTConfig, list_configs
 from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
     """
-    A wrapper around the UnityEnvironment class from the mlagents_envs library. It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
+    A wrapper around the UnityEnvironment class from the mlagents_envs library.
+
+    This class provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
 
     The Environment class inherits from the gym.Wrapper class, allowing it to be used as a gym environment.
 
-    Methods:
-        initialize: Initializes the environment with the given mode and arguments.
-        render: Renders the current frame of the environment.
-        step: Takes a step in the environment with the given action.
-        log: Logs a message to the environment.
-        reset: Resets the environment with the given seed and arguments.
+    :param config: The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
+    :type config: str | NETTConfig
+    :param executable_path: The path to the Unity executable file.
+    :type executable_path: str
+    :param display: The display number to use for the Unity environment. Defaults to 0.
+    :type display: int, optional
+    :param base_port: The base port number to use for communication with the Unity environment. Defaults to 5004.
+    :type base_port: int, optional
+    :param record_chamber: Whether to record the chamber. Defaults to False.
+    :type record_chamber: bool, optional
+    :param record_agent: Whether to record the agent. Defaults to False.
+    :type record_agent: bool, optional
+    :param recording_frames: The number of frames to record. Defaults to 1000.
+    :type recording_frames: int, optional
 
-    Attributes:
-        config (NETTConfig): The configuration for the environment.
-        executable_path (str): The path to the Unity executable file.
-        base_port (int): The base port number to use for communication with the Unity environment.
-        record_chamber (bool): Whether to record the chamber.
-        record_agent (bool): Whether to record the agent.
-        recording_frames (int): The number of frames to record.
-        display (int): The display number to use for the Unity environment.
+    :raises ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+
+    Example:
+
+    >>> from nett import Environment
+    >>> env = Environment(config="identityandview", executable_path="path/to/executable")
     """
     def __init__(self,
                  config: str | NETTConfig,
@@ -57,19 +58,7 @@ class Environment(Wrapper):
                  record_chamber: bool = False,
                  record_agent: bool = False,
                  recording_frames: int = 1000) -> None:
-        """
-        Initializes the Environment object.
-
-        Args:
-            config (str | NETTConfig): The configuration for the environment. It can be either a string representing
-                the name of a pre-defined configuration, or an instance of the NETTConfig class.
-            executable_path (str): The path to the Unity executable file.
-            display (int, optional): The display number to use for the Unity environment. Defaults to 0.
-            base_port (int, optional): The base port number to use for communication with the Unity environment.
-                Defaults to 5004.
-            record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
-            record_agent (bool, optional): Whether to record the agent. Defaults to False.
-            recording_frames (int, optional): The number of frames to record. Defaults to 1000.
+        """Constructor method
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
@@ -91,14 +80,11 @@ class Environment(Wrapper):
         """
         Validates the configuration for the environment.
 
-        Args:
-            config (str | NETTConfig): The configuration to validate.
-
-        Returns:
-            NETTConfig: The validated configuration.
-
-        Raises:
-            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+        :param config: The configuration to validate.
+        :type config: str | NETTConfig
+        :return: The validated configuration.
+        :rtype: NETTConfig
+        :raises ValueError: If the configuration is not a valid string or an instance of NETTConfig.
         """
         # for when config is a str
         if isinstance(config, str):
@@ -120,6 +106,8 @@ class Environment(Wrapper):
     def _set_executable_permission(self) -> None:
         """
         Sets the executable permission for the Unity executable file.
+
+        :return: None
         """
         subprocess.run(["chmod", "-R", "755", self.executable_path], check=True)
         self.logger.info("Executable permission is set")
@@ -127,6 +115,8 @@ class Environment(Wrapper):
     def _set_display(self) -> None:
         """
         Sets the display environment variable for the Unity environment.
+
+        :return: None
         """
         os.environ["DISPLAY"] = str(f":{self.display}")
         self.logger.info("Display is set")
@@ -140,12 +130,12 @@ class Environment(Wrapper):
         """
         Initializes the environment with the given mode and arguments.
 
-        Args:
-            mode (str): The mode to initialize the environment in.
-            **kwargs: The arguments to pass to the environment.
-        
-        Returns:
-            Environment: The initialized environment.
+        :param mode: The mode to initialize the environment in.
+        :type mode: str
+        :param kwargs: The arguments to pass to the environment.
+        :type kwargs: Any
+        :return: The initialized environment.
+        :rtype: Environment
         """
         args = []
 
@@ -192,23 +182,22 @@ class Environment(Wrapper):
         """
         Renders the current frame of the environment.
 
-        Args:
-            mode (str, optional): The mode to render the frame in. Defaults to "rgb_array".
-
-        Returns:
-            np.ndarray: The rendered frame of the environment.
+        :param mode: The mode to render the frame in. Defaults to "rgb_array".
+        :type mode: str, optional
+        :return: The rendered frame of the environment.
+        :rtype: np.ndarray
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
     def step(self, action):
         """
         Takes a step in the environment with the given action.
-        
-        Args:
-            action: The action to take in the environment.
-            
-        Returns:
-            tuple: A tuple containing the next state, reward, done flag, and info dictionary.
+
+        :param action: The action to take in the environment.
+        :type action: Any
+
+        :return: A tuple containing the next state, reward, done flag, and info dictionary.
+        :rtype: tuple[np.ndarray, float, bool, dict]
         """
         next_state, reward, done, info = self.env.step(action)
         return next_state, float(reward), done, info
@@ -217,8 +206,8 @@ class Environment(Wrapper):
         """
         Logs a message to the environment.
 
-        Args:
-            msg (str): The message to log.
+        :param msg: The message to log.
+        :type msg: str
         """
         self.log.log_str(msg)
 
@@ -226,13 +215,14 @@ class Environment(Wrapper):
         # nothing to do if the wrapped env does not accept `seed`
         """
         Resets the environment with the given seed and arguments.
-        
-        Args:
-            seed (int, optional): The seed to use for the environment. Defaults to None.
-            **kwargs: The arguments to pass to the environment.
-            
-        Returns:
-            np.ndarray: The initial state of the environment.
+
+        :param seed: The seed to use for the environment. Defaults to None.
+        :type seed: int, optional
+        :param kwargs: The arguments to pass to the environment.
+        :type kwargs: Any
+
+        :return: The initial state of the environment.
+        :rtype: np.ndarray
         """
         return self.env.reset(**kwargs)
 

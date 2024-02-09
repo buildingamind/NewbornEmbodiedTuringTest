@@ -10,6 +10,7 @@ import numpy as np
 from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
+
 from nett.utils.train import compute_train_performance
 
 # TODO (v0.3): refactor needed, especially logging

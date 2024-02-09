@@ -1,4 +1,12 @@
-"""Body module for nett"""
+"""
+Body module for nett
+
+.. module:: nett.body
+  :synopsis: Body module for nett
+
+.. moduleauthor:: Your Name <your.email@example.com>
+"""
+
 # all available body types
 types = ["basic", "two-eyed", "ragdoll"]
 
