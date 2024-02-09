@@ -2,10 +2,9 @@
 
 Denizhan Pak, Donsuk Lee, Samantha M. W. Wood & Justin N. Wood
 
-
-
-https://github.com/buildingamind/pipeline_embodied/assets/1686251/2fed4649-b4d6-4c93-813c-cd040a92c8cb
-
+<video controls>
+   <source src="../_static/video/viewpoint.mp4" type="video/mp4">
+</video>
 
 ## Abstract
 

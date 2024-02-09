@@ -2,8 +2,9 @@
 
 Manju Garimella, Denizhan Pak, Lalit Pandey, Justin N. Wood, & Samantha M. W. Wood
 
-[![Parsing](../../assets/videos/parsing.mp4)](https://github.com/buildingamind/pipeline_embodied/assets/1686251/839bd04c-8853-44c4-b275-5e61413a3904)
-
+<video controls>
+   <source src="../_static/video/parsing.mp4" type="video/mp4">
+</video>
 
 ## Abstract
 
@@ -46,15 +47,15 @@ Environment:
 
 ```bash
 python src/simulation/run_parsing_exp.py ++run_id=exp1 ++Environment.env_path=data/executables/parsing_benchmark/parsing_app.x86_64 ++mode=full ++train_eps=1000 ++test_eps=40 ++Agent.encoder="small" ++Environment.use_ship="true" ++Environment.background="A"
-
-where
-Environment.use_ship = True or False (to choose between Ship and Fork);
-Environment.background = A, B, C (to choose between the three background);
-mode = full or train or test (to choose between the three modes to run);
-Agent.encoder = "small", "medium" or "large" to choose between the three different types of encoders: NatureCNN, resnet10 and resnet18
-Agent.reward="supervised" default
-
 ```
+where
+
+`Environment.use_ship` = True or False (to choose between Ship and Fork);
+`Environment.background` = A, B, C (to choose between the three background);
+mode = full or train or test (to choose between the three modes to run);
+`Agent.encoder` = "small", "medium" or "large" to choose between the three different types of encoders: NatureCNN, resnet10 and resnet18
+`Agent.reward` = "supervised" default
+
 
 #### Custom Configuration:
 
