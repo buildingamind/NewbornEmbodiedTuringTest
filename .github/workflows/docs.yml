@@ -26,7 +26,7 @@ jobs:
 
       - name: Change setuptools and pip versions
         run: |
-          pip install setuptools=65.5.0 pip==21
+          pip install setuptools==65.5.0 pip==21
 
       - name: Install dependencies
         run: |
