@@ -22,7 +22,6 @@ from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 
-# NOTE: Import was causing circular import error (nett.brain -> brain) (nett.utils -> utils)
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback

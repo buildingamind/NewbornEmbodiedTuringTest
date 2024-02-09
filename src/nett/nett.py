@@ -18,7 +18,6 @@ import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
-# NOTE: Import was causing circular import error
 from nett import Brain, Body, Environment
 from nett.utils.io import mute
 # from brain.builder import Brain

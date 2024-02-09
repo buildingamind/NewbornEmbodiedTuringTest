@@ -2,7 +2,6 @@
 from typing import Any
 from gym import Wrapper, Env
 
-# NOTE: Import was causing circular import error
 from nett.body import types
 # from nett.body import ascii_art
 
