@@ -288,7 +288,15 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self):
+    def _schedule_jobs(self) -> list[dict[str, Any]]:
+        '''
+        Schedule jobs based on the memory available on the devices.
+
+        :exception RuntimeError: If there is insufficient GPU memory to create jobs for all tasks.
+
+        :return: A list of jobs to be executed.
+        :rtype: list[dict]
+        '''
         # get the free memory status for each device in list
         free_device_memory = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
@@ -296,33 +304,47 @@ class NETT:
         job_memory = self._estimate_job_memory(free_device_memory)
 
         # create jobs
+        # create list of all brain-environment combinations
+        # TODO (v0.5) replace environment.config.conditions and task_list with np.arrays to improve performance
         task_list = list(product(self.environment.config.conditions, list(range(1, self.num_brains + 1))))
+
         # assign devices based on memory to a condition and brain combination
         # TODO (v0.5) what's better than a loop / brute force here?
-        # TODO (v0.3) replace explicit loop with .map() if does not sacrifice readability
         jobs = []
-        # brute force iterate through devices
-        for device in free_device_memory.keys():
-            # iterate through conditions and brain_ids
-            for (condition, brain_id) in task_list:
-                # check if memory is greater than job memory
-                if free_device_memory[device] > job_memory * self.buffer:
-                    # alot device to task to make it a job which will be executed
-                    job = self._create_job(brain_id=brain_id, condition=condition, device=device)
-                    jobs.append(job)
-                    # remove task from list
-                    task_list.remove((condition, brain_id))
-                    # update free memory
-                    free_device_memory[device] = free_device_memory[device] - job_memory
-                else:
-                    break
-        # ensure all tasks have been converted to jobs
-        # TODO (v0.3) allow partial execution
-        if task_list:
-            raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
+
+        free_devices = list(free_device_memory.keys()) # list of device numbers of free devices
+        dev_num = 0 # current device number
+
+        for (condition, brain_id) in task_list:
+            # find a device that has enough memory
+            # FIXME self.buffer does not seem like a reliable metric for estimating memory consumption (by multiplying 1.2 to job_memory)
+            while free_device_memory[free_devices[dev_num]] < job_memory * self.buffer:
+                dev_num += 1
+                # TODO (v0.3) allow partial execution
+                if dev_num >= len(free_device_memory):
+                    raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
+            # allocate memory
+            free_device_memory[free_devices[dev_num]] -= job_memory*self.buffer
+            # create job
+            job = self._create_job(brain_id=brain_id, condition=condition, device=free_devices[dev_num])
+            jobs.append(job)
+
         return jobs
 
-    def _create_job(self, device: int, condition: str, brain_id: int) -> dict:
+    def _create_job(self, device: int, condition: str, brain_id: int) -> dict[str, Any]:
+        '''
+        Create a job for a given condition and brain using a given device.
+
+        :param device: The device to be used for the job.
+        :type device: int
+        :param condition: The condition for the job.
+        :type condition: str
+        :param brain_id: The brain id for the job.
+        :type brain_id: int
+
+        :return: A dictionary containing the job.
+        :rtype: dict
+        '''
         # creates brain, env copies for a job
         brain_copy = deepcopy(self.brain)
 
@@ -331,16 +353,30 @@ class NETT:
 
         # create job
         return {"brain": brain_copy,
-                "environment": self.environment,
-                "body": self.body,
+                "environment": self.environment, # Q Why are these not copies?
+                "body": self.body, # Q Why are these not copies?
                 "device": device,
                 "condition": condition,
                 "brain_id": brain_id,
                 "paths": paths}
 
-    def _configure_job_paths(self, condition: str, brain_id: int) -> dict:
+    def _configure_job_paths(self, condition: str, brain_id: int) -> dict[str, Path]:
+        '''
+        Create paths for all the subdirectories for a given condition and brain.
+        
+        :param condition: The condition for the job.
+        :type condition: str
+        :param brain_id: The brain id for the job.
+        :type brain_id: int
+        
+        :return: A dictionary containing the paths for the job.
+        :rtype: dict
+        '''
+        # list of subdirectories to be created
         subdirs = ["model", "checkpoints", "plots", "logs", "env_recs", "env_logs"]
+        # job (parent) directory for each condition and brain
         job_dir = Path.joinpath(self.output_dir, condition, f"brain_{brain_id}")
+        # create subdirectories
         paths = {subdir: Path.joinpath(job_dir, subdir) for subdir in subdirs}
         return paths
 
@@ -397,6 +433,7 @@ class NETT:
 
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
+        # FIXME job memory estimate may not scale
         # TODO (v0.3) add a dummy job to gauge memory consumption
 
         # # get device with the maxmium memory available
