@@ -256,7 +256,7 @@ class Brain:
         :param name: The name of the plot.
         :type name: str
         """
-        self.logger.info(f"Plotting Results at {model_log_dir}")
+        self.logger.info(f"Plotting Results at {plots_dir}")
         results_plotter.plot_results([str(model_log_dir)],
                                      iterations,
                                      results_plotter.X_TIMESTEPS,
