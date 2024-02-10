@@ -84,7 +84,7 @@ class Brain:
         self.buffer_size = buffer_size
         self.seed = seed
 
-    def train(self, env, iterations, device_type: str, device: int, paths: dict[str, Path]):
+    def train(self, env, iterations, device_type: str, device: int, paths: dict[str, Path]) -> None:
         """
         Train the reinforcement learning model.
 
@@ -100,7 +100,6 @@ class Brain:
         :type paths: dict[str, Path]
 
         :raises ValueError: If the environment fails the validation check.
-        
         """
         # validate environment
         env = self._validate_env(env)
@@ -169,7 +168,7 @@ class Brain:
                           plots_dir=paths['plots'],
                           name="reward_graph")
 
-    def test(self, env, iterations, model_path: str, record_prefix: str | None = None): # pylint: disable=unused-argument
+    def test(self, env, iterations, model_path: str, record_prefix: str | None = None) -> None: # pylint: disable=unused-argument
         """
         Test the reinforcement learning model.
 
