@@ -1,11 +1,4 @@
-"""
-io
-
-This module contains utility functions for input/output operations
-
-Functions:
-    write_to_file: Write a dictionary to a file
-    mute: Mute the standard output and standard error
+"""This module contains utility functions for input/output operations
 """
 import os
 import sys
@@ -28,11 +21,13 @@ def write_to_file(file_path, d):
         file.write(json.dumps(d))
     return True
 
-def mute():
-    """
-    mute
-
-    Mute the standard output and standard error
+def muteOutput():
+    """Mute the standard output
     """
     sys.stdout = open(os.devnull, "w")
-    sys.stderr = open(os.devnull, "w") # TODO Should we be suppressing error messages?
+
+def muteAll():
+    """Mute the standard error and standard output
+    """
+    sys.stdout = open(os.devnull, "w")
+    sys.stderr = open(os.devnull, "w")

@@ -19,7 +19,7 @@ from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 from nett import Brain, Body, Environment
-from nett.utils.io import mute
+from nett.utils.io import muteAll, muteOutput
 # from brain.builder import Brain
 # from body.builder import Body
 # from environment.builder import Environment
@@ -181,7 +181,8 @@ class NETT:
         :rtype: list[Future]
         """
         max_workers = 1 if len(jobs) == 1 else None
-        initializer = mute if not self.verbosity else None
+         # if verbosity is 2, mute nothing, if 1, mute output, if 0, mute all
+        initializer = [muteAll, muteOutput, None][self.verbosity]
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
         job_sheet = []
         for job in jobs:
