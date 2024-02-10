@@ -163,6 +163,7 @@ class Brain:
         # delete model to free up space
         del self.model
         # plot reward graph
+        self.logger.info(f"Deleted model")
         self.plot_results(iterations=iterations,
                           model_log_dir=paths['env_logs'],
                           plots_dir=paths['plots'],
@@ -255,13 +256,18 @@ class Brain:
         :param name: The name of the plot.
         :type name: str
         """
+        self.logger.info(f"Plotting Results at {model_log_dir}")
         results_plotter.plot_results([str(model_log_dir)],
                                      iterations,
                                      results_plotter.X_TIMESTEPS,
                                      name)
+        self.logger.info(f"Results plotted")
         Path.mkdir(plots_dir)
+        self.logger.info(f"Made plot dir")
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
+        self.logger.info(f"Saved plot")
         plt.clf()
+        self.logger.info(f"Cleared plot")
 
     def _validate_encoder(self, encoder: Any | str) -> BaseFeaturesExtractor:
         """
