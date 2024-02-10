@@ -85,7 +85,7 @@ class NETT:
         :param environment: The environment in which the brain is to be trained and tested.
         :type environment: Environment
         """
-        from nett import logger
+        from nett import logger # Q Why is this import here and not at the top of the file?
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
@@ -381,6 +381,9 @@ class NETT:
         return paths
 
     def _execute_job(self, job: dict[str, Any]) -> Future:
+        if self.mode not in ["train", "test", "full"]:
+            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
+
         # common environment kwargs
         kwargs = {"rewarded": bool(self.brain.reward),
                   "rec_path": str(job["paths"]["env_recs"]),
@@ -401,7 +404,6 @@ class NETT:
                                device_type=self.device_type,
                                device=job["device"],
                                paths=job["paths"])
-            return "Job completed successfully"
 
         # for test
         if self.mode in ["test", "full"]:
@@ -420,10 +422,7 @@ class NETT:
                               iterations=iterations,
                               model_path=f"{job['paths']['model'].joinpath('latest_model.zip')}")
 
-        if self.mode not in ["train", "test", "full"]:
-            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
-
-        return "Job Successfully Concluded"
+        return f"Job Completed Successfully for Brain #{job['brain_id']} with Condition: {job['condition']}"
 
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
