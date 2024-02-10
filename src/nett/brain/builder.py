@@ -102,12 +102,12 @@ class Brain:
         :raises ValueError: If the environment fails the validation check.
         """
         # validate environment
-        env = self._validate_env(env)
+        self._validate_env(env)
 
         # initialize environment
         log_path = paths['env_logs']
         env = Monitor(env, str(log_path))
-        envs = make_vec_env(env_id=lambda : env, n_envs=1, seed=self.seed)
+        envs = make_vec_env(env_id=env, n_envs=1, seed=self.seed)
 
         # build model
         if self.encoder:
@@ -186,10 +186,10 @@ class Brain:
         self.model = self.load(model_path)
 
         # validate environment
-        env = self._validate_env(env)
+        self._validate_env(env)
 
         # initialize environment
-        envs = make_vec_env(env_id=lambda : env, n_envs=1, seed=self.seed)
+        envs = make_vec_env(env_id=env, n_envs=1, seed=self.seed)
 
         # for when algorithm is RecurrentPPO
         if issubclass(self.algorithm, RecurrentPPO):
@@ -373,7 +373,7 @@ class Brain:
         return reward
 
     # TODO (v0.2) add typehinting for gym environments
-    def _validate_env(self, env) -> Any:
+    def _validate_env(self, env) -> None:
         """
         Validate the environment.
 
@@ -389,7 +389,6 @@ class Brain:
             check_env(env)
         except Exception as ex:
             raise ValueError(f"Failed training env check with {str(ex)}")
-        return env
 
     def _set_encoder_as_eval(self, model):
         """
