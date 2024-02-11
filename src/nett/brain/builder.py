@@ -273,7 +273,38 @@ class Brain:
         self.logger.info("ZACH 3")
         xy_list = [results_plotter.ts2xy(timesteps_item, results_plotter.X_TIMESTEPS) for timesteps_item in tslist]
         self.logger.info("ZACH 4")
-        results_plotter.plot_curves(xy_list, results_plotter.X_TIMESTEPS, name)
+        x_axis=results_plotter.X_TIMESTEPS
+        title=name
+        figsize=(8, 2)
+        EPISODES_WINDOW = 100
+        window_func = results_plotter.window_func
+        self.logger.info("ZACH 5")
+        plt.figure(title, figsize=figsize)
+        self.logger.info("ZACH 6")
+        max_x = max(xy[0][-1] for xy in xy_list)
+        self.logger.info("ZACH 7")
+        min_x = 0
+        self.logger.info("ZACH 8")
+        for _, (x, y) in enumerate(xy_list):
+            self.logger.info("ZACH 9")
+            plt.scatter(x, y, s=2)
+            self.logger.info("ZACH 9.1")
+            # Do not plot the smoothed curve at all if the timeseries is shorter than window size.
+            if x.shape[0] >= EPISODES_WINDOW:
+                self.logger.info("ZACH 9.2")
+                # Compute and plot rolling mean with window of size EPISODE_WINDOW
+                x, y_mean = window_func(x, y, EPISODES_WINDOW, np.mean)
+                self.logger.info("ZACH 9.3")
+                plt.plot(x, y_mean)
+                self.logger.info("ZACH 9.4")
+        self.logger.info("ZACH 10")
+        plt.xlim(min_x, max_x)
+        plt.title(title)
+        plt.xlabel(x_axis)
+        plt.ylabel("Episode Rewards")
+        self.logger.info("ZACH 11")
+        plt.tight_layout()
+
         self.logger.info(f"Results plotted")
         Path.mkdir(plots_dir)
         self.logger.info(f"Made plot dir")
