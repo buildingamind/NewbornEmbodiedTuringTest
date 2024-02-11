@@ -267,12 +267,17 @@ class Brain:
             self.logger.info("ZACH 2.1")
             if iterations is not None:
                 self.logger.info("ZACH 2.2")
+                print('timesteps before: ',timesteps)
+                print('timesteps.l.cumsum(): ',timesteps.l.cumsum())
                 timesteps = timesteps[timesteps.l.cumsum() <= iterations]
+                print('timesteps after: ',timesteps)
             self.logger.info("ZACH 2.3")
             tslist.append(timesteps)
         self.logger.info("ZACH 3")
         xy_list = [results_plotter.ts2xy(timesteps_item, results_plotter.X_TIMESTEPS) for timesteps_item in tslist]
         self.logger.info("ZACH 4")
+        print('xylist: ',xy_list)
+        print('tslist: ',tslist)
         x_axis=results_plotter.X_TIMESTEPS
         title=name
         figsize=(8, 2)
