@@ -20,7 +20,7 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
-from stable_baselines3.common import results_plotter
+# from stable_baselines3.common import results_plotter
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
@@ -256,6 +256,7 @@ class Brain:
         :param name: The name of the plot.
         :type name: str
         """
+        from stable_baselines3.common import results_plotter
         self.logger.info(f"Plotting Results at {plots_dir}")
         results_plotter.plot_results([str(model_log_dir)],
                                      iterations,
