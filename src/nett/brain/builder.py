@@ -277,10 +277,12 @@ class Brain:
         title=name
         figsize=(8, 2)
         EPISODES_WINDOW = 100
-        window_func = results_plotter.window_func
+        window_func = results_plotter.window_func #causes all other futures to wait
         self.logger.info("ZACH 5")
         plt.figure(title, figsize=figsize)
         self.logger.info("ZACH 6")
+        for i, xy in enumerate(xy_list):
+            print('xy: ',i,' : ',xy)
         max_x = max(xy[0][-1] for xy in xy_list)
         self.logger.info("ZACH 7")
         min_x = 0
