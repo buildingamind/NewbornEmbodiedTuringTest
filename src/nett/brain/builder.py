@@ -21,6 +21,8 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 # from stable_baselines3.common import results_plotter
+from stable_baselines3.common import results_plotter
+from stable_baselines3.common.monitor import load_results
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
@@ -256,12 +258,22 @@ class Brain:
         :param name: The name of the plot.
         :type name: str
         """
-        from stable_baselines3.common import results_plotter
         self.logger.info(f"Plotting Results at {plots_dir}")
-        results_plotter.plot_results([str(model_log_dir)],
-                                     iterations,
-                                     results_plotter.X_TIMESTEPS,
-                                     name)
+        tslist = []
+        self.logger.info("ZACH 1")
+        for folder in [str(model_log_dir)]:
+            self.logger.info("ZACH 2")
+            timesteps = load_results(folder)
+            self.logger.info("ZACH 2.1")
+            if iterations is not None:
+                self.logger.info("ZACH 2.2")
+                timesteps = timesteps[timesteps.l.cumsum() <= iterations]
+            self.logger.info("ZACH 2.3")
+            tslist.append(timesteps)
+        self.logger.info("ZACH 3")
+        xy_list = [results_plotter.ts2xy(timesteps_item, results_plotter.X_TIMESTEPS) for timesteps_item in tslist]
+        self.logger.info("ZACH 4")
+        results_plotter.plot_curves(xy_list, results_plotter.X_TIMESTEPS, name)
         self.logger.info(f"Results plotted")
         Path.mkdir(plots_dir)
         self.logger.info(f"Made plot dir")
