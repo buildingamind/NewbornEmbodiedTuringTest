@@ -104,8 +104,7 @@ class NETT:
             description: str = None,
             buffer: float = 1.2,
             step_per_episode: int = 200,
-            verbosity: int = 0,
-            memory_per_brain: float = 0.5) -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -131,8 +130,6 @@ class NETT:
         :type step_per_episode: int, optional
         :param verbosity: The verbosity level of the run.
         :type verbosity: int, optional
-        :param memory_per_brain: The memory to be allocated to each brain.
-        :type memory_per_brain: float, optional
         
         :return: A list of futures representing the jobs that have been launched.
         :rtype: list[Future]
