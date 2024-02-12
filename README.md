@@ -141,3 +141,5 @@ More information related to details on the experiment can be found on following 
 
 * [**Parsing Experiment**](docs/source/papers/Parsing.md)
 * [**ViewPoint Experiment**](docs/source/papers/ViewInvariant.md)
+
+[🔼 Back to top](#newborn-embodied-turing-test)
