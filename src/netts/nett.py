@@ -21,7 +21,10 @@ class NETT:
         self.body = body
         self.environment = environment     
         # for NVIDIA memory management   
-        nvmlInit()
+        try:
+            nvmlInit()
+        except:
+            self.logger.warning("Could not initialize NVML, GPU memory management will not be available")
 
     def run(self, 
             dir: Path | str,

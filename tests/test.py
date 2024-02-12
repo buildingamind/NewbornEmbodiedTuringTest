@@ -10,4 +10,4 @@ environment = Environment(config="parsing", executable_path="./tests/input/parsi
 # construct the NETT
 nett = NETT(brain=brain, body=body, environment=environment)
 # run the NETT
-job_sheet = nett.run(dir="./tests/output", num_brains=1, train_eps=1, test_eps=1) # output directory
+job_sheet = nett.run(dir="./tests/output", num_brains=1, train_eps=1, test_eps=1, device_type='cpu') # output directory
