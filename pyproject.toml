@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nett-benchmarks"
-version = "0.1"
+version = "0.15"
 authors = [
   { name="Bhargav Desai", email="desabh@iu.edu" },
 ]
@@ -17,7 +17,6 @@ dependencies = [
     "sb3-contrib==1.8.0",
     "imageio-ffmpeg",
     "torchvision",
-    "scipy",
     "timm",
     "nvidia-ml-py",
     "ipywidgets"
