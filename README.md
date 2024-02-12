@@ -1,12 +1,29 @@
+<div align="center">
+<img src="docs/assets/images/banner.png" alt="Banner" style />
+
 # **Newborn Embodied Turing Test**
 
-The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to simulate virtual agents in controlled-rearing conditions. This innovative platform enables researchers to create, simulate, and analyze virtual agents, facilitating direct comparisons with real chicks 🐥 as documented by the **[Building a Mind Lab](http://buildingamind.com/)**. Our comprehensive suite includes all necessary components for the simulation and analysis of embodied models, closely replicating laboratory conditions.
+Benchmarking Virtual Agents in Controlled-Rearing Conditions
+
+![PyPI - Version](https://img.shields.io/pypi/v/nett-benchmarks)
+![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fbuildingamind%2FNewbornEmbodiedTuringTest%2Fmain%2Fpyproject.toml)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/buildingamind/NewbornEmbodiedTuringTest)
+
+[Getting Started](#getting-started) •
+[Documentation](https://buildingamind.github.io/index.md) • 
+[Lab Website](http://buildingamind.com/)
+
+</div>
+
+The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to simulate virtual agents in controlled-rearing conditions. This innovative platform enables researchers to create, simulate, and analyze virtual agents, facilitating direct comparisons with real chicks as documented by the **[Building a Mind Lab](http://buildingamind.com/)**. Our comprehensive suite includes all necessary components for the simulation and analysis of embodied models, closely replicating laboratory conditions.
 
 Below is a visual representation of our experimental setup, showcasing the infrastructure for the three primary experiments discussed in this documentation.
 
+<div align="center">
 <img src="docs/assets/images/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+</div>
 
-## **How to Use this Repository**
+## How to Use this Repository
 
 The NETT toolkit comprises three key components:
 
@@ -14,7 +31,7 @@ The NETT toolkit comprises three key components:
 2. **Experimental Simulation Programs**: Tools to initiate and conduct experiments within the virtual world.
 3. **Data Visualization Programs**: Utilities for analyzing and visualizing experiment outcomes.
 
-## **Directory Structure**
+## Directory Structure
 
 The directory structure of the code is as follows:
 
@@ -36,13 +53,13 @@ The directory structure of the code is as follows:
 └── README.md                  # This README file
 ```
 
-## **Getting Started**
+## Getting Started
 
 To begin benchmarking your first embodied agent with NETT, please be aware:
 
 **Important**: The `mlagents==1.0.0` dependency is incompatible with Apple Silicon (M1, M2, etc.) chips. Please utilize an alternate device to execute this codebase.
 
-### **Installation**
+### Installation
 
 1. **Virtual Environment Setup** (Highly Recommended): Create and activate a virtual environment to avoid dependency conflicts.
    ```bash
@@ -64,7 +81,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 **NOTE:**: Installation outside a virtual environment may fail due to conflicting dependencies. Ensure compatibility, especially with `gym==0.21` and `numpy<=1.21.2`.
 
-### **Running a NETT**
+### Running a NETT
 
 1. **Download or Create the Unity Executable**: Obtain the Unity executable from the provided link or build one following our guide. A video tutorial is also available for assistance. The executable is required to run the virtual environment.
 
@@ -107,7 +124,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    benchmarks.status(job_sheet)
    ```
 
-### **Running Standard Analysis**
+### Running Standard Analysis
 
 After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory. To run the analyses performed in previous experiments, you can use the following command:
 
@@ -115,9 +132,12 @@ After running the experiments, the pipeline will generate a collection of datafi
    benchmarks.analyze(run_dir="./test_run", output_dir="./results")
    ```
 
-## **Experiment Configuration**
+## Documentation
+For a link to the full documentation, please visit [here](https://buildingamind.github.io/index.md).
+
+## Experiment Configuration
 
 More information related to details on the experiment can be found on following pages.
 
-* [**Parsing Experiment**](docs/Parsing.md)
-* [**ViewPoint Experiment**](docs/ViewInvariant.md)
+* [**Parsing Experiment**](docs/source/papers/Parsing.md)
+* [**ViewPoint Experiment**](docs/source/papers/ViewInvariant.md)
