@@ -25,6 +25,7 @@ class NETT:
             nvmlInit()
         except:
             self.logger.warning("Could not initialize NVML, GPU memory management will not be available")
+            pass
 
     def run(self, 
             dir: Path | str,
