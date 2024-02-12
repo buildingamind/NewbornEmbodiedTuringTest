@@ -178,6 +178,7 @@ class Environment(Wrapper):
 
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
+    # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
     def render(self, mode="rgb_array"): # pylint: disable=unused-argument
         """
         Renders the current frame of the environment.
