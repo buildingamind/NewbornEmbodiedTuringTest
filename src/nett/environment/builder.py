@@ -154,7 +154,7 @@ class Environment(Wrapper):
         # needs to fixed in Unity code where the default is always false
         if mode == "train":
             args.extend(["--random-pos", "true"])
-        if kwargs.get("rewarded", False):
+        if kwargs.get("rewarded", False): # fix?
             args.extend(["--rewarded", "true"])
         # TODO: Discuss this with Manju, may be a MAJOR bug
         self.step_per_episode = kwargs.get("episode_steps", 200)
@@ -170,8 +170,13 @@ class Environment(Wrapper):
                           log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
-        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True)
+        try:
+            self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
+            self.env = UnityToGymWrapper(self.env, uint8_visual=True)
+        except Exception as e:
+            self.log.log_str(f"Error: {e}")
+            self.log.log_str("Error: Unable to initialize environment")
+            raise e
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
