@@ -313,9 +313,9 @@ class Brain:
         plt.tight_layout()
 
         self.logger.info(f"Results plotted")
-        Path.mkdir(plots_dir)
+        plots_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Made plot dir")
-        plt.savefig(plots_dir.joinpath(f"{name}.png"))
+        plt.savefig(plots_dir / f"{name}.png")
         self.logger.info(f"Saved plot")
         plt.clf()
         self.logger.info(f"Cleared plot")

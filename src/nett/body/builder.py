@@ -95,7 +95,6 @@ class Body:
                     raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
-
     def __call__(self, env: Env) -> Env:
         """
         Apply the registered wrappers to the environment.
