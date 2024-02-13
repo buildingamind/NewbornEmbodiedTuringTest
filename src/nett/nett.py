@@ -293,30 +293,31 @@ class NETT:
         job_memory = self._estimate_job_memory(free_device_memory)
 
         # create jobs
+        # create list of all brain-environment combinations
+        # TODO (v0.5) replace environment.config.conditions and task_list with np.arrays to improve performance
         task_list = list(product(self.environment.config.conditions, list(range(1, self.num_brains + 1))))
+
         # assign devices based on memory to a condition and brain combination
         # TODO (v0.5) what's better than a loop / brute force here?
-        # TODO (v0.3) replace explicit loop with .map() if does not sacrifice readability
         jobs = []
-        # brute force iterate through devices
-        for device in free_device_memory.keys():
-            # iterate through conditions and brain_ids
-            for (condition, brain_id) in task_list:
-                # check if memory is greater than job memory
-                if free_device_memory[device] > job_memory * self.buffer:
-                    # alot device to task to make it a job which will be executed
-                    job = self._create_job(brain_id=brain_id, condition=condition, device=device)
-                    jobs.append(job)
-                    # remove task from list
-                    task_list.remove((condition, brain_id))
-                    # update free memory
-                    free_device_memory[device] = free_device_memory[device] - job_memory
-                else:
-                    break
-        # ensure all tasks have been converted to jobs
-        # TODO (v0.3) allow partial execution
-        if task_list:
-            raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
+
+        free_devices = list(free_device_memory.keys()) # list of device numbers of free devices
+        dev_num = 0 # current device number
+
+        for (condition, brain_id) in task_list:
+            # find a device that has enough memory
+            # FIXME self.buffer does not seem like a reliable metric for estimating memory consumption (by multiplying 1.2 to job_memory)
+            while free_device_memory[free_devices[dev_num]] < job_memory * self.buffer:
+                dev_num += 1
+                # TODO (v0.3) allow partial execution
+                if dev_num >= len(free_device_memory):
+                    raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
+            # allocate memory
+            free_device_memory[free_devices[dev_num]] -= job_memory*self.buffer
+            # create job
+            job = self._create_job(brain_id=brain_id, condition=condition, device=free_devices[dev_num])
+            jobs.append(job)
+
         return jobs
 
     def _create_job(self, device: int, condition: str, brain_id: int) -> dict:
