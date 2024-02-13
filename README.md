@@ -10,7 +10,7 @@ Benchmarking Virtual Agents in Controlled-Rearing Conditions
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/buildingamind/NewbornEmbodiedTuringTest)
 
 [Getting Started](#getting-started) •
-[Documentation](https://buildingamind.github.io/index.md) • 
+[Documentation](https://buildingamind.github.io/NewbornEmbodiedTuringTest/) • 
 [Lab Website](http://buildingamind.com/)
 
 </div>
@@ -133,7 +133,7 @@ After running the experiments, the pipeline will generate a collection of datafi
    ```
 
 ## Documentation
-For a link to the full documentation, please visit [here](https://buildingamind.github.io/index.md).
+For a link to the full documentation, please visit [here](https://buildingamind.github.io/NewbornEmbodiedTuringTest/).
 
 ## Experiment Configuration
 
