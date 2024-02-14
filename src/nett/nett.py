@@ -187,12 +187,13 @@ class NETT:
         max_workers = 1 if len(jobs) == 1 else None
          # if verbosity is 2, mute nothing, if 1, mute output, if 0, mute all
         initializer = [muteAll, muteOutput, None][self.verbosity]
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+        # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
         job_sheet = []
-        for job in jobs:
-            job_future = executor.submit(self._execute_job, job)
-            job_sheet.append({"running": job_future, "specification": job})
-            time.sleep(1) # environment creation sometimes fails if no pause is given between consecutive job submissions
+        with ProcessPoolExecutor(max_workers=max_workers, initializer=initializer) as executor:
+            for job in jobs:
+                job_future = executor.submit(self._execute_job, job)
+                job_sheet.append({"running": job_future, "specification": job})
+                time.sleep(1) # environment creation sometimes fails if no pause is given between consecutive job submissions
 # with ProcessPoolExecutor(max_workers=max_workers, initializer=initializer) as executor:
         #     future_to_job = {}
         #     for job in jobs:
