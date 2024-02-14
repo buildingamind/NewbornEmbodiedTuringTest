@@ -31,9 +31,6 @@ keywords = ["nett","netts","newborn","embodied","turing test","benchmark","bench
 [tool.setuptools.dynamic]
 version = { attr = "nett.__version__" }
 
-[project.optional-dependencies]
-notebook = ["ipywidgets"]
-
 classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: R",
