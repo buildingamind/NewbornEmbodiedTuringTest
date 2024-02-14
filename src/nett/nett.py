@@ -413,6 +413,7 @@ class NETT:
 
         # for test
         if self.mode in ["test", "full"]:
+            self.logger.info(f"Job Started for Brain #{job['brain_id']} with Condition: {job['condition']}")
             # initialize environment with necessary arguments
             test_environment = deepcopy(job["environment"])
             test_environment.initialize(mode="test", **kwargs)

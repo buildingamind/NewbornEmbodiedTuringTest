@@ -218,18 +218,18 @@ class Brain:
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
             for i in tqdm(range(iterations)):
-                self.logger.info(f"TQDM: {i}")
+                # self.logger.info(f"TQDM: {i}")
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
-                self.logger.info(f"Action: {i}")
+                # self.logger.info(f"Action: {i}")
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                self.logger.info(f"Step: {i}")
+                # self.logger.info(f"Step: {i}")
                 if done:
-                    self.logger.info(f"Done: {i}")
+                    # self.logger.info(f"Done: {i}")
                     env.reset()
-                    self.logger.info(f"Reset: {i}")
-                self.logger.info(f"Rendering: {i}")
+                    # self.logger.info(f"Reset: {i}")
+                # self.logger.info(f"Rendering: {i}")
                 env.render(mode="rgb_array")
-                self.logger.info(f"TQDM Complete: {i}")
+                # self.logger.info(f"TQDM Complete: {i}")
         self.logger.info(f"Testing Complete!")
 
     def save(self, path: str) -> None:
