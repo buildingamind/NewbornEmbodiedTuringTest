@@ -245,17 +245,14 @@ class NETT:
 
         >>> benchmarks.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
         """
+        # TODO may need to clean up this file structure
         # set paths
         run_dir = Path(run_dir).resolve()
         analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
-        if output_dir is not None:
-            output_dir = Path(output_dir).resolve()
-        else:
+        if output_dir is None:
             output_dir = run_dir.joinpath("results")
-        output_dir.mkdir(exist_ok=True)
-        print(run_dir)
-        print(analysis_dir)
-        print(output_dir)
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         # merge
         print("Running merge")
