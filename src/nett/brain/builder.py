@@ -260,7 +260,7 @@ class Brain:
                                      iterations,
                                      results_plotter.X_TIMESTEPS,
                                      name)
-        Path.mkdir(plots_dir)
+        plots_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
         plt.clf()
 
