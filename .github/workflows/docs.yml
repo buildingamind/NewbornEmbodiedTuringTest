@@ -3,7 +3,6 @@ name: "Render Docs"
 on:
   push:
     branches:
-      - fix/doc-deploy
       - main
       - dev
   pull_request:
@@ -36,11 +35,11 @@ jobs:
       - name: Install pip
         if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |
-          pip install pip install setuptools==65.5.0 pip==21 --disable-pip-version-check --no-compile
+          pip install setuptools==65.5.0 pip==21
       - name: Install Dependencies
         if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |
-          pip install -r docs/requirements.txt --disable-pip-version-check --no-compile
+          pip install -r docs/requirements.txt
 
       - name: Sphinx build
         run: |
