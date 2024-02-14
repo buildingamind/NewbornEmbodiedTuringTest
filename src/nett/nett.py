@@ -105,7 +105,7 @@ class NETT:
             buffer: float = 1.2,
             step_per_episode: int = 200,
             verbosity: int = 0,
-            memory_per_brain: float = 0.5) -> list[Future]: # pylint: disable=unused-argument
+            use_async: bool = True) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -167,6 +167,10 @@ class NETT:
         self.logger.info("Launching")
         job_sheet = self.launch_jobs(jobs)
 
+        if use_async == False:
+            for job in job_sheet:
+                print(job["running"].result())
+            return
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
