@@ -22,6 +22,14 @@ dependencies = [
     "nvidia-ml-py",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: R",
+  "Environment :: GPU :: NVIDIA CUDA"
+]
+
+[project.optional-dependencies]
+notebook = ["ipywidgets"]
 
 [project.urls]
 "Homepage" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/"
@@ -31,8 +39,5 @@ keywords = ["nett","netts","newborn","embodied","turing test","benchmark","bench
 [tool.setuptools.dynamic]
 version = { attr = "nett.__version__" }
 
-classifiers = [
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: R",
-  "Environment :: GPU :: NVIDIA CUDA"
-]
+
+
