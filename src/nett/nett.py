@@ -352,7 +352,8 @@ class NETT:
                   "rec_path": str(job["paths"]["env_recs"]),
                   "log_path": str(job["paths"]["env_logs"]),
                   "condition": str(job["condition"]),
-                  "run_id": str(job["brain_id"])}
+                  "run_id": str(job["brain_id"]),
+                  "episode_steps": self.step_per_episode}
 
         # for train
         if self.mode in ["train", "full"]:
