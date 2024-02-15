@@ -83,7 +83,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 ### Running a NETT
 
-1. **Download or Create the Unity Executable**: Obtain the Unity executable from the provided link or build one following our guide. A video tutorial is also available for assistance. The executable is required to run the virtual environment.
+1. **Download or Create the Unity Executable**: Obtain a pre-made Unity executable from [here](https://origins.luddy.indiana.edu/environments/). The executable is required to run the virtual environment.
 
 2. **Import NETT Components**:
    Start by importing the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
