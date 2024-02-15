@@ -1,4 +1,4 @@
-Brain
+brain
 =====
 
 .. autoclass:: nett.Brain

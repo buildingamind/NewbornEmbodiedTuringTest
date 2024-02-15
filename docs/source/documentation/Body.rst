@@ -1,4 +1,4 @@
-Body
+body
 ====
 
 .. autoclass:: nett.Body

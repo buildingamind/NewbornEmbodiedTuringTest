@@ -4,7 +4,7 @@ Documentation
 .. toctree:: 
   :maxdepth: 4
 
-  Brain
-  Body
-  Environment
+  brain
+  body
+  environment
   NETT
