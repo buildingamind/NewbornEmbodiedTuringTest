@@ -20,7 +20,7 @@ The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to si
 Below is a visual representation of our experimental setup, showcasing the infrastructure for the three primary experiments discussed in this documentation.
 
 <div align="center">
-<img src="docs/assets/images/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+<img src="docs/assets/images/digital_twin_cropped.jpg" alt="Digital Twin" width="65%" />
 </div>
 
 ## How to Use this Repository
@@ -63,7 +63,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 1. **Virtual Environment Setup** (Highly Recommended): Create and activate a virtual environment to avoid dependency conflicts.
    ```bash
-   conda create -n nett_env python=3.10.12
+   conda create -y -n nett_env python=3.10.12
    conda activate nett_env
    ```
    See [here](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env") for detailed instructions.
@@ -126,8 +126,18 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 ### Running Standard Analysis
 
-After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory. To run the analyses performed in previous experiments, you can use the following command:
+After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory. 
 
+
+1. **Install R and dependencies**: To run the analyses performed in previous experiments,this toolkit provides a set of analysis scripts. Prior to running them, you will need R and the packages `tidyverse`, `argparse`, and `scales` installed. To install these packages, run the following command in R:
+   ```R
+   install.packages(c("tidyverse", "argparse", "scales"))
+   ```
+   Alternatively, if you are having difficulty installing R on your system, you can install these using conda.
+   ```bash
+   conda install -y r r-tidyverse r-argparse r-scales
+   ```
+2. **Run the Analysis**: To run the analysis, use the `analyze` method of the `NETT` class. This method will generate a set of plots and tables based on the datafiles in the output directory.
    ```python
    benchmarks.analyze(run_dir="./test_run", output_dir="./results")
    ```
