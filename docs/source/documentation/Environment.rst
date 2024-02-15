@@ -1,4 +1,4 @@
-Environment
+environment
 ===========
 
 .. autoclass:: nett.Environment
