@@ -71,7 +71,7 @@ read_data <- function(filename)
   stopifnot(all( (data$left + data$right + data$middle == 1) ))
   # Summarize at the episode level
   data <- data %>%
-    group_by(Episode, left.monitor, right.monitor) %>%
+    group_by(Episode, left.monitor, right.monitor, correct.monitor, experiment.phase, imprint.cond, test.cond) %>%
     summarise(left_steps = sum(left), 
               right_steps = sum(right), 
               middle_steps = sum(middle)) %>%

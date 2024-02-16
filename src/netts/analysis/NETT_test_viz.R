@@ -45,8 +45,8 @@ rm(train_data)
 
 # Code each episode correct/incorrect
 test_data <- test_data %>%
-  mutate(correct_steps = if_else(correct.monitor == "left", left_steps, right_steps)) %>%
-  mutate(incorrect_steps = if_else(correct.monitor == "left", right_steps, left_steps)) %>%
+  mutate(correct_steps = if_else(correct.monitor == " left", left_steps, right_steps)) %>%
+  mutate(incorrect_steps = if_else(correct.monitor == " left", right_steps, left_steps)) %>%
   mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps))
 
 # Adjust bar order according to user input -------------------------------------
@@ -69,13 +69,13 @@ if (!is.null(order)) {
     test_data <- test_data %>%
       arrange(percent_correct) %>%
       mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
-  } else if (final_order != "default") {
+  } else if (order != "default") {
     # Map numeric indices to factor levels
     current_order <- levels(factor(test_data$test.cond))
     new_order <- current_order[order]
     test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
   }
-  # If final_order is "default", no need to change anything
+  # If order is "default", no need to change anything
 }
 
 

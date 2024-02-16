@@ -36,8 +36,8 @@ setwd(results_wd)
 train_data_fixed <- train_data %>%
   filter(Episode < num_episodes) %>%
   # Create variables for correct/incorrect calculations
-  mutate(correct_steps = if_else(right.monitor == "White", left_steps, right_steps)) %>%
-  mutate(incorrect_steps = if_else(right.monitor == "White", right_steps, left_steps)) %>%
+  mutate(correct_steps = if_else(correct.monitor == " left", left_steps, right_steps)) %>%
+  mutate(incorrect_steps = if_else(correct.monitor == " left", right_steps, left_steps)) %>%
   mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps)) %>%
   # Summarise data by condition, agent, and episode bucket for graphing
   mutate(episode_block = Episode%/%ep_bucket_size + 1) %>%
