@@ -365,6 +365,7 @@ class NETT:
                                device_type=self.device_type,
                                device=job["device"],
                                paths=job["paths"])
+            train_environment.close()
 
         # for test
         if self.mode in ["test", "full"]:
@@ -382,6 +383,7 @@ class NETT:
             job["brain"].test(env=test_environment,
                               iterations=iterations,
                               model_path=f"{job['paths']['model'].joinpath('latest_model.zip')}")
+            test_environment.close()
 
         return f"Job Completed Successfully for Brain #{job['brain_id']} with Condition: {job['condition']}"
 
