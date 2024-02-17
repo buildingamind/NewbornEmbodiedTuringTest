@@ -106,7 +106,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 - **Environment**: Create the simulation environment using the path to your Unity executable (see Step 1).
    ```python
-   environment = Environment(config="identityandview", executable_path="path/to/executable")
+   environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
    ```
    To get a list of all available configurations, run `Environment.list_configs()`.
 
@@ -116,7 +116,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```
    The `NETT` instance has a `.run()` method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.
    ```python
-   job_sheet = benchmarks.run(output_dir="path/to/output", num_brains=5, trains_eps=10, test_eps=5)
+   job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, trains_eps=10, test_eps=5)
    ```
    The `run` function is asynchronous, returning the list of jobs that may or may not be complete.
 5. **Check Status**: To see the status of the benchmark processes, use the `.status()` method:
@@ -139,7 +139,7 @@ After running the experiments, the pipeline will generate a collection of datafi
    ```
 2. **Run the Analysis**: To run the analysis, use the `analyze` method of the `NETT` class. This method will generate a set of plots and tables based on the datafiles in the output directory.
    ```python
-   benchmarks.analyze(run_dir="./test_run", output_dir="./results")
+   benchmarks.analyze(run_dir="path/to/run/output/directory/", output_dir="path/to/analysis/output/directory/")
    ```
 
 ## Documentation
