@@ -225,7 +225,8 @@ class NETT:
     def analyze(run_dir: str | Path,
                 output_dir: str | Path | None = None,
                 ep_bucket: int = 100,
-                num_episodes: int = 1000) -> None:
+                num_episodes: int = 1000,
+                bar_order: str | list[int] = "default") -> None:
         """
         Analyze the results of a run. This method is a static method and does not require an instance of the NETT class to be called.
         
@@ -237,6 +238,8 @@ class NETT:
         :type ep_bucket: int, optional
         :param num_episodes: The number of episodes to be analyzed.
         :type num_episodes: int, optional
+        :param bar_order: The order in which the bars are to be displayed in the analysis plots. Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
+        :type bar_order: str | list[int], optional
             
         :return: None
         :rtype: None
@@ -253,6 +256,9 @@ class NETT:
             output_dir = run_dir.joinpath("results")
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        # translate bar_order for R to read
+        bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
 
         # merge
         print("Running merge")
@@ -276,7 +282,7 @@ class NETT:
         subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_test_viz.R")),
                         "--data-loc", str(output_dir.joinpath("analysis_data")),
                         "--results-wd", str(output_dir),
-                        "--key-csv", str(analysis_dir.joinpath("Keys", "segmentation_key_new.csv")),
+                        "--bar-order", bar_order_str,
                         "--color-bars", "true",
                         "--chick-file", str(analysis_dir.joinpath("ChickData", "ChickData_Parsing.csv"))], check=True)
 
