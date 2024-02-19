@@ -39,5 +39,6 @@ notebook = ["ipywidgets"]
 [tool.setuptools.dynamic]
 version = { attr = "nett.__version__" }
 
-
+[tool.setuptools.packages.find]
+where = ["src"]
 

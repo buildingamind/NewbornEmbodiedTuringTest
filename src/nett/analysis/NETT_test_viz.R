@@ -29,7 +29,7 @@ parser$add_argument("--color-bars", type = "character", dest="color_bars",
 # Set script variables based on user input
 args <- parser$parse_args()
 data_loc <- args$data_loc; chick_file <- args$chick_file; results_wd <- args$results_wd; bar_order <- args$bar_order
-if( args$color_bars %in% c("t", "T", "true", "TRUE")) {color_bars <- TRUE} else { color_bars <- FALSE}
+if( args$color_bars %in% c("t", "T", "true", "TRUE", "True")) {color_bars <- TRUE} else { color_bars <- FALSE}
 
 # Set Up -----------------------------------------------------------------------
 
