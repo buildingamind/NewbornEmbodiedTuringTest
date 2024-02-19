@@ -36,12 +36,12 @@ setwd(results_wd)
 train_data_fixed <- train_data %>%
   filter(Episode < num_episodes) %>%
   # Create variables for correct/incorrect calculations
-  mutate(correct_steps = if_else(right.monitor == "White", left_steps, right_steps)) %>%
-  mutate(incorrect_steps = if_else(right.monitor == "White", right_steps, left_steps)) %>%
+  mutate(correct_steps = if_else(correct.monitor == " left", left_steps, right_steps)) %>%
+  mutate(incorrect_steps = if_else(correct.monitor == " left", right_steps, left_steps)) %>%
   mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps)) %>%
   # Summarise data by condition, agent, and episode bucket for graphing
   mutate(episode_block = Episode%/%ep_bucket_size + 1) %>%
-  group_by(imprinting, agent, episode_block) %>%
+  group_by(imprint.cond, agent, episode_block) %>%
   summarise(avgs = mean(percent_correct, na.rm = TRUE),
             sd = sd(percent_correct, na.rm = TRUE),
             count = length(percent_correct)) %>%
@@ -54,23 +54,23 @@ train_data_fixed <- train_data %>%
 
 # Plot line graphs by imprinting condition -------------------------------------
 
-for (cond in unique(train_data_fixed$imprinting))
+for (cond in unique(train_data_fixed$imprint.cond))
 {
   data <- train_data_fixed %>%
-    filter(imprinting == cond)
-
+    filter(imprint.cond == cond)
+  
   ggplot(data=data, aes(x=episode_block, y=avgs, color=as.factor(agent))) +
     geom_line() +
     theme_classic(base_size = 16) +
     geom_hline(yintercept = .5, linetype = 2) +
-    xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) +
+    xlab(sprintf("Groups of %d Episodes", ep_bucket_size)) + 
     ylab("Average Time with Imprinted Object") +
-    scale_y_continuous(expand = c(0, 0), limits = c(0, 1),
-                       breaks=seq(0,1,.1), labels = scales::percent) +
-    scale_x_continuous(expand = c(0, 0), limits = c(0, num_episodes/ep_bucket_size),
+    scale_y_continuous(expand = c(0, 0), limits = c(0, 1), 
+                       breaks=seq(0,1,.1), labels = scales::percent) + 
+    scale_x_continuous(expand = c(0, 0), limits = c(0, num_episodes/ep_bucket_size), 
                        breaks = seq(0, num_episodes / ep_bucket_size, 1)) +
-    theme(legend.position="none")
-
+    theme(legend.position="none") 
+  
   img_name <- paste0(cond, "_train.png")
   ggsave(img_name)
 }

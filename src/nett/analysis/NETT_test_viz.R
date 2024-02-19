@@ -16,22 +16,19 @@ parser$add_argument("--data-loc", type="character", dest="data_loc",
 parser$add_argument("--chick-file", type="character", dest="chick_file",
                     help="Full filename (inc working directory) of the chick data CSV file",
                     required=TRUE)
-parser$add_argument("--key-csv", type="character", dest="key_csv",
-                    help="Full address of the key file that designates condition and correct monitor for each trial",
-                    required=TRUE)
-# parser$add_argument("--graphstyle", type="character", dest="graphstyle",
-#                     help="Full address of the NETT_graphstyle.R file",
-#                     required=TRUE)
 parser$add_argument("--results-wd", type="character", dest="results_wd",
                     help="Working directory to save the resulting visualizations",
                     required=TRUE)
+parser$add_argument("--bar-order", type = "character", default = "default", dest = "bar_order",
+                    help="Order of bars. Use 'default', 'asc', 'desc', or specify indices separated by commas (e.g., '3,2,1,4')",
+                    required=FALSE)
 parser$add_argument("--color-bars", type = "character", dest="color_bars",
                     help="Should the bars be colored by test condition?",
                     required=TRUE)
+
+# Set script variables based on user input
 args <- parser$parse_args()
-data_loc <- args$data_loc; chick_file <- args$chick_file; key_csv <- args$key_csv
-#graphstyle <- args$graphstyle
-results_wd <- args$results_wd
+data_loc <- args$data_loc; chick_file <- args$chick_file; results_wd <- args$results_wd; bar_order <- args$bar_order
 if( args$color_bars %in% c("t", "T", "true", "TRUE")) {color_bars <- TRUE} else { color_bars <- FALSE}
 
 # Set Up -----------------------------------------------------------------------
@@ -39,44 +36,51 @@ if( args$color_bars %in% c("t", "T", "true", "TRUE")) {color_bars <- TRUE} else 
 library(tidyverse)
 library(stringr)
 
-#source(graphstyle)
-
 # Load the chick data
 chick_data <- read.csv(chick_file)
-
-# Load the condition key
-cond_key <- read.csv(key_csv)
-cond_key <- select(cond_key, -c(left, right))
 
 # Load test data
 load(data_loc)
 rm(train_data)
 
-# Add test conditions from the key
-test_data <- test_data %>%
-  mutate(left_right = paste(left.monitor, right.monitor, sep="-")) %>%
-  left_join(cond_key,
-            by=c("left_right" = "left_right", "imprinting" = "imprinting"))
 # Code each episode correct/incorrect
 test_data <- test_data %>%
-  mutate(correct_steps = if_else(correct_monitor == "left", left_steps, right_steps)) %>%
-  mutate(incorrect_steps = if_else(correct_monitor == "left", right_steps, left_steps)) %>%
-  mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps)) %>%
-  mutate()
+  mutate(correct_steps = if_else(correct.monitor == " left", left_steps, right_steps)) %>%
+  mutate(incorrect_steps = if_else(correct.monitor == " left", right_steps, left_steps)) %>%
+  mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps))
 
-# Convert the levels of our bar variable into text so that line breaks show up
-chick_data$cond_name <- gsub("LB", "\n", chick_data$cond_name)
-test_data$cond_name <- gsub("LB", "\n", test_data$cond_name)
+# Adjust bar order according to user input -------------------------------------
 
-# Convert cond_name to factor so that it stays in the csv-specified order
-original_order <- unique(chick_data$cond_name)
-chick_data$cond_name <- factor(chick_data$cond_name, levels = original_order)
+# Create a variable to store the final order
+order <- NULL
+if (bar_order == "default" || bar_order == "asc" || bar_order == "desc"){
+  order <- bar_order
+}else {
+  order <- as.integer(strsplit(order_input, ",")[[1]])
+}
 
-setwd(results_wd)
+# Conditionally reorder the dataframe based on user input
+if (!is.null(order)) {
+  if (order == "desc") {
+    test_data <- test_data %>%
+      arrange(desc(percent_correct)) %>%
+      mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
+  } else if (order == "asc"){
+    test_data <- test_data %>%
+      arrange(percent_correct) %>%
+      mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
+  } else if (order != "default") {
+    # Map numeric indices to factor levels
+    current_order <- levels(factor(test_data$test.cond))
+    new_order <- current_order[order]
+    test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
+  }
+  # If order is "default", no need to change anything
+}
 
 
 # Plot aesthetic settings ------------------------------------------------------
-custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779")
+custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
 chickred <- "#AF264A"
 
 p <- ggplot() +
@@ -100,46 +104,48 @@ make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
 
     # Add chicken performance FIRST to sort the bars
     geom_errorbar(data=chick_data, width = 0.7, colour = chickred,
-                  aes(x=cond_name, ymin=avg, ymax=avg)) +
+                  aes(x=test.cond, ymin=avg, ymax=avg)) +
 
     # Model performance: bars
-    {if(color_bars)geom_col(data = data, width = 0.7, aes(x=cond_name, y = {{aes_y}}, fill = cond_name))}+
-    {if(!color_bars)geom_col(data = data, width = 0.7, aes(x=cond_name, y = {{aes_y}}), fill = "gray45")}+
+    {if(color_bars)geom_col(data = data, width = 0.7, aes(x=test.cond, y = {{aes_y}}, fill = test.cond))}+
+    {if(!color_bars)geom_col(data = data, width = 0.7, aes(x=test.cond, y = {{aes_y}}), fill = "gray45")}+
     # Model performance: error bars
     geom_errorbar(data = data, width = 0.3,
-                  aes(x = cond_name, ymin = {{error_min}}, ymax = {{error_max}})) +
+                  aes(x = test.cond, ymin = {{error_min}}, ymax = {{error_max}})) +
     # Model performance: dots
-    {if(!is.null(dots))geom_jitter(data = dot_data, aes(x=cond_name, y = avgs), width = .3)}+
+    {if(!is.null(dots))geom_jitter(data = dot_data, aes(x=test.cond, y = avgs), width = .3)}+
     theme(legend.position="none") +
 
     # Add chicken performance again so that it shows up on top
     # Chick performance: lines (errorbar) with ribbons (crossbar)
     geom_errorbar(data=chick_data, width = 0.7, colour = chickred,
-                aes(x=cond_name, ymin=avg, ymax=avg)) +
-    geom_crossbar(data=chick_data, width = 0.7,
+                aes(x=test.cond, ymin=avg, ymax=avg)) +
+    geom_crossbar(data=chick_data, width = 0.7, 
                   linetype = 0, fill = chickred, alpha = 0.2,
-                  aes(x = cond_name, y = avg,
-                      ymin = avg - avg_dev, ymax = avg + avg_dev))
-
+                  aes(x = test.cond, y = avg, 
+                      ymin = avg - avg_dev, ymax = avg + avg_dev)) 
+  
   ggsave(img_name, width = 6, height = 6)
 }
 
+# Switch wd before we save the graphs
+setwd(results_wd)
 
 # Plot by agent ----------------------------------------------------------------
 ## Leave rest data for agent-level graphs
 
 ## Group data by test conditions
 by_test_cond <- test_data %>%
-  group_by(imprinting, agent, cond_name) %>%
-  summarise(avgs = mean(percent_correct, na.rm = TRUE),
-            sd = sd(percent_correct, na.rm = TRUE),
+  group_by(imprint.cond, agent, test.cond) %>%
+  summarise(avgs = mean(percent_correct, na.rm = TRUE), 
+            sd = sd(percent_correct, na.rm = TRUE), 
             count = length(percent_correct),
             tval = tryCatch({ (t.test(percent_correct, mu=0.5)$statistic)}, error = function(err){NA}),
             df = tryCatch({(t.test(percent_correct, mu=0.5)$parameter)},error = function(err){NA}),
             pval = tryCatch({(t.test(percent_correct, mu=0.5)$p.value)},error = function(err){NA}))%>%
   mutate(se = sd / sqrt(count)) %>%
   mutate(cohensd = (avgs - .5) / sd) %>%
-  mutate(imp_agent = paste(imprinting, agent, sep="_"))
+  mutate(imp_agent = paste(imprint.cond, agent, sep="_"))
 
 write.csv(by_test_cond, "stats_by_agent.csv")
 
@@ -164,9 +170,9 @@ for (i in unique(by_test_cond$imp_agent))
 
 by_imp_cond <- by_test_cond %>%
   ungroup() %>%
-  group_by(imprinting, cond_name) %>%
-  summarise(avgs_by_imp = mean(avgs, na.rm = TRUE),
-            sd = sd(avgs, na.rm = TRUE),
+  group_by(imprint.cond, test.cond) %>%
+  summarise(avgs_by_imp = mean(avgs, na.rm = TRUE), 
+            sd = sd(avgs, na.rm = TRUE), 
             count = length(avgs),
             tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}),
             df = tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}),
@@ -176,15 +182,15 @@ by_imp_cond <- by_test_cond %>%
 
 write.csv(by_imp_cond, "stats_by_imp_cond.csv")
 
-for (i in unique(by_imp_cond$imprinting))
+for (i in unique(by_imp_cond$imprint.cond))
 {
   bar_data <- by_imp_cond %>%
-    filter(imprinting == i) %>%
-    filter(cond_name != "Rest")
-
+    filter(imprint.cond == i) %>%
+    filter(test.cond != "Rest")
+  
   dot_data <- by_test_cond %>%
-    filter(imprinting == i) %>%
-    filter(cond_name != "Rest")
+    filter(imprint.cond == i) %>%
+    filter(test.cond != "Rest")
 
   img_name <- paste0(i, "_test.png")
 
@@ -200,10 +206,10 @@ for (i in unique(by_imp_cond$imprinting))
 # Plot across all imprinting conditions ----------------------------------------
 across_imp_cond <- by_test_cond %>%
   ungroup() %>%
-  filter(cond_name != "Rest") %>%
-  group_by(cond_name) %>%
-  summarise(all_avgs = mean(avgs, na.rm = TRUE),
-            sd = sd(avgs, na.rm = TRUE),
+  filter(test.cond != "Rest") %>%
+  group_by(test.cond) %>%
+  summarise(all_avgs = mean(avgs, na.rm = TRUE), 
+            sd = sd(avgs, na.rm = TRUE), 
             count = length(avgs),
             tval = tryCatch({ (t.test(avgs, mu=0.5)$statistic)}, error = function(err){NA}),
             df =  tryCatch({ (t.test(avgs, mu=0.5)$parameter)}, error = function(err){NA}),
@@ -213,7 +219,7 @@ across_imp_cond <- by_test_cond %>%
 
 write.csv(across_imp_cond, "stats_across_all_agents.csv")
 
-dot_data <- filter(by_test_cond, cond_name != "Rest")
+dot_data <- filter(by_test_cond, test.cond != "Rest")
 
 make_bar_charts(data = across_imp_cond,
                 dots = dot_data,

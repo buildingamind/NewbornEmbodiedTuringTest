@@ -4,14 +4,11 @@
 # For a specified directory (see below), takes all of the csv files
 # and compiles them into a single data file
 
-# NOTE: For ease of use across many different experimental designs,
-# this script assumes that all files use a common naming scheme with the
+# NOTE: For ease of use across many different experimental designs, 
+# this script assumes that all files use a common naming scheme with the 
 # following criteria:
-# 1) The conditions are specified at the beginning of the filename
-# 2) The conditions are followed by a dash
-# 3) There are no other dashes in the name
-# 4) The agent ID number is the only number in the file name
-# 5) The filename ends with either train.csv or test.csv
+# 1) The agent ID number is the only number in the file name
+# 2) The filename ends with either train.csv or test.csv
 # for example "fork_side-agent3_train.csv"
 
 
@@ -64,7 +61,7 @@ read_data <- function(filename)
 {
   # Read the csv file
   data <- read.csv(filename)
-
+  
   # Summarize by zones
   data <- data %>%
     mutate(left = case_when( agent.x < lower_bound ~ 1, agent.x >= lower_bound ~ 0)) %>%
@@ -74,19 +71,18 @@ read_data <- function(filename)
   stopifnot(all( (data$left + data$right + data$middle == 1) ))
   # Summarize at the episode level
   data <- data %>%
-    group_by(Episode, left.monitor, right.monitor) %>%
-    summarise(left_steps = sum(left),
-              right_steps = sum(right),
+    group_by(Episode, left.monitor, right.monitor, correct.monitor, experiment.phase, imprint.cond, test.cond) %>%
+    summarise(left_steps = sum(left), 
+              right_steps = sum(right), 
               middle_steps = sum(middle)) %>%
     mutate(Episode = as.numeric(Episode)) %>%
     mutate(left.monitor = sub(" ", "", left.monitor)) %>%
     mutate(right.monitor = sub(" ", "", right.monitor)) %>%
     ungroup()
-
-  # Add columns for original filename, agent ID number, and imprinting condition
+  
+  # Add columns for original filename and agent ID number
   data$filename <- basename(filename)
-  data$agent <- gsub("\\D", "", data$filename)
-  data$imprinting <- strsplit(basename(filename), "-")[[1]][1]
+  data$agent <- gsub("\\D", "", data$filename) # Only keep the number
 
   return(data)
 }
@@ -106,7 +102,4 @@ setwd(results_wd)
 save(train_data, test_data, file=results_name)
 if( !is.null(csv_train_name) ) write.csv(train_data, csv_train_name)
 if( !is.null(csv_test_name) ) write.csv(test_data, csv_test_name)
-
-
-
 
