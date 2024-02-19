@@ -1,2 +1,3 @@
 # needed to include non-python files to installation
-include src/**/*
+include src/analysis/*
+include src/analysis/ChickData/*
