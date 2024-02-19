@@ -1,4 +1,6 @@
 # needed to include non-python files to installation
 # include src/nett/analysis/*.R
 # include src/nett/*/*.R
-include src/nett/*/*
+# include src/nett/*/*
+include src/nett/**/*
+include src/nett/**
