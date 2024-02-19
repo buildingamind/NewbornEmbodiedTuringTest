@@ -2,5 +2,5 @@
 # include src/nett/analysis/*.R
 # include src/nett/*/*.R
 # include src/nett/*/*
-include src/nett/**/*
-include src/nett/**
+include src/nett/analysis/**/*
+# include src/nett/**
