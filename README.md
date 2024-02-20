@@ -70,7 +70,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 2. Install the needed versions of `setuptools` and `pip`:
    ```bash
-   pip install setuptools==65.5.0 pip==21
+   pip install setuptools==65.5.0 pip==21 wheel==0.38.4
    ```
    **NOTE:** This is a result of incompatibilities with the subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
 
