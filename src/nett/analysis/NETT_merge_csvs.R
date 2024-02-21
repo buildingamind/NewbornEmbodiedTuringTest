@@ -72,9 +72,10 @@ read_data <- function(filename)
   # Summarize at the episode level
   data <- data %>%
     group_by(Episode, left.monitor, right.monitor, correct.monitor, experiment.phase, imprint.cond, test.cond) %>%
-    summarise(left_steps = sum(left), 
-              right_steps = sum(right), 
-              middle_steps = sum(middle)) %>%
+    summarise(.groups = "keep",
+      left_steps = sum(left), 
+      right_steps = sum(right), 
+      middle_steps = sum(middle)) %>%
     mutate(Episode = as.numeric(Episode)) %>%
     mutate(left.monitor = sub(" ", "", left.monitor)) %>%
     mutate(right.monitor = sub(" ", "", right.monitor)) %>%
