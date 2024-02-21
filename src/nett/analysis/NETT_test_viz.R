@@ -93,8 +93,8 @@ p <- ggplot() +
   scale_fill_manual(values = custom_palette) +
   scale_colour_manual(values = custom_palette) +
   theme(axis.title = element_text(face="bold"),
-        axis.text.x = element_text(face="bold", size=8.5),
-        axis.text.y = element_text(face="bold", size=8.5))
+        axis.text.x = element_text(face="bold", size=7.5),
+        axis.text.y = element_text(face="bold", size=7.5))
 
 
 # Bar Chart Function -----------------------------------------------------------
