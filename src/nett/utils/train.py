@@ -56,7 +56,7 @@ def average_in_episode_three_region(log,column='agent.x',transient=90):
 
     Args:
         log (_type_): _description_
-        column (str, optional): _description_. Defaults to 'ChickAgent.x'.
+        column (str, optional): _description_. Defaults to 'agent.x'.
         transient (int, optional): _description_. Defaults to 90.
 
     Returns:
