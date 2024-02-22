@@ -1,8 +1,8 @@
 """
-This module contains the NETT class, which is the main class for training and testing brains in environments.
+This module contains the NETT class, which is the main class for training, testing and analyzing brains in environments.
 
 .. module:: nett
-   :synopsis: Main class for training and testing brains in environments.
+   :synopsis: Main class for training, testing and analyzing brains in environments.
 
 """
 
@@ -20,14 +20,11 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 
 from nett import Brain, Body, Environment
 from nett.utils.io import mute
-# from brain.builder import Brain
-# from body.builder import Body
-# from environment.builder import Environment
-# from utils.io import mute
+
 
 class NETT:
     """
-    The NETT class is the main class for training and testing brains in environments.
+    The NETT class is the main class for training, testing and analyzing brains in environments.
 
     :param brain: The brain to be trained and tested.
     :type brain: Brain
@@ -184,18 +181,7 @@ class NETT:
         for job in jobs:
             job_future = executor.submit(self._execute_job, job)
             job_sheet.append({"running": job_future, "specification": job})
-            time.sleep(1) # environment creation sometimes fails if no pause is given between consecutive job submissions
-# with ProcessPoolExecutor(max_workers=max_workers, initializer=initializer) as executor:
-        #     future_to_job = {}
-        #     for job in jobs:
-        #         future_to_job[executor.submit(self._execute_job, job)] = job
-        #         time.sleep(1)
-        #     for future in as_completed(future_to_job):
-        #         job = future_to_job[future]
-        #         try:
-        #             data = future.result()
-        #         except Exception as exc:
-        #             print("%r generated an exception: %s" % (job["brain_id"], exc))
+            time.sleep(1)
         return job_sheet
 
     def status(self, job_sheet: dict[Future, dict]) -> pd.DataFrame:
