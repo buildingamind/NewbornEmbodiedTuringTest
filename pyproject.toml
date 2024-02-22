@@ -32,8 +32,8 @@ classifiers = [
 notebook = ["ipywidgets"]
 
 [project.urls]
-"Homepage" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/"
-"Bug Tracker" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/issues"
+"Homepage" = "https://github.com/buildingamind/NewbornEmbodiedTuringTest"
+"Bug Tracker" = "https://github.com/buildingamind/NewbornEmbodiedTuringTest/issues"
 "Documentation" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/index.html"
 
 [tool.setuptools.dynamic]

@@ -1,5 +1,5 @@
 <div align="center">
-<img src="docs/assets/images/banner.png" alt="Banner" style />
+<img src="https://github.com/buildingamind/NewbornEmbodiedTuringTest/raw/main/docs/assets/images/banner.png" alt="Banner" style />
 
 # **Newborn Embodied Turing Test**
 
@@ -20,7 +20,8 @@ The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to si
 Below is a visual representation of our experimental setup, showcasing the infrastructure for the three primary experiments discussed in this documentation.
 
 <div align="center">
-<img src="docs/assets/images/digital_twin_cropped.jpg" alt="Digital Twin" width="65%" />
+
+<img src="https://github.com/buildingamind/NewbornEmbodiedTuringTest/raw/main/docs/assets/images/digital_twin.jpg" alt="Digital Twin" width="65%" />
 </div>
 
 ## How to Use this Repository
