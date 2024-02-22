@@ -29,17 +29,21 @@ from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 # TODO (v0.2): Extend with support for custom policy models
 # TODO (v0.2): should we move validation checks to utils under validations.py?
 class Brain:
-    """A class representing a brain for training and testing reinforcement learning models.
+    """Represents the brain of an agent. 
 
-    :param encoder: The encoder used to extract features from the environment. Defaults to None.
+    The brain is made up of an encoder, policy, algorithm, reward function and the hyperparameters determined 
+    for these components such as the batch and buffer sizes. It produces a trained model based on the environment
+    data and the inputs received by the brain through the body.  
+    
+    :param encoder: The network used to extract features from the observations. Defaults to None.
     :type encoder: Any | str, optional
-    :param embedding_dim: The dimension of the embedding space. Defaults to None.
+    :param embedding_dim: The dimension of the embedding space of the encoder. Defaults to None.
     :type embedding_dim: int | None, optional
-    :param policy: The policy model used for the reinforcement learning algorithm. Defaults to None.
+    :param policy: The network used for defining the value and action networks. Defaults to None.
     :type policy: Any | str | None, optional
-    :param algorithm: The reinforcement learning algorithm used for training the model. Defaults to None.
+    :param algorithm: The optimization algorithm used for training the model. Defaults to None.
     :type algorithm: Any | str | None, optional
-    :param reward: The type of reward used for training the model. Defaults to "supervised".
+    :param reward: The type of reward used for training the brain. Defaults to "supervised".
     :type reward: Any | str, optional
     :param batch_size: The batch size used for training. Defaults to 512.
     :type batch_size: int, optional
@@ -86,7 +90,7 @@ class Brain:
 
     def train(self, env, iterations, device_type: str, device: int, paths: dict[str, Path]):
         """
-        Train the reinforcement learning model.
+        Train the brain.
 
         :param env: The environment used for training.
         :type env: Any
@@ -172,7 +176,7 @@ class Brain:
 
     def test(self, env, iterations, model_path: str, record_prefix: str | None = None): # pylint: disable=unused-argument
         """
-        Test the reinforcement learning model.
+        Test the brain.
 
         :param env: The environment used for testing.
         :type env: Any
@@ -293,7 +297,7 @@ class Brain:
 
     def _validate_algorithm(self, algorithm: Any | str) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
-        Validate the reinforcement learning algorithm.
+        Validate the optimization algorithm.
 
         :param algorithm: The algorithm to validate.
         :type algorithm: Any or str

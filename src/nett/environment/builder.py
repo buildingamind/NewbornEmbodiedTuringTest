@@ -22,11 +22,13 @@ from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
     """
-    A wrapper around the UnityEnvironment class from the mlagents_envs library.
+    Represents the environment where the agent lives.
 
-    This class provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
+    The environment is the source of all input data streams to train the brain of the agent. 
+    It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment 
+    class from the mlagents_envs library.
 
-    The Environment class inherits from the gym.Wrapper class, allowing it to be used as a gym environment.
+    It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
 
     :param config: The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
     :type config: str | NETTConfig
@@ -130,7 +132,7 @@ class Environment(Wrapper):
         """
         Initializes the environment with the given mode and arguments.
 
-        :param mode: The mode to initialize the environment in.
+        :param mode: The mode to set the environment for training or testing or both. 
         :type mode: str
         :param kwargs: The arguments to pass to the environment.
         :type kwargs: Any
