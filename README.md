@@ -7,6 +7,7 @@ Benchmarking Virtual Agents in Controlled-Rearing Conditions
 
 ![PyPI - Version](https://img.shields.io/pypi/v/nett-benchmarks)
 ![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fbuildingamind%2FNewbornEmbodiedTuringTest%2Fmain%2Fpyproject.toml)
+![GitHub License](https://img.shields.io/github/license/buildingamind/NewbornEmbodiedTuringTest)
 ![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/buildingamind/NewbornEmbodiedTuringTest)
 
 [Getting Started](#getting-started) •
