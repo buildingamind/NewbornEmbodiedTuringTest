@@ -101,7 +101,8 @@ class NETT:
             description: str = None,
             buffer: float = 1.2,
             step_per_episode: int = 200,
-            verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 0,
+            performance_mode: bool = True) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -152,6 +153,7 @@ class NETT:
         self.step_per_episode = step_per_episode
         self.device_type = self._validate_device_type(device_type)
         self.devices = self._validate_devices(devices)
+        self.performance_mode = performance_mode
 
         # schedule jobs
         jobs = self._schedule_jobs()
@@ -345,7 +347,8 @@ class NETT:
                   "log_path": str(job["paths"]["env_logs"]),
                   "condition": str(job["condition"]),
                   "run_id": str(job["brain_id"]),
-                  "episode_steps": self.step_per_episode}
+                  "episode_steps": self.step_per_episode,
+                  "device": job["device"]}
 
         # for train
         if self.mode in ["train", "full"]:
