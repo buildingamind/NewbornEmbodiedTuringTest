@@ -158,15 +158,17 @@ class Environment(Wrapper):
             args.extend(["--random-pos", "true"])
         if kwargs.get("rewarded", False):
             args.extend(["--rewarded", "true"])
-        # TODO: Discuss this with Manju, may be a MAJOR bug
         self.step_per_episode = kwargs.get("episode_steps", 200)
         if kwargs.get("episode_steps", False):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
-        
-        # args.extend("-nographics")
-        args.extend("-batchmode")
-        if ("device" in kwargs):
-            args.extend(["-force-device-index", str(kwargs["device"])])
+
+        if kwargs["device_type"] == "cpu":
+            args.extend(["-batchmode", "-nographics"])
+        elif kwargs["batch_mode"]:
+            args.append("-batch-mode")
+
+        # if ("device" in kwargs):
+        #     args.extend(["-force-device-index", str(kwargs["device"])])
 
         # find unused port
         while port_in_use(self.base_port):
