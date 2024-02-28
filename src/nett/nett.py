@@ -98,6 +98,7 @@ class NETT:
             train_eps: int = 1000,
             test_eps: int = 20,
             batch_mode: bool = True,
+            device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: str = None,
             buffer: float = 1.2,
