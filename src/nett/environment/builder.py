@@ -165,7 +165,7 @@ class Environment(Wrapper):
         if kwargs["device_type"] == "cpu":
             args.extend(["-batchmode", "-nographics"])
         elif kwargs["batch_mode"]:
-            args.append("-batch-mode")
+            args.append("-batchmode")
 
         # if ("device" in kwargs):
         #     args.extend(["-force-device-index", str(kwargs["device"])])
