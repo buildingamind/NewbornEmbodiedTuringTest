@@ -167,7 +167,7 @@ class NETT:
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
-    def launch_jobs(self, jobs: set[dict], waitlist: set[dict] = []) -> list[Future]:
+    def launch_jobs(self, jobs: list[dict], waitlist: list[dict] = []) -> list[Future]:
         """
         Launch the jobs in the job sheet.
 
@@ -292,16 +292,16 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self) -> tuple[set[dict], set[dict]]:
+    def _schedule_jobs(self) -> tuple[list[dict], list[dict]]:
         # create jobs
         # create list of all brain-environment combinations
         task_set = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
 
-        jobs = set()
-        waitlist = set()
+        jobs = []
+        waitlist = []
 
         if self.device_type == "cpu":
-            jobs = set(self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(range(os.cpu_count()))))
+            jobs = [self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
 
         else:
             # assign devices based on memory to a condition and brain combination
@@ -320,7 +320,7 @@ class NETT:
                 if not free_devices:
                     for (condition, brain_id) in task_set:
                         job = self._create_job(brain_id, condition, -1)
-                        waitlist.add(job)
+                        waitlist.append(job)
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                     break
                 # remove devices that don't have enough memory
@@ -332,7 +332,7 @@ class NETT:
                     # create job
                     condition, brain_id = task_set.pop()
                     job = self._create_job(brain_id, condition, free_devices[-1])
-                    jobs.add(job)
+                    jobs.append(job)
 
         return jobs, waitlist
 
