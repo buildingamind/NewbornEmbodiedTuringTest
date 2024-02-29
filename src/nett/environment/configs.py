@@ -22,17 +22,17 @@ class NETTConfig(ABC):
         self.params = self._validate_params(params)
         self.conditions = self._create_conditions_from_params(self.params)
 
-    def _create_conditions_from_params(self, params: dict[str, str]) -> list[str]:
+    def _create_conditions_from_params(self, params: dict[str, str]) -> set[str]:
         """
         Creates conditions from the configuration parameters.
 
         :param params: The configuration parameters.
         :type params: dict[str, str]
-        :return: A list of conditions.
-        :rtype: list[str]
+        :return: A set of conditions.
+        :rtype: set[str]
         """
         combination_params = list(product(*params.values()))
-        conditions = ["-".join(combination).lower() for combination in combination_params]
+        conditions = {"-".join(combination).lower() for combination in combination_params}
         return conditions
 
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:

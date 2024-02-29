@@ -8,15 +8,16 @@ This module contains the NETT class, which is the main class for training, testi
 
 import time
 import subprocess
+from os import cpu_count
 from pathlib import Path
 from typing import Any
 from copy import deepcopy
-from itertools import product
-from concurrent.futures import ProcessPoolExecutor, Future
+from itertools import product, cycle
+from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 from nett import Brain, Body, Environment
 from nett.utils.io import mute
@@ -88,7 +89,8 @@ class NETT:
         self.body = body
         self.environment = environment
         # for NVIDIA memory management
-        nvmlInit()
+        # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
+        nvmlInitWithFlags(1)
 
     def run(self,
             output_dir: Path | str,
@@ -96,6 +98,7 @@ class NETT:
             mode: str = "full",
             train_eps: int = 1000,
             test_eps: int = 20,
+            batch_mode: bool = True,
             device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: str = None,
@@ -116,6 +119,8 @@ class NETT:
         :param test_eps: The number of episodes the brains are to be tested for.
         :type test_eps: int, optional
         :param device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
+        :param batch_mode: Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Default is True.
+        :type batch_mode: bool, optional
         :type device_type: str, optional
         :param devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
         :type devices: list[int] | int, optional
@@ -151,45 +156,60 @@ class NETT:
         self.buffer = buffer
         self.step_per_episode = step_per_episode
         self.device_type = self._validate_device_type(device_type)
-        self.devices = self._validate_devices(devices)
+        self.devices: list[int] | int = self._validate_devices(devices)
+        self.batch_mode: bool = batch_mode
 
         # schedule jobs
-        jobs = self._schedule_jobs()
+        jobs, waitlist = self._schedule_jobs()
         self.logger.info("Scheduled jobs")
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self.launch_jobs(jobs)
+        job_sheet = self.launch_jobs(jobs, waitlist)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
-    def launch_jobs(self, jobs: list[dict]) -> list[Future]:
+    def launch_jobs(self, jobs: list[dict[str, Any]], waitlist: list[dict[str,Any]] = []) -> dict[Future, dict[str,Any]]:
         """
         Launch the jobs in the job sheet.
 
         :param jobs: The jobs to be launched.
-        :type jobs: list[dict]
+        :type jobs: list[dict[str,Any]]
+        :param waitlist: The jobs that are to be queued until memory is available.
+        :type waitlist: list[dict[str,Any]], optional
         
-        :return: A list of futures representing the jobs that have been launched.
-        :rtype: list[Future]
+        :return: A dictionary of futures corresponding to the jobs that were launched from them.
+        :rtype: dict[Future, dict[str, Any]]
         """
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-        job_sheet = []
+        job_sheet: dict[Future, dict[str, Any]] = {}
+
         for job in jobs:
             job_future = executor.submit(self._execute_job, job)
-            job_sheet.append({"running": job_future, "specification": job})
+            job_sheet[job_future] = job
             time.sleep(1)
+
+        while waitlist:
+            done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+            for doneFuture in done:
+                freeDevice: int = job_sheet.pop(doneFuture)['device']
+                job = waitlist.pop()
+                job['device'] = freeDevice
+                job_future = executor.submit(self._execute_job, job)
+                job_sheet[job_future] = job
+                time.sleep(1)
+    
         return job_sheet
 
-    def status(self, job_sheet: dict[Future, dict]) -> pd.DataFrame:
+    def status(self, job_sheet: dict[Future, dict[str, Any]]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
         
         :param job_sheet: The job sheet returned by the .launch_jobs() method.
-        :type job_sheet: dict[Future, dict]
+        :type job_sheet: dict[Future, dict[str, Any]]
             
         :return: A dataframe containing the status of the jobs in the job sheet.
         :rtype: pd.DataFrame
@@ -277,42 +297,52 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self):
-        # get the free memory status for each device in list
-        free_device_memory = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
-
-        # estimate memory for a single job
-        job_memory = self._estimate_job_memory(free_device_memory)
-
+    def _schedule_jobs(self) -> tuple[list[dict], list[dict]]:
         # create jobs
-        # create list of all brain-environment combinations
-        # TODO (v0.5) replace environment.config.conditions and task_list with np.arrays to improve performance
-        task_list = list(product(self.environment.config.conditions, list(range(1, self.num_brains + 1))))
+        # create set of all brain-environment combinations
+        task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
 
-        # assign devices based on memory to a condition and brain combination
-        # TODO (v0.5) what's better than a loop / brute force here?
         jobs = []
+        waitlist = []
 
-        free_devices = list(free_device_memory.keys()) # list of device numbers of free devices
-        dev_num = 0 # current device number
+        if self.device_type == "cpu":
+            # assign devices in a round robin fashion, no need to check memory
+            jobs: list[dict[str,Any]] = [self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
 
-        for (condition, brain_id) in task_list:
-            # find a device that has enough memory
-            # FIXME self.buffer does not seem like a reliable metric for estimating memory consumption (by multiplying 1.2 to job_memory)
-            while free_device_memory[free_devices[dev_num]] < job_memory * self.buffer:
-                dev_num += 1
-                # TODO (v0.3) allow partial execution
-                if dev_num >= len(free_device_memory):
-                    raise RuntimeError("Insufficient GPU Memory, could not create jobs for all tasks")
-            # allocate memory
-            free_device_memory[free_devices[dev_num]] -= job_memory*self.buffer
-            # create job
-            job = self._create_job(brain_id=brain_id, condition=condition, device=free_devices[dev_num])
-            jobs.append(job)
+        else:
+            # assign devices based on memory availability
+            # get the list of devices
+            free_devices: list[int] | int = self.devices.copy()
 
-        return jobs
+            # get the free memory status for each device
+            free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
-    def _create_job(self, device: int, condition: str, brain_id: int) -> dict:
+            # estimate memory for a single job
+            job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+
+            while task_set:
+                # if there are no free devices, add jobs to the waitlist
+                if not free_devices:
+                    for (condition, brain_id) in task_set:
+                        job = self._create_job(brain_id, condition, -1)
+                        waitlist.append(job)
+                    self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                    break
+                # remove devices that don't have enough memory
+                elif free_device_memory[free_devices[-1]] < job_memory:
+                    free_devices.pop()
+                # assign device to job
+                else:
+                    # allocate memory
+                    free_device_memory[free_devices[-1]] -= job_memory
+                    # create job
+                    condition, brain_id = task_set.pop()
+                    job = self._create_job(brain_id, condition, free_devices[-1])
+                    jobs.append(job)
+
+        return jobs, waitlist
+
+    def _create_job(self, brain_id: int, condition: str, device: int) -> dict[str,Any]:
         # creates brain, env copies for a job
         brain_copy = deepcopy(self.brain)
 
@@ -345,7 +375,9 @@ class NETT:
                   "log_path": str(job["paths"]["env_logs"]),
                   "condition": str(job["condition"]),
                   "run_id": str(job["brain_id"]),
-                  "episode_steps": self.step_per_episode}
+                  "episode_steps": self.step_per_episode,
+                  "device_type": self.device_type,
+                  "batch_mode": self.batch_mode}
 
         # for train
         if self.mode in ["train", "full"]:
@@ -384,8 +416,10 @@ class NETT:
 
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id)))
-                         for device_id in self.devices}
+        memory_status = {
+            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+            for device_id in self.devices
+        }
         return memory_status
 
     # pylint: disable-next=unused-argument
@@ -414,30 +448,24 @@ class NETT:
 
     def _validate_device_type(self, device_type: str):
         # TODO (v0.4) add automatic type checking usimg pydantic or similar
-        if device_type in ["cuda", "cpu"]:
-            pass
-        else:
-            raise ValueError("Should be one of ['gpu', 'cpu']")
+        if device_type not in ["cuda", "cpu"]:
+            raise ValueError("Should be one of ['cuda', 'cpu']")
+
         return device_type
 
-    def _validate_devices(self, devices: list[int] | int):
-        if self.device_type == "cpu" and isinstance(devices, list):
-            raise ValueError("Custom device lists not supported for 'cpu' device")
-
-        available_devices = list(range(nvmlDeviceGetCount()))
-        if isinstance(devices, list) and len(devices) > nvmlDeviceGetCount():
-            raise ValueError("Custom device lists not supported for 'cpu' device")
+    def _validate_devices(self, devices: list[int] | int) -> list[int]:
+        # check if the devices are available and return the list of devices to be used
+        available_devices = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
-            self.logger.info(f"Devices that will be used: {devices}")
-        elif isinstance(devices, list):
-            for device in devices:
-                if not isinstance(device, int) or device not in available_devices:
-                    raise ValueError(f"Device [{device}] is invalid. Available devices are: {available_devices}")
-            self.logger.info(f"Devices that will be used: {devices}")
-        else:
-            pass
+        elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
+            raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
+
+        
+
+        self.logger.info(f"Devices that will be used: {devices}")
+
         return devices
 
     def summary(self): # TODO: only raises a NotImplementedError for now
