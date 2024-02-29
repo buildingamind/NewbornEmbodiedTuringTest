@@ -28,8 +28,8 @@ class NETTConfig(ABC):
 
         :param params: The configuration parameters.
         :type params: dict[str, str]
-        :return: A list of conditions.
-        :rtype: list[str]
+        :return: A set of conditions.
+        :rtype: set[str]
         """
         combination_params = list(product(*params.values()))
         conditions = {"-".join(combination).lower() for combination in combination_params}

@@ -6,9 +6,9 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 
-import os
 import time
 import subprocess
+from os import cpu_count
 from pathlib import Path
 from typing import Any
 from copy import deepcopy
@@ -89,6 +89,7 @@ class NETT:
         self.body = body
         self.environment = environment
         # for NVIDIA memory management
+        # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInitWithFlags(1)
 
     def run(self,
@@ -118,6 +119,8 @@ class NETT:
         :param test_eps: The number of episodes the brains are to be tested for.
         :type test_eps: int, optional
         :param device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
+        :param batch_mode: Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Default is True.
+        :type batch_mode: bool, optional
         :type device_type: str, optional
         :param devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
         :type devices: list[int] | int, optional
@@ -153,8 +156,8 @@ class NETT:
         self.buffer = buffer
         self.step_per_episode = step_per_episode
         self.device_type = self._validate_device_type(device_type)
-        self.devices = self._validate_devices(devices)
-        self.batch_mode = batch_mode
+        self.devices: list[int] | int = self._validate_devices(devices)
+        self.batch_mode: bool = batch_mode
 
         # schedule jobs
         jobs, waitlist = self._schedule_jobs()
@@ -167,15 +170,17 @@ class NETT:
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
-    def launch_jobs(self, jobs: list[dict], waitlist: list[dict] = []) -> list[Future]:
+    def launch_jobs(self, jobs: list[dict[str, Any]], waitlist: list[dict[str,Any]] = []) -> dict[Future, dict[str,Any]]:
         """
         Launch the jobs in the job sheet.
 
         :param jobs: The jobs to be launched.
-        :type jobs: list[dict]
+        :type jobs: list[dict[str,Any]]
+        :param waitlist: The jobs that are to be queued until memory is available.
+        :type waitlist: list[dict[str,Any]], optional
         
-        :return: A list of futures representing the jobs that have been launched.
-        :rtype: list[Future]
+        :return: A dictionary of futures corresponding to the jobs that were launched from them.
+        :rtype: dict[Future, dict[str, Any]]
         """
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
@@ -204,7 +209,7 @@ class NETT:
         Get the status of the jobs in the job sheet.
         
         :param job_sheet: The job sheet returned by the .launch_jobs() method.
-        :type job_sheet: dict[Future, dict]
+        :type job_sheet: dict[Future, dict[str, Any]]
             
         :return: A dataframe containing the status of the jobs in the job sheet.
         :rtype: pd.DataFrame
@@ -294,29 +299,29 @@ class NETT:
 
     def _schedule_jobs(self) -> tuple[list[dict], list[dict]]:
         # create jobs
-        # create list of all brain-environment combinations
-        task_set = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
+        # create set of all brain-environment combinations
+        task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
 
         jobs = []
         waitlist = []
 
         if self.device_type == "cpu":
-            jobs = [self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
+            # assign devices in a round robin fashion, no need to check memory
+            jobs: list[dict[str,Any]] = [self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
 
         else:
-            # assign devices based on memory to a condition and brain combination
-
+            # assign devices based on memory availability
             # get the list of devices
-            free_devices = self.devices.copy()
+            free_devices: list[int] | int = self.devices.copy()
 
             # get the free memory status for each device
-            free_device_memory = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
+            free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
             # estimate memory for a single job
-            job_memory = self.buffer * self._estimate_job_memory(free_device_memory)
+            job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
 
             while task_set:
-                # check if there are any devices with enough memory left
+                # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
                     for (condition, brain_id) in task_set:
                         job = self._create_job(brain_id, condition, -1)
@@ -324,8 +329,9 @@ class NETT:
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                     break
                 # remove devices that don't have enough memory
-                if free_device_memory[free_devices[-1]] < job_memory:
+                elif free_device_memory[free_devices[-1]] < job_memory:
                     free_devices.pop()
+                # assign device to job
                 else:
                     # allocate memory
                     free_device_memory[free_devices[-1]] -= job_memory
@@ -336,7 +342,7 @@ class NETT:
 
         return jobs, waitlist
 
-    def _create_job(self, brain_id: int, condition: str, device: int) -> dict:
+    def _create_job(self, brain_id: int, condition: str, device: int) -> dict[str,Any]:
         # creates brain, env copies for a job
         brain_copy = deepcopy(self.brain)
 
@@ -442,19 +448,21 @@ class NETT:
 
     def _validate_device_type(self, device_type: str):
         # TODO (v0.4) add automatic type checking usimg pydantic or similar
-        if device_type in ["cuda", "cpu"]:
-            pass
-        else:
+        if device_type not in ["cuda", "cpu"]:
             raise ValueError("Should be one of ['cuda', 'cpu']")
+
         return device_type
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
-        available_devices = list(range(os.cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
+        # check if the devices are available and return the list of devices to be used
+        available_devices = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
 
-        if isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
-            raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
-        elif devices == -1:
+        if devices == -1:
             devices = available_devices
+        elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
+            raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
+
+        
 
         self.logger.info(f"Devices that will be used: {devices}")
 

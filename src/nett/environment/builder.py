@@ -167,6 +167,7 @@ class Environment(Wrapper):
         elif kwargs["batch_mode"]:
             args.append("-batchmode")
 
+        # TODO: Figure out a way to run on multiple GPUs
         # if ("device" in kwargs):
         #     args.extend(["-force-device-index", str(kwargs["device"])])
         #     args.extend(["-gpu", str(kwargs["device"])])
