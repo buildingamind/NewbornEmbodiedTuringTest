@@ -72,7 +72,7 @@ class NETT:
     >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: Brain, body: Body, environment: Environment, **kwargs: dict[str, Any]) -> None:
+    def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
         """
         Initialize the NETT class.
 
@@ -157,12 +157,12 @@ class NETT:
         self.batch_mode = batch_mode
 
         # schedule jobs
-        jobs = self._schedule_jobs()
+        jobs, waitlist = self._schedule_jobs()
         self.logger.info("Scheduled jobs")
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self.launch_jobs(jobs)
+        job_sheet = self.launch_jobs(jobs, waitlist)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
