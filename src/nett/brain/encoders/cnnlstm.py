@@ -10,10 +10,9 @@ class CNNLSTM(BaseFeaturesExtractor):
     followed by a long short-term memory (LSTM) layer. It is used as a feature
     extractor in reinforcement learning algorithms.
 
-    :param observation_space: The observation space of the environment.
-    :type observation_space: gym.Space
-    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
-    :type features_dim: int, optional, default 256
+    Args:
+        observation_space (gym.Space): The observation space of the environment.
+        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 256.
     """
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
         """Constructor method
