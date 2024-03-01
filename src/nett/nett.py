@@ -23,66 +23,26 @@ from nett import Brain, Body, Environment
 from nett.utils.io import mute
 from nett.utils.job import Job
 
-
 class NETT:
-    """
-    The NETT class is the main class for training, testing and analyzing brains in environments.
+    """The NETT class is the main class for training, testing, and analyzing brains in environments.
 
-    :param brain: The brain to be trained and tested.
-    :type brain: Brain
-    :param body: The body to be used for training and testing the brain.
-    :type body: Body
-    :param environment: The environment in which the brain is to be trained and tested.
-    :type environment: Environment
-    
-    :ivar output_dir: The directory where the run results will be stored.
-    :vartype output_dir: Path
-    :ivar mode: The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
-    :vartype mode: str
-    :ivar verbosity: The verbosity level of the run.
-    :vartype verbosity: int
-    :ivar num_brains: The number of brains to be trained and tested.
-    :vartype num_brains: int
-    :ivar train_eps: The number of episodes the brains are to be trained for.
-    :vartype train_eps: int
-    :ivar test_eps: The number of episodes the brains are to be tested for.
-    :vartype test_eps: int
-    :ivar description: A description of the run.
-    :vartype description: str
-    :ivar buffer: The buffer for memory allocation.
-    :vartype buffer: float
-    :ivar steps_per_episode: The number of steps per episode.
-    :vartype steps_per_episode: int
-    :ivar device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
-    :vartype device_type: str
-    :ivar devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
-    :vartype devices: list[int] | int
-    :ivar brain: The brain to be trained and tested.
-    :vartype brain: Brain
-    :ivar body: The body to be used for training and testing the brain.
-    :vartype body: Body
-    :ivar environment: The environment in which the brain is to be trained and tested.
-    :vartype environment: Environment
-    :ivar logger: The logger for the NETT class.
-    :vartype logger: Logger
+    Args:
+        brain (Brain): The brain to be trained and tested.
+        body (Body): The body to be used for training and testing the brain.
+        environment (Environment): The environment in which the brain is to be trained and tested.
 
     Example:
-
-    >>> from nett import NETT
-    >>> # create a brain, body, and environment
-    >>> benchmarks = NETT(brain, body, environment)
+        >>> # create a brain, body, and environment
+        >>> benchmarks = NETT(brain, body, environment)
     """
 
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
-        """
-        Initialize the NETT class.
+        """Initialize the NETT class.
 
-        :param brain: The brain to be trained and tested.
-        :type brain: Brain
-        :param body: The body to be used for training and testing the brain.
-        :type body: Body
-        :param environment: The environment in which the brain is to be trained and tested.
-        :type environment: Environment
+        Args:
+            brain (Brain): The brain to be trained and tested.
+            body (Body): The body to be used for training and testing the brain.
+            environment (Environment): The environment in which the brain is to be trained and tested.
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
@@ -109,33 +69,22 @@ class NETT:
         """
         Run the training and testing of the brains in the environment.
 
-        :param output_dir: The directory where the run results will be stored.
-        :type output_dir: Path | str
-        :param num_brains: The number of brains to be trained and tested.
-        :type num_brains: int, optional
-        :param mode: The mode in which the brains are to be trained and tested. It can be "train", "test", or "full".
-        :type mode: str, optional
-        :param train_eps: The number of episodes the brains are to be trained for.
-        :type train_eps: int, optional
-        :param test_eps: The number of episodes the brains are to be tested for.
-        :type test_eps: int, optional
-        :param device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
-        :param batch_mode: Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Default is True.
-        :type batch_mode: bool, optional
-        :type device_type: str, optional
-        :param devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
-        :type devices: list[int] | int, optional
-        :param description: A description of the run.
-        :type description: str, optional
-        :param buffer: The buffer for memory allocation.
-        :type buffer: float, optional
-        :param steps_per_episode: The number of steps per episode.
-        :type steps_per_episode: int, optional
-        :param verbosity: The verbosity level of the run.
-        :type verbosity: int, optional
-        
-        :return: A list of futures representing the jobs that have been launched.
-        :rtype: list[Future]
+        Args:
+            output_dir (Path | str): The directory where the run results will be stored.
+            num_brains (int, optional): The number of brains to be trained and tested. Defaults to 1.
+            mode (str, optional): The mode in which the brains are to be trained and tested. It can be "train", "test", or "full". Defaults to "full".
+            train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
+            test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
+            batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
+            device_type (str, optional): The type of device to be used for training and testing. It can be "cuda" or "cpu". Defaults to "cuda".
+            devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
+            description (str, optional): A description of the run. Defaults to None.
+            buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
+            verbosity (int, optional): The verbosity level of the run. Defaults to 0.
+
+        Returns:
+            list[Future]: A list of futures representing the jobs that have been launched.
 
         Example:
     
@@ -175,13 +124,12 @@ class NETT:
         """
         Launch the jobs in the job sheet.
 
-        :param jobs: The jobs to be launched.
-        :type jobs: list[dict[str,Any]]
-        :param waitlist: The jobs that are to be queued until memory is available.
-        :type waitlist: list[dict[str,Any]], optional
-        
-        :return: A dictionary of futures corresponding to the jobs that were launched from them.
-        :rtype: dict[Future, Job]
+        Args:
+            jobs (list[Job]): The jobs to be launched.
+            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
+
+        Returns:
+            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
@@ -208,16 +156,16 @@ class NETT:
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
-        
-        :param job_sheet: The job sheet returned by the .launch_jobs() method.
-        :type job_sheet: dict[Future, Job]
-            
-        :return: A dataframe containing the status of the jobs in the job sheet.
-        :rtype: pd.DataFrame
+
+        Args:
+            job_sheet (dict[Future, Job]): The job sheet returned by the .launch_jobs() method.
+
+        Returns:
+            pd.DataFrame: A dataframe containing the status of the jobs in the job sheet.
 
         Example:
-
-        >>> status = benchmarks.status(job_sheet) # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
+            >>> status = benchmarks.status(job_sheet)
+            >>> # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
@@ -236,27 +184,25 @@ class NETT:
                 bar_order: str | list[int] = "default",
                 color_bars: bool = True) -> None:
         """
-        Analyze the results of a run. This method is a static method and does not require an instance of the NETT class to be called.
-        
-        :param run_dir: The directory where the run results are stored.
-        :type run_dir: str | Path
-        :param output_dir: The directory where the analysis results will be stored. If None, the analysis results will be stored in the run directory.
-        :type output_dir: str | Path | None, optional
-        :param ep_bucket: The number of episodes to be grouped together for analysis.
-        :type ep_bucket: int, optional
-        :param num_episodes: The number of episodes to be analyzed.
-        :type num_episodes: int, optional
-        :param bar_order: The order in which the bars are to be displayed in the analysis plots. Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
-        :type bar_order: str | list[int], optional
-        :param color_bars: Whether to color the bars in the analysis plots by condition. Default is True.
-        :type color_bars: bool, optional
-            
-        :return: None
-        :rtype: None
+        Analyze the results of a run.
+
+        This method is a static method and does not require an instance of the NETT class to be called.
+
+        Args:
+            run_dir (str | Path): The directory where the run results are stored.
+            output_dir (str | Path | None, optional): The directory where the analysis results will be stored. 
+                If None, the analysis results will be stored in the run directory.
+            ep_bucket (int, optional): The number of episodes to be grouped together for analysis.
+            num_episodes (int, optional): The number of episodes to be analyzed.
+            bar_order (str | list[int], optional): The order in which the bars are to be displayed in the analysis plots. 
+                Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
+            color_bars (bool, optional): Whether to color the bars in the analysis plots by condition. Default is True.
+
+        Returns:
+            None
 
         Example:
-
-        >>> benchmarks.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
+            >>> benchmarks.analyze(run_dir="./test_run", output_dir="./results")>>> # benchmarks is an instance of NETT
         """
         # TODO may need to clean up this file structure
         # set paths

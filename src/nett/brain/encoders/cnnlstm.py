@@ -47,10 +47,11 @@ class CNNLSTM(BaseFeaturesExtractor):
         """
         Forward pass of the CNNLSTM.
 
-        :param observations: The input observations.
-        :type observations: th.Tensor
-        :return: The extracted features.
-        :rtype: th.Tensor
+        Args:
+            observations (torch.Tensor): The input observations.
+
+        Returns:
+            torch.Tensor: The extracted features.
         """
         x = observations # original shape -> (length, batchsize, obs_size)
         # T,B, *_ = x.shape
@@ -70,19 +71,27 @@ class CNNLSTM(BaseFeaturesExtractor):
         return x
 
 class Identity(nn.Module):
-    """Identity module
+    """Identity module.
     
     This module is used to return the input tensor as is.
     
-    :param nn.Module: PyTorch module
+    Args:
+        torch.nn.Module: PyTorch module
     
-    :return: Identity module
-    :rtype: nn.Module
+    Returns:
+        torch.nn.Module: Identity module
     """
     def __init__(self):
         """Constructor method"""
         super(Identity, self).__init__()
 
     def forward(self, x):
-        """Forward pass"""
+        """Forward pass
+        
+        Args:
+            x (torch.Tensor): Input tensor
+        
+        Returns:
+            torch.Tensor: Output tensor
+        """
         return x

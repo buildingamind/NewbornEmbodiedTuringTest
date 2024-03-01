@@ -31,14 +31,25 @@ class DinoV2(BaseFeaturesExtractor):
     """
     DinoV2 is a feature extractor based on the DINOv2 model.
 
-    :param observation_space: The observation space of the environment. 
-    :type observation_space: gym.spaces.Box
-    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
-    :type features_dim: int, optional
+    Args:
+        observation_space (gym.spaces.Box): The observation space of the environment.
+        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
+
+    Attributes:
+        n_input_channels (int): Number of input channels in the observation space.
+        transforms (torchvision.transforms.Compose): Preprocessing transforms applied to the input observations.
+        model (torch.nn.Module): DINOv2 model loaded from the Facebook Research hub.
+
     """
+
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         super(DinoV2, self).__init__(observation_space, features_dim)
-        """Constructor method
+        """
+        Constructor method
+
+        Args:
+            observation_space (gym.spaces.Box): The observation space of the environment.
+            features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
         """
         self.n_input_channels = observation_space.shape[0]
         self.transforms = Compose([Resize(size=256,
@@ -54,7 +65,10 @@ class DinoV2(BaseFeaturesExtractor):
         """
         Forward pass of the DinoV2 feature extractor.
 
-        :param observations: (torch.Tensor) The input observations.
-        :return: (torch.Tensor) The extracted features.
+        Args:
+            observations (torch.Tensor): The input observations.
+
+        Returns:
+            torch.Tensor: The extracted features.
         """
         return self.model(self.transforms(observations))

@@ -12,10 +12,9 @@ class CoTracker(BaseFeaturesExtractor):
     """
     Initialize the CoTracker feature extractor.
 
-    :param observation_space: The observation space of the environment.
-    :type observation_space: gym.spaces.Box
-    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
-    :type features_dim: int
+    Args:
+        observation_space (gym.spaces.Box): The observation space of the environment.
+        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
     """
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         """Constructor method
@@ -44,27 +43,16 @@ class CoTracker(BaseFeaturesExtractor):
         self.linear = th.nn.Sequential(th.nn.Linear(128*16*16, 512),
                                             th.nn.ReLU())
 
-        #dummy_x = th.zeros((1, 1, 3, 64, 64))
-        #conv_out_size = (self.model(dummy_x))
-        #pdb.set_trace()
-        ## remove classifier
-        #self.model = th.nn.Sequential(OrderedDict([*(list(model.named_children())[:-1])]))
-
     def forward(self, observations: th.Tensor) -> th.Tensor:
         """
         Forward pass of the CoTracker feature extractor.
 
-        :param observations: The input observations.
-        :type observations: th.Tensor
-        :return: The extracted features.
-        :rtype: th.Tensor
+        Args:
+            observations (torch.Tensor): The input observations.
+
+        Returns:
+            torch.Tensor: The extracted features.
         """
-        # Cut off image
-        # reshape to from vector to W*H
-        # gray to color transform
-        # application of ResNet
-        # Concat features to the rest of observation vector
-        # return
         x = self.cnn(observations)
         x = x.view(x.size(0), -1)
         return self.linear(x)
