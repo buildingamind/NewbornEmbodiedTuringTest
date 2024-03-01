@@ -1,5 +1,3 @@
-from nett import Brain, Body, Environment
-from copy import deepcopy
 from pathlib import Path
 
 class Job:

@@ -378,6 +378,7 @@ class NETT:
         return memory_allocated
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
+        # TODO include waitlisted jobs
         runStatus = lambda job_future: {'running':job_future.running()}
         jobInfo = lambda job: {k:job[k] for k in selected_columns}
 
