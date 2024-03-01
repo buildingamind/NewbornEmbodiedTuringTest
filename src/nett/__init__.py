@@ -29,9 +29,15 @@ from nett.nett import NETT
 __version__ = "0.2"
 
 # change permissions of the ml-agents binaries directory
-os.chmod('/tmp/ml-agents-binaries', 0o1777)
-os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
-os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
+# TODO Make this more robust
+# check if the files can be changed
+if os.access('/tmp/ml-agents-binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/tmp', os.W_OK):
+  # change permissions of the files
+  os.chmod('/tmp/ml-agents-binaries', 0o1777)
+  os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
+  os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
+else:
+  print("You do not have permission to change the necessary files in '/tmp/ml-agents-binaries'.")
 
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
