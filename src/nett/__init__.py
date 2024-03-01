@@ -24,6 +24,8 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 from nett.nett import NETT
+import os
+import stat
 
 # release version
 __version__ = "0.2"
@@ -31,13 +33,24 @@ __version__ = "0.2"
 # change permissions of the ml-agents binaries directory
 # TODO Make this more robust
 # check if the files can be changed
-if os.access('/tmp/ml-agents-binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/tmp', os.W_OK):
-  # change permissions of the files
-  os.chmod('/tmp/ml-agents-binaries', 0o1777)
-  os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
-  os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
+  # check ownership and permissions
+if os.stat('/tmp/ml-agents-binaries').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries').st_mode) not in [0o1777, 0o777]:
+  if os.stat('/tmp/ml-agents-binaries/binaries').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries/binaries').st_mode) not in [0o1777, 0o777]:
+    if os.stat('/tmp/ml-agents-binaries/tmp').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries/tmp').st_mode) not in [0o1777, 0o777]:
+      if os.access('/tmp/ml-agents-binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/tmp', os.W_OK):
+      # change permissions of the files
+        os.chmod('/tmp/ml-agents-binaries', 0o1777)
+        os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
+        os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
+      else:
+        print("You do not have permission to change the necessary files in '/tmp/ml-agents-binaries'.")
+    else:
+      print("The '/tmp/ml-agents-binaries/tmp' directory is not owned by the current user or has incorrect permissions.")
+  else:
+    print("The '/tmp/ml-agents-binaries/binaries' directory is not owned by the current user or has incorrect permissions.")
 else:
-  print("You do not have permission to change the necessary files in '/tmp/ml-agents-binaries'.")
+  print("The '/tmp/ml-agents-binaries' directory is not owned by the current user or has incorrect permissions.")
+
 
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
