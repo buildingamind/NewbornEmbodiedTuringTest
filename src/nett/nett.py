@@ -219,7 +219,7 @@ class NETT:
         >>> status = benchmarks.status(job_sheet) # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
         selected_columns = ["brain_id", "condition", "device"]
-        filtered_job_sheet = [self._filter_job_record(job_record, selected_columns) for job_record in job_sheet]
+        filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
 
 # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
@@ -442,9 +442,11 @@ class NETT:
         memory_allocated = 4 * (1024 * 1024 * 1024)
         return memory_allocated
 
-    def _filter_job_record(self, job_record: dict, selected_columns: list[str]) -> dict:
-        filter_specification = lambda specification: {key: value for key, value in specification.items() if key in selected_columns}
-        return {key: (filter_specification(value) if isinstance(value, dict) else value.running()) for key, value in job_record.items()}
+    def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
+        runStatus = lambda job_future: {'running':job_future.running()}
+        jobInfo = lambda job: {k:job[k] for k in selected_columns}
+
+        return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
     def _validate_device_type(self, device_type: str):
         # TODO (v0.4) add automatic type checking usimg pydantic or similar
@@ -455,14 +457,12 @@ class NETT:
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
+        available_devices: list[int] = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
         elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
             raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
-
-        
 
         self.logger.info(f"Devices that will be used: {devices}")
 
