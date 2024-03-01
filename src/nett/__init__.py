@@ -31,7 +31,7 @@ import stat
 __version__ = "0.2"
 
 # change permissions of the ml-agents binaries directory
-# TODO Make this more robust
+# TODO Cleanup
 # check if the files can be changed
   # check ownership and permissions
 if os.stat('/tmp/ml-agents-binaries').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries').st_mode) not in [0o1777, 0o777]:

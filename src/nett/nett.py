@@ -254,7 +254,7 @@ class NETT:
 
         if self.device_type == "cpu":
             # assign devices in a round robin fashion, no need to check memory
-            jobs: list[Job] = [Job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
+            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
 
         else:
             # assign devices based on memory availability
@@ -271,7 +271,7 @@ class NETT:
                 # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
                     waitlist = [
-                        Job(brain_id, condition, -1) 
+                        Job(brain_id, condition, -1, self.output_dir) 
                         for (condition, brain_id) in task_set
                     ]
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
@@ -285,7 +285,7 @@ class NETT:
                     free_device_memory[free_devices[-1]] -= job_memory
                     # create job
                     condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1])
+                    job = Job(brain_id, condition, free_devices[-1], self.output_dir)
                     jobs.append(job)
 
         return jobs, waitlist
