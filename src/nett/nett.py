@@ -21,6 +21,7 @@ from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByI
 
 from nett import Brain, Body, Environment
 from nett.utils.io import mute
+from nett.utils.job import Job
 
 
 class NETT:
@@ -50,8 +51,8 @@ class NETT:
     :vartype description: str
     :ivar buffer: The buffer for memory allocation.
     :vartype buffer: float
-    :ivar step_per_episode: The number of steps per episode.
-    :vartype step_per_episode: int
+    :ivar steps_per_episode: The number of steps per episode.
+    :vartype steps_per_episode: int
     :ivar device_type: The type of device to be used for training and testing. It can be "cuda" or "cpu".
     :vartype device_type: str
     :ivar devices: The list of devices to be used for training and testing. If -1, all available devices will be used.
@@ -103,7 +104,7 @@ class NETT:
             devices: list[int] | int =  -1,
             description: str = None,
             buffer: float = 1.2,
-            step_per_episode: int = 200,
+            steps_per_episode: int = 200,
             verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
@@ -128,8 +129,8 @@ class NETT:
         :type description: str, optional
         :param buffer: The buffer for memory allocation.
         :type buffer: float, optional
-        :param step_per_episode: The number of steps per episode.
-        :type step_per_episode: int, optional
+        :param steps_per_episode: The number of steps per episode.
+        :type steps_per_episode: int, optional
         :param verbosity: The verbosity level of the run.
         :type verbosity: int, optional
         
@@ -154,7 +155,7 @@ class NETT:
         self.test_eps = test_eps
         self.description = description
         self.buffer = buffer
-        self.step_per_episode = step_per_episode
+        self.steps_per_episode = steps_per_episode
         self.device_type = self._validate_device_type(device_type)
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
@@ -170,7 +171,7 @@ class NETT:
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
-    def launch_jobs(self, jobs: list[dict[str, Any]], waitlist: list[dict[str,Any]] = []) -> dict[Future, dict[str,Any]]:
+    def launch_jobs(self, jobs: list[Job], waitlist: list[Job] = []) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -180,12 +181,12 @@ class NETT:
         :type waitlist: list[dict[str,Any]], optional
         
         :return: A dictionary of futures corresponding to the jobs that were launched from them.
-        :rtype: dict[Future, dict[str, Any]]
+        :rtype: dict[Future, Job]
         """
         max_workers = 1 if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-        job_sheet: dict[Future, dict[str, Any]] = {}
+        job_sheet: dict[Future, Job] = {}
 
         for job in jobs:
             job_future = executor.submit(self._execute_job, job)
@@ -195,21 +196,21 @@ class NETT:
         while waitlist:
             done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
             for doneFuture in done:
-                freeDevice: int = job_sheet.pop(doneFuture)['device']
+                freeDevice: int = job_sheet.pop(doneFuture).device
                 job = waitlist.pop()
-                job['device'] = freeDevice
+                job.device = freeDevice
                 job_future = executor.submit(self._execute_job, job)
                 job_sheet[job_future] = job
                 time.sleep(1)
     
         return job_sheet
 
-    def status(self, job_sheet: dict[Future, dict[str, Any]]) -> pd.DataFrame:
+    def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
         
         :param job_sheet: The job sheet returned by the .launch_jobs() method.
-        :type job_sheet: dict[Future, dict[str, Any]]
+        :type job_sheet: dict[Future, Job]
             
         :return: A dataframe containing the status of the jobs in the job sheet.
         :rtype: pd.DataFrame
@@ -297,17 +298,17 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self) -> tuple[list[dict], list[dict]]:
+    def _schedule_jobs(self) -> tuple[list[Job], list[Job]]:
         # create jobs
         # create set of all brain-environment combinations
         task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
 
-        jobs = []
-        waitlist = []
+        jobs: list[Job] = []
+        waitlist: list[Job] = []
 
         if self.device_type == "cpu":
             # assign devices in a round robin fashion, no need to check memory
-            jobs: list[dict[str,Any]] = [self._create_job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
+            jobs: list[Job] = [Job(brain_id, condition, device) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
 
         else:
             # assign devices based on memory availability
@@ -323,9 +324,10 @@ class NETT:
             while task_set:
                 # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
-                    for (condition, brain_id) in task_set:
-                        job = self._create_job(brain_id, condition, -1)
-                        waitlist.append(job)
+                    waitlist = [
+                        Job(brain_id, condition, -1) 
+                        for (condition, brain_id) in task_set
+                    ]
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                     break
                 # remove devices that don't have enough memory
@@ -337,82 +339,69 @@ class NETT:
                     free_device_memory[free_devices[-1]] -= job_memory
                     # create job
                     condition, brain_id = task_set.pop()
-                    job = self._create_job(brain_id, condition, free_devices[-1])
+                    job = Job(brain_id, condition, free_devices[-1])
                     jobs.append(job)
 
         return jobs, waitlist
+    
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]):
+        copy_environment = deepcopy(self.environment)
+        copy_environment.initialize(mode=mode, **kwargs)
+        # apply wrappers (body)
+        return self.body(copy_environment)
 
-    def _create_job(self, brain_id: int, condition: str, device: int) -> dict[str,Any]:
-        # creates brain, env copies for a job
-        brain_copy = deepcopy(self.brain)
-
-        # configure paths for the job
-        paths = self._configure_job_paths(condition=condition, brain_id=brain_id)
-
-        # create job
-        return {"brain": brain_copy,
-                "environment": self.environment,
-                "body": self.body,
-                "device": device,
-                "condition": condition,
-                "brain_id": brain_id,
-                "paths": paths}
-
-    def _configure_job_paths(self, condition: str, brain_id: int) -> dict:
-        subdirs = ["model", "checkpoints", "plots", "logs", "env_recs", "env_logs"]
-        job_dir = Path.joinpath(self.output_dir, condition, f"brain_{brain_id}")
-        paths = {subdir: Path.joinpath(job_dir, subdir) for subdir in subdirs}
-        return paths
-
-    def _execute_job(self, job: dict[str, Any]) -> Future:
+    def _execute_job(self, job: Job) -> Future:
         # for train
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
+        
+        brain: Brain = deepcopy(self.brain)
 
         # common environment kwargs
-        kwargs = {"rewarded": bool(self.brain.reward),
-                  "rec_path": str(job["paths"]["env_recs"]),
-                  "log_path": str(job["paths"]["env_logs"]),
-                  "condition": str(job["condition"]),
-                  "run_id": str(job["brain_id"]),
-                  "episode_steps": self.step_per_episode,
+        kwargs = {"rewarded": bool(brain.reward),
+                  "rec_path": str(job.paths["env_recs"]),
+                  "log_path": str(job.paths["env_logs"]),
+                  "condition": job.condition,
+                  "run_id": job.brain_id,
+                  "episode_steps": self.steps_per_episode,
                   "device_type": self.device_type,
                   "batch_mode": self.batch_mode}
 
         # for train
         if self.mode in ["train", "full"]:
             # initialize environment with necessary arguments
-            train_environment = deepcopy(job["environment"])
-            train_environment.initialize(mode="train", **kwargs)
-            # apply wrappers (body)
-            train_environment = job["body"](train_environment)
+            train_environment = self._wrap_env("train", kwargs)
+            # calculate iterations
+            iterations = self.steps_per_episode * self.train_eps
             # train
-            job["brain"].train(env=train_environment,
-                               iterations=self.step_per_episode * self.train_eps,
-                               device_type=self.device_type,
-                               device=job["device"],
-                               paths=job["paths"])
+            brain.train(
+                env=train_environment,
+                iterations=iterations,
+                device_type=self.device_type,
+                device=job.device,
+                paths=job.paths)
+            # close environment
             train_environment.close()
 
         # for test
         if self.mode in ["test", "full"]:
             # initialize environment with necessary arguments
-            test_environment = deepcopy(job["environment"])
-            test_environment.initialize(mode="test", **kwargs)
-            # apply wrappers (body)
-            test_environment = job["body"](test_environment)
+            test_environment = self._wrap_env("test", kwargs)
+            # calculate iterations
+            iterations = self.test_eps * test_environment.config.num_conditions
+
+            # Q: Why in test but not in train?
+            if not issubclass(brain.algorithm, RecurrentPPO):
+                iterations *= self.steps_per_episode
             # test
-            # readability over symmetry, sadly :(
-            if issubclass(job["brain"].algorithm, RecurrentPPO):
-                iterations = self.test_eps * test_environment.config.num_conditions
-            else:
-                iterations = self.step_per_episode * self.test_eps * job["environment"].config.num_conditions
-            job["brain"].test(env=test_environment,
-                              iterations=iterations,
-                              model_path=f"{job['paths']['model'].joinpath('latest_model.zip')}")
+            brain.test(
+                env=test_environment,
+                iterations=iterations,
+                model_path=str(job.paths['model'].joinpath('latest_model.zip')))
+            # close environment
             test_environment.close()
 
-        return f"Job Completed Successfully for Brain #{job['brain_id']} with Condition: {job['condition']}"
+        return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
