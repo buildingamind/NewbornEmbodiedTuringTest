@@ -59,6 +59,7 @@ class NETT:
             description: str = None,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
+            multihead: bool = False,
             verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
@@ -102,6 +103,7 @@ class NETT:
         self.device_type = self._validate_device_type(device_type)
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
+        self.multihead: bool = multihead
 
         # schedule jobs
         jobs, waitlist = self._schedule_jobs()
@@ -306,6 +308,9 @@ class NETT:
                   "episode_steps": self.steps_per_episode,
                   "device_type": self.device_type,
                   "batch_mode": self.batch_mode}
+        
+        if self.multihead:
+            kwargs["monitor"] = job.device
 
         # for train
         if self.mode in ["train", "full"]:
