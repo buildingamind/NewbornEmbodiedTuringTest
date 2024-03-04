@@ -24,7 +24,6 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 from nett.nett import NETT
-import os
 import stat
 
 # release version

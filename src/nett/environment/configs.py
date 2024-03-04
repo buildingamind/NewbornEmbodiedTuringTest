@@ -176,7 +176,8 @@ class Parsing(NETTConfig):
 
     @property
     def num_conditions(self) -> int:
-        """Get the number of conditions for the configuration.
+        """
+        Get the number of conditions for the configuration.
 
         Returns:
             int: The number of conditions.
@@ -210,18 +211,18 @@ class Slowness(NETTConfig):
 
     @property
     def num_conditions(self):
-            """
-            Get the number of conditions for the configuration.
+        """
+        Get the number of conditions for the configuration.
 
-            Returns:
-                The number of conditions.
+        Returns:
+            The number of conditions.
 
-            Raises:
-                None
-            """
-            if self.params["experiment"] == "1":
-                return 5
-            return 13
+        Raises:
+            None
+        """
+        if self.params["experiment"] == "1":
+            return 5
+        return 13
 
 
 class Smoothness(NETTConfig):

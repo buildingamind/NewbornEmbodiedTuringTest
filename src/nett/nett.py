@@ -24,7 +24,8 @@ from nett.utils.io import mute
 from nett.utils.job import Job
 
 class NETT:
-    """The NETT class is the main class for training, testing, and analyzing brains in environments.
+    """
+    The NETT class is the main class for training, testing, and analyzing brains in environments.
 
     Args:
         brain (Brain): The brain to be trained and tested.
@@ -37,13 +38,6 @@ class NETT:
     """
 
     def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
-        """Initialize the NETT class.
-
-        Args:
-            brain (Brain): The brain to be trained and tested.
-            body (Body): The body to be used for training and testing the brain.
-            environment (Environment): The environment in which the brain is to be trained and tested.
-        """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain

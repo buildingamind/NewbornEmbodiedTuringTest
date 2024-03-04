@@ -60,22 +60,22 @@ class Resnet18CNN(BaseFeaturesExtractor):
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
-            """
-            Forward pass of the feature extractor.
+        """
+        Forward pass of the feature extractor.
 
-            Args:
-                observations (torch.Tensor): The input observations.
+        Args:
+            observations (torch.Tensor): The input observations.
 
-            Returns:
-                torch.Tensor: The extracted features.
-            """
-            # Cut off image
-            # reshape to from vector to W*H
-            # gray to color transform
-            # application of ResNet
-            # Concat features to the rest of observation vector
-            # return
-            return self.linear(self.cnn(observations))
+        Returns:
+            torch.Tensor: The extracted features.
+        """
+        # Cut off image
+        # reshape to from vector to W*H
+        # gray to color transform
+        # application of ResNet
+        # Concat features to the rest of observation vector
+        # return
+        return self.linear(self.cnn(observations))
 
 ## reference - online
 class ResBlock(nn.Module):
@@ -93,26 +93,26 @@ class ResBlock(nn.Module):
         self.identity_downsample = identity_downsample
 
     def forward(self, x):
-            """
-            Performs the forward pass of the residual block.
+        """
+        Performs the forward pass of the residual block.
 
-            Args:
-                x (torch.Tensor): The input tensor.
+        Args:
+            x (torch.Tensor): The input tensor.
 
-            Returns:
-                torch.Tensor: The output tensor.
-            """
-            identity = x
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
-            x = self.conv2(x)
-            x = self.bn2(x)
-            if self.identity_downsample is not None:
-                identity = self.identity_downsample(identity)
-            x += identity
-            x = self.relu(x)
-            return x
+        Returns:
+            torch.Tensor: The output tensor.
+        """
+        identity = x
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.conv2(x)
+        x = self.bn2(x)
+        if self.identity_downsample is not None:
+            identity = self.identity_downsample(identity)
+        x += identity
+        x = self.relu(x)
+        return x
 
 class ResNet_18(nn.Module):
     """
@@ -137,50 +137,50 @@ class ResNet_18(nn.Module):
         self.fc = nn.Linear(512, num_classes)
 
     def __make_layer(self, in_channels, out_channels, stride):
-            """
-            Helper function to create a residual layer.
+        """
+        Helper function to create a residual layer.
 
-            Args:
-                in_channels (int): Number of input channels.
-                out_channels (int): Number of output channels.
-                stride (int): Stride of the convolutional layers.
+        Args:
+            in_channels (int): Number of input channels.
+            out_channels (int): Number of output channels.
+            stride (int): Stride of the convolutional layers.
 
-            Returns:
-                torch.nn.Sequential: The residual layer.
-            """
-            identity_downsample = None
-            if stride != 1:
-                identity_downsample = self.identity_downsample(in_channels, out_channels)
+        Returns:
+            torch.nn.Sequential: The residual layer.
+        """
+        identity_downsample = None
+        if stride != 1:
+            identity_downsample = self.identity_downsample(in_channels, out_channels)
 
-            return nn.Sequential(
-                ResBlock(in_channels, out_channels, identity_downsample=identity_downsample, stride=stride),
-                ResBlock(out_channels, out_channels)
-            )
+        return nn.Sequential(
+            ResBlock(in_channels, out_channels, identity_downsample=identity_downsample, stride=stride),
+            ResBlock(out_channels, out_channels)
+        )
 
     def forward(self, x):
-            """
-            Performs the forward pass of the ResNet-18 architecture.
+        """
+        Performs the forward pass of the ResNet-18 architecture.
 
-            Args:
-                x (torch.Tensor): The input tensor.
+        Args:
+            x (torch.Tensor): The input tensor.
 
-            Returns:
-                torch.Tensor: The output tensor.
-            """
-            x = self.conv1(x)
-            x = self.bn1(x)
-            x = self.relu(x)
-            x = self.maxpool(x)
+        Returns:
+            torch.Tensor: The output tensor.
+        """
+        x = self.conv1(x)
+        x = self.bn1(x)
+        x = self.relu(x)
+        x = self.maxpool(x)
 
-            x = self.layer1(x)
-            x = self.layer2(x)
-            x = self.layer3(x)
-            x = self.layer4(x)
+        x = self.layer1(x)
+        x = self.layer2(x)
+        x = self.layer3(x)
+        x = self.layer4(x)
 
-            x = self.avgpool(x)
-            x = x.view(x.shape[0], -1)
-            x = self.fc(x)
-            return x
+        x = self.avgpool(x)
+        x = x.view(x.shape[0], -1)
+        x = self.fc(x)
+        return x
 
     def identity_downsample(self, in_channels, out_channels):
         """

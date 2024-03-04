@@ -70,7 +70,8 @@ class CNNLSTM(BaseFeaturesExtractor):
         return x
 
 class Identity(nn.Module):
-    """Identity module.
+    """
+    Identity module.
     
     This module is used to return the input tensor as is.
     
@@ -85,7 +86,8 @@ class Identity(nn.Module):
         super(Identity, self).__init__()
 
     def forward(self, x):
-        """Forward pass
+        """
+        Forward pass
         
         Args:
             x (torch.Tensor): Input tensor

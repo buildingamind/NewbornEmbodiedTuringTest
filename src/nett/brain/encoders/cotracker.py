@@ -43,6 +43,12 @@ class CoTracker(BaseFeaturesExtractor):
         self.linear = th.nn.Sequential(th.nn.Linear(128*16*16, 512),
                                             th.nn.ReLU())
 
+        #dummy_x = th.zeros((1, 1, 3, 64, 64))
+        #conv_out_size = (self.model(dummy_x))
+        #pdb.set_trace()
+        ## remove classifier
+        #self.model = th.nn.Sequential(OrderedDict([*(list(model.named_children())[:-1])]))
+
     def forward(self, observations: th.Tensor) -> th.Tensor:
         """
         Forward pass of the CoTracker feature extractor.
@@ -53,6 +59,12 @@ class CoTracker(BaseFeaturesExtractor):
         Returns:
             torch.Tensor: The extracted features.
         """
+        # Cut off image
+        # reshape to from vector to W*H
+        # gray to color transform
+        # application of ResNet
+        # Concat features to the rest of observation vector
+        # return
         x = self.cnn(observations)
         x = x.view(x.size(0), -1)
         return self.linear(x)

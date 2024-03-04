@@ -21,7 +21,8 @@ from nett.environment.configs import NETTConfig, list_configs
 from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
-    """Represents the environment where the agent lives.
+    """
+    Represents the environment where the agent lives.
 
     The environment is the source of all input data streams to train the brain of the agent. 
     It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment 
@@ -217,7 +218,7 @@ class Environment(Wrapper):
         """
         self.log.log_str(msg)
 
-    def reset(self, seed: Optional[int] = None, **kwargs):
+    def reset(self, seed: Optional[int] = None, **kwargs): # pylint: disable=unused-argument
         """
         Resets the environment with the given seed and arguments.
 

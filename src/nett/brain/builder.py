@@ -181,8 +181,8 @@ class Brain:
         env,
         iterations,
         model_path: str,
-        record_prefix: str | None = None,
-    ):  # pylint: disable=unused-argument
+        record_prefix: str | None = None, # pylint: disable=unused-argument
+    ):
         """
         Test the brain.
 
