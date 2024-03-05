@@ -157,7 +157,8 @@ class Environment(Wrapper):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
 
         if kwargs["monitor"]:
-            args.extend(["-monitor", str(kwargs["monitor"])])
+            args.extend(["-force-vulkan", "-force-device-index", kwargs["monitor"]])
+            # args.extend(["-monitor", str(kwargs["monitor"])])
         if kwargs["device_type"] == "cpu":
             args.extend(["-batchmode", "-nographics"])
         elif kwargs["batch_mode"] == True:
