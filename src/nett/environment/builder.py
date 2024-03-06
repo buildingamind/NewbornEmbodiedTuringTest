@@ -133,6 +133,7 @@ class Environment(Wrapper):
         Returns:
             Environment: The initialized environment.
         """
+        self.logger.info(f"Initializing environment in {mode} mode with arguments {kwargs}")
         args = []
 
         # from environment arguments

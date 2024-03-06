@@ -101,11 +101,13 @@ class Brain:
         """
         # validate environment
         env = self._validate_env(env)
+        print('Training Started...')
 
         # initialize environment
         log_path = paths["env_logs"]
         env = Monitor(env, str(log_path))
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        print('Made Vec Env...')
 
         # build model
         if self.encoder:
@@ -117,6 +119,7 @@ class Brain:
             }
         else:
             policy_kwargs = {}
+
         self.model = self.algorithm(
             self.policy,
             envs,
@@ -126,15 +129,20 @@ class Brain:
             policy_kwargs=policy_kwargs,
             device=torch.device(device_type, device),
         )
+        print('Model Built...')
 
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
 
+        print('Logger Configured...')
+
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             self.model = self._set_encoder_as_eval(self.model)
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
+
+        print('Training Started...')
 
         # initialize callbacks
         save_best_model_callback = SupervisedSaveBestModelCallback(
