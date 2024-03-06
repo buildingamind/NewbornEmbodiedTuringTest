@@ -287,7 +287,7 @@ class NETT:
                     # create job
                     condition, brain_id = task_set.pop()
                     if self.performance_mode:
-                        job = Job(brain_id, condition, free_devices[dev_num], self.output_dir, self.performance_mode)
+                        job = Job(brain_id, condition, free_devices[dev_num], self.output_dir)
                         dev_num = (dev_num + 1) % len(free_devices)
                     else:
                         job = Job(brain_id, condition, free_devices[-1], self.output_dir)
