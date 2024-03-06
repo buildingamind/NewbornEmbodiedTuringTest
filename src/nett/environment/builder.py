@@ -177,12 +177,9 @@ class Environment(Wrapper):
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['run_id']}-{mode}",
                           log_dir=f"{kwargs['log_path']}/")
-        print(f"Logging to {self.log.log_dir}")
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
-        print(f"Environment initialized with base port {self.base_port}")
         self.env = UnityToGymWrapper(self.env, uint8_visual=True)
-        print("Environment wrapped as gym")
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)

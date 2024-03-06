@@ -135,7 +135,6 @@ class NETT:
         job_sheet: dict[Future, Job] = {}
 
         for job in jobs:
-            print('Launching Job')
             job_future = executor.submit(self._execute_job, job)
             job_sheet[job_future] = job
             time.sleep(1)
@@ -327,7 +326,6 @@ class NETT:
             # initialize environment with necessary arguments
             train_environment = self._wrap_env("train", kwargs)
             # calculate iterations
-            print('Env Intialized')
             iterations = self.steps_per_episode * self.train_eps
             # train
             brain.train(
@@ -336,7 +334,6 @@ class NETT:
                 device_type=self.device_type,
                 device=job.device,
                 paths=job.paths)
-            print('Training Done')
             # close environment
             train_environment.close()
 
