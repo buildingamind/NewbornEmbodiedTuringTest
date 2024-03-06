@@ -60,6 +60,7 @@ class NETT:
             buffer: float = 1.2,
             steps_per_episode: int = 200,
             multihead: bool = False,
+            performance_mode: bool = False,
             verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
@@ -104,6 +105,7 @@ class NETT:
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
         self.multihead: bool = multihead
+        self.performance_mode: bool = performance_mode
 
         # schedule jobs
         jobs, waitlist = self._schedule_jobs()
@@ -264,6 +266,9 @@ class NETT:
             # estimate memory for a single job
             job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
 
+            if self.performance_mode:
+                dev_num = 0
+
             while task_set:
                 # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
@@ -282,7 +287,11 @@ class NETT:
                     free_device_memory[free_devices[-1]] -= job_memory
                     # create job
                     condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1], self.output_dir)
+                    if self.performance_mode:
+                        job = Job(brain_id, condition, free_devices[dev_num], self.output_dir, self.performance_mode)
+                        dev_num = (dev_num + 1) % len(free_devices)
+                    else:
+                        job = Job(brain_id, condition, free_devices[-1], self.output_dir)
                     jobs.append(job)
 
         return jobs, waitlist
