@@ -33,23 +33,6 @@ __version__ = "0.2"
 # TODO Cleanup
 # check if the files can be changed
   # check ownership and permissions
-if os.stat('/tmp/ml-agents-binaries').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries').st_mode) not in [0o1777, 0o777]:
-  if os.stat('/tmp/ml-agents-binaries/binaries').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries/binaries').st_mode) not in [0o1777, 0o777]:
-    if os.stat('/tmp/ml-agents-binaries/tmp').st_uid == os.getuid() and stat.S_IMODE(os.stat('/tmp/ml-agents-binaries/tmp').st_mode) not in [0o1777, 0o777]:
-      if os.access('/tmp/ml-agents-binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/binaries', os.W_OK) and os.access('/tmp/ml-agents-binaries/tmp', os.W_OK):
-      # change permissions of the files
-        os.chmod('/tmp/ml-agents-binaries', 0o1777)
-        os.chmod('/tmp/ml-agents-binaries/binaries', 0o1777)
-        os.chmod('/tmp/ml-agents-binaries/tmp', 0o1777)
-      else:
-        print("You do not have permission to change the necessary files in '/tmp/ml-agents-binaries'.")
-    else:
-      print("The '/tmp/ml-agents-binaries/tmp' directory is not owned by the current user or has incorrect permissions.")
-  else:
-    print("The '/tmp/ml-agents-binaries/binaries' directory is not owned by the current user or has incorrect permissions.")
-else:
-  print("The '/tmp/ml-agents-binaries' directory is not owned by the current user or has incorrect permissions.")
-
 
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
@@ -57,3 +40,13 @@ cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# path to store ml-agents binaries
+for tmp_dir in ["/tmp/ml-agents-binaries", "/tmp/ml-agents-binaries/binaries", "/tmp/ml-agents-binaries/tmp"]:
+  # TODO: May need to allow for permissions other than X777
+  if stat.S_IMODE(os.stat(tmp_dir).st_mode) % 0o1000 != 0o777:
+    # TODO: May need to check for permissions other than W_OK
+    if os.stat(tmp_dir).st_uid == os.getuid() or os.access(tmp_dir, os.W_OK):
+      os.chmod(tmp_dir, 0o1777)
+    else:
+      logger.warning(f"You do not have permission to change the necessary files in '{tmp_dir}'.")
