@@ -51,6 +51,6 @@ class Logger(SideChannel):
         self.f.write(msg)
         self.f.write("\n")
 
-    def __del__(self):
+    def __del__(self) -> None:
         """This is called when the environment is shut down. It closes the log file."""
         self.f.close()

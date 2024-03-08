@@ -185,7 +185,7 @@ class Environment(Wrapper):
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
     # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
-    def render(self, mode="rgb_array"): # pylint: disable=unused-argument
+    def render(self, mode="rgb_array") -> np.ndarray: # pylint: disable=unused-argument
         """
         Renders the current frame of the environment.
 
@@ -197,7 +197,7 @@ class Environment(Wrapper):
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
-    def step(self, action: list[Any]):
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
         """
         Takes a step in the environment with the given action.
 
@@ -219,7 +219,7 @@ class Environment(Wrapper):
         """
         self.log.log_str(msg)
 
-    def reset(self, seed: Optional[int] = None, **kwargs): # pylint: disable=unused-argument
+    def reset(self, seed: Optional[int] = None, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
         """
         Resets the environment with the given seed and arguments.

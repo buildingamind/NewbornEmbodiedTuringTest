@@ -51,14 +51,14 @@ policies = list_policies()
 
 # return encoder string to encoder class mapping
 # TODO (v0.3) optimized way to calculate and pass this dict around
-def get_encoder_dict():
+def get_encoder_dict() -> dict[str, str]:
     """
     Returns a dictionary mapping encoder names to encoder class names.
 
     Returns:
         dict[str, str]: Dictionary mapping encoder names to encoder class names.
     """
-    encoders_dict = {}
+    encoders_dict: dict[str, str] = {}
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     # iterate through all files in the directory
     for encoder_path in encoders_dir.iterdir():
@@ -76,7 +76,7 @@ def get_encoder_dict():
     return encoders_dict
 
 # TODO (v0.3) return all available encoder classes programmatically
-# def get_encoder_dict():
+# def get_encoder_dict() -> dict[str, str]:
 #     return {'cnnlstm': 'CNNLSTM',
 #             'cotracker': 'CoTracker',
 #             'dinov1': 'DinoV1',

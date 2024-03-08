@@ -1,7 +1,7 @@
 from pathlib import Path
 
 class Job:
-  def __init__(self, brain_id: int, condition: str, device: int, dir: Path):
+  def __init__(self, brain_id: int, condition: str, device: int, dir: Path) -> None:
     self.device: int = device
     self.condition: str = condition
     self.brain_id: int = brain_id

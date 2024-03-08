@@ -31,7 +31,7 @@ class DinoV2(BaseFeaturesExtractor):
         transforms (torchvision.transforms.Compose): Preprocessing transforms applied to the input observations.
         model (torch.nn.Module): DINOv2 model loaded from the Facebook Research hub.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
         super(DinoV2, self).__init__(observation_space, features_dim)
         """Constructor method"""
         self.n_input_channels = observation_space.shape[0]

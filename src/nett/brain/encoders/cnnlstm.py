@@ -14,7 +14,7 @@ class CNNLSTM(BaseFeaturesExtractor):
         observation_space (gym.Space): The observation space of the environment.
         features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 256.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
         """Constructor method
         """
         super(CNNLSTM, self).__init__(observation_space, features_dim)
@@ -80,7 +80,7 @@ class Identity(nn.Module):
     Returns:
         torch.nn.Module: Identity module
     """
-    def __init__(self):
+    def __init__(self) -> None:
         """Constructor method"""
         super(Identity, self).__init__()
 

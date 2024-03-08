@@ -43,7 +43,7 @@ class Resnet18CNN(BaseFeaturesExtractor):
         features_dim (int): Number of features to be extracted.
     """
 
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
         super(Resnet18CNN, self).__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
@@ -83,7 +83,7 @@ class ResBlock(nn.Module):
     Residual block used in the ResNet-18 architecture.
     """
 
-    def __init__(self, in_channels, out_channels, identity_downsample=None, stride=1):
+    def __init__(self, in_channels, out_channels, identity_downsample=None, stride=1) -> None:
         super(ResBlock, self).__init__()
         self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
         self.bn1 = nn.BatchNorm2d(out_channels)
@@ -113,7 +113,7 @@ class ResNet_18(nn.Module):
     ResNet-18 architecture used in the Resnet18CNN class.
     """
 
-    def __init__(self, image_channels, num_classes):
+    def __init__(self, image_channels, num_classes) -> None:
         super(ResNet_18, self).__init__()
         self.in_channels = 64
         self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3)
@@ -148,7 +148,7 @@ class ResNet_18(nn.Module):
             ResBlock(out_channels, out_channels)
         )
 
-    def forward(self, x):
+    def forward(self, x: th.Tensor) -> th.Tensor:
         """
         Forward pass of the ResNet-18 architecture.
 
@@ -170,7 +170,7 @@ class ResNet_18(nn.Module):
         x = self.fc(x)
         return x
 
-    def identity_downsample(self, in_channels, out_channels):
+    def identity_downsample(self, in_channels, out_channels) -> nn.Sequential:
         """
         Helper function to create an identity downsample layer.
 

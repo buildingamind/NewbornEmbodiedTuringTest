@@ -44,7 +44,6 @@ class Brain:
         train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
         seed (int, optional): The random seed used for training. Defaults to 12.
 
-
     Example:
 
         >>> from nett import Brain
@@ -403,7 +402,7 @@ class Brain:
             raise ValueError(f"Failed training env check with {str(ex)}")
         return env
 
-    def _set_encoder_as_eval(self, model):
+    def _set_encoder_as_eval(self, model: OnPolicyAlgorithm | OffPolicyAlgorithm | None) -> OnPolicyAlgorithm | OffPolicyAlgorithm | None:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 

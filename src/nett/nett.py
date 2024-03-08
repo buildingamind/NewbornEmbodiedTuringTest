@@ -287,7 +287,7 @@ class NETT:
 
         return jobs, waitlist
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]):
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> Body:
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode=mode, **kwargs)
         # apply wrappers (body)
@@ -383,7 +383,7 @@ class NETT:
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
-    def _validate_device_type(self, device_type: str):
+    def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.4) add automatic type checking usimg pydantic or similar
         if device_type not in ["cuda", "cpu"]:
             raise ValueError("Should be one of ['cuda', 'cpu']")
@@ -403,7 +403,7 @@ class NETT:
 
         return devices
 
-    def summary(self): # TODO: only raises a NotImplementedError for now
+    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
         '''Generate a toml file and save it to the run directory.'''
         raise NotImplementedError
     

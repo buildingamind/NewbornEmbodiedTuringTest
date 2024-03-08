@@ -117,7 +117,7 @@ class IdentityAndView(NETTConfig):
                          rotation=rotation)
 
     @property
-    def num_conditions(self):
+    def num_conditions(self) -> int:
         """
         Get the number of conditions for the configuration.
 
@@ -279,7 +279,7 @@ class OneShotViewInvariant(NETTConfig):
                          view=view)
 
     @property
-    def num_conditions(self):
+    def num_conditions(self) -> int:
         """
         Get the number of conditions for the configuration.
 
