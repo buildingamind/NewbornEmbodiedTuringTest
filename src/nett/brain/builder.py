@@ -9,7 +9,7 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm.auto import tqdm
+from tqdm.auto import trange
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -31,52 +31,45 @@ from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 class Brain:
     """Represents the brain of an agent. 
 
-    The brain is made up of an encoder, policy, algorithm, reward function and the hyperparameters determined 
-    for these components such as the batch and buffer sizes. It produces a trained model based on the environment
-    data and the inputs received by the brain through the body.  
-    
-    :param encoder: The network used to extract features from the observations. Defaults to None.
-    :type encoder: Any | str, optional
-    :param embedding_dim: The dimension of the embedding space of the encoder. Defaults to None.
-    :type embedding_dim: int | None, optional
-    :param policy: The network used for defining the value and action networks. Defaults to None.
-    :type policy: Any | str | None, optional
-    :param algorithm: The optimization algorithm used for training the model. Defaults to None.
-    :type algorithm: Any | str | None, optional
-    :param reward: The type of reward used for training the brain. Defaults to "supervised".
-    :type reward: Any | str, optional
-    :param batch_size: The batch size used for training. Defaults to 512.
-    :type batch_size: int, optional
-    :param buffer_size: The buffer size used for training. Defaults to 2048.
-    :type buffer_size: int, optional
-    :param train_encoder: Whether to train the encoder or not. Defaults to False.
-    :type train_encoder: bool | None, optional
-    :param seed: The random seed used for training. Defaults to 12.
-    :type seed: int, optional
+    The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
+
+    Args:
+        encoder (Any | str, optional): The network used to extract features from the observations. Defaults to None.
+        embedding_dim (int | None, optional): The dimension of the embedding space of the encoder. Defaults to None.
+        policy (Any | str | None, optional): The network used for defining the value and action networks. Defaults to None.
+        algorithm (Any | str | None, optional): The optimization algorithm used for training the model. Defaults to None.
+        reward (Any | str, optional): The type of reward used for training the brain. Defaults to "supervised".
+        batch_size (int, optional): The batch size used for training. Defaults to 512.
+        buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
+        train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
+        seed (int, optional): The random seed used for training. Defaults to 12.
+
 
     Example:
 
-    >>> from nett import Brain
-    >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
+        >>> from nett import Brain
+        >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
     """
 
-    def __init__(self,
-                 encoder: Any | str = None,
-                 embedding_dim: int | None = None,
-                 policy: Any | str | None = None,
-                 algorithm: Any | str | None = None,
-                 reward: Any | str = "supervised",
-                 batch_size: int = 512,
-                 buffer_size: int = 2048,
-                 train_encoder: bool | None = False,
-                 seed: int = 12
-                 ) -> None:
+    def __init__(
+        self,
+        encoder: Any | str = None,
+        embedding_dim: int | None = None,
+        policy: Any | str | None = None,
+        algorithm: Any | str | None = None,
+        reward: Any | str = "supervised",
+        batch_size: int = 512,
+        buffer_size: int = 2048,
+        train_encoder: bool | None = False,
+        seed: int = 12
+    ) -> None:
         """Constructor method
         """
         # Initialize logger
         from nett import logger
+
         self.logger = logger.getChild(__class__.__name__)
-        
+
         # Set attributes
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
@@ -88,78 +81,83 @@ class Brain:
         self.buffer_size = buffer_size
         self.seed = seed
 
-    def train(self, env, iterations, device_type: str, device: int, paths: dict[str, Path]):
+    def train(
+        self,
+        env,
+        iterations,
+        device_type: str,
+        device: int,
+        paths: dict[str, Path]):
         """
         Train the brain.
 
-        :param env: The environment used for training.
-        :type env: Any
-        :param iterations: The number of training iterations.
-        :type iterations: int
-        :param device_type: The type of device used for training.
-        :type device_type: str
-        :param device: The device index used for training.
-        :type device: int
-        :param paths: The paths for saving logs, models, and plots.
-        :type paths: dict[str, Path]
+        Args:
+            env (Any): The environment used for training.
+            iterations (int): The number of training iterations.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
+            paths (dict[str, Path]): The paths for saving logs, models, and plots.
 
-        :raises ValueError: If the environment fails the validation check.
-        
+        Raises:
+            ValueError: If the environment fails the validation check.
         """
         # validate environment
         env = self._validate_env(env)
 
         # initialize environment
-        log_path = paths['env_logs']
+        log_path = paths["env_logs"]
         env = Monitor(env, str(log_path))
-        envs = make_vec_env(env_id=lambda : env, n_envs=1, seed=self.seed)
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
 
         # build model
         if self.encoder:
             policy_kwargs = {
                 "features_extractor_class": self.encoder,
                 "features_extractor_kwargs": {
-                    "features_dim": inspect.signature(self.encoder).parameters['features_dim'].default
+                    "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default
                 }
             }
         else:
             policy_kwargs = {}
-        self.model = self.algorithm(self.policy,
-                                    envs,
-                                    batch_size=self.batch_size,
-                                    n_steps=self.buffer_size,
-                                    verbose=0,
-                                    policy_kwargs=policy_kwargs,
-                                    device=torch.device(device_type, device))
+        self.model = self.algorithm(
+            self.policy,
+            envs,
+            batch_size=self.batch_size,
+            n_steps=self.buffer_size,
+            verbose=0,
+            policy_kwargs=policy_kwargs,
+            device=torch.device(device_type, device))
 
         # setup tensorboard logger and attach to model
-        tb_logger = configure(str(paths['logs']), ["stdout", "csv", "tensorboard"])
+        tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
 
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             self.model = self._set_encoder_as_eval(self.model)
-            self.logger.info(f'Encoder training is set to {str(self.train_encoder).upper()}')
+            self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
         save_best_model_callback = SupervisedSaveBestModelCallback(
             summary_freq=30000, 
-            save_dir=paths['model'], 
-            env_log_path=paths['env_logs'])
+            save_dir=paths["model"], 
+            env_log_path=paths["env_logs"])
         hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(save_freq=30000,
-                                                 save_path=paths["checkpoints"],
-                                                 name_prefix=self.algorithm.__name__,
-                                                 save_replay_buffer=True,
-                                                 save_vecnormalize=True)
+        checkpoint_callback = CheckpointCallback(
+            save_freq=30000,
+            save_path=paths["checkpoints"],
+            name_prefix=self.algorithm.__name__,
+            save_replay_buffer=True,
+            save_vecnormalize=True)
         callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback])
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
-        self.model.learn(total_timesteps=iterations,
-                         tb_log_name=self.algorithm.__name__,
-                         progress_bar=True,
-                         callback=[callback_list])
+        self.model.learn(
+            total_timesteps=iterations,
+            tb_log_name=self.algorithm.__name__,
+            progress_bar=True,
+            callback=[callback_list])
         self.logger.info("Training Complete")
 
         # save
@@ -170,22 +168,24 @@ class Brain:
         del self.model
         # plot reward graph
         self.plot_results(iterations=iterations,
-                          model_log_dir=paths['env_logs'],
-                          plots_dir=paths['plots'],
+                          model_log_dir=paths["env_logs"],
+                          plots_dir=paths["plots"],
                           name="reward_graph")
 
-    def test(self, env, iterations, model_path: str, record_prefix: str | None = None): # pylint: disable=unused-argument
+    def test(
+        self,
+        env,
+        iterations,
+        model_path: str,
+        record_prefix: str | None = None): # pylint: disable=unused-argument
         """
         Test the brain.
 
-        :param env: The environment used for testing.
-        :type env: Any
-        :param iterations: The number of testing iterations.
-        :type iterations: int
-        :param model_path: The path to the trained model.
-        :type model_path: str
-        :param record_prefix: The prefix for recording videos of the testing process, defaults to None.
-        :type record_prefix: str, optional
+        Args:
+            env (gym.Env): The environment used for testing.
+            iterations (int): The number of testing iterations.
+            model_path (str): The path to the trained model.
+            record_prefix (str, optional): The prefix for recording videos of the testing process. Defaults to None.
         """
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
@@ -194,14 +194,15 @@ class Brain:
         env = self._validate_env(env)
 
         # initialize environment
-        envs = make_vec_env(env_id=lambda : env, n_envs=1, seed=self.seed)
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+
+        self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         # for when algorithm is RecurrentPPO
         if issubclass(self.algorithm, RecurrentPPO):
-            self.logger.info(f'Testing with {self.algorithm.__name__}')
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            for _ in tqdm(range(iterations)):
+            for _ in trange(iterations):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
                 done, lstm_states = False, None
@@ -209,7 +210,11 @@ class Brain:
                 episode_starts = np.ones((num_envs,), dtype=bool)
                 episode_length = 0
                 while not done:
-                    action, lstm_states = self.model.predict(obs, state=lstm_states, episode_start=episode_starts, deterministic=True)
+                    action, lstm_states = self.model.predict(
+                        obs,
+                        state=lstm_states,
+                        episode_start=episode_starts,
+                        deterministic=True)
                     obs, _, done, _ = env.step(action) # obs, rewards, done, info
                     episode_starts = done
                     episode_length += 1
@@ -217,10 +222,9 @@ class Brain:
 
         # for all other algorithms
         else:
-            self.logger.info(f'Testing with {self.algorithm.__name__}')
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            for _ in tqdm(range(iterations)):
+            for _ in trange(iterations):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
                 if done:
@@ -231,40 +235,42 @@ class Brain:
         """
         Save the trained model.
 
-        :param path: The path to save the model.
-        :type path: str
+        Args:
+            path (str): The path to save the model.
         """
         self.model.save(path)
 
-    def load(self, model_path: str | Path):
+    def load(self, model_path: str | Path) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Load a trained model.
 
-        :param model_path: The path to the trained model.
-        :type model_path: str or Path
+        Args:
+            model_path (str or Path): The path to the trained model.
 
-        :return: The loaded model.
-        :rtype: Any
+        Returns:
+            Any: The loaded model.
         """
         return self.algorithm.load(model_path)
 
-    def plot_results(self, iterations: int, model_log_dir: Path, plots_dir: Path, name: str) -> None:
+    def plot_results(self,
+        iterations: int,
+        model_log_dir: Path,
+        plots_dir: Path,
+        name: str
+    ) -> None:
         """
         Plot the training results.
 
-        :param iterations: The number of training iterations.
-        :type iterations: int
-        :param model_log_dir: The directory containing the training logs.
-        :type model_log_dir: Path
-        :param plots_dir: The directory to save the plots.
-        :type plots_dir: Path
-        :param name: The name of the plot.
-        :type name: str
+        Args:
+            iterations (int): The number of training iterations.
+            model_log_dir (Path): The directory containing the model logs.
+            plots_dir (Path): The directory to save the plots.
+            name (str): The name of the plot.
         """
         results_plotter.plot_results([str(model_log_dir)],
-                                     iterations,
-                                     results_plotter.X_TIMESTEPS,
-                                     name)
+            iterations,
+            results_plotter.X_TIMESTEPS,
+            name)
         plots_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
         plt.clf()
@@ -273,11 +279,11 @@ class Brain:
         """
         Validate the encoder.
 
-        :param encoder: The encoder to validate.
-        :type encoder: Any or str
+        Args:
+            encoder (Any | str): The encoder to validate.
 
-        :return: The validated encoder.
-        :rtype: BaseFeaturesExtractor
+        Returns:
+            BaseFeaturesExtractor: The validated encoder.
         """
         # for when encoder is a string
         if isinstance(encoder, str):
@@ -299,11 +305,14 @@ class Brain:
         """
         Validate the optimization algorithm.
 
-        :param algorithm: The algorithm to validate.
-        :type algorithm: Any or str
+        Args:
+            algorithm (Any | str): The algorithm to validate.
 
-        :return: The validated algorithm.
-        :rtype: OnPolicyAlgorithm or OffPolicyAlgorithm
+        Returns:
+            OnPolicyAlgorithm | OffPolicyAlgorithm: The validated algorithm.
+
+        Raises:
+            ValueError: If the algorithm is not valid.
         """
         # for when policy is a string
         if isinstance(algorithm, str):
@@ -330,14 +339,15 @@ class Brain:
         """
         Validate the policy model.
 
-        :param policy: The policy model to validate.
-        :type policy: Any or str
+        Args:
+            policy (Any | str): The policy model to validate.
 
-        :return: The validated policy model.
-        :rtype: str or BasePolicy
+        Returns:
+            str | BasePolicy: The validated policy model.
 
-        :raises ValueError: If the policy is a string and not one of the supported policies.
-        :raises ValueError: If the policy is not a string or a subclass of BasePolicy.
+        Raises:
+            ValueError: If the policy is a string and not one of the supported policies.
+            ValueError: If the policy is not a string or a subclass of BasePolicy.
         """
         # for when policy is a string
         if isinstance(policy, str):
@@ -359,13 +369,14 @@ class Brain:
         """
         Validate the reward type.
 
-        :param reward: The reward type to validate.
-        :type reward: Any or str
+        Args:
+            reward (Any | str): The reward type to validate.
 
-        :return: The validated reward type.
-        :rtype: Any or str
+        Returns:
+            Any | str: The validated reward type.
 
-        :raises ValueError: If the reward is a string and not one of the supported reward types.
+        Raises:
+            ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
         if isinstance(reward, str) and reward not in ['supervised', 'unsupervised']:
@@ -377,13 +388,14 @@ class Brain:
         """
         Validate the environment.
 
-        :param env: The environment to validate.
-        :type env: Any
+        Args:
+            env (gym.Env): The environment to validate.
 
-        :return: The validated environment.
-        :rtype: Any
+        Returns:
+            gym.Env: The validated environment.
 
-        :raises ValueError: If the environment fails the validation check.
+        Raises:
+            ValueError: If the environment fails the validation check.
         """
         try:
             check_env(env)
@@ -395,9 +407,11 @@ class Brain:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 
-        :param model: The model containing the encoder.
+        Args:
+            model: The model containing the encoder.
 
-        :return: The model with the encoder set as evaluation mode.
+        Returns:
+            The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
         for param in model.policy.features_extractor.parameters():

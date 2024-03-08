@@ -10,10 +10,9 @@ class CNNLSTM(BaseFeaturesExtractor):
     followed by a long short-term memory (LSTM) layer. It is used as a feature
     extractor in reinforcement learning algorithms.
 
-    :param observation_space: The observation space of the environment.
-    :type observation_space: gym.Space
-    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
-    :type features_dim: int, optional, default 256
+    Args:
+        observation_space (gym.Space): The observation space of the environment.
+        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 256.
     """
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
         """Constructor method
@@ -47,10 +46,11 @@ class CNNLSTM(BaseFeaturesExtractor):
         """
         Forward pass of the CNNLSTM.
 
-        :param observations: The input observations.
-        :type observations: th.Tensor
-        :return: The extracted features.
-        :rtype: th.Tensor
+        Args:
+            observations (torch.Tensor): The input observations.
+
+        Returns:
+            torch.Tensor: The extracted features.
         """
         x = observations # original shape -> (length, batchsize, obs_size)
         # T,B, *_ = x.shape
@@ -73,16 +73,17 @@ class Identity(nn.Module):
     """Identity module
     
     This module is used to return the input tensor as is.
-    
-    :param nn.Module: PyTorch module
-    
-    :return: Identity module
-    :rtype: nn.Module
+
+    Args:
+        torch.nn.Module: PyTorch module
+
+    Returns:
+        torch.nn.Module: Identity module
     """
     def __init__(self):
         """Constructor method"""
         super(Identity, self).__init__()
 
-    def forward(self, x):
+    def forward(self, x: th.Tensor) -> th.Tensor:
         """Forward pass"""
         return x

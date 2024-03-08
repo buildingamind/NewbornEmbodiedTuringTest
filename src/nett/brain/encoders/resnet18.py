@@ -38,8 +38,9 @@ class Resnet18CNN(BaseFeaturesExtractor):
     """
     Custom feature extractor based on the ResNet-18 architecture.
 
-    :param observation_space: (gym.Space) The observation space of the environment.
-    :param features_dim: (int) Number of features to be extracted.
+    Args:
+        observation_space (gym.Space): The observation space of the environment.
+        features_dim (int): Number of features to be extracted.
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
@@ -62,8 +63,11 @@ class Resnet18CNN(BaseFeaturesExtractor):
         """
         Forward pass of the feature extractor.
 
-        :param observations: (torch.Tensor) The input observations.
-        :return: (torch.Tensor) The extracted features.
+        Args:
+            observations (torch.Tensor): The input observations.
+
+        Returns:
+            torch.Tensor: The extracted features.
         """
         # Cut off image
         # reshape to from vector to W*H
@@ -88,12 +92,9 @@ class ResBlock(nn.Module):
         self.relu = nn.ReLU()
         self.identity_downsample = identity_downsample
 
-    def forward(self, x):
+    def forward(self, x: th.Tensor) -> th.Tensor:
         """
         Forward pass of the residual block.
-
-        :param x: (torch.Tensor) The input tensor.
-        :return: (torch.Tensor) The output tensor.
         """
         identity = x
         x = self.conv1(x)

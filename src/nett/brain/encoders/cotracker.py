@@ -12,10 +12,9 @@ class CoTracker(BaseFeaturesExtractor):
     """
     Initialize the CoTracker feature extractor.
 
-    :param observation_space: The observation space of the environment.
-    :type observation_space: gym.spaces.Box
-    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
-    :type features_dim: int
+    Args:
+        observation_space (gym.spaces.Box): The observation space of the environment.
+        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
     """
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         """Constructor method
@@ -53,11 +52,6 @@ class CoTracker(BaseFeaturesExtractor):
     def forward(self, observations: th.Tensor) -> th.Tensor:
         """
         Forward pass of the CoTracker feature extractor.
-
-        :param observations: The input observations.
-        :type observations: th.Tensor
-        :return: The extracted features.
-        :rtype: th.Tensor
         """
         # Cut off image
         # reshape to from vector to W*H
