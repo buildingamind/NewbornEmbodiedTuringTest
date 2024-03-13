@@ -64,7 +64,7 @@ class NETT:
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
-            verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 1) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -81,7 +81,7 @@ class NETT:
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
-            verbosity (int, optional): The verbosity level of the run. Defaults to 0.
+            verbosity (int, optional): The verbosity level of the run. Defaults to 1.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
