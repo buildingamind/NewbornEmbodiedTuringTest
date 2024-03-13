@@ -2,6 +2,7 @@
 
 import sys
 import inspect
+from typing import Any
 from abc import ABC, abstractmethod
 from itertools import product
 
