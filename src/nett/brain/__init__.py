@@ -10,10 +10,10 @@ from nett.brain import encoders
 
 def list_encoders() -> set[str]:
     """
-    Returns a set of all available encoders.
+    Return a set of all available encoders.
 
-    Returns:
-        set[str]: Set of encoder names.
+    :return: Set of encoder names.
+    :rtype: set[str]
     """
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     encoders = [encoder.stem for encoder in list(encoders_dir.iterdir()) if "__" not in str(encoder)]
@@ -24,10 +24,10 @@ encoders_list = list_encoders()
 
 def list_algorithms() -> set[str]:
     """
-    Returns a set of all available policy algorithms.
+    Return a set of all available policy algorithms.
 
-    Returns:
-        set[str]: Set of algorithm names.
+    :return: Set of algorithm names.
+    :rtype: set[str]
     """
     sb3_policy_algorithms = [algorithm for algorithm in dir(stable_baselines3) if algorithm[0].isupper()]
     sb3_contrib_policy_algorithms = [algorithm for algorithm in dir(sb3_contrib) if algorithm[0].isupper()]
@@ -40,10 +40,10 @@ algorithms = list_algorithms()
 # TODO (v0.3) return all available policy models programmatically
 def list_policies() -> set[str]:
     """
-    Returns a set of all available policy models.
+    Return a set of all available policy models.
 
-    Returns:
-        set[str]: Set of policy names.
+    :return: Set of policy model names.
+    :rtype: set[str]
     """
     return {'CnnPolicy', 'MlpPolicy', 'MultiInputPolicy', 'MultiInputLstmPolicy', 'CnnLstmPolicy'}
 
@@ -51,14 +51,14 @@ policies = list_policies()
 
 # return encoder string to encoder class mapping
 # TODO (v0.3) optimized way to calculate and pass this dict around
-def get_encoder_dict() -> dict[str, str]:
+def get_encoder_dict():
     """
-    Returns a dictionary mapping encoder names to encoder class names.
+    Return a dictionary mapping encoder names to encoder class names.
 
-    Returns:
-        dict[str, str]: Dictionary mapping encoder names to encoder class names.
+    :return: Dictionary mapping encoder names to encoder class names.
+    :rtype: dict[str, str]
     """
-    encoders_dict: dict[str, str] = {}
+    encoders_dict = {}
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     # iterate through all files in the directory
     for encoder_path in encoders_dir.iterdir():
@@ -76,7 +76,7 @@ def get_encoder_dict() -> dict[str, str]:
     return encoders_dict
 
 # TODO (v0.3) return all available encoder classes programmatically
-# def get_encoder_dict() -> dict[str, str]:
+# def get_encoder_dict():
 #     return {'cnnlstm': 'CNNLSTM',
 #             'cotracker': 'CoTracker',
 #             'dinov1': 'DinoV1',

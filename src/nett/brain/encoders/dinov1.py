@@ -10,11 +10,12 @@ class DinoV1(BaseFeaturesExtractor):
     """
     Initialize DinoV1 feature extractor.
 
-    Args:
-        observation_space (gym.spaces.Box): The observation space of the environment.
-        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
+    :param observation_space: The observation space of the environment.
+    :type observation_space: gym.spaces.Box
+    :param features_dim: Number of features extracted. This corresponds to the number of units for the last layer.
+    :type features_dim: int
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         """Constructor method
         """
         super(DinoV1, self).__init__(observation_space, features_dim)
@@ -32,5 +33,12 @@ class DinoV1(BaseFeaturesExtractor):
                                        pretrained=True)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """Forward pass of the DinoV1 model."""
+        """
+        Forward pass of the DinoV1 model.
+
+        :param observations: The input observations.
+        :type observations: torch.Tensor
+        :return: The extracted features.
+        :rtype: torch.Tensor
+        """
         return self.model(self.transforms(observations))

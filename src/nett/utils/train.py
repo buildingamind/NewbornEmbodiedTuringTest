@@ -14,7 +14,7 @@ import glob
 import numpy as np
 import pandas as pd
 
-def compute_train_performance(path) -> tuple[list, np.ndarray | list]:
+def compute_train_performance(path):
     """
     Compute Train performance
 
@@ -23,7 +23,7 @@ def compute_train_performance(path) -> tuple[list, np.ndarray | list]:
 
     Returns:
         x (list): list of the episode numbers
-        y (numpy.array) : the moving averages of the success rate 
+        y (np.array) : the moving averages of the success rate 
     """
     x,y = [], []
     try:
@@ -50,7 +50,7 @@ def compute_train_performance(path) -> tuple[list, np.ndarray | list]:
 
     return x,y
 
-def average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', transient: int = 90) -> tuple[dict, pd.DataFrame, list]:
+def average_in_episode_three_region(log,column='agent.x',transient=90):
     """
     Train performance
 
@@ -88,16 +88,12 @@ def average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', 
         print(str(ex))
         return (None, None)
 
-def moving_average(values: list, window: int) -> np.ndarray:
+def moving_average(values, window):
     """
-    Smooth values by doing a moving average.
-
-    Args:
-        values (numpy.array): The input array of values.
-        window (int): The size of the moving window.
-
-    Returns:
-        numpy.array: The smoothed array of values.
+    Smooth values by doing a moving average
+    :param values: (numpy array)
+    :param window: (int)
+    :return: (numpy array)
     """
-    weights: np.ndarray = np.repeat(1.0, window) / window
+    weights = np.repeat(1.0, window) / window
     return np.convolve(values, weights, 'valid')

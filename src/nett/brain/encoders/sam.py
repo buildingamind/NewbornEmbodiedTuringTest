@@ -17,12 +17,11 @@ class SegmentAnything(BaseFeaturesExtractor):
     """
     Custom feature extractor for image observations in a gym environment.
 
-    Args:
-        observation_space (gym.spaces.Box): The observation space of the environment.
-        features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
+    :param observation_space: (gym.Space) The observation space of the environment.
+    :param features_dim: (int) Number of features extracted. This corresponds to the number of units for the last layer.
     """
 
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384):
         super(SegmentAnything, self).__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
         self.transforms = Compose([Resize(size=256,
@@ -42,6 +41,9 @@ class SegmentAnything(BaseFeaturesExtractor):
     def forward(self, observations: th.Tensor) -> th.Tensor:
         """
         Forward pass of the feature extractor.
+
+        :param observations: (th.Tensor) The input observations.
+        :return: (th.Tensor) The extracted features.
         """
         # Cut off image
         # reshape to from vector to W*H

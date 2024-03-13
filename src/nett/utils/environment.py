@@ -18,7 +18,7 @@ from mlagents_envs.side_channel.side_channel import (
 )
 
 
-def port_in_use(port) -> bool:
+def port_in_use(port):
     """This function checks if a port is in use. It returns True if the port is in use and False if it is not."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     try:
@@ -65,6 +65,6 @@ class Logger(SideChannel):
         self.f.write(msg)
         self.f.write("\n")
 
-    def __del__(self) -> None:
+    def __del__(self):
         """This is called when the environment is shut down"""
         self.f.close()

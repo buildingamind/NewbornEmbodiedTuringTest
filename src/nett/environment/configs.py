@@ -2,7 +2,6 @@
 
 import sys
 import inspect
-from typing import Any
 from abc import ABC, abstractmethod
 from itertools import product
 
@@ -10,12 +9,10 @@ from itertools import product
 class NETTConfig(ABC):
     """Abstract base class for NETT configurations.
 
-    Args:
-        param_defaults (dict[str, str]): A dictionary of parameter defaults.
-        **params: Keyword arguments representing the configuration parameters.
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
+    :param param_defaults: A dictionary of parameter defaults.
+    :type param_defaults: dict[str, str]
+    :param **params: Keyword arguments representing the configuration parameters.
+    :raises ValueError: If any parameter value is not a value or subset of the default values.
     """
 
     def __init__(self, param_defaults: dict[str, str], **params) -> None:
@@ -25,46 +22,42 @@ class NETTConfig(ABC):
         self.params = self._validate_params(params)
         self.conditions = self._create_conditions_from_params(self.params)
 
-    def _create_conditions_from_params(self, params: dict[str, str]) -> set[str]:
+    def _create_conditions_from_params(self, params: dict[str, str]) -> list[str]:
         """
         Creates conditions from the configuration parameters.
 
-        Args:
-            params (dict[str, str]): The configuration parameters.
-
-        Returns:
-            set[str]: A set of conditions.
+        :param params: The configuration parameters.
+        :type params: dict[str, str]
+        :return: A list of conditions.
+        :rtype: list[str]
         """
         combination_params = list(product(*params.values()))
-        conditions = {"-".join(combination).lower() for combination in combination_params}
+        conditions = ["-".join(combination).lower() for combination in combination_params]
         return conditions
 
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:
         """
         Normalizes the configuration parameters.
 
-        Args:
-            params (dict[str, str | int | float]): The configuration parameters.
+        :param params: The configuration parameters.
+        :type params: dict[str, str | int | float]
+        :return: The normalized configuration parameters.
+        :rtype: dict[str, str]
 
-        Returns:
-            dict[str, str]: The normalized configuration parameters.
         """
         params = {param: (value if isinstance(value, list) else [value]) for param, value in params.items()}
         params = {param: [str(item) for item in value] for param, value in params.items()}
         return params
 
-    def _validate_params(self, params: dict[str, str]) -> dict[str, str]:
+    def _validate_params(self, params: dict[str, str]):
         """
         Validates the configuration parameters.
 
-        Args:
-            params (dict[str, str]): The configuration parameters.
-
-        Returns:
-            dict[str, str]: The validated configuration parameters.
-
-        Raises:
-            ValueError: If any parameter value is not a value or subset of the default values.
+        :param params: The configuration parameters.
+        :type params: dict[str, str]
+        :return: The validated configuration parameters.
+        :rtype: dict[str, str]
+        :raises ValueError: If any parameter value is not a value or subset of the default values.
         """
         params = self._normalize_params(params)
         for (values, default_values) in zip(params.values(), self.param_defaults.values()):
@@ -73,12 +66,12 @@ class NETTConfig(ABC):
         return params
 
     @property
-    def defaults(self) -> dict[str, Any]:
+    def defaults(self):
         """
         Get the default values of the configuration parameters.
 
-        Returns:
-            dict[str, Any]: A dictionary of parameter defaults.
+        :return: A dictionary of parameter defaults.
+        :rtype: dict[str, Any]
         """
         signature = inspect.signature(self.__init__)
         return {param: value.default for param, value in signature.parameters.items()
@@ -86,12 +79,12 @@ class NETTConfig(ABC):
 
     @property
     @abstractmethod
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         pass
 
@@ -100,12 +93,10 @@ class IdentityAndView(NETTConfig):
     """
     NETT configuration for Identity and View.
 
-    Args:
-        object (str | list[str]): The object(s) to be used. Defaults to ["object1", "object2"].
-        rotation (str | list[str]): The rotation(s) to be used. Defaults to ["horizontal", "vertical"].
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
+    :param object: The object(s) to be used. Defaults to ["object1", "object2"].
+    :type object: str or list[str]
+    :param rotation: The rotation(s) to be used. Defaults to ["horizontal", "vertical"].
+    :type rotation: str or list[str]
     """
 
     def __init__(self,
@@ -118,12 +109,12 @@ class IdentityAndView(NETTConfig):
                          rotation=rotation)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         return 18
 
@@ -132,11 +123,8 @@ class Binding(NETTConfig):
     """
     NETT configuration for Binding.
 
-    Args:
-        object (str | list[str]): The object(s) to be used. Defaults to ["object1", "object2"].
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
+    :param object: The object(s) to be used. Defaults to ["object1", "object2"].
+    :type object: str or list[str]
     """
 
     def __init__(self,
@@ -147,12 +135,12 @@ class Binding(NETTConfig):
                          object=object)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         return 50
 
@@ -161,9 +149,10 @@ class Parsing(NETTConfig):
     """
     NETT configuration for Parsing.
 
-    Args:
-        background (str | list[str], optional): The background(s) to be used. Defaults to ["A", "B", "C"].
-        object (str | list[str], optional): The object(s) to be used. Defaults to ["ship", "fork"].
+    :param background: The background(s) to be used. Defaults to ["A", "B", "C"].
+    :type background: str or list[str]
+    :param object: The object(s) to be used. Defaults to ["ship", "fork"].
+    :type object: str or list[str]
     """
 
     def __init__(self,
@@ -176,12 +165,12 @@ class Parsing(NETTConfig):
                          object=object)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         return 56
 
@@ -190,13 +179,12 @@ class Slowness(NETTConfig):
     """
     NETT configuration for Slowness.
 
-    Args:
-        experiment (str | list[int], optional): The experiment(s) to be used. Defaults to [1, 2].
-        object (str | list[str], optional): The object(s) to be used. Defaults to ["obj1", "obj2"].
-        speed (str | list[str], optional): The speed(s) to be used. Defaults to ["slow", "med", "fast"].
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
+    :param experiment: The experiment(s) to be used. Defaults to [1, 2].
+    :type experiment: str or list[int]
+    :param object: The object(s) to be used. Defaults to ["obj1", "obj2"].
+    :type object: str or list[str]
+    :param speed: The speed(s) to be used. Defaults to ["slow", "med", "fast"].
+    :type speed: str or list[str]
     """
 
     def __init__(self,
@@ -211,12 +199,12 @@ class Slowness(NETTConfig):
                          speed=speed)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         if self.params["experiment"] == "1":
             return 5
@@ -227,12 +215,10 @@ class Smoothness(NETTConfig):
     """
     NETT configuration for Smoothness.
 
-    Args:
-        object (str or list[str], optional): The object(s) to be used. Defaults to ["obj1"].
-        temporal (str or list[str], optional): The temporal condition(s) to be used. Defaults to ["norm", "scram"].
-
-    Attributes:
-        num_conditions (int): The number of conditions for the configuration.
+    :param object: The object(s) to be used. Defaults to ["obj1"].
+    :type object: str or list[str]
+    :param temporal: The temporal condition(s) to be used. Defaults to ["norm", "scram"].
+    :type temporal: str or list[str]
     """
 
     def __init__(self,
@@ -245,12 +231,12 @@ class Smoothness(NETTConfig):
                          temporal=temporal)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         return 5
 
@@ -259,13 +245,12 @@ class OneShotViewInvariant(NETTConfig):
     """
     NETT configuration for One-Shot View Invariant.
 
-    Args:
-        object (str | list[str]): The object(s) to be used. Defaults to ["fork", "ship"].
-        range (str | list[str]): The range(s) to be used. Defaults to ["360", "small", "1"].
-        view (str | list[str]): The view(s) to be used. Defaults to ["front", "side"].
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
+    :param object: The object(s) to be used. Defaults to ["fork", "ship"].
+    :type object: str or list[str]
+    :param range: The range(s) to be used. Defaults to ["360", "small", "1"].
+    :type range: str or list[str]
+    :param view: The view(s) to be used. Defaults to ["front", "side"].
+    :type view: str or list[str]
     """
 
     def __init__(self,
@@ -280,12 +265,12 @@ class OneShotViewInvariant(NETTConfig):
                          view=view)
 
     @property
-    def num_conditions(self) -> int:
+    def num_conditions(self):
         """
         Get the number of conditions for the configuration.
 
-        Returns:
-            int: The number of conditions.
+        :return: The number of conditions.
+        :rtype: int
         """
         return 50
 
@@ -294,8 +279,9 @@ def list_configs() -> set[str]:
     """
     Lists all available NETT configurations.
 
-    Returns:
-        set[str]: A set of configuration names.
+    :return: A set of configuration names.
+    :rtype: set[str]
+
     """
     is_class_member = lambda member: inspect.isclass(member) and member.__module__ == __name__
     clsmembers = inspect.getmembers(sys.modules[__name__], is_class_member)

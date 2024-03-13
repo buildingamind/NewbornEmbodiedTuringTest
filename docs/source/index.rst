@@ -7,11 +7,29 @@
 Newborn Embodied Turing Test (NETT)
 ===================================
 
+Documentation
+=============
+
 .. toctree::
    :titlesonly:
-   :glob:
 
-   */index
+   documentation/index
+   papers/index
+
+.. .. toctree::
+..    :titlesonly:
+
+..    documentation/NETT
+..    documentation/Brain
+..    documentation/Body
+..    documentation/Environment
+
+.. Research Publications
+.. =====================
+.. :ref:`papers/index`
+
+.. ..   papers/Parsing
+.. ..   papers/ViewInvariant
 
 Indices and tables
 ==================
