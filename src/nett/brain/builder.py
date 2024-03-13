@@ -176,6 +176,7 @@ class Brain:
         env,
         iterations,
         model_path: str,
+        index: int,
         record_prefix: str | None = None): # pylint: disable=unused-argument
         """
         Test the brain.
@@ -184,6 +185,7 @@ class Brain:
             env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
+            index (int): The index of the model to test, needed for tracking bar.
             record_prefix (str, optional): The prefix for recording videos of the testing process. Defaults to None.
         """
         # load previously trained model from save_dir, if it exists
@@ -201,7 +203,7 @@ class Brain:
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            for _ in trange(iterations):
+            for _ in trange(iterations, position=index):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
                 done, lstm_states = False, None
@@ -223,7 +225,7 @@ class Brain:
         else:
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            for _ in trange(iterations):
+            for _ in trange(iterations, position=index):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
                 if done:

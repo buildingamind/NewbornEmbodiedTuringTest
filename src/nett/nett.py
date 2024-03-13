@@ -136,8 +136,8 @@ class NETT:
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
         job_sheet: dict[Future, dict[str, Job]] = {}
 
-        for job in jobs:
-            job_future = executor.submit(self._execute_job, job)
+        for i, job in enumerate(jobs):
+            job_future = executor.submit(self._execute_job, job, i)
             job_sheet[job_future] = job
             time.sleep(1)
 
@@ -295,7 +295,7 @@ class NETT:
         # apply wrappers (body)
         return self.body(copy_environment)
 
-    def _execute_job(self, job: Job) -> Future:
+    def _execute_job(self, job: Job, index: int) -> Future:
 
         # for train
         if self.mode not in ["train", "test", "full"]:
@@ -344,7 +344,8 @@ class NETT:
             brain.test(
                 env=test_environment,
                 iterations=iterations,
-                model_path=str(job.paths['model'].joinpath('latest_model.zip')))
+                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                index=index)
 
             # close environment
             test_environment.close()
