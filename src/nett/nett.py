@@ -61,6 +61,7 @@ class NETT:
             device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: str = None,
+            job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
             verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
@@ -77,6 +78,7 @@ class NETT:
             device_type (str, optional): The type of device to be used for training and testing. It can be "cuda" or "cpu". Defaults to "cuda".
             devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
             description (str, optional): A description of the run. Defaults to None.
+            job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
             verbosity (int, optional): The verbosity level of the run. Defaults to 0.
@@ -100,6 +102,7 @@ class NETT:
         self.train_eps = train_eps
         self.test_eps = test_eps
         self.description = description
+        self.job_memory = job_memory
         self.buffer = buffer
         self.steps_per_episode = steps_per_episode
         self.device_type = self._validate_device_type(device_type)
@@ -358,7 +361,7 @@ class NETT:
 
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
-        # TODO (v0.3) add a dummy job to gauge memory consumption
+        # TODO (v0.4) add a dummy job to gauge memory consumption
 
         # # get device with the maxmium memory available
         # max_memory_device = max(device_memory_status,
@@ -373,7 +376,7 @@ class NETT:
 
         # return a hurestic value for now (4GiB per job)
         # multiply to return in bytes
-        memory_allocated = 4 * (1024 * 1024 * 1024)
+        memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
