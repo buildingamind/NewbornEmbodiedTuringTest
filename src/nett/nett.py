@@ -252,7 +252,6 @@ class NETT:
         if self.device_type == "cpu":
             # assign devices in a round robin fashion, no need to check memory
             jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
-
         else:
             # assign devices based on memory availability
             # get the list of devices
@@ -294,6 +293,7 @@ class NETT:
         return self.body(copy_environment)
 
     def _execute_job(self, job: Job) -> Future:
+
         # for train
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
