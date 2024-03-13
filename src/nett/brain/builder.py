@@ -9,7 +9,7 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import trange
+from tqdm import trange, tqdm
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -203,7 +203,8 @@ class Brain:
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            for _ in trange(iterations, desc="Agent #{index}", position=index+3):
+            t = tqdm(total=iterations, desc="Agent #{index}", position=index)
+            for _ in range(iterations):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
                 done, lstm_states = False, None
@@ -220,17 +221,22 @@ class Brain:
                     episode_starts = done
                     episode_length += 1
                     env.render(mode="rgb_array")
+                    t.update(1)
 
         # for all other algorithms
         else:
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            for _ in trange(iterations, desc=f"Agent #{index}", position=index+3):
+            t = tqdm(total=iterations, desc="Agent #{index}", position=index)
+            for _ in range(iterations):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
                 if done:
                     env.reset()
                 env.render(mode="rgb_array")
+                t.update(1)
+        
+        t.close()
 
     def save(self, path: str) -> None:
         """
