@@ -1,6 +1,15 @@
+"""Job class for training and testing models"""
 from pathlib import Path
 
 class Job:
+  """Holds information for a job
+
+  Args:
+    brain_id (int): id for the brain
+    condition (str): condition for the job
+    device (int): device to run the job on
+    dir (Path): directory to store the job 
+  """
   def __init__(self, brain_id: int, condition: str, device: int, dir: Path) -> None:
     """initialize job"""
     self.device: int = device
