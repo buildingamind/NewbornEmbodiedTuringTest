@@ -5,13 +5,14 @@ from pathlib import Path
 import inspect
 
 import os
+import sys
 import torch
 import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import trange, tqdm
-from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, ProgressBarCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
@@ -29,6 +30,24 @@ from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
 
 # TODO (v0.2): Extend with support for custom policy models
 # TODO (v0.2): should we move validation checks to utils under validations.py?
+
+class multiBarCallback(ProgressBarCallback):
+    """
+    Display a progress bar when training SB3 agent
+    using tqdm and rich packages.
+    """
+
+    pbar: tqdm
+
+    def __init__(self, index) -> None:
+        super().__init__()
+        self.index = index
+
+    def _on_training_start(self) -> None:
+        # Initialize progress bar
+        # Remove timesteps that were done in previous training sessions
+        self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
+
 class Brain:
     """Represents the brain of an agent. 
 
@@ -87,6 +106,7 @@ class Brain:
         iterations,
         device_type: str,
         device: int,
+        index: int,
         paths: dict[str, Path]):
         """
         Train the brain.
@@ -149,7 +169,8 @@ class Brain:
             name_prefix=self.algorithm.__name__,
             save_replay_buffer=True,
             save_vecnormalize=True)
-        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback])
+        bar_callback = multiBarCallback(index)
+        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -233,7 +254,7 @@ class Brain:
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
                 if done:
-                    with sys.stdout as open(os.devnull, "w"):
+                    with open(os.devnull, "w") as sys.stdout:
                         env.reset()
                 env.render(mode="rgb_array")
                 t.update(1)

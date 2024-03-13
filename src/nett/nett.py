@@ -325,6 +325,7 @@ class NETT:
                 iterations=iterations,
                 device_type=self.device_type,
                 device=job.device,
+                index=index,
                 paths=job.paths)
             # close environment
             train_environment.close()
