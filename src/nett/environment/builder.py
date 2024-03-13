@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import os
 import subprocess
-from typing import Optional
+from typing import Optional, Any
 
 import numpy as np
 from gym import Wrapper
@@ -30,27 +30,22 @@ class Environment(Wrapper):
 
     It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
 
-    :param config: The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
-    :type config: str | NETTConfig
-    :param executable_path: The path to the Unity executable file.
-    :type executable_path: str
-    :param display: The display number to use for the Unity environment. Defaults to 0.
-    :type display: int, optional
-    :param base_port: The base port number to use for communication with the Unity environment. Defaults to 5004.
-    :type base_port: int, optional
-    :param record_chamber: Whether to record the chamber. Defaults to False.
-    :type record_chamber: bool, optional
-    :param record_agent: Whether to record the agent. Defaults to False.
-    :type record_agent: bool, optional
-    :param recording_frames: The number of frames to record. Defaults to 1000.
-    :type recording_frames: int, optional
+    Args:
+        config (str | NETTConfig): The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
+        executable_path (str): The path to the Unity executable file.
+        display (int, optional): The display number to use for the Unity environment. Defaults to 0.
+        base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
+        record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
+        record_agent (bool, optional): Whether to record the agent. Defaults to False.
+        recording_frames (int, optional): The number of frames to record. Defaults to 1000.
 
-    :raises ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+    Raises:
+        ValueError: If the configuration is not a valid string or an instance of NETTConfig.
 
     Example:
 
-    >>> from nett import Environment
-    >>> env = Environment(config="identityandview", executable_path="path/to/executable")
+        >>> from nett import Environment
+        >>> env = Environment(config="identityandview", executable_path="path/to/executable")
     """
     def __init__(self,
                  config: str | NETTConfig,
@@ -82,11 +77,14 @@ class Environment(Wrapper):
         """
         Validates the configuration for the environment.
 
-        :param config: The configuration to validate.
-        :type config: str | NETTConfig
-        :return: The validated configuration.
-        :rtype: NETTConfig
-        :raises ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+        Args:
+            config (str | NETTConfig): The configuration to validate.
+
+        Returns:
+            NETTConfig: The validated configuration.
+
+        Raises:
+            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
         """
         # for when config is a str
         if isinstance(config, str):
@@ -108,8 +106,6 @@ class Environment(Wrapper):
     def _set_executable_permission(self) -> None:
         """
         Sets the executable permission for the Unity executable file.
-
-        :return: None
         """
         subprocess.run(["chmod", "-R", "755", self.executable_path], check=True)
         self.logger.info("Executable permission is set")
@@ -117,28 +113,27 @@ class Environment(Wrapper):
     def _set_display(self) -> None:
         """
         Sets the display environment variable for the Unity environment.
-
-        :return: None
         """
         os.environ["DISPLAY"] = str(f":{self.display}")
         self.logger.info("Display is set")
 
     
     # copied from __init__() of chickai_env_wrapper.py (legacy)
-    # TODO (v0.3) Critical refactor, don"t like how this works, extremely error prone.
+    # TODO (v0.3) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.3) fix random_pos logic inside of Unity code
     def initialize(self, mode: str, **kwargs) -> Environment:
         """
         Initializes the environment with the given mode and arguments.
 
-        :param mode: The mode to set the environment for training or testing or both. 
-        :type mode: str
-        :param kwargs: The arguments to pass to the environment.
-        :type kwargs: Any
-        :return: The initialized environment.
-        :rtype: Environment
+        Args:
+            mode (str): The mode to set the environment for training or testing or both.
+            **kwargs: The arguments to pass to the environment.
+
+        Returns:
+            Environment: The initialized environment.
         """
+
         args = []
 
         # from environment arguments
@@ -158,10 +153,19 @@ class Environment(Wrapper):
             args.extend(["--random-pos", "true"])
         if kwargs.get("rewarded", False):
             args.extend(["--rewarded", "true"])
-        # TODO: Discuss this with Manju, may be a MAJOR bug
         self.step_per_episode = kwargs.get("episode_steps", 200)
         if kwargs.get("episode_steps", False):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
+
+        if kwargs["device_type"] == "cpu":
+            args.extend(["-batchmode", "-nographics"])
+        elif kwargs["batch_mode"]:
+            args.append("-batchmode")
+
+        # TODO: Figure out a way to run on multiple GPUs
+        # if ("device" in kwargs):
+        #     args.extend(["-force-device-index", str(kwargs["device"])])
+        #     args.extend(["-gpu", str(kwargs["device"])])
 
         # find unused port
         while port_in_use(self.base_port):
@@ -181,26 +185,27 @@ class Environment(Wrapper):
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
     # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
-    def render(self, mode="rgb_array"): # pylint: disable=unused-argument
+    def render(self, mode="rgb_array") -> np.ndarray: # pylint: disable=unused-argument
         """
         Renders the current frame of the environment.
 
-        :param mode: The mode to render the frame in. Defaults to "rgb_array".
-        :type mode: str, optional
-        :return: The rendered frame of the environment.
-        :rtype: np.ndarray
+        Args:
+            mode (str, optional): The mode to render the frame in. Defaults to "rgb_array".
+
+        Returns:
+            numpy.ndarray: The rendered frame of the environment.
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
-    def step(self, action):
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
         """
         Takes a step in the environment with the given action.
 
-        :param action: The action to take in the environment.
-        :type action: Any
+        Args:
+            action (list[Any]): The action to take in the environment.
 
-        :return: A tuple containing the next state, reward, done flag, and info dictionary.
-        :rtype: tuple[np.ndarray, float, bool, dict]
+        Returns:
+            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
         """
         next_state, reward, done, info = self.env.step(action)
         return next_state, float(reward), done, info
@@ -209,23 +214,22 @@ class Environment(Wrapper):
         """
         Logs a message to the environment.
 
-        :param msg: The message to log.
-        :type msg: str
+        Args:
+            msg (str): The message to log.
         """
         self.log.log_str(msg)
 
-    def reset(self, seed: Optional[int] = None, **kwargs): # pylint: disable=unused-argument
+    def reset(self, seed: Optional[int] = None, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
         """
         Resets the environment with the given seed and arguments.
 
-        :param seed: The seed to use for the environment. Defaults to None.
-        :type seed: int, optional
-        :param kwargs: The arguments to pass to the environment.
-        :type kwargs: Any
+        Args:
+            seed (int, optional): The seed to use for the environment. Defaults to None.
+            **kwargs: The arguments to pass to the environment.
 
-        :return: The initial state of the environment.
-        :rtype: np.ndarray
+        Returns:
+            numpy.ndarray: The initial state of the environment.
         """
         return self.env.reset(**kwargs)
 

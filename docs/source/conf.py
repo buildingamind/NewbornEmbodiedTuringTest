@@ -25,6 +25,7 @@ release = '0.2'
 
 extensions = [
   'sphinx.ext.autodoc',
+  'sphinx.ext.napoleon',
   'myst_parser',
 ]
 
@@ -42,3 +43,8 @@ html_theme_options = {
 html_static_path = ['_static']
 
 html_baseurl = "/html/"
+
+# Example conf.py snippet
+html_css_files = [
+    'custom_styles.css',  # The name of your custom CSS file
+]
