@@ -11,7 +11,7 @@ import os
 import sys
 import json
 
-def write_to_file(file_path, d):
+def write_to_file(file_path, d) -> bool:
     """
     write_to_file
     
@@ -28,7 +28,7 @@ def write_to_file(file_path, d):
         file.write(json.dumps(d))
     return True
 
-def mute():
+def mute() -> None:
     """
     mute
 

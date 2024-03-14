@@ -6,9 +6,10 @@ Classes:
     SupervisedSaveBestModelCallback(BaseCallback)
 """
 from pathlib import Path
+from tqdm import tqdm
 import numpy as np
 from stable_baselines3.common.results_plotter import load_results, ts2xy
-from stable_baselines3.common.callbacks import BaseCallback
+from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback
 from stable_baselines3.common.logger import HParam
 
 from nett.utils.train import compute_train_performance
@@ -82,3 +83,19 @@ class SupervisedSaveBestModelCallback(BaseCallback):
                         print(f"Saving the best model to: {save_path}")
                     self.model.save(save_path)
         return True
+
+class multiBarCallback(ProgressBarCallback):
+    """
+    Display a progress bar when training SB3 agent
+    using tqdm and rich packages.
+    """
+
+    def __init__(self, index) -> None: #, num_steps
+        super().__init__()
+        self.index = index
+
+    def _on_training_start(self) -> None:
+        # Initialize progress bar
+        # Remove timesteps that were done in previous training sessions
+        self.pbar = tqdm(total=self.model.n_steps, position=self.index)
+        # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)

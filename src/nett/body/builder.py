@@ -18,24 +18,23 @@ class Body:
     The body determines how observations from the environment are processed before they reach the brain.
     It can apply wrappers to modify the observations and provide a different perception to the brain.
 
-    :param type: The type of the agent's body. Defaults to "basic".
-    :type type: str, optional
-    :param wrappers: List of wrappers to be applied to the environment. Defaults to None.
-    :type wrappers: list[Wrapper] | None, optional
-    :param dvs: Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
-    :type dvs: bool, optional
+    Args:
+        type (str, optional): The type of the agent's body. Defaults to "basic".
+        wrappers (list[Wrapper] | None, optional): List of wrappers to be applied to the environment. Defaults to None.
+        dvs (bool, optional): Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
 
-    :raises ValueError: If the agent type is not valid.
-    :raises TypeError: If dvs is not a boolean.
+    Raises:
+        ValueError: If the agent type is not valid.
+        TypeError: If dvs is not a boolean.
 
     Example:
 
-    >>> from nett import Body
-    >>> body = Body(type="basic", wrappers=None, dvs=False)
+        >>> from nett import Body
+        >>> body = Body(type="basic", wrappers=None, dvs=False)
     """
 
     def __init__(self, type: str = "basic",
-                    wrappers: list[Any] | None = None,
+                    wrappers: list[Wrapper] | None = None,
                     dvs: bool = False) -> None:
         """
         Constructor method
@@ -50,11 +49,14 @@ class Body:
         """
         Validate the agent type.
 
-        :param type: The type of the agent's body.
-        :type type: str
+        Args:
+            type (str): The type of the agent's body.
 
-        :returns: The validated agent type.
-        :rtype: str
+        Returns:
+            str: The validated agent type.
+
+        Raises:
+            ValueError: If the agent type is not valid.
         """
         if type not in types:
             raise ValueError(f"agent type must be one of {types}")
@@ -65,29 +67,31 @@ class Body:
         """
         Validate the dvs flag.
 
-        :param dvs: The dvs flag.
-        :type dvs: bool
+        Args:
+            dvs (bool): The dvs flag.
 
-        :returns: The validated dvs flag.
-        :rtype: bool
+        Returns:
+            bool: The validated dvs flag.
 
-        :raises TypeError: If dvs is not a boolean.
+        Raises:
+            TypeError: If dvs is not a boolean.
         """
         if not isinstance(dvs, bool):
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
-    def _validate_wrappers(self, wrappers: list[Any] | None) -> list[Any] | None:
+    def _validate_wrappers(self, wrappers: list[Wrapper] | None) -> list[Any] | None:
         """
         Validate the wrappers.
 
-        :param wrappers: The list of wrappers.
-        :type wrappers: list[Wrapper] | None
+        Args:
+            wrappers (list[Wrapper] | None): The list of wrappers.
 
-        :returns: The validated list of wrappers.
-        :rtype: list[Wrapper] | None
+        Returns:
+            list[Wrapper] | None: The validated list of wrappers.
 
-        :raises ValueError: If any wrapper is not an instance of gym.Wrapper.
+        Raises:
+            ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
         if wrappers is not None:
             for wrapper in wrappers:
@@ -100,11 +104,11 @@ class Body:
         """
         Apply the registered wrappers to the environment.
 
-        :param env: The environment.
-        :type env: Env
+        Args:
+            env (Env): The environment.
 
-        :returns: The modified environment.
-        :rtype: Env
+        Returns:
+            Env: The modified environment.
         """
         if self.wrappers:
             for wrapper in self.wrappers:
@@ -115,8 +119,8 @@ class Body:
         """
         Return a string representation of the Body object.
 
-        :returns: The string representation of the Body object.
-        :rtype: str
+        Returns:
+            str: The string representation of the Body object.
         """
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
@@ -126,8 +130,8 @@ class Body:
         """
         Return a string representation of the Body object.
 
-        :returns: The string representation of the Body object.
-        :rtype: str
+        Returns:
+            str: The string representation of the Body object.
         """
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
@@ -137,6 +141,7 @@ class Body:
         """
         Register the body with the environment.
 
-        :raises NotImplementedError: This method is not implemented.
+        Raises:
+            NotImplementedError: This method is not implemented.
         """
         raise NotImplementedError

@@ -1,6 +1,6 @@
-mlagents==1.0.0
-stable-baselines3[extra]==1.8.0
-sb3-contrib==1.8.0
+mlagents
+stable-baselines3[extra]
+sb3-contrib
 torchvision
 timm
 nvidia-ml-py
