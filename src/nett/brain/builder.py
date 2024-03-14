@@ -4,8 +4,6 @@ from typing import Any
 from pathlib import Path
 import inspect
 
-import os
-import sys
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -99,6 +97,7 @@ class Brain:
             iterations (int): The number of training iterations.
             device_type (str): The type of device used for training.
             device (int): The device index used for training.
+            index (int): The index of the model to test, needed for tracking bar.
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
 
         Raises:
@@ -223,11 +222,11 @@ class Brain:
                         episode_start=episode_starts,
                         deterministic=True)
                     obs, _, done, _ = env.step(action) # obs, rewards, done, info
+                    t.update(1)
+                    # t.refresh()
                     episode_starts = done
                     episode_length += 1
                     env.render(mode="rgb_array")
-                    t.update(1)
-                    t.refresh()
 
         # for all other algorithms
         else:
@@ -237,12 +236,11 @@ class Brain:
             for _ in range(iterations):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                if done:
-                    with open(os.devnull, "w") as sys.stdout:
-                        env.reset()
-                env.render(mode="rgb_array")
                 t.update(1)
-                t.refresh()
+                # t.refresh()
+                if done:
+                    env.reset()
+                env.render(mode="rgb_array")
         
         t.close()
 
