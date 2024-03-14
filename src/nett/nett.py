@@ -64,7 +64,7 @@ class NETT:
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
-            verbosity: int = 0) -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 1) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -81,7 +81,7 @@ class NETT:
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
-            verbosity (int, optional): The verbosity level of the run. Defaults to 0.
+            verbosity (int, optional): The verbosity level of the run. Defaults to 1.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -254,7 +254,7 @@ class NETT:
 
         if self.device_type == "cpu":
             # assign devices in a round robin fashion, no need to check memory
-            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
+            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir, i) for i, (condition, brain_id), device in enumerate(zip(task_set, cycle(self.devices)))]
         else:
             # assign devices based on memory availability
             # get the list of devices
@@ -270,8 +270,8 @@ class NETT:
                 # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
                     waitlist = [
-                        Job(brain_id, condition, -1, self.output_dir) 
-                        for (condition, brain_id) in task_set
+                        Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                        for i, (condition, brain_id) in enumerate(task_set)
                     ]
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                     break
@@ -284,7 +284,7 @@ class NETT:
                     free_device_memory[free_devices[-1]] -= job_memory
                     # create job
                     condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1], self.output_dir)
+                    job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
                     jobs.append(job)
 
         return jobs, waitlist
@@ -325,6 +325,7 @@ class NETT:
                 iterations=iterations,
                 device_type=self.device_type,
                 device=job.device,
+                index=job.index,
                 paths=job.paths)
             # close environment
             train_environment.close()
@@ -344,7 +345,8 @@ class NETT:
             brain.test(
                 env=test_environment,
                 iterations=iterations,
-                model_path=str(job.paths['model'].joinpath('latest_model.zip')))
+                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                index=job.index)
 
             # close environment
             test_environment.close()

@@ -9,7 +9,7 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm.auto import trange
+from tqdm import tqdm
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -24,10 +24,11 @@ from stable_baselines3.common import results_plotter
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
 
 # TODO (v0.2): Extend with support for custom policy models
 # TODO (v0.2): should we move validation checks to utils under validations.py?
+
 class Brain:
     """Represents the brain of an agent. 
 
@@ -86,6 +87,7 @@ class Brain:
         iterations,
         device_type: str,
         device: int,
+        index: int,
         paths: dict[str, Path]):
         """
         Train the brain.
@@ -95,6 +97,7 @@ class Brain:
             iterations (int): The number of training iterations.
             device_type (str): The type of device used for training.
             device (int): The device index used for training.
+            index (int): The index of the model to test, needed for tracking bar.
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
 
         Raises:
@@ -148,14 +151,15 @@ class Brain:
             name_prefix=self.algorithm.__name__,
             save_replay_buffer=True,
             save_vecnormalize=True)
-        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback])
+        bar_callback = multiBarCallback(index)
+        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
         self.model.learn(
             total_timesteps=iterations,
             tb_log_name=self.algorithm.__name__,
-            progress_bar=True,
+            progress_bar=False,
             callback=[callback_list])
         self.logger.info("Training Complete")
 
@@ -176,6 +180,7 @@ class Brain:
         env,
         iterations,
         model_path: str,
+        index: int,
         record_prefix: str | None = None): # pylint: disable=unused-argument
         """
         Test the brain.
@@ -184,6 +189,7 @@ class Brain:
             env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
+            index (int): The index of the model to test, needed for tracking bar.
             record_prefix (str, optional): The prefix for recording videos of the testing process. Defaults to None.
         """
         # load previously trained model from save_dir, if it exists
@@ -201,7 +207,8 @@ class Brain:
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            for _ in trange(iterations):
+            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+            for _ in range(iterations):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
                 done, lstm_states = False, None
@@ -215,6 +222,8 @@ class Brain:
                         episode_start=episode_starts,
                         deterministic=True)
                     obs, _, done, _ = env.step(action) # obs, rewards, done, info
+                    t.update(1)
+                    # t.refresh()
                     episode_starts = done
                     episode_length += 1
                     env.render(mode="rgb_array")
@@ -223,12 +232,17 @@ class Brain:
         else:
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            for _ in trange(iterations):
+            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+            for _ in range(iterations):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
+                t.update(1)
+                # t.refresh()
                 if done:
                     env.reset()
                 env.render(mode="rgb_array")
+        
+        t.close()
 
     def save(self, path: str) -> None:
         """
