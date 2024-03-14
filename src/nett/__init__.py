@@ -27,7 +27,7 @@ from nett.environment.builder import Environment
 from nett.nett import NETT
 
 # release version
-__version__ = "0.2"
+__version__ = "0.3"
 
 # change permissions of the ml-agents binaries directory
 
