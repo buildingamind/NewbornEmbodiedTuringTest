@@ -11,7 +11,8 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import trange, tqdm
+# from tqdm import trange, tqdm
+from tqdm.rich import tqdm
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, ProgressBarCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
