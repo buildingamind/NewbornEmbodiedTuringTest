@@ -18,6 +18,7 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from tqdm import tqdm
 
 from nett import Brain, Body, Environment
 from nett.utils.io import mute
@@ -119,6 +120,11 @@ class NETT:
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
+    
+    def initializer(self, lock):
+        tqdm.set_lock(lock)
+        if not self.verbosity:
+            mute()
 
     def launch_jobs(self, jobs: list[Job], waitlist: list[Job] = []) -> dict[Future, Job]:
         """
@@ -132,8 +138,8 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         max_workers = 1 if len(jobs) == 1 else None
-        initializer = mute if not self.verbosity else None
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+
+        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=self.initializer, initargs=(tqdm.get_lock()))
         job_sheet: dict[Future, dict[str, Job]] = {}
 
         for job in jobs:
