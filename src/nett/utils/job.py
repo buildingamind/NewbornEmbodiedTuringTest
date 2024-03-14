@@ -10,13 +10,14 @@ class Job:
     device (int): device to run the job on
     dir (Path): directory to store the job 
   """
-  def __init__(self, brain_id: int, condition: str, device: int, dir: Path) -> None:
+  def __init__(self, brain_id: int, condition: str, device: int, dir: Path, index: int) -> None:
     """initialize job"""
     self.device: int = device
     self.condition: str = condition
     self.brain_id: int = brain_id
     self.dir: Path = dir
     self.paths: dict[str, Path] = self._configure_paths(brain_id, condition)
+    self.index: int = index
 
 
   def _configure_paths(self, brain_id: int, condition: str) -> dict[str, Path]:

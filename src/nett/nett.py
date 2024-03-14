@@ -136,8 +136,8 @@ class NETT:
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
         job_sheet: dict[Future, dict[str, Job]] = {}
 
-        for i, job in enumerate(jobs):
-            job_future = executor.submit(self._execute_job, job, i)
+        for job in jobs:
+            job_future = executor.submit(self._execute_job, job)
             job_sheet[job_future] = job
             time.sleep(1)
 
@@ -254,7 +254,7 @@ class NETT:
 
         if self.device_type == "cpu":
             # assign devices in a round robin fashion, no need to check memory
-            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir) for (condition, brain_id), device in zip(task_set, cycle(self.devices))]
+            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir, i) for i, (condition, brain_id), device in enumerate(zip(task_set, cycle(self.devices)))]
         else:
             # assign devices based on memory availability
             # get the list of devices
@@ -270,8 +270,8 @@ class NETT:
                 # if there are no free devices, add jobs to the waitlist
                 if not free_devices:
                     waitlist = [
-                        Job(brain_id, condition, -1, self.output_dir) 
-                        for (condition, brain_id) in task_set
+                        Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                        for i, (condition, brain_id) in enumerate(task_set)
                     ]
                     self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                     break
@@ -284,7 +284,7 @@ class NETT:
                     free_device_memory[free_devices[-1]] -= job_memory
                     # create job
                     condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1], self.output_dir)
+                    job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
                     jobs.append(job)
 
         return jobs, waitlist
@@ -295,7 +295,7 @@ class NETT:
         # apply wrappers (body)
         return self.body(copy_environment)
 
-    def _execute_job(self, job: Job, index: int) -> Future:
+    def _execute_job(self, job: Job) -> Future:
 
         # for train
         if self.mode not in ["train", "test", "full"]:
@@ -325,7 +325,7 @@ class NETT:
                 iterations=iterations,
                 device_type=self.device_type,
                 device=job.device,
-                index=index,
+                index=job.index,
                 paths=job.paths)
             # close environment
             train_environment.close()
@@ -346,7 +346,7 @@ class NETT:
                 env=test_environment,
                 iterations=iterations,
                 model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                index=index)
+                index=job.index)
 
             # close environment
             test_environment.close()
