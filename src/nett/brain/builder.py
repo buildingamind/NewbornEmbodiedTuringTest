@@ -208,7 +208,7 @@ class Brain:
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
-            t = tqdm(total=iterations, desc=f"Agent #{index}", position=index)
+            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
             for _ in range(iterations):
                 obs = env.reset()
                 # cell and hidden state of the LSTM
@@ -233,7 +233,7 @@ class Brain:
         else:
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
-            t = tqdm(total=iterations, desc=f"Agent #{index}", position=index)
+            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
             for _ in range(iterations):
                 action, _ = self.model.predict(obs, deterministic=True) # action, states
                 obs, _, done, _ = envs.step(action) # obs, reward, done, info
