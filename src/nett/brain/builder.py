@@ -45,7 +45,7 @@ class multiBarCallback(ProgressBarCallback):
     def _on_training_start(self) -> None:
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=self.locals["total_timesteps"], position=self.index)
+        self.pbar = tqdm(total=self.model.num_timesteps, position=self.index)
         # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
 
 class Brain:
