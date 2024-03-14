@@ -11,8 +11,8 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-# from tqdm import trange, tqdm
-from tqdm.rich import tqdm
+from tqdm import trange, tqdm
+# from tqdm.rich import tqdm
 from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, ProgressBarCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -37,8 +37,6 @@ class multiBarCallback(ProgressBarCallback):
     Display a progress bar when training SB3 agent
     using tqdm and rich packages.
     """
-
-    pbar: tqdm
 
     def __init__(self, index) -> None:
         super().__init__()
@@ -179,7 +177,7 @@ class Brain:
         self.model.learn(
             total_timesteps=iterations,
             tb_log_name=self.algorithm.__name__,
-            progress_bar=True,
+            progress_bar=False,
             callback=[callback_list])
         self.logger.info("Training Complete")
 
