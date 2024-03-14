@@ -14,6 +14,7 @@ from typing import Any
 from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
+from threading import RLock
 
 import pandas as pd
 from sb3_contrib import RecurrentPPO
@@ -138,7 +139,7 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         max_workers = 1 if len(jobs) == 1 else None
-
+        tqdm.set_lock(RLock())
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=tqdm.set_lock, initargs=(tqdm.get_lock()))
         job_sheet: dict[Future, dict[str, Job]] = {}
 
