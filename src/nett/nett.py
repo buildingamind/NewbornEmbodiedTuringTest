@@ -139,7 +139,7 @@ class NETT:
         """
         max_workers = 1 if len(jobs) == 1 else None
 
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=self.initializer, initargs=(tqdm.get_lock()))
+        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=tqdm.set_lock, initargs=(tqdm.get_lock()))
         job_sheet: dict[Future, dict[str, Job]] = {}
 
         for job in jobs:
