@@ -11,9 +11,8 @@ import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
-from tqdm import trange, tqdm
-# from tqdm.rich import tqdm
-from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, ProgressBarCallback
+from tqdm import tqdm
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
@@ -27,27 +26,10 @@ from stable_baselines3.common import results_plotter
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
 
 # TODO (v0.2): Extend with support for custom policy models
 # TODO (v0.2): should we move validation checks to utils under validations.py?
-
-class multiBarCallback(ProgressBarCallback):
-    """
-    Display a progress bar when training SB3 agent
-    using tqdm and rich packages.
-    """
-
-    def __init__(self, index) -> None: #, num_steps
-        super().__init__()
-        self.index = index
-        # self.num_steps = num_steps
-
-    def _on_training_start(self) -> None:
-        # Initialize progress bar
-        # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=self.model.n_steps, position=self.index)
-        # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
 
 class Brain:
     """Represents the brain of an agent. 
