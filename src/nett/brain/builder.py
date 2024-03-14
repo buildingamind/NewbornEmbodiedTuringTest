@@ -245,6 +245,7 @@ class Brain:
                     episode_length += 1
                     env.render(mode="rgb_array")
                     t.update(1)
+                    t.refresh()
 
         # for all other algorithms
         else:
@@ -259,6 +260,7 @@ class Brain:
                         env.reset()
                 env.render(mode="rgb_array")
                 t.update(1)
+                t.refresh()
         
         t.close()
 
