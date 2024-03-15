@@ -18,7 +18,7 @@ source_suffix = {
 project = 'NETT'
 copyright = '2024, Zachary Laborde'
 author = 'Zachary Laborde'
-release = '0.3'
+release = '0.3.1'
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
