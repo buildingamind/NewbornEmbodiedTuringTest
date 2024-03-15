@@ -126,7 +126,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
    Create the simulation environment using the path to your Unity executable (see Step 1).
    ```python
-   environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
+   environment = Environment(config="parsing", executable_path="path/to/executable.x86_64")
    ```
    To get a list of all available configurations, run `Environment.list_configs()`.
 
