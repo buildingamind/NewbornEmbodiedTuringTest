@@ -93,7 +93,7 @@ class Brain:
         Train the brain.
 
         Args:
-            env (nett.Body): The environment used for training.
+            env (Body): The environment used for training.
             iterations (int): The number of training iterations.
             device_type (str): The type of device used for training.
             device (int): The device index used for training.

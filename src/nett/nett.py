@@ -37,7 +37,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
+    def __init__(self, brain: "Brain", body: "Body", environment: "Environment") -> None:
         """
         Initialize the NETT class.
         """
@@ -285,7 +285,7 @@ class NETT:
 
         return jobs, waitlist
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode=mode, **kwargs)
         # apply wrappers (body)
@@ -297,7 +297,7 @@ class NETT:
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
 
-        brain: "nett.Brain" = deepcopy(self.brain)
+        brain: "Brain" = deepcopy(self.brain)
 
         # common environment kwargs
         kwargs = {"rewarded": bool(brain.reward),
