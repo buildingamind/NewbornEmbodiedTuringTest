@@ -1,6 +1,6 @@
 """Module for the Brain class."""
 
-from typing import Any
+from typing import Any, Optional
 from pathlib import Path
 import inspect
 
@@ -26,8 +26,8 @@ from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
 
-# TODO (v0.2): Extend with support for custom policy models
-# TODO (v0.2): should we move validation checks to utils under validations.py?
+# TODO (v0.3): Extend with support for custom policy models
+# TODO (v0.3): should we move validation checks to utils under validations.py?
 
 class Brain:
     """Represents the brain of an agent. 
@@ -35,14 +35,14 @@ class Brain:
     The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
 
     Args:
+        policy (Any | str): The network used for defining the value and action networks.
+        algorithm (str | OnPolicyAlgorithm | OffPolicyAlgorithm): The optimization algorithm used for training the model.
         encoder (Any | str, optional): The network used to extract features from the observations. Defaults to None.
-        embedding_dim (int | None, optional): The dimension of the embedding space of the encoder. Defaults to None.
-        policy (Any | str | None, optional): The network used for defining the value and action networks. Defaults to None.
-        algorithm (Any | str | None, optional): The optimization algorithm used for training the model. Defaults to None.
-        reward (Any | str, optional): The type of reward used for training the brain. Defaults to "supervised".
+        embedding_dim (int, optional): The dimension of the embedding space of the encoder. Defaults to None.
+        reward (str, optional): The type of reward used for training the brain. Defaults to "supervised".
         batch_size (int, optional): The batch size used for training. Defaults to 512.
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-        train_encoder (bool | None, optional): Whether to train the encoder or not. Defaults to False.
+        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to False.
         seed (int, optional): The random seed used for training. Defaults to 12.
 
     Example:
@@ -53,14 +53,14 @@ class Brain:
 
     def __init__(
         self,
+        policy: Any | str,
+        algorithm:  str | OnPolicyAlgorithm | OffPolicyAlgorithm,
         encoder: Any | str = None,
-        embedding_dim: int | None = None,
-        policy: Any | str | None = None,
-        algorithm: Any | str | None = None,
-        reward: Any | str = "supervised",
+        embedding_dim: Optional[int] = None,
+        reward: str = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
-        train_encoder: bool | None = False,
+        train_encoder: bool = False,
         seed: int = 12
     ) -> None:
         """Constructor method
@@ -71,10 +71,10 @@ class Brain:
         self.logger = logger.getChild(__class__.__name__)
 
         # Set attributes
+        self.algorithm = self._validate_algorithm(algorithm)
+        self.policy = self._validate_policy(policy)
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
-        self.algorithm = self._validate_algorithm(algorithm) if algorithm else None
-        self.policy = self._validate_policy(policy) if policy else None
         self.reward = self._validate_reward(reward) if reward else None
         self.embedding_dim = embedding_dim
         self.batch_size = batch_size
@@ -83,8 +83,8 @@ class Brain:
 
     def train(
         self,
-        env,
-        iterations,
+        env: "nett.Body",
+        iterations: int,
         device_type: str,
         device: int,
         index: int,
@@ -93,7 +93,7 @@ class Brain:
         Train the brain.
 
         Args:
-            env (Any): The environment used for training.
+            env (nett.Body): The environment used for training.
             iterations (int): The number of training iterations.
             device_type (str): The type of device used for training.
             device (int): The device index used for training.
@@ -112,15 +112,13 @@ class Brain:
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
 
         # build model
-        if self.encoder:
-            policy_kwargs = {
-                "features_extractor_class": self.encoder,
-                "features_extractor_kwargs": {
-                    "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default
-                }
+        policy_kwargs = {
+            "features_extractor_class": self.encoder,
+            "features_extractor_kwargs": {
+                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default
             }
-        else:
-            policy_kwargs = {}
+        } if self.encoder else {}
+
         self.model = self.algorithm(
             self.policy,
             envs,
@@ -140,19 +138,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        save_best_model_callback = SupervisedSaveBestModelCallback(
-            summary_freq=30000, 
-            save_dir=paths["model"], 
-            env_log_path=paths["env_logs"])
-        hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(
-            save_freq=30000,
-            save_path=paths["checkpoints"],
-            name_prefix=self.algorithm.__name__,
-            save_replay_buffer=True,
-            save_vecnormalize=True)
-        bar_callback = multiBarCallback(index)
-        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
+        callback_list = self._initialize_callbacks(paths, index)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -181,7 +167,7 @@ class Brain:
         iterations,
         model_path: str,
         index: int,
-        record_prefix: str | None = None): # pylint: disable=unused-argument
+        record_prefix: Optional[str] = None): # pylint: disable=unused-argument
         """
         Test the brain.
 
@@ -258,10 +244,10 @@ class Brain:
         Load a trained model.
 
         Args:
-            model_path (str or Path): The path to the trained model.
+            model_path (str | Path): The path to the trained model.
 
         Returns:
-            Any: The loaded model.
+            OnPolicyAlgorithm | OffPolicyAlgorithm: The loaded model.
         """
         return self.algorithm.load(model_path)
 
@@ -306,7 +292,7 @@ class Brain:
 
         # for when encoder is a custom PyTorch encoder
         if isinstance(encoder, BaseFeaturesExtractor):
-            # TODO (v0.2) pass dummy torch.tensor on "meta" device to validate embedding dim
+            # TODO (v0.3) pass dummy torch.tensor on "meta" device to validate embedding dim
             pass
 
         if encoder and not hasattr(self, 'train_encoder'):
@@ -314,12 +300,12 @@ class Brain:
 
         return encoder
 
-    def _validate_algorithm(self, algorithm: Any | str) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Validate the optimization algorithm.
 
         Args:
-            algorithm (Any | str): The algorithm to validate.
+            algorithm (str | OnPolicyAlgorithm | OffPolicyAlgorithm): The algorithm to validate.
 
         Returns:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The validated algorithm.
@@ -340,7 +326,7 @@ class Brain:
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
-            # TODO (v0.3) determine appropriate validation checks to be performed before passing
+            # TODO (v0.4) determine appropriate validation checks to be performed before passing
             pass
 
         else:
@@ -348,12 +334,12 @@ class Brain:
 
         return algorithm
 
-    def _validate_policy(self, policy: Any | str) -> str | BasePolicy:
+    def _validate_policy(self, policy: str | BasePolicy) -> str | BasePolicy:
         """
         Validate the policy model.
 
         Args:
-            policy (Any | str): The policy model to validate.
+            policy (str | BasePolicy): The policy model to validate.
 
         Returns:
             str | BasePolicy: The validated policy model.
@@ -370,7 +356,7 @@ class Brain:
 
         # for when policy is custom
         elif isinstance(policy, BasePolicy):
-            # TODO (v0.3) determine appropriate validation checks to be performed before passing
+            # TODO (v0.4) determine appropriate validation checks to be performed before passing
             pass
 
         else:
@@ -378,26 +364,25 @@ class Brain:
 
         return policy
 
-    def _validate_reward(self, reward: Any | str) -> Any | str:
+    def _validate_reward(self, reward: str) -> str:
         """
         Validate the reward type.
 
         Args:
-            reward (Any | str): The reward type to validate.
+            reward (str): The reward type to validate.
 
         Returns:
-            Any | str: The validated reward type.
+            str: The validated reward type.
 
         Raises:
             ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
-        if isinstance(reward, str) and reward not in ['supervised', 'unsupervised']:
+        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
-    # TODO (v0.2) add typehinting for gym environments
-    def _validate_env(self, env) -> Any:
+    def _validate_env(self, env: "gym.Env") -> "gym.Env":
         """
         Validate the environment.
 
@@ -416,15 +401,15 @@ class Brain:
             raise ValueError(f"Failed training env check with {str(ex)}")
         return env
 
-    def _set_encoder_as_eval(self, model: OnPolicyAlgorithm | OffPolicyAlgorithm | None) -> OnPolicyAlgorithm | OffPolicyAlgorithm | None:
+    def _set_encoder_as_eval(self, model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 
         Args:
-            model: The model containing the encoder.
+            model (OnPolicyAlgorithm | OffPolicyAlgorithm): The model containing the encoder.
 
         Returns:
-            The model with the encoder set as evaluation mode.
+            OnPolicyAlgorithm | OffPolicyAlgorithm: The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
         for param in model.policy.features_extractor.parameters():
@@ -438,3 +423,28 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
+
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int) -> CallbackList:
+        """
+        Initialize the callbacks for training.
+
+        Args:
+            paths (dict[str, Path]): The paths for saving logs, models, and plots.
+            index (int): The index of the model to test, needed for tracking bar.
+        
+        Returns:
+            CallbackList: The list of callbacks for training.
+        """
+        save_best_model_callback = SupervisedSaveBestModelCallback(
+            summary_freq=30000, 
+            save_dir=paths["model"], 
+            env_log_path=paths["env_logs"])
+        hparam_callback = HParamCallback()
+        checkpoint_callback = CheckpointCallback(
+            save_freq=30000,
+            save_path=paths["checkpoints"],
+            name_prefix=self.algorithm.__name__,
+            save_replay_buffer=True,
+            save_vecnormalize=True)
+        bar_callback = multiBarCallback(index)
+        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])

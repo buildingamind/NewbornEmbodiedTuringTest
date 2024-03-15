@@ -60,7 +60,7 @@ class Environment(Wrapper):
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
-        # TODO (v0.4) what might be a way to check if it is a valid executable path?
+        # TODO (v0.5) what might be a way to check if it is a valid executable path?
         self.executable_path = executable_path
         self.base_port = base_port
         self.record_chamber = record_chamber
@@ -119,9 +119,9 @@ class Environment(Wrapper):
 
     
     # copied from __init__() of chickai_env_wrapper.py (legacy)
-    # TODO (v0.3) Critical refactor, don't like how this works, extremely error prone.
+    # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
-    # TODO (v0.3) fix random_pos logic inside of Unity code
+    # TODO (v0.4) fix random_pos logic inside of Unity code
     def initialize(self, mode: str, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.

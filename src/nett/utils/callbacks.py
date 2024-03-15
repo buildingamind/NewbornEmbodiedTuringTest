@@ -14,7 +14,7 @@ from stable_baselines3.common.logger import HParam
 
 from nett.utils.train import compute_train_performance
 
-# TODO (v0.3): refactor needed, especially logging
+# TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
     """
     Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
