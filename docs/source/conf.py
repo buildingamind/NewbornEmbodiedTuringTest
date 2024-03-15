@@ -3,10 +3,11 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-sys.path.insert(0, os.path.abspath('../../src/'))
-
 import os
 import sys
+
+sys.path.insert(0, os.path.abspath('../../src/'))
+
 from nett import __version__
 
 source_suffix = {
