@@ -93,9 +93,8 @@ class Body:
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        for wrapper in wrappers:
-            if not isinstance(wrapper, Wrapper):
-                raise ValueError("Wrappers must inherit from gym.Wrapper")
+        if any(not isinstance(w, Wrapper) for w in wrappers):
+            raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
 

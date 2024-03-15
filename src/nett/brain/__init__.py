@@ -60,19 +60,18 @@ def get_encoder_dict() -> dict[str, str]:
     """
     encoders_dict: dict[str, str] = {}
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
-    # iterate through all files in the directory
-    for encoder_path in encoders_dir.iterdir():
-        if encoder_path.suffix == '.py' and "__" not in str(encoder_path):
-            module_name = encoder_path.stem
-            # read the source
-            with open(encoder_path) as f:
-                source = f.read()
-            # parse it
-            module = ast.parse(source)
-            # get the first class definition
-            encoder_class = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)][0]
-            # add to the dictionary
-            encoders_dict[module_name] = encoder_class.name
+    # iterate through all python files in the directory that do not start with two underscores
+    for encoder_path in encoders_dir.glob("[!_][!_]*.py"):
+        module_name = encoder_path.stem
+        # read the source
+        with open(encoder_path) as f:
+            source = f.read()
+        # parse it
+        module = ast.parse(source)
+        # get the first class definition
+        encoder_class = next(node for node in ast.walk(module) if isinstance(node, ast.ClassDef))
+        # add to the dictionary
+        encoders_dict[module_name] = encoder_class.name
     return encoders_dict
 
 encoder_dict = get_encoder_dict()
