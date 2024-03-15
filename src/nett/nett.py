@@ -315,41 +315,44 @@ class NETT:
 
         # for train
         if self.mode in ["train", "full"]:
-            # initialize environment with necessary arguments
-            train_environment = self._wrap_env("train", kwargs)
-            # calculate iterations
-            iterations = self.steps_per_episode * self.train_eps
-            # train
-            brain.train(
-                env=train_environment,
-                iterations=iterations,
-                device_type=self.device_type,
-                device=job.device,
-                index=job.index,
-                paths=job.paths)
-            # close environment
-            train_environment.close()
+            try:
+                # initialize environment with necessary arguments
+                train_environment = self._wrap_env("train", kwargs)
+                # calculate iterations
+                iterations = self.steps_per_episode * self.train_eps
+                # train
+                brain.train(
+                    env=train_environment,
+                    iterations=iterations,
+                    device_type=self.device_type,
+                    device=job.device,
+                    index=job.index,
+                    paths=job.paths)
+            finally:
+                # close environment
+                train_environment.close()
 
         # for test
         if self.mode in ["test", "full"]:
-            # initialize environment with necessary arguments
-            test_environment = self._wrap_env("test", kwargs)
-            # calculate iterations
-            iterations = self.test_eps * test_environment.config.num_conditions
+            try:
+                # initialize environment with necessary arguments
+                test_environment = self._wrap_env("test", kwargs)
+                # calculate iterations
+                iterations = self.test_eps * test_environment.config.num_conditions
 
-            # Q: Why in test but not in train?
-            if not issubclass(brain.algorithm, RecurrentPPO):
-                iterations *= self.steps_per_episode
+                # Q: Why in test but not in train?
+                if not issubclass(brain.algorithm, RecurrentPPO):
+                    iterations *= self.steps_per_episode
 
-            # test
-            brain.test(
-                env=test_environment,
-                iterations=iterations,
-                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                index=job.index)
-
-            # close environment
-            test_environment.close()
+                # test
+                brain.test(
+                    env=test_environment,
+                    iterations=iterations,
+                    model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                    index=job.index)
+            finally:
+                # close environment
+                test_environment.close()
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
