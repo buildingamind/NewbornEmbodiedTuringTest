@@ -122,16 +122,13 @@ class Environment(Wrapper):
     # TODO (v0.3) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.3) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, **kwargs) -> Environment:
+    def initialize(self, mode: str, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
         Args:
             mode (str): The mode to set the environment for training or testing or both.
             **kwargs: The arguments to pass to the environment.
-
-        Returns:
-            Environment: The initialized environment.
         """
 
         args = []
