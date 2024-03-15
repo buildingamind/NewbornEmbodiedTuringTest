@@ -37,7 +37,7 @@ def list_algorithms() -> set[str]:
 
 algorithms = list_algorithms()
 
-# TODO (v0.3) return all available policy models programmatically
+# TODO (v0.4) return all available policy models programmatically
 def list_policies() -> set[str]:
     """
     Returns a set of all available policy models.
@@ -50,7 +50,7 @@ def list_policies() -> set[str]:
 policies = list_policies()
 
 # return encoder string to encoder class mapping
-# TODO (v0.3) optimized way to calculate and pass this dict around
+# TODO (v0.4) optimized way to calculate and pass this dict around
 def get_encoder_dict() -> dict[str, str]:
     """
     Returns a dictionary mapping encoder names to encoder class names.
@@ -75,14 +75,4 @@ def get_encoder_dict() -> dict[str, str]:
             encoders_dict[module_name] = encoder_class.name
     return encoders_dict
 
-# TODO (v0.3) return all available encoder classes programmatically
-# def get_encoder_dict() -> dict[str, str]:
-#     return {'cnnlstm': 'CNNLSTM',
-#             'cotracker': 'CoTracker',
-#             'dinov1': 'DinoV1',
-#             'dinov2': 'DinoV2',
-#             'vit': 'ViT',
-#             'resnet18': 'Resnet18CNN',
-#             'sam': 'SegmentAnything',
-#             'rnd': 'RND'}
 encoder_dict = get_encoder_dict()

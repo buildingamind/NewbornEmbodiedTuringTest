@@ -10,7 +10,7 @@ import time
 import subprocess
 from os import cpu_count
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
@@ -19,7 +19,6 @@ import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
-from nett import Brain, Body, Environment
 from nett.utils.io import mute
 from nett.utils.job import Job
 
@@ -38,7 +37,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: Brain, body: Body, environment: Environment) -> None:
+    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
         """
         Initialize the NETT class.
         """
@@ -94,7 +93,6 @@ class NETT:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
-        # TODO (v0.3) upgrade to toml format
         # register run config
         self.mode = mode
         self.verbosity = verbosity
@@ -178,7 +176,7 @@ class NETT:
 
     @staticmethod
     def analyze(run_dir: str | Path,
-                output_dir: str | Path | None = None,
+                output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
                 bar_order: str | list[int] = "default",
@@ -190,7 +188,7 @@ class NETT:
 
         Args:
             run_dir (str | Path): The directory where the run results are stored.
-            output_dir (str | Path | None, optional): The directory where the analysis results will be stored. 
+            output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
             ep_bucket (int, optional): The number of episodes to be grouped together for analysis.
             num_episodes (int, optional): The number of episodes to be analyzed.
@@ -289,7 +287,7 @@ class NETT:
 
         return jobs, waitlist
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> Body:
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode=mode, **kwargs)
         # apply wrappers (body)
@@ -301,7 +299,7 @@ class NETT:
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
 
-        brain: Brain = deepcopy(self.brain)
+        brain: "nett.Brain" = deepcopy(self.brain)
 
         # common environment kwargs
         kwargs = {"rewarded": bool(brain.reward),
@@ -315,41 +313,44 @@ class NETT:
 
         # for train
         if self.mode in ["train", "full"]:
-            # initialize environment with necessary arguments
-            train_environment = self._wrap_env("train", kwargs)
-            # calculate iterations
-            iterations = self.steps_per_episode * self.train_eps
-            # train
-            brain.train(
-                env=train_environment,
-                iterations=iterations,
-                device_type=self.device_type,
-                device=job.device,
-                index=job.index,
-                paths=job.paths)
-            # close environment
-            train_environment.close()
+            try:
+                # initialize environment with necessary arguments
+                train_environment = self._wrap_env("train", kwargs)
+                # calculate iterations
+                iterations = self.steps_per_episode * self.train_eps
+                # train
+                brain.train(
+                    env=train_environment,
+                    iterations=iterations,
+                    device_type=self.device_type,
+                    device=job.device,
+                    index=job.index,
+                    paths=job.paths)
+            finally:
+                # close environment
+                train_environment.close()
 
         # for test
         if self.mode in ["test", "full"]:
-            # initialize environment with necessary arguments
-            test_environment = self._wrap_env("test", kwargs)
-            # calculate iterations
-            iterations = self.test_eps * test_environment.config.num_conditions
+            try:
+                # initialize environment with necessary arguments
+                test_environment = self._wrap_env("test", kwargs)
+                # calculate iterations
+                iterations = self.test_eps * test_environment.config.num_conditions
 
-            # Q: Why in test but not in train?
-            if not issubclass(brain.algorithm, RecurrentPPO):
-                iterations *= self.steps_per_episode
+                # Q: Why in test but not in train?
+                if not issubclass(brain.algorithm, RecurrentPPO):
+                    iterations *= self.steps_per_episode
 
-            # test
-            brain.test(
-                env=test_environment,
-                iterations=iterations,
-                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                index=job.index)
-
-            # close environment
-            test_environment.close()
+                # test
+                brain.test(
+                    env=test_environment,
+                    iterations=iterations,
+                    model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                    index=job.index)
+            finally:
+                # close environment
+                test_environment.close()
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -363,7 +364,7 @@ class NETT:
 
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
-        # TODO (v0.4) add a dummy job to gauge memory consumption
+        # TODO (v0.5) add a dummy job to gauge memory consumption
 
         # # get device with the maxmium memory available
         # max_memory_device = max(device_memory_status,
@@ -389,7 +390,7 @@ class NETT:
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
     def _validate_device_type(self, device_type: str) -> str:
-        # TODO (v0.4) add automatic type checking usimg pydantic or similar
+        # TODO (v0.5) add automatic type checking usimg pydantic or similar
         if device_type not in ["cuda", "cpu"]:
             raise ValueError("Should be one of ['cuda', 'cpu']")
 

@@ -1,5 +1,5 @@
 """The body of the agent in the environment."""
-from typing import Any
+from typing import Any, Optional
 from gym import Wrapper, Env
 
 from nett.body import types
@@ -20,7 +20,7 @@ class Body:
 
     Args:
         type (str, optional): The type of the agent's body. Defaults to "basic".
-        wrappers (list[Wrapper] | None, optional): List of wrappers to be applied to the environment. Defaults to None.
+        wrappers (list[Wrapper], optional): List of wrappers to be applied to the environment. Defaults to [].
         dvs (bool, optional): Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
 
     Raises:
@@ -34,7 +34,7 @@ class Body:
     """
 
     def __init__(self, type: str = "basic",
-                    wrappers: list[Wrapper] | None = None,
+                    wrappers: list[Wrapper] = [],
                     dvs: bool = False) -> None:
         """
         Constructor method
@@ -80,23 +80,22 @@ class Body:
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
-    def _validate_wrappers(self, wrappers: list[Wrapper] | None) -> list[Any] | None:
+    def _validate_wrappers(self, wrappers: list[Wrapper]) -> list[Wrapper]:
         """
         Validate the wrappers.
 
         Args:
-            wrappers (list[Wrapper] | None): The list of wrappers.
+            wrappers (list[Wrapper]): The list of wrappers.
 
         Returns:
-            list[Wrapper] | None: The validated list of wrappers.
+            list[Wrapper]: The validated list of wrappers.
 
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        if wrappers is not None:
-            for wrapper in wrappers:
-                if not isinstance(wrapper, Wrapper):
-                    raise ValueError("Wrappers must inherit from gym.Wrapper")
+        for wrapper in wrappers:
+            if not isinstance(wrapper, Wrapper):
+                raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
 
