@@ -5,7 +5,10 @@
 
 import os
 import sys
+
 sys.path.insert(0, os.path.abspath('../../src/'))
+
+from nett import __version__
 
 source_suffix = {
     '.rst': 'restructuredtext',
@@ -18,7 +21,7 @@ source_suffix = {
 project = 'NETT'
 copyright = '2024, Zachary Laborde'
 author = 'Zachary Laborde'
-release = '0.3'
+release = __version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
