@@ -33,7 +33,7 @@ class Environment(Wrapper):
     Args:
         config (str | NETTConfig): The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
         executable_path (str): The path to the Unity executable file.
-        display (int, optional): The display number to use for the Unity environment. Defaults to 0.
+        display (int, optional): The display number to use for the Unity environment. A recommended number would be 0. If set to None, the environment will not be displayed while running. Defaults to None.
         base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
         record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
         record_agent (bool, optional): Whether to record the agent. Defaults to False.
@@ -50,7 +50,7 @@ class Environment(Wrapper):
     def __init__(self,
                  config: str | NETTConfig,
                  executable_path: str,
-                 display: int = 0,
+                 display: int = None,
                  base_port: int = 5004,
                  record_chamber: bool = False,
                  record_agent: bool = False,
@@ -152,9 +152,8 @@ class Environment(Wrapper):
         if kwargs.get("episode_steps", False):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
 
-        if kwargs["device_type"] == "cpu":
-            args.extend(["-batchmode", "-nographics"])
-        elif kwargs["batch_mode"]:
+        if self.display is None:
+            # run without displaying Unity environment
             args.append("-batchmode")
         else:
             # set the display for Unity environment
