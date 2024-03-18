@@ -71,7 +71,8 @@ class Environment(Wrapper):
         # set the correct permissions on the executable
         self._set_executable_permission()
 
-    def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
+    @staticmethod
+    def _validate_config(config: str | NETTConfig) -> NETTConfig:
         """
         Validates the configuration for the environment.
 

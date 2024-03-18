@@ -351,7 +351,6 @@ class NETT:
         }
         return memory_status
 
-    # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
         # TODO (v0.5) add a dummy job to gauge memory consumption
 
@@ -371,14 +370,16 @@ class NETT:
         memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
-    def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
+    @staticmethod
+    def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
         # TODO include waitlisted jobs
         runStatus = lambda job_future: {'running':job_future.running()}
         jobInfo = lambda job: {k:job[k] for k in selected_columns}
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
-    def _validate_device_type(self, device_type: str) -> str:
+    @staticmethod
+    def _validate_device_type(device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
         if device_type not in ["cuda"]:
             raise ValueError("Should be one of ['cuda']")

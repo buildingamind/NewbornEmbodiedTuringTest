@@ -251,7 +251,8 @@ class Brain:
         """
         return self.algorithm.load(model_path)
 
-    def plot_results(self,
+    @staticmethod
+    def plot_results(
         iterations: int,
         model_log_dir: Path,
         plots_dir: Path,
@@ -295,12 +296,13 @@ class Brain:
             # TODO (v0.3) pass dummy torch.tensor on "meta" device to validate embedding dim
             pass
 
-        if encoder and not hasattr(self, 'train_encoder'):
+        if encoder and not self.train_encoder:
             raise ValueError("encoder passed without setting train_encoder, should be one of: [True, False]")
 
         return encoder
 
-    def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    @staticmethod
+    def _validate_algorithm(algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Validate the optimization algorithm.
 
@@ -334,7 +336,8 @@ class Brain:
 
         return algorithm
 
-    def _validate_policy(self, policy: str | BasePolicy) -> str | BasePolicy:
+    @staticmethod
+    def _validate_policy(policy: str | BasePolicy) -> str | BasePolicy:
         """
         Validate the policy model.
 
@@ -364,7 +367,8 @@ class Brain:
 
         return policy
 
-    def _validate_reward(self, reward: str) -> str:
+    @staticmethod
+    def _validate_reward(reward: str) -> str:
         """
         Validate the reward type.
 
@@ -382,7 +386,8 @@ class Brain:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
-    def _validate_env(self, env: "gym.Env") -> "gym.Env":
+    @staticmethod
+    def _validate_env(env: "gym.Env") -> "gym.Env":
         """
         Validate the environment.
 
@@ -401,7 +406,8 @@ class Brain:
             raise ValueError(f"Failed training env check with {str(ex)}")
         return env
 
-    def _set_encoder_as_eval(self, model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    @staticmethod
+    def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 
