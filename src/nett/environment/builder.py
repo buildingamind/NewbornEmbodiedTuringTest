@@ -50,7 +50,7 @@ class Environment(Wrapper):
     def __init__(self,
                  config: str | NETTConfig,
                  executable_path: str,
-                 display: int = None,
+                 display: int = 0,
                  base_port: int = 5004,
                  record_chamber: bool = False,
                  record_agent: bool = False,
@@ -70,6 +70,8 @@ class Environment(Wrapper):
 
         # set the correct permissions on the executable
         self._set_executable_permission()
+        # set the display for Unity environment
+        self._set_display()
 
     def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
         """
@@ -152,12 +154,10 @@ class Environment(Wrapper):
         if kwargs.get("episode_steps", False):
             args.extend(["--episode-steps", str(kwargs["episode_steps"])])
 
-        if self.display is None:
-            # run without displaying Unity environment
+        if kwargs["device_type"] == "cpu":
+            args.extend(["-batchmode", "-nographics"])
+        elif kwargs["batch_mode"]:
             args.append("-batchmode")
-        else:
-            # set the display for Unity environment
-            self._set_display()
 
         # TODO: Figure out a way to run on multiple GPUs
         # if ("device" in kwargs):
