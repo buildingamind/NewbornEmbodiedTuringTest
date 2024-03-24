@@ -10,7 +10,7 @@ import time
 import subprocess
 from pathlib import Path
 from typing import Any, Optional
-from copy import copy, deepcopy
+from copy import deepcopy
 from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 
@@ -388,7 +388,7 @@ class NETT:
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = range(nvmlDeviceGetCount())
+        available_devices: list[int] = list((nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
