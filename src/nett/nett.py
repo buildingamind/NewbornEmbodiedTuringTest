@@ -246,7 +246,7 @@ class NETT:
 
         # assign devices based on memory availability
         # get the list of devices
-        free_devices: list[int] = copy(self.devices)
+        free_devices: list[int] = self.devices.copy()
 
         # get the free memory status for each device
         free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
@@ -388,7 +388,7 @@ class NETT:
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = nvmlDeviceGetCount()
+        available_devices: list[int] = range(nvmlDeviceGetCount())
 
         if devices == -1:
             devices = available_devices
