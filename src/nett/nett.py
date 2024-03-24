@@ -101,7 +101,7 @@ class NETT:
         self.buffer = buffer
         self.steps_per_episode = steps_per_episode
         self.device_type = self._validate_device_type(device_type)
-        self.devices: list[int] | int = self._validate_devices(devices)
+        self.devices: list[int] = self._validate_devices(devices)
 
         # schedule jobs
         jobs, waitlist = self._schedule_jobs()
