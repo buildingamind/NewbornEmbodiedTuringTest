@@ -126,9 +126,11 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
    Create the simulation environment using the path to your Unity executable (see Step 1).
    ```python
-   environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
+   environment = Environment(config="parsing", executable_path="path/to/executable.x86_64", display="0")
    ```
    To get a list of all available configurations, run `Environment.list_configs()`.
+
+   If you wish to not display the Unity environments running, set the `display` parameter to `None` or simply leave it out.
 
 4. **Run the Benchmarking**
 
@@ -140,7 +142,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, trains_eps=10, test_eps=5)
    ```
-   The `run` function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the `batch_mode` parameter to `False`.
+   The `run` function is asynchronous, returning the list of jobs that may or may not be complete.
 
 5. **Check Status**:
 
