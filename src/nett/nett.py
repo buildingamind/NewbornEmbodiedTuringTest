@@ -246,7 +246,7 @@ class NETT:
 
         # assign devices based on memory availability
         # get the list of devices
-        free_devices: list[int] = copy.copy(self.devices)
+        free_devices: list[int] = copy(self.devices)
 
         # get the free memory status for each device
         free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
