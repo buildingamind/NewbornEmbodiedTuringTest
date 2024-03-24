@@ -388,7 +388,7 @@ class NETT:
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = list((nvmlDeviceGetCount()))
+        available_devices: list[int] = list(range(nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
