@@ -177,6 +177,7 @@ class NETT:
     @staticmethod
     def analyze(run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
+                data_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
                 bar_order: str | list[int] = "default",
@@ -231,6 +232,10 @@ class NETT:
                         "--ep-bucket", str(ep_bucket),
                         "--num-episodes", str(num_episodes)], check=True)
 
+        if data_dir is not None:
+            chick_data = Path(data_dir)
+        else:
+            chick_data = Path(analysis_dir).joinpath("ChickData", "ChickData_Parsing.csv")
         # test
         print("Running analysis for [test]")
         subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_test_viz.R")),
@@ -238,7 +243,7 @@ class NETT:
                         "--results-wd", str(output_dir),
                         "--bar-order", bar_order_str,
                         "--color-bars", str(color_bars),
-                        "--chick-file", str(analysis_dir.joinpath("ChickData", "ChickData_Parsing.csv"))], check=True)
+                        "--chick-file", chick_data], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 
