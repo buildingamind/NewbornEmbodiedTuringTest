@@ -15,7 +15,7 @@ license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
     "mlagents==1.0.0",
-    "stable-baselines3[extra]==1.8.0",
+    "stable-baselines3[extra]@git+https://github.com/desaibhargav/stable-baselines3#egg=v1.8.0"
     "sb3-contrib==1.8.0",
     "torchvision",
     "timm",

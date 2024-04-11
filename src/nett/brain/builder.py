@@ -24,6 +24,7 @@ from stable_baselines3.common import results_plotter
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
+from nett.brain.rewards import BaseReward
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -364,7 +365,7 @@ class Brain:
 
         return policy
 
-    def _validate_reward(self, reward: str) -> str:
+    def _validate_reward(self, reward: BaseReward | str) -> str:
         """
         Validate the reward type.
 
@@ -378,8 +379,13 @@ class Brain:
             ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
-        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
-            raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
+        if isinstance(reward, str):
+            if reward not in ['supervised', 'unsupervised']:
+                raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
+        elif isinstance(reward, BaseReward):
+            # no need to check if it imolements calculate() since it is an abstract method
+            # and checked by default
+            pass
         return reward
 
     def _validate_env(self, env: "gym.Env") -> "gym.Env":

@@ -45,7 +45,6 @@ class NETT:
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
-        self.environment = environment
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInitWithFlags(1)
