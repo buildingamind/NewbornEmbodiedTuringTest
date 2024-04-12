@@ -37,7 +37,7 @@ class Environment(Wrapper):
         base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
         record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
         record_agent (bool, optional): Whether to record the agent. Defaults to False.
-        recording_frames (int, optional): The number of frames to record. Defaults to 1000.
+        recording_frames (int, optional): The number of steps per episode to record. Defaults to 1000.
 
     Raises:
         ValueError: If the configuration is not a valid string or an instance of NETTConfig.
