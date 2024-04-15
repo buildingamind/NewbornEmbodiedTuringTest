@@ -384,8 +384,8 @@ class NETT:
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
         # TODO include waitlisted jobs
-        runStatus = lambda job_future: {'running':job_future.running()}
-        jobInfo = lambda job: {k:job[k] for k in selected_columns}
+        runStatus = lambda job_future: {'running': job_future.running()}
+        jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
