@@ -450,4 +450,9 @@ class Brain:
         #     save_vecnormalize=True)
         # bar_callback = multiBarCallback(index)
         testCallback = TestCallback(brain_id=brain_id, condition=condition, verbose=1)
-        return CallbackList([testCallback])
+        return CallbackList([
+            save_best_model_callback, 
+            hparam_callback, 
+            checkpoint_callback, 
+            testCallback
+            ])
