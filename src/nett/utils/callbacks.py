@@ -99,3 +99,30 @@ class multiBarCallback(ProgressBarCallback):
         # Remove timesteps that were done in previous training sessions
         self.pbar = tqdm(total=self.model.n_steps, position=self.index)
         # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
+
+class TestCallback(BaseCallback):
+    """
+    A custom callback that derives from ``BaseCallback``.
+
+    :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
+    """
+    def __init__(self, brain_id: int, condition: str, verbose: int = 1):
+        self.brain_id = brain_id
+        self.condition = condition
+        super().__init__(verbose)
+
+    def _on_training_start(self) -> None:
+        print(self.brain_id, self.condition, "Training is starting")
+        pass
+
+    def _on_rollout_start(self) -> None:
+        print(self.brain_id, self.condition, "Rollout is starting")
+        pass
+
+    def _on_rollout_end(self) -> None:
+        print(self.brain_id, self.condition, "Rollout is ending")
+        pass
+
+    def _on_training_end(self) -> None:
+        print(self.brain_id, self.condition, "Training is ending")
+        pass

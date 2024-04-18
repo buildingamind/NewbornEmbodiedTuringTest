@@ -330,7 +330,9 @@ class NETT:
                     device_type=self.device_type,
                     device=job.device,
                     index=job.index,
-                    paths=job.paths)
+                    paths=job.paths,
+                    brain_id=job.brain_id,
+                    condition=job.condition,)
             finally:
                 # close environment
                 train_environment.close()

@@ -24,7 +24,7 @@ from stable_baselines3.common import results_plotter
 
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
+from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback, TestCallback
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -88,7 +88,9 @@ class Brain:
         device_type: str,
         device: int,
         index: int,
-        paths: dict[str, Path]):
+        paths: dict[str, Path],
+        brain_id: int,
+        condition: str):
         """
         Train the brain.
 
@@ -138,7 +140,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index)
+        callback_list = self._initialize_callbacks(paths, index, brain_id, condition)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -424,7 +426,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int, brain_id: int, condition: str) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -435,16 +437,17 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
-        save_best_model_callback = SupervisedSaveBestModelCallback(
-            summary_freq=30000, 
-            save_dir=paths["model"], 
-            env_log_path=paths["env_logs"])
-        hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(
-            save_freq=30000,
-            save_path=paths["checkpoints"],
-            name_prefix=self.algorithm.__name__,
-            save_replay_buffer=True,
-            save_vecnormalize=True)
-        bar_callback = multiBarCallback(index)
-        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
+        # save_best_model_callback = SupervisedSaveBestModelCallback(
+        #     summary_freq=30000, 
+        #     save_dir=paths["model"], 
+        #     env_log_path=paths["env_logs"])
+        # hparam_callback = HParamCallback()
+        # checkpoint_callback = CheckpointCallback(
+        #     save_freq=30000,
+        #     save_path=paths["checkpoints"],
+        #     name_prefix=self.algorithm.__name__,
+        #     save_replay_buffer=True,
+        #     save_vecnormalize=True)
+        # bar_callback = multiBarCallback(index)
+        testCallback = TestCallback(brain_id=brain_id, condition=condition, verbose=1)
+        return CallbackList([testCallback])
