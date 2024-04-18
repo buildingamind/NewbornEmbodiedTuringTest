@@ -129,7 +129,7 @@ class NETT:
         Returns:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
-        max_workers = 1 if len(jobs) == 1 else None
+        max_workers = 1 #if len(jobs) == 1 else None
         initializer = mute if not self.verbosity else None
         executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
         job_sheet: dict[Future, dict[str, Job]] = {}

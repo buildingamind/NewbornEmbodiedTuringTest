@@ -446,5 +446,5 @@ class Brain:
             name_prefix=self.algorithm.__name__,
             save_replay_buffer=True,
             save_vecnormalize=True)
-        bar_callback = multiBarCallback(index)
-        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
+
+        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback])
