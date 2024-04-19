@@ -110,6 +110,9 @@ class TestCallback(BaseCallback):
         self.brain_id = brain_id
         self.condition = condition
         super().__init__(verbose)
+    
+    def _on_step(self) -> bool:
+        return True
 
     def _on_training_start(self) -> None:
         print(self.brain_id, self.condition, "Training is starting")
