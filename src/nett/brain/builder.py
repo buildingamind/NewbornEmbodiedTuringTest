@@ -147,7 +147,7 @@ class Brain:
         self.model.learn(
             total_timesteps=iterations,
             tb_log_name=self.algorithm.__name__,
-            progress_bar=True,
+            progress_bar=False,
             callback=[callback_list])
         self.logger.info("Training Complete")
 
@@ -437,22 +437,23 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
-        # save_best_model_callback = SupervisedSaveBestModelCallback(
-        #     summary_freq=30000, 
-        #     save_dir=paths["model"], 
-        #     env_log_path=paths["env_logs"])
-        # hparam_callback = HParamCallback()
-        # checkpoint_callback = CheckpointCallback(
-        #     save_freq=30000,
-        #     save_path=paths["checkpoints"],
-        #     name_prefix=self.algorithm.__name__,
-        #     save_replay_buffer=True,
-        #     save_vecnormalize=True)
-        # bar_callback = multiBarCallback(index)
+        save_best_model_callback = SupervisedSaveBestModelCallback(
+            summary_freq=30000, 
+            save_dir=paths["model"], 
+            env_log_path=paths["env_logs"])
+        hparam_callback = HParamCallback()
+        checkpoint_callback = CheckpointCallback(
+            save_freq=30000,
+            save_path=paths["checkpoints"],
+            name_prefix=self.algorithm.__name__,
+            save_replay_buffer=True,
+            save_vecnormalize=True)
+        bar_callback = multiBarCallback(index)
         testCallback = TestCallback(brain_id=brain_id, condition=condition, verbose=1)
         return CallbackList([
             save_best_model_callback, 
             hparam_callback, 
             checkpoint_callback, 
+            bar_callback,
             testCallback
             ])

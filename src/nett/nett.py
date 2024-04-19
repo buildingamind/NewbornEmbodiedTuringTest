@@ -334,8 +334,8 @@ class NETT:
                     brain_id=job.brain_id,
                     condition=job.condition,)
             except Exception as e:
-                self.logger.error(f"Job Failed for Brain #{job.brain_id} with Condition: {job.condition}")
-                self.logger.error(f"Error: {e}")
+                print(f"Job Failed for Brain #{job.brain_id} with Condition: {job.condition}")
+                print(f"Error: {e}")
             finally:
                 # close environment
                 train_environment.close()
