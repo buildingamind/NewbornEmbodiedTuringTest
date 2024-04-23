@@ -3,7 +3,7 @@
 from typing import Any, Optional
 from pathlib import Path
 import inspect
-
+import pdb
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -21,10 +21,11 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
-
+from stable_baselines3 import PPO
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -61,7 +62,8 @@ class Brain:
         batch_size: int = 512,
         buffer_size: int = 2048,
         train_encoder: bool = False,
-        seed: int = 12
+        seed: int = 12,
+        custom_encoder_args: dict[str, str]= {}
     ) -> None:
         """Constructor method
         """
@@ -80,6 +82,8 @@ class Brain:
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
+        self.custom_encoder_args = custom_encoder_args
+               
 
     def train(
         self,
@@ -108,30 +112,42 @@ class Brain:
 
         # initialize environment
         log_path = paths["env_logs"]
+        
+        
         env = Monitor(env, str(log_path))
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
-
+        
         # build model
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
-                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default
+                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
+                
             }
         } if self.encoder else {}
-
-        self.model = self.algorithm(
-            self.policy,
-            envs,
-            batch_size=self.batch_size,
-            n_steps=self.buffer_size,
-            verbose=0,
-            policy_kwargs=policy_kwargs,
-            device=torch.device(device_type, device))
-
+        
+        if len(self.custom_encoder_args) >0:
+            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+        try:
+            
+            self.model = self.algorithm(
+                self.policy,
+                envs,
+                batch_size=self.batch_size,
+                n_steps=self.buffer_size,
+                verbose=1,
+                policy_kwargs=policy_kwargs,
+                device=torch.device(device_type, device))
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            raise e
+        
+        
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
-
+        
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             self.model = self._set_encoder_as_eval(self.model)
@@ -160,6 +176,7 @@ class Brain:
                           model_log_dir=paths["env_logs"],
                           plots_dir=paths["plots"],
                           name="reward_graph")
+        
 
     def test(
         self,
@@ -189,6 +206,7 @@ class Brain:
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
+        
         # for when algorithm is RecurrentPPO
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
@@ -298,6 +316,7 @@ class Brain:
         if encoder and not hasattr(self, 'train_encoder'):
             raise ValueError("encoder passed without setting train_encoder, should be one of: [True, False]")
 
+        
         return encoder
 
     def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
@@ -321,8 +340,11 @@ class Brain:
             # at this point in the code, it is guaranteed to be in either of the two
             try:
                 algorithm = getattr(stable_baselines3, algorithm)
+                
             except:
                 algorithm = getattr(sb3_contrib, algorithm)
+                
+        
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
@@ -332,6 +354,7 @@ class Brain:
         else:
             raise ValueError(f"Policy Algorithm should be either one of {algorithms} or a subclass of [{OnPolicyAlgorithm}, {OffPolicyAlgorithm}]")
 
+        
         return algorithm
 
     def _validate_policy(self, policy: str | BasePolicy) -> str | BasePolicy:
@@ -412,6 +435,7 @@ class Brain:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
+        
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model

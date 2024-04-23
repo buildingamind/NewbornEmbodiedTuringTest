@@ -1,6 +1,7 @@
 """The body of the agent in the environment."""
 from typing import Any, Optional
-from gym import Wrapper, Env
+from gym import Wrapper, Env,ObservationWrapper
+from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
 # from nett.body import ascii_art
@@ -94,7 +95,7 @@ class Body:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
         for wrapper in wrappers:
-            if not isinstance(wrapper, Wrapper):
+            if not issubclass(wrapper, ObservationWrapper):
                 raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
@@ -110,9 +111,16 @@ class Body:
             Env: The modified environment.
         """
         if self.wrappers:
-            for wrapper in self.wrappers:
-                env = wrapper(env)
+            try:
+                for wrapper in self.wrappers:
+                    env = wrapper(env)
+                    env_check = check_env(env, warn=True)
+                    if env_check != None:
+                        raise Exception(f"Failed env check")
+            except Exception as ex:
+                print(str(ex))
         return env
+    
 
     def __repr__(self) -> str:
         """

@@ -1,0 +1,26 @@
+Brain:
+  reward: supervised
+  batch_size: 512
+  buffer_size: 2048
+  algorithm: PPO
+  policy: CnnPolicy
+  seed: 42
+  encoder: 
+  train_encoder: True
+Body:
+  type: basic
+  dvs: True
+Environment:
+  use_ship: True
+  background: A
+  executable_path: /home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/executables/parsing/parsing.x86_64
+  record_agent: False
+  record_chamber: False
+  recording_frames: 1000
+Config:
+  run_id: "parsing_ship_A_exp2"
+  num_brains: 1
+  mode: "full"
+  train_eps: 1
+  test_eps: 20
+  output_dir: "/home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/runs/parsingdata"

@@ -63,7 +63,7 @@ class NETT:
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
-            verbosity: int = 1) -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 1, run_id: str = '') -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -106,7 +106,9 @@ class NETT:
         self.device_type = self._validate_device_type(device_type)
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
-
+        self.run_id = run_id
+        
+        
         # schedule jobs
         jobs, waitlist = self._schedule_jobs()
         self.logger.info("Scheduled jobs")
@@ -129,27 +131,30 @@ class NETT:
         Returns:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
-        max_workers = 1 if len(jobs) == 1 else None
-        initializer = mute if not self.verbosity else None
-        executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-        job_sheet: dict[Future, dict[str, Job]] = {}
+        try:
+            max_workers = 1 if len(jobs) == 1 else None
+            initializer = mute if not self.verbosity else None
+            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+            job_sheet: dict[Future, dict[str, Job]] = {}
 
-        for job in jobs:
-            job_future = executor.submit(self._execute_job, job)
-            job_sheet[job_future] = job
-            time.sleep(1)
-
-        while waitlist:
-            done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-            for doneFuture in done:
-                freeDevice: int = job_sheet.pop(doneFuture).device
-                job = waitlist.pop()
-                job.device = freeDevice
+            for job in jobs:
                 job_future = executor.submit(self._execute_job, job)
                 job_sheet[job_future] = job
                 time.sleep(1)
-    
-        return job_sheet
+
+            while waitlist:
+                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                for doneFuture in done:
+                    freeDevice: int = job_sheet.pop(doneFuture).device
+                    job = waitlist.pop()
+                    job.device = freeDevice
+                    job_future = executor.submit(self._execute_job, job)
+                    job_sheet[job_future] = job
+                    time.sleep(1)
+        
+            return job_sheet
+        except Exception as e:
+            print(str(e))
 
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """

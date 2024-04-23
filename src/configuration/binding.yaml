@@ -1,0 +1,28 @@
+Brain:
+  reward: supervised
+  batch_size: 512
+  buffer_size: 2048
+  algorithm: PPO
+  policy: CnnPolicy
+  seed: 42
+  encoder: 
+  train_encoder: True
+Body:
+  type: basic
+  dvs: False
+Environment:
+  # condition
+  object: "object1"
+  # generic config
+  executable_path: /home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/executables/binding/binding.x86_64
+  record_chamber: True
+  record_agent: True
+  recording_frames: 100
+Config:
+  run_id: "binding_object1"
+  num_brains: 1
+  mode: "full"
+  train_eps: 1
+  test_eps: 20
+  output_dir: "/home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/runs/parsingdata"
+
