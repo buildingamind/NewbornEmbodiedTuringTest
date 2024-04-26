@@ -352,6 +352,7 @@ class NETT:
                     env=test_environment,
                     iterations=iterations,
                     model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                    rec_path = str(job.paths["env_recs"]),
                     index=job.index)
             finally:
                 # close environment

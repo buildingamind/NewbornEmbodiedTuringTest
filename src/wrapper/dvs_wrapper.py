@@ -57,7 +57,7 @@ class DVSWrapper(gym.ObservationWrapper):
         
         try:
             stack, channels, width, height = self.env.observation_space.shape
-            self.shape=(1, width, height)
+            self.shape=(3, width, height)
             self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
             logger.info("In dvs wrapper")
         except Exception as ex:
@@ -98,7 +98,7 @@ class DVSWrapper(gym.ObservationWrapper):
         
         change = np_current - np_previous
         
-        return change.reshape(change.shape[0],change.shape[1],1)
+        return change.reshape(change.shape[0],change.shape[1],3)
     
     
     def observation(self, obs):
@@ -117,8 +117,12 @@ class DVSWrapper(gym.ObservationWrapper):
             prev = np.transpose(obs[0], (1, 2, 0))
             current = np.transpose(obs[1], (1, 2, 0))
             
-            prev = self.create_grayscale(prev)
-            current = self.create_grayscale(current)
+            #prev = self.create_grayscale(prev)
+            #current = self.create_grayscale(current)
+            
+            prev = np.array(prev, dtype=np.float32) / 255.0
+            current = np.array(current, dtype=np.float32) / 255.0
+            
             change = self.gaussianDiff(prev, current)
             
             ## threshold
@@ -126,8 +130,9 @@ class DVSWrapper(gym.ObservationWrapper):
             
         else:
             obs = np.transpose(obs, (1, 2, 0))
-            gray= self.create_grayscale(obs)
-            dc = self.threshold(gray)
+            #gray= self.create_grayscale(obs)
+            obs = np.array(obs, dtype=np.float32) / 255.0
+            dc = self.threshold(obs)
         
         # change to channel first, w, h
         dc = np.transpose(dc, (2, 0, 1))
@@ -146,8 +151,12 @@ class DVSWrapper(gym.ObservationWrapper):
 
         """
         dc = np.ones(shape=change.shape) * 128
-        dc[change >= self.change_threshold] = 255
-        dc[change <= -self.change_threshold] = 0
+        #dc[change >= self.change_threshold] = 255
+        #dc[change <= -self.change_threshold] = 0
+        
+        dc[change >= self.change_threshold / 255.0] = 255
+        dc[change <= -self.change_threshold / 255.0] = 0
+        
         return dc
     
     def reset(self, **kwargs):

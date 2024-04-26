@@ -5,24 +5,24 @@ Brain:
   algorithm: PPO
   policy: CnnPolicy
   seed: 42
-  encoder: 
+  encoder: small
   train_encoder: True
 Body:
   type: basic
   dvs: False
 Environment:
   # condition
-  object: "object1"
+  object: "object2"
   # generic config
-  executable_path: /home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/executables/binding/binding.x86_64
-  record_chamber: True
-  record_agent: True
+  executable_path: /home/mchivuku/projects/embodied_pipeline/ICLR/newbornmain/data/executables/binding/binding.x86_64
+  record_chamber: False
+  record_agent: False
   recording_frames: 100
 Config:
   run_id: "binding_object1"
   num_brains: 1
   mode: "full"
-  train_eps: 1
+  train_eps: 1000
   test_eps: 20
-  output_dir: "/home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/runs/parsingdata"
+  output_dir: "/data/mchivuku/embodiedai/neurips_experiments/binding/base_agents_new/small/object2_exp5"
 
