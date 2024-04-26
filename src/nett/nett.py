@@ -180,7 +180,8 @@ class NETT:
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
     @staticmethod
-    def analyze(run_dir: str | Path,
+    def analyze(config: str,
+                run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
@@ -192,6 +193,7 @@ class NETT:
         This method is a static method and does not require an instance of the NETT class to be called.
 
         Args:
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", or "viewinvariant".
             run_dir (str | Path): The directory where the run results are stored.
             output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
@@ -215,6 +217,11 @@ class NETT:
             output_dir = run_dir.joinpath("results")
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
+
+        chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}.csv")
+
+        if not chick_data_dir.exists():
+            raise ValueError(f"'{config}' is not a valid config.")
 
         # translate bar_order for R to read
         bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
@@ -243,7 +250,7 @@ class NETT:
                         "--results-wd", str(output_dir),
                         "--bar-order", bar_order_str,
                         "--color-bars", str(color_bars),
-                        "--chick-file", str(analysis_dir.joinpath("ChickData", "ChickData_Parsing.csv"))], check=True)
+                        "--chick-file", str(chick_data_dir)], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 
