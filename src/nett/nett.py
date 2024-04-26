@@ -338,9 +338,11 @@ class NETT:
                     device=job.device,
                     index=job.index,
                     paths=job.paths)
-            finally:
-                # close environment
                 train_environment.close()
+            except Exception as e:
+                self.logger.error(f"Error in testing: {e}")
+                train_environment.close()
+                exit()    
 
         # for test
         if self.mode in ["test", "full"]:
@@ -361,9 +363,11 @@ class NETT:
                     model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                     rec_path = str(job.paths["env_recs"]),
                     index=job.index)
-            finally:
-                # close environment
                 test_environment.close()
+            except Exception as e:
+                self.logger.error(f"Error in testing: {e}")
+                test_environment.close()
+                exit()
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
