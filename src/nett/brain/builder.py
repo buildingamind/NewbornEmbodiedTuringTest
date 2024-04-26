@@ -1,5 +1,6 @@
 """Module for the Brain class."""
 
+import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
@@ -128,6 +129,8 @@ class Brain:
         
         if len(self.custom_encoder_args) >0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+            
+        self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
             
             self.model = self.algorithm(
@@ -166,6 +169,9 @@ class Brain:
         self.logger.info("Training Complete")
 
         # save
+        self.save_encoder_policy_network(paths["model"])
+        print("Save feature extractor")
+        
         save_path = f"{paths['model'].joinpath('latest_model.zip')}"
         self.save(save_path)
         self.logger.info(f"Saved model at {save_path}")
@@ -183,6 +189,7 @@ class Brain:
         env,
         iterations,
         model_path: str,
+        rec_path: str,
         index: int,
         record_prefix: Optional[str] = None): # pylint: disable=unused-argument
         """
@@ -206,11 +213,17 @@ class Brain:
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
+        ## record - test video
+        vr = VideoRecorder(env=envs,
+        path="{}/agent_{}.mp4".format(rec_path, \
+            str(self.index)), enabled=True)
+        
         
         # for when algorithm is RecurrentPPO
         if issubclass(self.algorithm, RecurrentPPO):
             self.logger.info(f"Total number of episodes: {iterations}")
             num_envs = 1
+            #iterations = 20*50 # 20 episodes of 50 conditions  each
             t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
             for _ in range(iterations):
                 obs = env.reset()
@@ -231,9 +244,14 @@ class Brain:
                     episode_starts = done
                     episode_length += 1
                     env.render(mode="rgb_array")
+                    vr.capture_frame()    
+
+            vr.close()
+            vr.enabled = False
 
         # for all other algorithms
         else:
+            #iterations = 50*20*200 # 50 conditions of 20 steps each
             self.logger.info(f"Total number of testing steps: {iterations}")
             obs = envs.reset()
             t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
@@ -245,6 +263,10 @@ class Brain:
                 if done:
                     env.reset()
                 env.render(mode="rgb_array")
+                vr.capture_frame()    
+
+            vr.close()
+            vr.enabled = False
         
         t.close()
 
@@ -256,6 +278,31 @@ class Brain:
             path (str): The path to save the model.
         """
         self.model.save(path)
+        
+    def save_encoder_policy_network(self,path):
+        """
+        Saves the policy and feature extractor of the agent's model.
+
+        This method saves the policy and feature extractor of the agent's model
+        to the specified paths. It first checks if the model is loaded, and if not,
+        it prints an error message and returns. Otherwise, it saves the policy as
+        a pickle file and the feature extractor as a PyTorch state dictionary.
+
+        Returns:
+            None
+        """
+        
+        ## save policy
+        policy = self.model.policy
+        policy.save(os.path.join(path, "policy.pkl"))
+        
+        ## save encoder
+        encoder = self.model.policy.features_extractor.state_dict()
+        save_path = os.path.join(path, "feature_extractor.pth")
+        torch.save(encoder, save_path)
+        
+        self.logger.info(f"Saved feature_extractor: {save_path}")
+        return
 
     def load(self, model_path: str | Path) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """

@@ -98,6 +98,8 @@ class Experiment:
         self.output_dir = config['output_dir']
         self.run_id  = config['run_id']
         
+        print(self.train_eps, self.test_eps, self.mode, self.num_brains, self.output_dir, self.run_id) 
+        
 
     
     def initialize_brain(self):
