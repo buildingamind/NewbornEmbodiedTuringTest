@@ -151,6 +151,7 @@ class Experiment:
             train_eps=self.train_eps, \
             test_eps=self.train_eps, \
             mode=self.mode, \
+            job_memory=21, \
             output_dir=self.output_dir,run_id=self.run_id)
         
         #logger.info("Experiment completed successfully")
