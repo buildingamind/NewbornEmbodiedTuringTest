@@ -214,60 +214,64 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        vr = VideoRecorder(env=envs,
-        path="{}/agent_{}.mp4".format(rec_path, \
-            str(self.index)), enabled=True)
-        
-        
-        # for when algorithm is RecurrentPPO
-        if issubclass(self.algorithm, RecurrentPPO):
-            self.logger.info(f"Total number of episodes: {iterations}")
-            num_envs = 1
-            #iterations = 20*50 # 20 episodes of 50 conditions  each
-            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
-            for _ in range(iterations):
-                obs = env.reset()
-                # cell and hidden state of the LSTM
-                done, lstm_states = False, None
-                # episode start signals are used to reset the lstm states
-                episode_starts = np.ones((num_envs,), dtype=bool)
-                episode_length = 0
-                while not done:
-                    action, lstm_states = self.model.predict(
-                        obs,
-                        state=lstm_states,
-                        episode_start=episode_starts,
-                        deterministic=True)
-                    obs, _, done, _ = env.step(action) # obs, rewards, done, info
+        print(rec_path)
+        try:
+            vr = VideoRecorder(env=envs,
+            path="{}/agent_{}.mp4".format(rec_path, \
+                str(index)), enabled=True)
+            
+            
+            # for when algorithm is RecurrentPPO
+            if issubclass(self.algorithm, RecurrentPPO):
+                self.logger.info(f"Total number of episodes: {iterations}")
+                num_envs = 1
+                #iterations = 20*50 # 20 episodes of 50 conditions  each
+                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                for _ in range(iterations):
+                    obs = env.reset()
+                    # cell and hidden state of the LSTM
+                    done, lstm_states = False, None
+                    # episode start signals are used to reset the lstm states
+                    episode_starts = np.ones((num_envs,), dtype=bool)
+                    episode_length = 0
+                    while not done:
+                        action, lstm_states = self.model.predict(
+                            obs,
+                            state=lstm_states,
+                            episode_start=episode_starts,
+                            deterministic=True)
+                        obs, _, done, _ = env.step(action) # obs, rewards, done, info
+                        t.update(1)
+                        # t.refresh()
+                        episode_starts = done
+                        episode_length += 1
+                        env.render(mode="rgb_array")
+                        vr.capture_frame()    
+
+                vr.close()
+                vr.enabled = False
+
+            # for all other algorithms
+            else:
+                #iterations = 50*20*200 # 50 conditions of 20 steps each
+                self.logger.info(f"Total number of testing steps: {iterations}")
+                obs = envs.reset()
+                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                for _ in range(iterations):
+                    action, _ = self.model.predict(obs, deterministic=True) # action, states
+                    obs, _, done, _ = envs.step(action) # obs, reward, done, info
                     t.update(1)
                     # t.refresh()
-                    episode_starts = done
-                    episode_length += 1
+                    if done:
+                        env.reset()
                     env.render(mode="rgb_array")
                     vr.capture_frame()    
 
-            vr.close()
-            vr.enabled = False
-
-        # for all other algorithms
-        else:
-            #iterations = 50*20*200 # 50 conditions of 20 steps each
-            self.logger.info(f"Total number of testing steps: {iterations}")
-            obs = envs.reset()
-            t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
-            for _ in range(iterations):
-                action, _ = self.model.predict(obs, deterministic=True) # action, states
-                obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                t.update(1)
-                # t.refresh()
-                if done:
-                    env.reset()
-                env.render(mode="rgb_array")
-                vr.capture_frame()    
-
-            vr.close()
-            vr.enabled = False
-        
+                vr.close()
+                vr.enabled = False
+        except Exception as ex:
+            print(str(ex))
+            
         t.close()
 
     def save(self, path: str) -> None:

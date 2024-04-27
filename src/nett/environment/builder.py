@@ -151,6 +151,7 @@ class Environment(Wrapper):
         #if kwargs.get("rewarded", False):
         args.extend(["--rewarded", "true"])
         self.step_per_episode = kwargs.get("episode_steps", 200)
+        
         #if kwargs.get("episode_steps", False):
         #    args.extend(["--episode-steps", str(kwargs["episode_steps"])])
 

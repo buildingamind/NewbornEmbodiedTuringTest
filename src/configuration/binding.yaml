@@ -5,7 +5,7 @@ Brain:
   algorithm: PPO
   policy: CnnPolicy
   seed: 42
-  encoder: small
+  encoder: large
   train_encoder: True
 Body:
   type: basic
@@ -24,5 +24,5 @@ Config:
   mode: "full"
   train_eps: 1000
   test_eps: 20
-  output_dir: "/data/mchivuku/embodiedai/neurips_experiments/binding/base_agents_new/small/object2_exp5"
+  output_dir: "/data/mchivuku/embodiedai/neurips_experiments/binding/base_agents_new/large/object2_exp4"
 

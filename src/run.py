@@ -146,6 +146,7 @@ class Experiment:
     
     def run(self):
         benchmarks = NETT(brain=self.brain, body=self.body, environment=self.env)
+        print(self.mode)
         benchmarks.run(num_brains=self.num_brains, \
             train_eps=self.train_eps, \
             test_eps=self.train_eps, \

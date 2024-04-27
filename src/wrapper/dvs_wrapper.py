@@ -45,7 +45,7 @@ class DVSWrapper(gym.ObservationWrapper):
 
     """
 
-    def __init__(self, env, change_threshold=60, kernel_size=(3, 3), sigma=1 ):
+    def __init__(self, env, change_threshold=60, kernel_size=(3, 3), sigma=1, is_color = True ):
         super().__init__(env)
         
         self.change_threshold = change_threshold
@@ -54,6 +54,7 @@ class DVSWrapper(gym.ObservationWrapper):
         self.num_stack = 2 ## default
         self.env = gym.wrappers.FrameStack(env,self.num_stack)
         self.stack = collections.deque(maxlen=self.num_stack)
+        self.is_color = is_color
         
         try:
             stack, channels, width, height = self.env.observation_space.shape
@@ -98,7 +99,7 @@ class DVSWrapper(gym.ObservationWrapper):
         
         change = np_current - np_previous
         
-        return change.reshape(change.shape[0],change.shape[1],3)
+        return change
     
     
     def observation(self, obs):
@@ -117,12 +118,10 @@ class DVSWrapper(gym.ObservationWrapper):
             prev = np.transpose(obs[0], (1, 2, 0))
             current = np.transpose(obs[1], (1, 2, 0))
             
-            #prev = self.create_grayscale(prev)
-            #current = self.create_grayscale(current)
-            
-            prev = np.array(prev, dtype=np.float32) / 255.0
-            current = np.array(current, dtype=np.float32) / 255.0
-            
+            if not self.is_color:
+                prev = cv2.cvtColor(prev, cv2.COLOR_RGB2GRAY)
+                current = cv2.cvtColor(current, cv2.COLOR_RGB2GRAY)
+                
             change = self.gaussianDiff(prev, current)
             
             ## threshold
@@ -130,7 +129,10 @@ class DVSWrapper(gym.ObservationWrapper):
             
         else:
             obs = np.transpose(obs, (1, 2, 0))
-            #gray= self.create_grayscale(obs)
+            
+            if not self.is_color:
+                obs = self.create_grayscale(obs)
+            
             obs = np.array(obs, dtype=np.float32) / 255.0
             dc = self.threshold(obs)
         
@@ -150,14 +152,15 @@ class DVSWrapper(gym.ObservationWrapper):
             numpy.ndarray: The thresholded change map.
 
         """
-        dc = np.ones(shape=change.shape) * 128
-        #dc[change >= self.change_threshold] = 255
-        #dc[change <= -self.change_threshold] = 0
-        
-        dc[change >= self.change_threshold / 255.0] = 255
-        dc[change <= -self.change_threshold / 255.0] = 0
-        
-        return dc
+        if not self.is_color:
+            ret_frame = np.ones(shape=change.shape) * 128
+            ret_frame[change >= self.change_threshold] = 255
+            ret_frame[change <= -self.change_threshold] = 0
+        else:
+            ret_frame = abs(change)
+            ret_frame[ret_frame < self.change_threshold] = 0
+            
+        return ret_frame
     
     def reset(self, **kwargs):
         initial_obs = self.env.reset(**kwargs)
