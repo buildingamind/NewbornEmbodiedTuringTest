@@ -62,7 +62,7 @@ class NETT:
             description: str = None,
             job_memory: int = 4,
             buffer: float = 1.2,
-            steps_per_episode: int = 200,
+            steps_per_episode: int = 1000,
             verbosity: int = 1, run_id: str = '',
             synchronous=True) -> list[Future]: # pylint: disable=unused-argument
         """
@@ -80,7 +80,7 @@ class NETT:
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbosity (int, optional): The verbosity level of the run. Defaults to 1.
 
         Returns:

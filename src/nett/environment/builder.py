@@ -150,7 +150,7 @@ class Environment(Wrapper):
             args.extend(["--random-pos", "true"])
         #if kwargs.get("rewarded", False):
         args.extend(["--rewarded", "true"]) #TODO: Add back the rewarded argument
-        self.step_per_episode = kwargs.get("episode_steps", 200)
+        self.step_per_episode = kwargs["episode_steps"]
         #if kwargs.get("episode_steps", False): #TODO: Ensure that setting episode_steps to 1000 is the same as not setting it
         
         #if kwargs.get("episode_steps", False):
