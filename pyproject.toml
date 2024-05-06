@@ -15,6 +15,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
+    "mlagents_envs @ git+https://github.com/Unity-Technologies/ml-agents@develop#subdirectory=ml-agents-envs",
     "mlagents @ git+https://github.com/Unity-Technologies/ml-agents@develop#subdirectory=ml-agents",
     "stable-baselines3[extra]==1.8.0",
     "sb3-contrib==1.8.0",
