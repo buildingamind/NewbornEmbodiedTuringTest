@@ -283,7 +283,7 @@ class Brain:
         """
         self.model.save(path)
         
-    def save_encoder_policy_network(self,path):
+    def save_encoder_policy_network(self, path):
         """
         Saves the policy and feature extractor of the agent's model.
 
@@ -298,6 +298,7 @@ class Brain:
         
         ## save policy
         policy = self.model.policy
+        path.mkdir(parents=True, exist_ok=True)
         policy.save(os.path.join(path, "policy.pkl"))
         
         ## save encoder
