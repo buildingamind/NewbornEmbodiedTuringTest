@@ -53,9 +53,12 @@ test_data <- test_data %>%
 
 # Create a variable to store the final order
 order <- NULL
+bar_order<-"custom"
 if (bar_order == "default" || bar_order == "asc" || bar_order == "desc"){
   order <- bar_order
 }else {
+  order_input<-"3,4,1,2"
+  
   order <- as.integer(strsplit(order_input, ",")[[1]])
 }
 
@@ -71,16 +74,22 @@ if (!is.null(order)) {
       mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
   } else if (order != "default") {
     # Map numeric indices to factor levels
-    current_order <- levels(factor(test_data$test.cond))
+    #current_order <- levels(factor(test_data$test.cond))
+    #new_order <- current_order[order]
+    #test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
+    current_order <- levels(factor(chick_data$test.cond))
     new_order <- current_order[order]
-    test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
+    chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
   }
   # If order is "default", no need to change anything
 }
 
 
 # Plot aesthetic settings ------------------------------------------------------
-custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
+#custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
+custom_palette <- c("#3F8CB7", "#62AC6B",  "#FCEF88","#5D5797", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
+
+#5D5797, #FCEF88,#3F8CB7,#62AC6B
 chickred <- "#AF264A"
 
 p <- ggplot() +
@@ -220,7 +229,7 @@ across_imp_cond <- by_test_cond %>%
 write.csv(across_imp_cond, "stats_across_all_agents.csv")
 
 dot_data <- filter(by_test_cond, test.cond != "Rest")
-
+# Order the data frame by value
 make_bar_charts(data = across_imp_cond,
                 dots = dot_data,
                 aes_y = all_avgs,
