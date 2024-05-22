@@ -83,8 +83,7 @@ if (!is.null(order)) {
     #test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
     current_order <- levels(factor(chick_data$test.cond))
     new_order <- current_order[order]
-    test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
-    # chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
+    chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
   }
   # If order is "default", no need to change anything
 }
