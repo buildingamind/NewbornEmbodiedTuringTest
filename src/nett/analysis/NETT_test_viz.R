@@ -64,7 +64,11 @@ if (bar_order == "default" || bar_order == "asc" || bar_order == "desc"){
 
 # Conditionally reorder the dataframe based on user input
 if (!is.null(order)) {
-  if (order == "desc") {
+  if (typeof(order) != "character"){
+    current_order <- levels(factor(chick_data$test.cond))
+    new_order <- current_order[order]
+    chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
+  } else if (order == "desc") {
     test_data <- test_data %>%
       arrange(desc(percent_correct)) %>%
       mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
