@@ -78,12 +78,13 @@ if (!is.null(order)) {
       mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
   } else if (order != "default") {
     # Map numeric indices to factor levels
-    current_order <- levels(factor(test_data$test.cond))
+    # current_order <- levels(factor(test_data$test.cond))
     #new_order <- current_order[order]
     #test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
-    # current_order <- levels(factor(chick_data$test.cond))
+    current_order <- levels(factor(chick_data$test.cond))
     new_order <- current_order[order]
-    chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
+    test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
+    # chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
   }
   # If order is "default", no need to change anything
 }
