@@ -15,14 +15,14 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
-    "mlagents==1.0.0",
+    "mlagents==1.0.0,
     "stable-baselines3[extra]==1.8.0",
     "sb3-contrib==1.8.0",
     "torchvision",
     "timm",
     "nvidia-ml-py",
-    "pytorch-lightning",
-    "pytorch-lightning-bolts",
+    "pytorch-lightning==1.1.8",
+    "pytorch-lightning-bolts==0.3.0",
     "scikit-learn==1.4.2"
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
