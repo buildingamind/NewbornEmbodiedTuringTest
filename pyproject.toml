@@ -22,7 +22,7 @@ dependencies = [
     "timm",
     "nvidia-ml-py",
     "pytorch-lightning==1.1.8",
-    "pytorch-lightning-bolts==0.7.0",
+    "pytorch-lightning-bolts==0.3.2.post1",
     "scikit-learn==1.4.2"
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
