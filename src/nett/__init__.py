@@ -30,7 +30,7 @@ from nett.brain import list_encoders, list_algorithms, list_policies
 from nett.environment import list_configs
 
 # release version
-__version__ = "0.3.2"
+__version__ = "0.3.1"
 
 # change permissions of the ml-agents binaries directory
 
