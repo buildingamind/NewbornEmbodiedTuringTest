@@ -38,21 +38,23 @@ The NETT toolkit comprises three key components:
 The directory structure of the code is as follows:
 
 ```
-├── docs                       # Documentation and guides
-├── notebooks
-│   ├── Getting Started.ipynb  # Introduction and setup notebook
+├── docs                          # Documentation and guides
+├── examples
+│   ├── notebooks                 # Jupyter Notebooks for examples
+│      └── Getting Started.ipynb  # Introduction and setup notebook
+│   └── run                       # Terminal script example
 ├── src/nett
-│   ├── analysis               # Analysis scripts
-│   ├── body                   # Agent body configurations
-│   ├── brain                  # Neural network models and learning algorithms
-│   ├── environment            # Simulation environments
-│   ├── utils                  # Utility functions
-│   ├── nett.py                # Main library script
-│   └── __init__.py            # Package initialization
-├── tests                      # Unit tests
-├── mkdocs.yml                 # MkDocs configuration
-├── pyproject.toml             # Project metadata
-└── README.md                  # This README file
+│   ├── analysis                  # Analysis scripts
+│   ├── body                      # Agent body configurations
+│   ├── brain                     # Neural network models and learning algorithms
+│   ├── environment               # Simulation environments
+│   ├── utils                     # Utility functions
+│   ├── nett.py                   # Main library script
+│   └── __init__.py               # Package initialization
+├── tests                         # Unit tests
+├── mkdocs.yml                    # MkDocs configuration
+├── pyproject.toml                # Project metadata
+└── README.md                     # This README file
 ```
 
 ## Getting Started
