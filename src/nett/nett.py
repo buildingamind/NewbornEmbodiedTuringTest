@@ -186,7 +186,8 @@ class NETT:
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
                 bar_order: str | list[int] = "default",
-                color_bars: bool = True) -> None:
+                color_bars: bool = True,
+                palette: list[str] = "#3F8CB7,#FCEF88,#5D5797,#62AC6B,#B74779,#2C4E98,#CCCCE7,#08625B,#D15056") -> None:
         """
         Analyze the results of a run.
 
@@ -201,7 +202,10 @@ class NETT:
             num_episodes (int, optional): The number of episodes to be analyzed.
             bar_order (str | list[int], optional): The order in which the bars are to be displayed in the analysis plots. 
                 Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
-            color_bars (bool, optional): Whether to color the bars in the analysis plots by condition. Default is True.
+            color_bars (bool, optional): Whether to color the bars in the analysis plots by condition. 
+            palette (list[str], optional): The color palette to be used for coloring the bars in the analysis plots.
+                Default is ["#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98", "#CCCCE7", "#08625B", "#D15056"].
+            Default is True.
 
         Returns:
             None
@@ -250,7 +254,8 @@ class NETT:
                         "--results-wd", str(output_dir),
                         "--bar-order", bar_order_str,
                         "--color-bars", str(color_bars),
-                        "--chick-file", str(chick_data_dir)], check=True)
+                        "--chick-file", str(chick_data_dir), 
+                        "--palette", ",".join(palette)], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 

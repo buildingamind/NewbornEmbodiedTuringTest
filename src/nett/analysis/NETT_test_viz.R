@@ -25,6 +25,11 @@ parser$add_argument("--bar-order", type = "character", default = "default", dest
 parser$add_argument("--color-bars", type = "character", dest="color_bars",
                     help="Should the bars be colored by test condition?",
                     required=TRUE)
+parser$add_argument("--color-bars", type = "character", dest="color_bars",
+                    help="Should the bars be colored by test condition?",
+                    required=FALSE)
+parser$add_argument("--palette", type = "character", dest = "custom_palette",
+                    help="Custom color palette as a vector of hex codes (e.g., '#3F8CB7,#FCEF88,#5D5797')", required=TRUE)
 
 # Set script variables based on user input
 args <- parser$parse_args()
@@ -51,36 +56,35 @@ test_data <- test_data %>%
 
 # Adjust bar order according to user input -------------------------------------
 
-# Create a variable to store the final order
-order <- NULL
-if (bar_order == "default" || bar_order == "asc" || bar_order == "desc"){
-  order <- bar_order
-}else {
-  order <- as.integer(strsplit(order_input, ",")[[1]])
-}
-
 # Conditionally reorder the dataframe based on user input
-if (!is.null(order)) {
-  if (order == "desc") {
-    test_data <- test_data %>%
-      arrange(desc(percent_correct)) %>%
-      mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
-  } else if (order == "asc"){
-    test_data <- test_data %>%
-      arrange(percent_correct) %>%
-      mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
-  } else if (order != "default") {
-    # Map numeric indices to factor levels
-    current_order <- levels(factor(test_data$test.cond))
-    new_order <- current_order[order]
-    test_data$test.cond <- factor(test_data$test.cond, levels = new_order)
-  }
-  # If order is "default", no need to change anything
-}
 
+switch(bar_order,
+"desc" = {
+  test_data <- test_data %>%
+    arrange(desc(percent_correct)) %>%
+    mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
+},
+"asc" = {
+  test_data <- test_data %>%
+    arrange(percent_correct) %>%
+    mutate(test.cond = factor(test.cond, levels = unique(test.cond)))
+},
+"default" = {
+  # Do nothing
+},
+{ # Default case if order is not "desc", "asc", or "default"
+  # split the string into a vector of indices
+  order <- as.integer(strsplit(bar_order, ",")[[1]])
+  # Map numeric indices to factor levels
+  current_order <- levels(factor(chick_data$test.cond))
+  new_order <- current_order[order]
+  # Reorder the factor levels
+  chick_data$test.cond <- factor(chick_data$test.cond, levels = new_order)
+})
 
 # Plot aesthetic settings ------------------------------------------------------
-custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
+custom_palette <- unlist(strsplit(custom_palette, ","))
+# c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
 chickred <- "#AF264A"
 
 p <- ggplot() +
@@ -95,7 +99,6 @@ p <- ggplot() +
   theme(axis.title = element_text(face="bold"),
         axis.text.x = element_text(face="bold", size=7.5),
         axis.text.y = element_text(face="bold", size=7.5))
-
 
 # Bar Chart Function -----------------------------------------------------------
 make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
@@ -201,7 +204,6 @@ for (i in unique(by_imp_cond$imprint.cond))
                   error_max = avgs_by_imp + se,
                   img_name = img_name)
 }
-
 
 # Plot across all imprinting conditions ----------------------------------------
 across_imp_cond <- by_test_cond %>%
