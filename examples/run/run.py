@@ -1,36 +1,29 @@
 from abc import abstractmethod
-import sys
 import os
-import time
 import logging
 import argparse
 import yaml
 from nett import Brain, Body, Environment
 from nett import NETT
-import pdb
 from nett.environment.configs import Binding, Parsing, ViewInvariant
 from wrapper.dvs_wrapper import DVSWrapper
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-
 def load_configuration(config_path: str):
     with open(config_path, 'r') as f:
         return yaml.safe_load(f)
-
 
 class BodyConfiguration:
     def __init__(self, kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-
 class BrainConfiguration:
     def __init__(self, kwargs):
         for key, value in kwargs.items():
             setattr(self, key, value)
-
 
 class EnvironmentConfiguration:
     def __init__(self, kwargs):
@@ -99,9 +92,7 @@ class Experiment:
         self.run_id  = config['run_id']
         
         print(self.train_eps, self.test_eps, self.mode, self.num_brains, self.output_dir, self.run_id) 
-        
 
-    
     def initialize_brain(self):
         """
         Initialize Brain class with the attributes extracted from the brain_config
@@ -287,12 +278,6 @@ def main():
         
         else:
             raise ValueError("Invalid Experiment Name")
-
-
-            
-            
-        
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Run the NETT pipeline - NeurIPS 2021 submission')

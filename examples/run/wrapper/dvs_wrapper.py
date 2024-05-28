@@ -101,7 +101,6 @@ class DVSWrapper(gym.ObservationWrapper):
         
         return change
     
-    
     def observation(self, obs):
         """
         Performs the DVS transformation on the observation.
