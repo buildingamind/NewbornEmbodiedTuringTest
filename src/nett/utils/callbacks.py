@@ -52,6 +52,8 @@ class SupervisedSaveBestModelCallback(BaseCallback):
         self.env_log_path = env_log_path
         self.best_mean_performance = -np.inf
         self.best_mean_reward = -np.inf
+        self.save_dir.mkdir(parents=True, exist_ok=True)
+
 
     def _on_step(self) -> None:
         if self.n_calls % self.summary_freq == 0:
