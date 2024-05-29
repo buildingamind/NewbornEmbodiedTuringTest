@@ -26,7 +26,7 @@ from stable_baselines3 import PPO
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
+# from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -216,9 +216,9 @@ class Brain:
         ## record - test video
         print(rec_path)
         try:
-            vr = VideoRecorder(env=envs,
-            path="{}/agent_{}.mp4".format(rec_path, \
-                str(index)), enabled=True)
+            # vr = VideoRecorder(env=envs,
+            # path="{}/agent_{}.mp4".format(rec_path, \
+                # str(index)), enabled=True)
             
             
             # for when algorithm is RecurrentPPO
@@ -246,10 +246,10 @@ class Brain:
                         episode_starts = done
                         episode_length += 1
                         env.render(mode="rgb_array")
-                        vr.capture_frame()    
+                        # vr.capture_frame()    
 
-                vr.close()
-                vr.enabled = False
+                # vr.close()
+                # vr.enabled = False
 
             # for all other algorithms
             else:
@@ -265,10 +265,10 @@ class Brain:
                     if done:
                         env.reset()
                     env.render(mode="rgb_array")
-                    vr.capture_frame()    
+                    # vr.capture_frame()    
 
-                vr.close()
-                vr.enabled = False
+                # vr.close()
+                # vr.enabled = False
         except Exception as ex:
             print(str(ex))
             
@@ -283,7 +283,7 @@ class Brain:
         """
         self.model.save(path)
         
-    def save_encoder_policy_network(self,path):
+    def save_encoder_policy_network(self, path):
         """
         Saves the policy and feature extractor of the agent's model.
 
@@ -298,6 +298,7 @@ class Brain:
         
         ## save policy
         policy = self.model.policy
+        path.mkdir(parents=True, exist_ok=True)
         policy.save(os.path.join(path, "policy.pkl"))
         
         ## save encoder
