@@ -4,25 +4,45 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "nett-benchmarks"
-version = "0.1"
+dynamic = ["version"]
 authors = [
   { name="Bhargav Desai", email="desabh@iu.edu" },
+  { name="Zachary Laborde", email="zlaborde@iu.edu" },
+  { name="Manju Garimella", email="mchivuku@iu.edu" },
 ]
 description = "A testbed for comparing the learning abilities of newborn animals and autonomous artificial agents."
 readme = "README.md"
-requires-python = ">=3.10.12, <3.10.13"
+license = {file = "LICENSE"}
+requires-python = "==3.10.12"
 dependencies = [
     "mlagents==1.0.0",
     "stable-baselines3[extra]==1.8.0",
     "sb3-contrib==1.8.0",
-    "imageio-ffmpeg",
     "torchvision",
-    "scipy",
     "timm",
     "nvidia-ml-py",
-    "ipywidgets"
+    "pytorch-lightning==1.1.8",
+    "pytorch-lightning-bolts==0.3.0",
+    "scikit-learn==1.4.2"
+]
+keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
+classifiers = [
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: R",
+  "Environment :: GPU :: NVIDIA CUDA"
 ]
 
+[project.optional-dependencies]
+notebook = ["ipywidgets"]
+
 [project.urls]
-"Homepage" = "https://github.com/pypa/sampleproject"
-"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+"Homepage" = "https://github.com/buildingamind/NewbornEmbodiedTuringTest"
+"Bug Tracker" = "https://github.com/buildingamind/NewbornEmbodiedTuringTest/issues"
+"Documentation" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/index.html"
+
+[tool.setuptools.dynamic]
+version = { attr = "nett.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+

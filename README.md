@@ -1,138 +1,188 @@
-# **Unity environment for ChickAI: virtual controlled-rearing experiments**
+<div align="center">
+<img src="https://github.com/buildingamind/NewbornEmbodiedTuringTest/raw/main/docs/assets/images/banner.png" alt="Banner" style />
 
-This is a collection of tools for simulating virtual agents under controlled-rearing conditions. The agents
-generated and studied through this pipeline can be compared directly to real chicks recorded by the **[**Building a Mind
-Lab**](http://buildingamind.com/)**. This pipeline provides all necessary components for simulating and replicating embodied models from the lab.
+# **Newborn Embodied Turing Test**
 
-The figure below shows the experiment setup for the three experiments discussed in the guide.
+Benchmarking Virtual Agents in Controlled-Rearing Conditions
 
-<img src="docs/digital_twin.jpg" alt="Digital Twin" style="zoom:35%;" />
+![PyPI - Version](https://img.shields.io/pypi/v/nett-benchmarks)
+![Python Version from PEP 621 TOML](https://img.shields.io/python/required-version-toml?tomlFilePath=https%3A%2F%2Fraw.githubusercontent.com%2Fbuildingamind%2FNewbornEmbodiedTuringTest%2Fmain%2Fpyproject.toml)
+![GitHub License](https://img.shields.io/github/license/buildingamind/NewbornEmbodiedTuringTest)
+![GitHub Issues or Pull Requests](https://img.shields.io/github/issues/buildingamind/NewbornEmbodiedTuringTest)
 
-## **How to Use this Repository**
+[Getting Started](#getting-started) •
+[Documentation](https://buildingamind.github.io/NewbornEmbodiedTuringTest/) • 
+[Lab Website](http://buildingamind.com/)
 
-This directory provides three components for building embodied virtual agents. These are a video game which serves as a virtual world, a set of programs to run experiments in the virtual world, and a set of programs to visualize the data coming from the experiments.
+</div>
 
-## **Directory Structure**
+The Newborn Embodied Turing Test (NETT) is a cutting-edge toolkit designed to simulate virtual agents in controlled-rearing conditions. This innovative platform enables researchers to create, simulate, and analyze virtual agents, facilitating direct comparisons with real chicks as documented by the **[Building a Mind Lab](http://buildingamind.com/)**. Our comprehensive suite includes all necessary components for the simulation and analysis of embodied models, closely replicating laboratory conditions.
 
-**Following the directory structure of the code.**
+Below is a visual representation of our experimental setup, showcasing the infrastructure for the three primary experiments discussed in this documentation.
+
+<div align="center">
+
+<img src="https://github.com/buildingamind/NewbornEmbodiedTuringTest/raw/main/docs/assets/images/digital_twin.jpg" alt="Digital Twin" width="65%" />
+</div>
+
+## How to Use this Repository
+
+The NETT toolkit comprises three key components:
+
+1. **Virtual Environment**: A dynamic environment that serves as the habitat for virtual agents.
+2. **Experimental Simulation Programs**: Tools to initiate and conduct experiments within the virtual world.
+3. **Data Visualization Programs**: Utilities for analyzing and visualizing experiment outcomes.
+
+## Directory Structure
+
+The directory structure of the code is as follows:
 
 ```
-
-├── docs
-├── mkdocs.yml
-├── README.md
-├── notebooks
-│   ├── Getting Started.ipynb
-├── src/netts
-│   ├── body
-│   └── brain
-│   ├── environment
-│   └── utils
-│   ├── nett.py
-│   └── __init__.py
-└── tests
-
+├── docs                          # Documentation and guides
+├── examples
+│   ├── notebooks                 # Jupyter Notebooks for examples
+│      └── Getting Started.ipynb  # Introduction and setup notebook
+│   └── run                       # Terminal script example
+├── src/nett
+│   ├── analysis                  # Analysis scripts
+│   ├── body                      # Agent body configurations
+│   ├── brain                     # Neural network models and learning algorithms
+│   ├── environment               # Simulation environments
+│   ├── utils                     # Utility functions
+│   ├── nett.py                   # Main library script
+│   └── __init__.py               # Package initialization
+├── tests                         # Unit tests
+├── mkdocs.yml                    # MkDocs configuration
+├── pyproject.toml                # Project metadata
+└── README.md                     # This README file
 ```
 
-* `src/netts`**: **Contains the code for running experiments with simulated agents. Following is the structure of `src/netts` folder:
-* `tests`: Contains unit tests
-* `docs`: Contains project documentation 
+## Getting Started
+<!-- sphinx-start -->
+<!-- This comment is here to denote the start of the "Getting Started" page for Sphinx documentation -->
+To begin benchmarking your first embodied agent with NETT, please be aware:
 
-## **Getting Started**
+**Important**: The `mlagents==1.0.0` dependency is incompatible with Apple Silicon (M1, M2, etc.) chips. Please utilize an alternate device to execute this codebase.
 
-In this section, you will learn to use the repository to benchmark your first embodied agent with NETTs! 
+### Installation
 
-### **Codebase Installation**
+1. **Virtual Environment Setup (Highly Recommended)**
 
-1. **(Highly Recommended) **[create and configure a virtual environment](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda/ "Link for how to set-up a virtual env")
-   ****steps described below :****
+   Create and activate a virtual environment to avoid dependency conflicts.
+   ```bash
+   conda create -y -n nett_env python=3.10.12
+   conda activate nett_env
    ```
-   conda create -n netts python=3.10.12
-   conda activate netts
-   pip install setuptools==65.5.0 pip==21
+   See [here](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env") for detailed instructions.
+
+2. **Install Prerequistes**
+
+   Install the needed versions of `setuptools` and `pip`:
+   ```bash
+   pip install setuptools==65.5.0 pip==21 wheel==0.38.4
    ```
-2. To install the repository using `pip`:
-   ```
+   **NOTE:** This is a result of incompatibilities with the subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
+
+3. **Toolkit Installation**
+
+   Install the toolkit using `pip`.
+   ```bash
    pip install nett-benchmarks
    ```
 
-Note if not installing in a virtual environment, the install might fail because of conflicting dependency versions. `mlagents` uses `gym==0.21` which in-turn has dependencies on older versions of `numpy`, specifically `1.21.2` or below. Ensure that these requirements are met in your environment before proceeding. 
+   **NOTE:**: Installation outside a virtual environment may fail due to conflicting dependencies. Ensure compatibility, especially with `gym==0.21` and `numpy<=1.21.2`.
 
-### **Running a NETT**
+### Running a NETT
 
-After having followed steps above, NETTs can be run with a few lines of code:
+1. **Download or Create the Unity Executable**
 
-1. Download the executable from the hosted webpage or build your own executable following the steps mentioned in {placeholder}. Additionally, a video walkthrough of creating an executable from scratch is made available {here}. 
+   Obtain a pre-made Unity executable from [here](https://origins.luddy.indiana.edu/environments/). The executable is required to run the virtual environment.
 
-2. The package defines three components–the `Brain`, `Body` and `Environment`. For a detailed description of the division of responsibilities of each component, please refer to the {documentation}. 
-```
-from netts import Brain, Body, Environment
-from netts import NETT
-```
+2. **Import NETT Components**
 
-3. Define each component as required. Let’s start with the `Brain`. This component holds all the parts concerned with “learning”. This includes the architecture itself along with its many parameters, as well as the reward function and learning algorithm, such as `PPO`. The package is designed to make each component flexible. Specifically, each constituent of the Brain such as the encoder, policy networks or the reward function can be customized. The training and testing loops can be customized by inheriting the class and overriding them. This may be necessary in specialized cases, such as running on customized hardware such as TPU and IPUs. More details can be found in the documentation. 
+   Start by importing the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
+   ```python
+   from nett import Brain, Body, Environment
+   from nett import NETT
+   ```
 
-Consider a rather simple definition: 
-```
-brain = Brain(policy="CnnPolicy", algorithm="PPO")
-```
+3. **Component Configuration**:
 
-This defines the policy network and the learning algorithm, the rest of the arguments are left to defaults. Please refer to the repository for a complete list of supported arguments and customizations. This document will be updated with appropriate links to tutorials planned as part of future releases too. Note that the repository uses modules from `stable-baselines3` underneath and the value specified as arguments directly correspond with it. 
+- **Brain**
 
-4. Next, define the `Body`. Technically, the body is a medium through which all information passes through before reaching the brain. Hence, this component is primarily concerned with the application of `gym.Wrappers` (such as the DVS wrapper) that modify the information from the environment before they “reach” the brain for processing. 
+   Configure the learning aspects, including the policy network (e.g. "CnnPolicy"), learning algorithm (e.g. "PPO"), the reward function, and the encoder.
+   ```python
+   brain = Brain(policy="CnnPolicy", algorithm="PPO")
+   ```
+   To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively.
 
-Consider a simple definition: 
-```
-body = Body(type="basic", dvs=False, wrappers=None)
-```
+- **Body** 
 
-In this example, we do not pass any wrappers. Or, we let the information from the environment reach the brain "as is". 
+   Set up the agent's physical interface with the environment. It's possible to apply gym.Wrappers for data preprocessing.
+   ```python
+   body = Body(type="basic", dvs=False, wrappers=None)
+   ```
+   Here, we do not pass any wrappers, letting information from the environment reach the brain "as is". Alternative body types (e.g. `two-eyed`, `rag-doll`) are planned in future updates.
 
-While the `Body` abstraction is thin and mostly conceptual as of now, different types of agents (`two-eyed`, `rag-doll`) with complex action spaces are planned which lead to `Body` taking on more sophisticated customization. 
+- **Environment**
 
-5. The `Environment` component constructs a live environment (via the Python `mlagents` library) which is then wrapped inside a `Gym` environment. Since this is part of the environment initialization, the wrapping is not included as part of the `Body` component, but kept within the `Environment`. The definition takes an executable path which must be available on the system. 
-```
-# a valid Unity executable downloaded from {} must be present at `executable_path`
-environment = Environment(config="identityandview", executable_path=executable_path)
-```
+   Create the simulation environment using the path to your Unity executable (see Step 1).
+   ```python
+   environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
+   ```
+   To get a list of all available configurations, run `nett.list_configs()`.
 
-6. For a full list of the NETT configs available, one can simply do the following. 
-```
-from netts.environment.configs import list_configs
-list_configs()
-```
+4. **Run the Benchmarking**
 
-Similar analogues for listing the encoders, policies, algorithms are also available: 
-```
-from netts.brain import list_algorithms, list_policies, list_encoders
-```
+   Integrate all components into a NETT instance to facilitate experiment execution.
+   ```python
+   benchmarks = NETT(brain=brain, body=body, environment=environment)
+   ```
+   The `NETT` instance has a `.run()` method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.
+   ```python
+   job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, trains_eps=10, test_eps=5)
+   ```
+   The `run` function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the `batch_mode` parameter to `False`.
 
-7. In order to orchestrate the benchmarking, all three components are brought together under one umbrella, the `NETT` object. This allows for storing details of the runs, serving as a reproducible artifact, automatic distribution of runs with different imprinting conditions, central logging, among other things. 
-```
-nett = NETT(brain=brain, body=body, environment=environment)
-```
+5. **Check Status**:
 
-7. The created `nett` instance has the `.run()` method which carries out the execution. All the obvious runtime parameters with respect to benchmarking such as number of brains, train and test episodes, device(s) to be used for execution, steps per episode etc, are accepted as input to this function:
+To see the status of the benchmark processes, use the `.status()` method:
+   ```python
+   benchmarks.status(job_sheet)
+   ```
 
-```
-run = netts.run(dir=run_dir, num_brains=5, trains_eps=10)
-```
+### Running Standard Analysis
 
-8. Internally, the function automatically creates a “task” list and assigns parallel processes for workers that execute the “jobs”. The result is the `run` object that can be used to inquire about the status of each of the “jobs” along with information about the device, mode etc. This is provided using the `.status()` method: 
-```
-nett.status(job_sheet)
-```
+After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory. 
 
-Note that the `.run()` call executes in the background and does not block until its completion. This means the `run`` object is returned immediately and can be checked on a regular basis (programmatically or manually) to infer the completion of the run (or individual jobs).
+1. **Install R and dependencies**
 
+   To run the analyses performed in previous experiments,this toolkit provides a set of analysis scripts. Prior to running them, you will need R and the packages `tidyverse`, `argparse`, and `scales` installed. To install these packages, run the following command in R:
+   ```R
+   install.packages(c("tidyverse", "argparse", "scales"))
+   ```
+   Alternatively, if you are having difficulty installing R on your system, you can install these using conda.
+   ```bash
+   conda install -y r r-tidyverse r-argparse r-scales
+   ```
+2. **Run the Analysis** 
 
-### **Running Standard Analysis**
+   To run the analysis, use the `analyze` method of the `NETT` class. This method will generate a set of plots and tables based on the datafiles in the output directory.
+   ```python
+   benchmarks.analyze(run_dir="path/to/run/output/directory/", output_dir="path/to/analysis/output/directory/")
+   ```
 
-TO BE UPDATED.
+<!-- sphinx-end -->
+<!-- This comment is here to denote the end of the "Getting Started" page for Sphinx documentation -->
 
-## **Experiment Configuration**
+## Documentation
+For a link to the full documentation, please visit [here](https://buildingamind.github.io/NewbornEmbodiedTuringTest/).
+
+## Experiment Configuration
 
 More information related to details on the experiment can be found on following pages.
 
-* [**Parsing Experiment**](docs/Parsing.md)
-* [**ViewPoint Experiment**](docs/ViewInvariant.md)
+* [**Parsing Experiment**](https://buildingamind.github.io/NewbornEmbodiedTuringTest/papers/Parsing.html)
+* [**ViewPoint Experiment**](https://buildingamind.github.io/NewbornEmbodiedTuringTest/papers/ViewInvariant.html)
+
+[🔼 Back to top](#newborn-embodied-turing-test)
