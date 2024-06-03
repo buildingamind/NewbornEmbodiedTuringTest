@@ -8,7 +8,6 @@ This module contains the NETT class, which is the main class for training, testi
 
 import time
 import subprocess
-from os import cpu_count
 from pathlib import Path
 from typing import Any, Optional
 from copy import deepcopy
@@ -74,7 +73,7 @@ class NETT:
             train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
             test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
             batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            device_type (str, optional): The type of device to be used for training and testing. It can be "cuda" or "cpu". Defaults to "cuda".
+            device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
             devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
@@ -262,40 +261,36 @@ class NETT:
         jobs: list[Job] = []
         waitlist: list[Job] = []
 
-        if self.device_type == "cpu":
-            # assign devices in a round robin fashion, no need to check memory
-            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir, i) for i, (condition, brain_id), device in enumerate(zip(task_set, cycle(self.devices)))]
-        else:
-            # assign devices based on memory availability
-            # get the list of devices
-            free_devices: list[int] | int = self.devices.copy()
+        # assign devices based on memory availability
+        # get the list of devices
+        free_devices: list[int] | int = self.devices.copy()
 
-            # get the free memory status for each device
-            free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
+        # get the free memory status for each device
+        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
-            # estimate memory for a single job
-            job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+        # estimate memory for a single job
+        job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
 
-            while task_set:
-                # if there are no free devices, add jobs to the waitlist
-                if not free_devices:
-                    waitlist = [
-                        Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
-                        for i, (condition, brain_id) in enumerate(task_set)
-                    ]
-                    self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
-                    break
-                # remove devices that don't have enough memory
-                elif free_device_memory[free_devices[-1]] < job_memory:
-                    free_devices.pop()
-                # assign device to job
-                else:
-                    # allocate memory
-                    free_device_memory[free_devices[-1]] -= job_memory
-                    # create job
-                    condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
-                    jobs.append(job)
+        while task_set:
+            # if there are no free devices, add jobs to the waitlist
+            if not free_devices:
+                waitlist = [
+                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                    for i, (condition, brain_id) in enumerate(task_set)
+                ]
+                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                break
+            # remove devices that don't have enough memory
+            elif free_device_memory[free_devices[-1]] < job_memory:
+                free_devices.pop()
+            # assign device to job
+            else:
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # create job
+                condition, brain_id = task_set.pop()
+                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
+                jobs.append(job)
 
         return jobs, waitlist
 
@@ -408,14 +403,14 @@ class NETT:
 
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
-        if device_type not in ["cuda", "cpu"]:
-            raise ValueError("Should be one of ['cuda', 'cpu']")
+        if device_type not in ["cuda"]:
+            raise ValueError("Should be one of ['cuda']")
 
         return device_type
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
+        available_devices: list[int] = list(range(nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
