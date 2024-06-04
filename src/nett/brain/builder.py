@@ -125,19 +125,20 @@ class Brain:
             
             # Estimate memory
 
-            input_size = (self.batch_size, *envs.observation_space.shape)
+            input_size: tuple[int] = (self.batch_size, *envs.observation_space.shape)
             print('input_size: ',input_size, 'type: ', type(input_size))
 
             # Calculate memory for model parameters
-            param_size = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
+            param_size: int = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
             print('param_size: ',param_size, 'type: ', type(param_size))
             
             # Calculate memory for input and output tensors
-            input_tensor = torch.zeros(input_size)
+            input_tensor: torch.Tensor = torch.zeros(input_size)
             print('input_tensor: ',input_tensor, 'type: ', type(input_tensor))
-            input_memory = input_tensor.numel() * input_tensor.element_size()
+            input_memory: int = input_tensor.numel() * input_tensor.element_size()
             print('input_memory: ',input_memory, 'type: ', type(input_memory))
-            output_tensor = self.model.policy(input_tensor)
+            cuda_tensor: torch.cuda.Tensor = input_tensor.to(torch.device(device_type, device))
+            output_tensor = self.model.policy(cuda_tensor)
             print('output_tensor: ',output_tensor, 'type: ', type(output_tensor))
             output_memory = output_tensor.numel() * output_tensor.element_size()
             print('output_memory: ',output_memory, 'type: ', type(output_memory))
