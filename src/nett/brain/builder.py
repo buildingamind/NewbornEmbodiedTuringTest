@@ -133,26 +133,59 @@ class Brain:
             print('param_size: ',param_size, 'type: ', type(param_size))
             
             # Calculate memory for input and output tensors    
-            input_tensor = torch.zeros(input_size, device=device)
+            input_tensor: torch.Tensor = torch.zeros(input_size, device=device)
             print('input_tensor: ',input_tensor, 'type: ', type(input_tensor))
-            input_memory = input_tensor.numel() * input_tensor.element_size()
+            input_memory: int = input_tensor.numel() * input_tensor.element_size()
             print('input_memory: ',input_memory, 'type: ', type(input_memory))
+            ########
+
+
+            # Forward pass to estimate output and intermediate tensors memory
+            def forward_hook(module, input, output):
+                nonlocal intermediate_memory
+                if isinstance(output, (tuple, list)):
+                    for out in output:
+                        if isinstance(out, torch.Tensor):
+                            intermediate_memory += out.numel() * out.element_size()
+                elif isinstance(output, torch.Tensor):
+                    intermediate_memory += output.numel() * output.element_size()
+            
+            intermediate_memory = 0
+            hooks = []
+            for layer in self.model.policy.modules():
+                if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
+                    hooks.append(layer.register_forward_hook(forward_hook))
+            
+            with torch.no_grad():
+                _ = self.model.policy(input_tensor)
+            
+            for hook in hooks:
+                hook.remove()
+            
+            # Backward pass to estimate gradients memory
             output_tensor = self.model.policy(input_tensor)
-            print('output_tensor: ',output_tensor, 'type: ', type(output_tensor))
+            print('output_tensor0: ',output_tensor, 'type: ', type(output_tensor))
             if isinstance(output_tensor, (tuple, list)):
-                output_memory = sum(tensor.numel() * tensor.element_size() for tensor in output_tensor if isinstance(tensor, torch.Tensor))
-            elif isinstance(output_tensor, torch.Tensor):
-                output_memory = output_tensor.numel() * output_tensor.element_size()
-            else:
-                output_memory = 0  # Handle any other unexpected cases
+                output_tensor = output_tensor[0]  # Assuming the first output is the main tensor for backward pass
+            print('output_tensor1: ',output_tensor, 'type: ', type(output_tensor))
+            self.model.policy.zero_grad()
+            output_tensor.backward(torch.ones_like(output_tensor))
+            
+            grad_memory = sum(param.grad.numel() * param.grad.element_size() for param in self.model.policy.parameters() if param.grad is not None)
             print('output_memory: ',output_memory, 'type: ', type(output_memory))
+            
+            # Estimating cuDNN workspace
+            cudnn_workspace_size = 0
+            if torch.backends.cudnn.enabled:
+                cudnn_workspace_size = torch.backends.cudnn.get_max_workspace_size()
+                print('cudnn_workspace_size: ',cudnn_workspace_size, 'type: ', type(cudnn_workspace_size))
 
             # Total memory calculation
-            total_memory = param_size + input_memory + output_memory
+            total_memory: int = param_size + input_memory + intermediate_memory + grad_memory + cudnn_workspace_size
             print('total_memory: ',total_memory, 'type: ', type(total_memory))
             
             # Convert to MB
-            total_memory_MB = total_memory / (1024 ** 2)
+            total_memory_MB: float = total_memory / (1024 ** 2)
             print('total_memory_MB: ',total_memory_MB, 'type: ', type(total_memory_MB))
 
             self.logger.info(f'Estimated GPU memory needed: {total_memory_MB:.2f} MB')
