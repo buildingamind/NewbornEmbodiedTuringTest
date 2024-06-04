@@ -172,7 +172,7 @@ class Brain:
             output_tensor.backward(torch.ones_like(output_tensor))
             
             grad_memory = sum(param.grad.numel() * param.grad.element_size() for param in self.model.policy.parameters() if param.grad is not None)
-            print('output_memory: ',output_memory, 'type: ', type(output_memory))
+            print('output_memory: ',grad_memory, 'type: ', type(grad_memory))
             
             # Estimating cuDNN workspace
             cudnn_workspace_size = 0
