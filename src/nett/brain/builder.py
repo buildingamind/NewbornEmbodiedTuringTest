@@ -135,10 +135,12 @@ class Brain:
             # Calculate memory for input and output tensors
             input_tensor: torch.Tensor = torch.zeros(input_size)
             print('input_tensor: ',input_tensor, 'type: ', type(input_tensor))
-            input_memory: int = input_tensor.numel() * input_tensor.element_size()
-            print('input_memory: ',input_memory, 'type: ', type(input_memory))
             cuda_tensor: torch.cuda.Tensor = input_tensor.to(torch.device(device_type, device))
-            output_tensor = self.model.policy(cuda_tensor)
+
+            input_memory: int = cuda_tensor.numel() * cuda_tensor.element_size()
+            print('input_memory: ',input_memory, 'type: ', type(input_memory))
+            
+            output_tensor: tuple = self.model.policy(cuda_tensor)
             print('output_tensor: ',output_tensor, 'type: ', type(output_tensor))
             output_memory = output_tensor.numel() * output_tensor.element_size()
             print('output_memory: ',output_memory, 'type: ', type(output_memory))
