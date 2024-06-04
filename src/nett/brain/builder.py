@@ -84,6 +84,70 @@ class Brain:
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
+
+
+    def getMemoryEstimate(self,
+                        env: "nett.Body",
+                        device_type: str,
+                        device: int,
+                        paths: dict[str, Path]):
+
+        # validate environment
+        env = self._validate_env(env)
+
+        # initialize environment
+        log_path = paths["env_logs"]
+        
+        env = Monitor(env, str(log_path))
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        
+        # build model
+        policy_kwargs = {
+            "features_extractor_class": self.encoder,
+            "features_extractor_kwargs": {
+                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
+            }
+        } if self.encoder else {}
+        
+        if len(self.custom_encoder_args) > 0:
+            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+            
+        self.logger.info(f'Training with {self.algorithm.__name__}')
+        try:
+            self.model = self.algorithm(
+                self.policy,
+                envs,
+                batch_size=self.batch_size,
+                n_steps=self.buffer_size,
+                verbose=1,
+                policy_kwargs=policy_kwargs,
+                device=torch.device(device_type, device))
+            
+            # Estimate memory
+
+            input_size = (self.batch_size, *envs.observation_space.shape)
+
+            # Calculate memory for model parameters
+            param_size = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
+            
+            # Calculate memory for input and output tensors
+            input_tensor = torch.zeros(input_size)
+            input_memory = input_tensor.numel() * input_tensor.element_size()
+            output_tensor = self.model.policy(input_tensor)
+            output_memory = output_tensor.numel() * output_tensor.element_size()
+            
+            # Total memory calculation
+            total_memory = param_size + input_memory + output_memory
+            
+            # Convert to MB
+            total_memory_MB = total_memory / (1024 ** 2)
+
+            self.logger.info(f'Estimated GPU memory needed: {total_memory_MB:.2f} MB')
+
+        except Exception as e:
+            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            raise e
+
                
 
     def train(
@@ -108,6 +172,8 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
+        self.getMemoryEstimate(env, device_type, device, paths)
+        exit()
         # validate environment
         env = self._validate_env(env)
 
