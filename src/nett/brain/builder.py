@@ -126,21 +126,29 @@ class Brain:
             # Estimate memory
 
             input_size = (self.batch_size, *envs.observation_space.shape)
+            print('input_size: ',input_size, 'type: ', type(input_size))
 
             # Calculate memory for model parameters
             param_size = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
+            print('param_size: ',param_size, 'type: ', type(param_size))
             
             # Calculate memory for input and output tensors
             input_tensor = torch.zeros(input_size)
+            print('input_tensor: ',input_tensor, 'type: ', type(input_tensor))
             input_memory = input_tensor.numel() * input_tensor.element_size()
+            print('input_memory: ',input_memory, 'type: ', type(input_memory))
             output_tensor = self.model.policy(input_tensor)
+            print('output_tensor: ',output_tensor, 'type: ', type(output_tensor))
             output_memory = output_tensor.numel() * output_tensor.element_size()
+            print('output_memory: ',output_memory, 'type: ', type(output_memory))
             
             # Total memory calculation
             total_memory = param_size + input_memory + output_memory
+            print('total_memory: ',total_memory, 'type: ', type(total_memory))
             
             # Convert to MB
             total_memory_MB = total_memory / (1024 ** 2)
+            print('total_memory_MB: ',total_memory_MB, 'type: ', type(total_memory_MB))
 
             self.logger.info(f'Estimated GPU memory needed: {total_memory_MB:.2f} MB')
             exit()
