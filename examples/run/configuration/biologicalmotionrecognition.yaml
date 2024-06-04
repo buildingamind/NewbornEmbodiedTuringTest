@@ -1,5 +1,5 @@
 Brain:
-#   reward: supervised
+#   reward: unsupervised
 #   batch_size: 512
 #   buffer_size: 2048
 #   algorithm: PPO
@@ -12,16 +12,16 @@ Body:
 #   dvs: False
 Environment:
 #   # condition
-#   object: "object2"
+#   object: ""
 #   # generic config
-#   executable_path: /home/mchivuku/projects/embodied_pipeline/ICLR/newbornmain/data/executables/binding/binding.x86_64
+#   executable_path: "/home/wjpeacoc/dev_env/nett_env/biological_motion_recognition/.../..."
 #   record_chamber: False
 #   record_agent: False
 #   recording_frames: 100
 Config:
-#   run_id: "binding_object1"
+#   run_id: ""
 #   num_brains: 1
 #   mode: "full"
-#   train_eps: 1000
-#   test_eps: 20
-#   output_dir: "/data/mchivuku/embodiedai/neurips_experiments/binding/base_agents_new/large/object2_exp4"
+#   train_eps: 0
+#   test_eps: 0
+#   output_dir: "/data/wjpeacoc/dev_env/nett_env/biological_motion_recognition/.../..."
