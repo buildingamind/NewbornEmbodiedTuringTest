@@ -139,7 +139,12 @@ class Brain:
             print('input_memory: ',input_memory, 'type: ', type(input_memory))
             output_tensor = self.model.policy(input_tensor)
             print('output_tensor: ',output_tensor, 'type: ', type(output_tensor))
-            output_memory = output_tensor.numel() * output_tensor.element_size()
+            if isinstance(output_tensor, (tuple, list)):
+                output_memory = sum(tensor.numel() * tensor.element_size() for tensor in output_tensor if isinstance(tensor, torch.Tensor))
+            elif isinstance(output_tensor, torch.Tensor):
+                output_memory = output_tensor.numel() * output_tensor.element_size()
+            else:
+                output_memory = 0  # Handle any other unexpected cases
             print('output_memory: ',output_memory, 'type: ', type(output_memory))
 
             # Total memory calculation
