@@ -175,13 +175,13 @@ class Brain:
             print('output_memory: ',grad_memory, 'type: ', type(grad_memory))
             
             # Estimating cuDNN workspace
-            cudnn_workspace_size = 0
-            if torch.backends.cudnn.enabled:
-                cudnn_workspace_size = torch.backends.cudnn.get_max_workspace_size()
-                print('cudnn_workspace_size: ',cudnn_workspace_size, 'type: ', type(cudnn_workspace_size))
+            # cudnn_workspace_size = 0
+            # if torch.backends.cudnn.enabled:
+            #     cudnn_workspace_size = torch.backends.cudnn.get_max_workspace_size()
+            #     print('cudnn_workspace_size: ',cudnn_workspace_size, 'type: ', type(cudnn_workspace_size))
 
             # Total memory calculation
-            total_memory: int = param_size + input_memory + intermediate_memory + grad_memory + cudnn_workspace_size
+            total_memory: int = param_size + input_memory + intermediate_memory + grad_memory #+ cudnn_workspace_size
             print('total_memory: ',total_memory, 'type: ', type(total_memory))
             
             # Convert to MB
