@@ -143,6 +143,7 @@ class Brain:
             total_memory_MB = total_memory / (1024 ** 2)
 
             self.logger.info(f'Estimated GPU memory needed: {total_memory_MB:.2f} MB')
+            exit()
 
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
@@ -173,7 +174,6 @@ class Brain:
             ValueError: If the environment fails the validation check.
         """
         self.getMemoryEstimate(env, device_type, device, paths)
-        exit()
         # validate environment
         env = self._validate_env(env)
 
