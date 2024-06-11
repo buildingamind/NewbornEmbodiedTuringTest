@@ -13,14 +13,14 @@ Body:
 Environment:
   use_ship: True
   background: A
-  executable_path: /home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/executables/parsing/parsing.x86_64
+  executable_path: "/home/wjpeacoc/..."
   record_agent: False
   record_chamber: False
   recording_frames: 1000
 Config:
-  run_id: "parsing_ship_A_exp2"
+  run_id: "parsing_trial"
   num_brains: 1
   mode: "full"
   train_eps: 1
   test_eps: 20
-  output_dir: "/home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/runs/parsingdata"
+  output_dir: "/home/wjpeacoc/.../..."
