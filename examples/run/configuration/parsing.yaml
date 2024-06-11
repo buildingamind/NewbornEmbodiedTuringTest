@@ -13,7 +13,7 @@ Body:
 Environment:
   use_ship: True
   background: A
-  executable_path: "/home/wjpeacoc/..."
+  executable_path: "/data/wjpeacoc/builds/parsing/ParsingBuild.x86-64"
   record_agent: False
   record_chamber: False
   recording_frames: 1000
@@ -21,6 +21,6 @@ Config:
   run_id: "parsing_trial"
   num_brains: 1
   mode: "full"
-  train_eps: 1
-  test_eps: 20
-  output_dir: "/home/wjpeacoc/.../..."
+  train_eps: 10
+  test_eps: 2
+  output_dir: "/data/wjpeacoc/parsing_trial_data/"
