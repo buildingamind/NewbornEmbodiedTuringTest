@@ -13,7 +13,7 @@ Body:
 Environment:
   use_ship: True
   background: A
-  executable_path: "../../data/wjpeacoc/builds/parsing/ParsingBuild.x86-64"
+  executable_path: "../../data/wjpeacoc/builds/parsing/ParsingBuild.x86_64"
   record_agent: False
   record_chamber: False
   recording_frames: 1000
