@@ -54,6 +54,15 @@ setwd(data_wd)
 train_files <- list.files(pattern="train.csv", recursive = TRUE)
 test_files <- list.files(pattern="test.csv", recursive = TRUE)
 
+# Check if there are any train files
+if (length(train_files) == 0) {
+  stop("No train files found.")
+}
+# Check if there are any train files
+if (length(test_files) == 0) {
+  stop("No test files found.")
+}
+
 # Main Function ----------------------------------------------------------------
 
 # This function reads in a single csv (later we'll lapply it across all files)
