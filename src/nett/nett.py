@@ -62,6 +62,7 @@ class NETT:
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 200,
+            conditions: list[str] = None,
             verbosity: int = 1, run_id: str = '') -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
@@ -109,7 +110,7 @@ class NETT:
         
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs()
+        jobs, waitlist = self._schedule_jobs(conditions=conditions)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -253,10 +254,27 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self) -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, conditions:list[str] = None) -> tuple[list[Job], list[Job]]:
         # create jobs
-        # create set of all brain-environment combinations
-        task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
+        
+        # create set of all conditions
+        all_conditions: set[str] = set(self.environment.config.conditions)
+    
+        # check if user-defined their own conditions
+        if (conditions is not None):
+            # create a set of user-defined conditions
+            user_conditions: set[str] = set(conditions)
+
+            if user_conditions.issubset(all_conditions):
+                self.logger.info(f"Using user specified conditions: {conditions}")
+                # create set of all brain-environment combinations for user-defined conditions
+                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
+            else:
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+        # default to all conditions
+        else:
+            # create set of all brain-environment combinations
+            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
 
         jobs: list[Job] = []
         waitlist: list[Job] = []

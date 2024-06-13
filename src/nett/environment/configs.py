@@ -25,7 +25,7 @@ class NETTConfig(ABC):
         self.params = self._validate_params(params)
         self.conditions = self._create_conditions_from_params(self.params)
 
-    def _create_conditions_from_params(self, params: dict[str, str]) -> set[str]:
+    def _create_conditions_from_params(self, params: dict[str, str]) -> list[str]:
         """
         Creates conditions from the configuration parameters.
 
@@ -33,10 +33,10 @@ class NETTConfig(ABC):
             params (dict[str, str]): The configuration parameters.
 
         Returns:
-            set[str]: A set of conditions.
+            list[str]: A list of conditions.
         """
         combination_params = list(product(*params.values()))
-        conditions = {"-".join(combination).lower() for combination in combination_params}
+        conditions = ["-".join(combination).lower() for combination in combination_params]
         return conditions
 
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:
@@ -326,13 +326,14 @@ class ViewInvariant(NETTConfig):
         
     
 
-def list_configs() -> set[str]:
+def list_configs() -> list[str]:
     """
     Lists all available NETT configurations.
 
     Returns:
-        set[str]: A set of configuration names.
+        list[str]: A list of configuration names.
     """
+    #TODO: Are these really strings?
     is_class_member = lambda member: inspect.isclass(member) and member.__module__ == __name__
     clsmembers = inspect.getmembers(sys.modules[__name__], is_class_member)
     clsmembers = [clsmember[0] for clsmember in clsmembers if clsmember[0] != "NETTConfig"]
