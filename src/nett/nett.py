@@ -335,7 +335,7 @@ class NETT:
                     paths=job.paths)
                 train_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
+                self.logger.error(f"Error in training: {e}")
                 train_environment.close()
                 exit()    
 
