@@ -1,26 +1,28 @@
 Brain:
-  reward: supervised
+  reward: unsupervised
   batch_size: 512
   buffer_size: 2048
   algorithm: PPO
   policy: CnnPolicy
   seed: 42
-  encoder: 
-  train_encoder: True
+  encoder: small
+  train_encoder: False
 Body:
   type: basic
-  dvs: True
+  dvs: False
 Environment:
   use_ship: True
   background: A
-  executable_path: "../../data/wjpeacoc/builds/parsing/ParsingBuild.x86_64"
-  record_agent: False
-  record_chamber: False
+  # is this an absolute or relative path?
+  executable_path: "/data/wjpeacoc/builds/parsing/ParsingBuild.x86_64"
+  record_agent: True
+  record_chamber: True
   recording_frames: 1000
 Config:
-  run_id: "parsing_trial"
-  num_brains: 1
+  run_id: "parsing_trial_1"
+  num_brains: 5
   mode: "full"
   train_eps: 10
-  test_eps: 2
-  output_dir: "../../data/wjpeacoc/parsing_trial_data/"
+  test_eps: 5
+  # is this an absolute or relative path?
+  output_dir: "/data/wjpeacoc/experiments/parsing_trial_data/"
