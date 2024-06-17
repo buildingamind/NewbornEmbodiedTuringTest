@@ -8,7 +8,6 @@ This module contains the NETT class, which is the main class for training, testi
 
 import time
 import subprocess
-from os import cpu_count
 from pathlib import Path
 from typing import Any, Optional
 from copy import deepcopy
@@ -63,7 +62,9 @@ class NETT:
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 1000,
-            verbosity: int = 1, run_id: str = '',
+            conditions: list[str] = None,
+            verbosity: int = 1,
+            run_id: str = '',
             synchronous=True) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
@@ -75,7 +76,7 @@ class NETT:
             train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
             test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
             batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            device_type (str, optional): The type of device to be used for training and testing. It can be "cuda" or "cpu". Defaults to "cuda".
+            device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
             devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
@@ -111,7 +112,7 @@ class NETT:
         
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs()
+        jobs, waitlist = self._schedule_jobs(conditions=conditions)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -262,48 +263,61 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self) -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, conditions:list[str] = None) -> tuple[list[Job], list[Job]]:
         # create jobs
-        # create set of all brain-environment combinations
-        task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
+        
+        # create set of all conditions
+        all_conditions: set[str] = set(self.environment.config.conditions)
+    
+        # check if user-defined their own conditions
+        if (conditions is not None):
+            # create a set of user-defined conditions
+            user_conditions: set[str] = set(conditions)
+
+            if user_conditions.issubset(all_conditions):
+                self.logger.info(f"Using user specified conditions: {conditions}")
+                # create set of all brain-environment combinations for user-defined conditions
+                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
+            else:
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+        # default to all conditions
+        else:
+            # create set of all brain-environment combinations
+            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
 
         jobs: list[Job] = []
         waitlist: list[Job] = []
 
-        if self.device_type == "cpu":
-            # assign devices in a round robin fashion, no need to check memory
-            jobs: list[Job] = [Job(brain_id, condition, device, self.output_dir, i) for i, (condition, brain_id), device in enumerate(zip(task_set, cycle(self.devices)))]
-        else:
-            # assign devices based on memory availability
-            # get the list of devices
-            free_devices: list[int] | int = self.devices.copy()
+        # assign devices based on memory availability
+        # get the list of devices
+        free_devices: list[int] | int = self.devices.copy()
 
-            # get the free memory status for each device
-            free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
+        # get the free memory status for each device
+        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
-            # estimate memory for a single job
-            job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+        # estimate memory for a single job
+        job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
 
-            while task_set:
-                # if there are no free devices, add jobs to the waitlist
-                if not free_devices:
-                    waitlist = [
-                        Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
-                        for i, (condition, brain_id) in enumerate(task_set)
-                    ]
-                    self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
-                    break
-                # remove devices that don't have enough memory
-                elif free_device_memory[free_devices[-1]] < job_memory:
-                    free_devices.pop()
-                # assign device to job
-                else:
-                    # allocate memory
-                    free_device_memory[free_devices[-1]] -= job_memory
-                    # create job
-                    condition, brain_id = task_set.pop()
-                    job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
-                    jobs.append(job)
+        while task_set:
+            # if there are no free devices, add jobs to the waitlist
+            if not free_devices:
+                waitlist = [
+                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                    for i, (condition, brain_id) in enumerate(task_set)
+                ]
+                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                break
+            # remove devices that don't have enough memory
+            elif free_device_memory[free_devices[-1]] < job_memory:
+                free_devices.pop()
+            # assign device to job
+            else:
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # create job
+                condition, brain_id = task_set.pop()
+                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
+                jobs.append(job)
 
         return jobs, waitlist
 
@@ -348,7 +362,7 @@ class NETT:
                     paths=job.paths)
                 train_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
+                self.logger.error(f"Error in training: {e}")
                 train_environment.close()
                 exit()    
 
@@ -379,14 +393,6 @@ class NETT:
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
-    def _get_memory_status(self) -> dict[int, dict[str, int]]:
-        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {
-            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in self.devices
-        }
-        return memory_status
-
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
         # TODO (v0.5) add a dummy job to gauge memory consumption
@@ -414,16 +420,24 @@ class NETT:
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
+    def _get_memory_status(self) -> dict[int, dict[str, int]]:
+        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
+        memory_status = {
+            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+            for device_id in self.devices
+        }
+        return memory_status
+
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
-        if device_type not in ["cuda", "cpu"]:
-            raise ValueError("Should be one of ['cuda', 'cpu']")
+        if device_type not in ["cuda"]:
+            raise ValueError("Should be one of ['cuda']")
 
         return device_type
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = list(range(cpu_count() if self.device_type == "cpu" else nvmlDeviceGetCount()))
+        available_devices: list[int] = list(range(nvmlDeviceGetCount()))
 
         if devices == -1:
             devices = available_devices
