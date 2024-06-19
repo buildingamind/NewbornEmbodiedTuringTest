@@ -41,7 +41,7 @@ jobs:
         uses: wearerequired/lint-action@v2
         with:
           pylint: true
-          pylint_args: "--ignore-paths==example --disable=all --enable=C0114 --enable=C0115 --enable=C0116 --enable=W0612 --enable=W0613"
+          pylint_args: "--ignore-paths==examples --disable=all --enable=C0114 --enable=C0115 --enable=C0116 --enable=W0612 --enable=W0613"
           # checks for:
           ## missing module docstring, missing class docstring, missing function docstring,
           ## unused arguments, and unused variables
