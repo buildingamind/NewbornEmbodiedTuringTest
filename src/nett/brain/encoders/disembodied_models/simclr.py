@@ -1,3 +1,7 @@
+"""
+This file contains the implementation of SimCLR model.
+SimCLR is a contrastive learning technique that learns representations by maximizing agreement between differently augmented views of the same data instance via a contrastive loss in the latent space.
+"""
 import math
 from argparse import ArgumentParser
 from typing import Callable, Optional
@@ -19,6 +23,15 @@ from .archs import resnet_2b
 from .archs import resnet_1b
 
 class Projection(nn.Module):
+    """
+    MLP for projection head
+
+    Args:
+        input_dim (int): input dimension
+        hidden_dim (int): hidden dimension
+        output_dim (int): output dimension
+        depth (int): number of hidden layers
+    """
 
     def __init__(self, input_dim=2048, hidden_dim=2048, output_dim=128, depth=1):
         super().__init__()
@@ -43,11 +56,46 @@ class Projection(nn.Module):
 
         self.model = nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
+        """
+        Forward pass of the projection head
+        
+        Args:
+            x (torch.Tensor): input tensor
+        
+        Returns:
+            torch.Tensor: projected features
+        """
         x = self.model(x)
         return F.normalize(x, dim=1)
 
 class SimCLR(L.LightningModule):
+    """
+    SimCLR model
+
+    Args:
+        gpus (int): number of gpus
+        num_samples (int): number of samples in the dataset
+        batch_size (int): batch size
+        num_nodes (int, optional): number of nodes. Defaults to 1.
+        arch (str, optional): architecture. Defaults to "resnet18".
+        window_size (int, optional): window size. Defaults to 3.
+        hidden_mlp (int, optional): hidden layer dimension in projection head. Defaults to 512.
+        hidden_depth (int, optional): number of hidden layers in projection head. Defaults to 1.
+        feat_dim (int, optional): feature dimension. Defaults to 128.
+        warmup_epochs (int, optional): number of warmup epochs. Defaults to 5.
+        max_epochs (int, optional): maximum number of epochs. Defaults to 100.
+        temperature (float, optional): temperature parameter in training loss. Defaults to 0.1.
+        first_conv (bool, optional): first convolution layer. Defaults to True.
+        maxpool1 (bool, optional): maxpool1 layer. Defaults to True.
+        optimizer (str, optional): optimizer. Defaults to "adam".
+        lars_wrapper (bool, optional): lars wrapper. Defaults to True.
+        exclude_bn_bias (bool, optional): exclude bn bias. Defaults to False.
+        start_lr (float, optional): initial warmup learning rate. Defaults to 0.
+        learning_rate (float, optional): base learning rate. Defaults to 1e-3.
+        final_lr (float, optional): final learning rate. Defaults to 0.
+        weight_decay (float, optional): weight decay. Defaults to 1e-6.
+    """
 
     def __init__(
         self,
@@ -55,7 +103,7 @@ class SimCLR(L.LightningModule):
         num_samples: int,
         batch_size: int,
         num_nodes: int = 1,
-        arch: str = 'resnet18',
+        arch: str = "resnet18",
         window_size:int = 3,
         hidden_mlp: int = 512,
         hidden_depth: int = 1,
@@ -65,7 +113,7 @@ class SimCLR(L.LightningModule):
         temperature: float = 0.1,
         first_conv: bool = True, # changed from True to False
         maxpool1: bool = True, # changed from True to False
-        optimizer: str = 'adam',
+        optimizer: str = "adam",
         lars_wrapper: bool = True,
         exclude_bn_bias: bool = False,
         start_lr: float = 0.,
@@ -74,15 +122,6 @@ class SimCLR(L.LightningModule):
         weight_decay: float = 1e-6,
         **kwargs
     ):
-        """
-        Args:
-            batch_size: the batch size
-            num_samples: num samples in the dataset
-            warmup_epochs: epochs to warmup the lr for
-            lr: the optimizer learning rate
-            opt_weight_decay: the optimizer weight decay
-            loss_temperature: the loss temperature
-        """
         super().__init__()
         self.save_hyperparameters()
 
@@ -139,22 +178,28 @@ class SimCLR(L.LightningModule):
 
         self.lr_schedule = np.concatenate((warmup_lr_schedule, cosine_lr_schedule))
 
-    def init_encoder(self):
-        if self.arch.startswith('resnet'):
+    def init_encoder(self) -> torch.nn.Module:
+        """
+        Initialize encoder
+
+        Returns:
+            nn.Module: encoder
+        """
+        if self.arch.startswith("resnet"):
             # Resnet34, Resnet18
-            if self.arch == 'resnet34' or self.arch == 'resnet18':
+            if self.arch == "resnet34" or self.arch == "resnet18":
                 resnet = getattr(resnets, self.arch)
                 print("Architecture selected - ", self.arch)
             # Resnet18 - 3blocks
-            elif self.arch == 'resnet_3blocks':
+            elif self.arch == "resnet_3blocks":
                 resnet = getattr(resnet_3b, self.arch)
                 print("Architecture selected - Resnet18_3Blocks")
             # Resnet18 - 2blocks
-            elif self.arch == 'resnet_2blocks':
+            elif self.arch == "resnet_2blocks":
                 resnet = getattr(resnet_2b, self.arch)
                 print("Architecture selected - Resnet18_2Blocks")
             # Resnet18 - 1block
-            elif self.arch == 'resnet_1block':
+            elif self.arch == "resnet_1block":
                 resnet = getattr(resnet_1b, self.arch)
                 print("Architecture selected - Resnet18_1Block")
             encoder = resnet(first_conv=self.first_conv, maxpool1=self.maxpool1, return_all_feature_maps=False)
@@ -164,20 +209,36 @@ class SimCLR(L.LightningModule):
         return encoder
 
 
-    '''
+    """
      this forward function is required for inference purposes,
      sometimes, the code will not validate without a forward function,
      therefore, in forward function, only include the part of network through which
      the embedding will be taken out. For instance, below has only resnet encoder.
      The shared step is the one which will have the logic for training and validation.
-    
-    '''
-    def forward(self, x):
+    """
+    def forward(self, x) -> torch.Tensor:
+        """
+        Forward pass of the model
+
+        Args:
+            x (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: output tensor
+        """
         # bolts resnet returns a list
         return self.backbone(x)
 
-    def shared_step(self, batch):
+    def shared_step(self, batch) -> torch.Tensor:
+        """
+        Shared step for training and validation
 
+        Args:
+            batch: input batch
+
+        Returns:
+            torch.Tensor: loss
+        """
         # PUSH TWO IMAGES TOGETHER IN THE EMBEDDING SPACE
         if self.window_size < 3:
             if len(batch) == 3:
@@ -237,20 +298,50 @@ class SimCLR(L.LightningModule):
 
         return loss
 
-    def training_step(self, batch):
-        loss = self.shared_step(batch)
-        self.log('learning_rate', self.lr_schedule[self.trainer.global_step], on_step=True, on_epoch=False)
+    def training_step(self, batch) -> torch.Tensor:
+        """
+        Training step
+        
+        Args:
+            batch: input batch
 
-        self.log('train_loss', loss, on_step=True, on_epoch=False)
+        Returns:
+            torch.Tensor: loss
+        """
+        loss = self.shared_step(batch)
+        self.log("learning_rate", self.lr_schedule[self.trainer.global_step], on_step=True, on_epoch=False)
+
+        self.log("train_loss", loss, on_step=True, on_epoch=False)
         return loss
 
-    def validation_step(self, batch):
+    def validation_step(self, batch) -> torch.Tensor:
+        """
+        Validation step
+
+        Args:
+            batch: input batch
+
+        Returns:
+            torch.Tensor: loss
+        """
+
         loss = self.shared_step(batch)
 
-        self.log('val_loss', loss, on_step=False, on_epoch=True, sync_dist=True)
+        self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
         return loss
 
-    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=['bias', 'bn']):
+    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=["bias", "bn"]) -> list[dict]:
+        """
+        Exclude parameters from weight decay
+
+        Args:
+            named_params (list): named parameters
+            weight_decay (float): weight decay
+            skip_list (list, optional): skip list. Defaults to ["bias", "bn"].
+
+        Returns:
+            list: parameters
+        """
         params = []
         excluded_params = []
 
@@ -263,22 +354,28 @@ class SimCLR(L.LightningModule):
                 params.append(param)
 
         return [{
-            'params': params,
-            'weight_decay': weight_decay
+            "params": params,
+            "weight_decay": weight_decay
         }, {
-            'params': excluded_params,
-            'weight_decay': 0.,
+            "params": excluded_params,
+            "weight_decay": 0.,
         }]
 
     def configure_optimizers(self) -> Optimizer:
+        """
+        Configure optimizer
+
+        Returns:
+            Optimizer: optimizer
+        """
         if self.exclude_bn_bias:
             params = self.exclude_from_wt_decay(self.named_parameters(), weight_decay=self.weight_decay)
         else:
             params = self.parameters()
 
-        if self.optim == 'sgd':
+        if self.optim == "sgd":
             optimizer = torch.optim.SGD(params, lr=self.learning_rate, momentum=0.9, weight_decay=self.weight_decay)
-        elif self.optim == 'adam':
+        elif self.optim == "adam":
             optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
 
         return optimizer
@@ -291,6 +388,19 @@ class SimCLR(L.LightningModule):
         optimizer: Optimizer = None,
         optimizer_closure: Optional[Callable] = None,
     ) -> None:
+        """
+        Override the optimizer step to adjust LR of the optimizer contained within LARSWrapper
+
+        Args:
+            epoch (int, optional): current epoch. Defaults to None.
+            batch_idx (int, optional): current batch index. Defaults to None.
+            optimizer (Optimizer, optional): optimizer. Defaults to None.
+            optimizer_closure (Optional[Callable], optional): optimizer closure. Defaults to None.
+
+        Returns:
+            None
+        """
+
         # warm-up + decay schedule placed here since LARSWrapper is not optimizer class
         # adjust LR of optim contained within LARSWrapper
         for param_group in optimizer.optimizer.param_groups:
@@ -302,17 +412,28 @@ class SimCLR(L.LightningModule):
             optimizer = LightningOptimizer.to_lightning_optimizer(optimizer, self.trainer)
         optimizer.step(closure=optimizer_closure)
 
-    def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6):
+    def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6) -> torch.Tensor:
         """
-            assume out_1 and out_2 are normalized
-            out_1: [batch_size, dim]
-            out_2: [batch_size, dim]
+        Compute the contrastive loss
+
+        Args:
+            out_1 (torch.Tensor): output tensor 1
+            out_2 (torch.Tensor): output tensor 2
+            temperature (float): temperature parameter
+            eps (float, optional): epsilon. Defaults to 1e-6.
+
+        Returns:
+            torch.Tensor: contrastive loss
         """
 
-        '''
+        """
+        assume out_1 and out_2 are normalized
+        out_1: [batch_size, dim]
+        out_2: [batch_size, dim]
+
         out_1.shape - [512, 128]
         dim is 128 because the output from projection head is of 128 dims.
-        '''
+        """
 
         out_1_dist = out_1
         out_2_dist = out_2
@@ -343,14 +464,23 @@ class SimCLR(L.LightningModule):
         return loss
 
     @staticmethod
-    def add_model_specific_args(parent_parser):
+    def add_model_specific_args(parent_parser) -> ArgumentParser:
+        """
+        Add model specific arguments to the parser
+
+        Args:
+            parent_parser (ArgumentParser): parent parser
+
+        Returns:
+            ArgumentParser: parser with model specific arguments
+        """
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
         
         # model arch params
         parser.add_argument("--arch", default="resnet18", type=str, help="convnet architecture") 
         # specify flags to store false
-        parser.add_argument("--first_conv", action='store_false')
-        parser.add_argument("--maxpool1", action='store_false')
+        parser.add_argument("--first_conv", action="store_false")
+        parser.add_argument("--maxpool1", action="store_false")
         parser.add_argument("--hidden_mlp", default=512, type=int, help="hidden layer dimension in projection head")
         parser.add_argument("--hidden_depth", default=1, type=int, help="number of hidden layers in projection head")
         parser.add_argument("--feat_dim", default=128, type=int, help="feature dimension")
@@ -363,8 +493,8 @@ class SimCLR(L.LightningModule):
         # training params
         parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
         parser.add_argument("--optimizer", default="adam", type=str, help="choose between adam/sgd")
-        parser.add_argument("--lars_wrapper", action='store_true', help="apple lars wrapper over optimizer used")
-        parser.add_argument('--exclude_bn_bias', action='store_true', help="exclude bn/bias from weight decay")
+        parser.add_argument("--lars_wrapper", action="store_true", help="apple lars wrapper over optimizer used")
+        parser.add_argument("--exclude_bn_bias", action="store_true", help="exclude bn/bias from weight decay")
         parser.add_argument("--warmup_epochs", default=5, type=int, help="number of warmup epochs")
         parser.add_argument("--batch_size", default=512, type=int, help="batch size per gpu")
 
