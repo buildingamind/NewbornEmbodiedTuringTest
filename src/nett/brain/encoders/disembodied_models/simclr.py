@@ -10,7 +10,7 @@ import numpy as np
 import lightning as L
 import torch
 
-from lightning.core.optimizer import LightningOptimizer
+from lightning.pytorch.core.optimizer import LightningOptimizer
 from torch import nn
 from torch.nn import functional as F
 from torch.optim.optimizer import Optimizer
@@ -409,7 +409,7 @@ class SimCLR(L.LightningModule):
         # from lightning
         if not isinstance(optimizer, LightningOptimizer):
             # wraps into LightingOptimizer only for running step
-            optimizer = LightningOptimizer.to_lightning_optimizer(optimizer, self.trainer)
+            optimizer = LightningOptimizer._to_lightning_optimizer(optimizer, self.trainer)
         optimizer.step(closure=optimizer_closure)
 
     def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6) -> torch.Tensor:
