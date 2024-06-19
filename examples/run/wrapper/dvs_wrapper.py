@@ -1,5 +1,4 @@
-#!/usr/bin/env python3
-
+# pylint: skip-file
 import collections
 import gym
 from scipy.ndimage import gaussian_filter
