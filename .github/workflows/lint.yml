@@ -30,6 +30,8 @@ jobs:
 
       # - name: Change pip version
       #   run: pip install pip==21
+      - name: Change directory
+        run: cd src
 
       - name: Install pylint
         run: pip install pylint
