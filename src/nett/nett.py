@@ -63,7 +63,9 @@ class NETT:
             buffer: float = 1.2,
             steps_per_episode: int = 200,
             conditions: list[str] = None,
-            verbosity: int = 1, run_id: str = '') -> list[Future]: # pylint: disable=unused-argument
+            verbosity: int = 1, 
+            run_id: str = '',
+            save_checkpoints: bool = False) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -107,7 +109,7 @@ class NETT:
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
         self.run_id = run_id
-        
+        self.save_checkpoints = save_checkpoints
         
         # schedule jobs
         jobs, waitlist = self._schedule_jobs(conditions=conditions)
@@ -350,7 +352,8 @@ class NETT:
                     device_type=self.device_type,
                     device=job.device,
                     index=job.index,
-                    paths=job.paths)
+                    paths=job.paths,
+                    save_checkpoints=self.save_checkpoints,)
                 train_environment.close()
             except Exception as e:
                 self.logger.error(f"Error in training: {e}")
