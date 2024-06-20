@@ -115,8 +115,8 @@ class Brain:
         log_path = paths["env_logs"]
         
         
-        env = Monitor(env, str(log_path))
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        # env = Monitor(env, str(log_path))
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
         policy_kwargs = {
