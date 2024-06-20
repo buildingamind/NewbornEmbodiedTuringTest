@@ -3,6 +3,8 @@
 from nett import Body, Brain, Environment
 from nett import NETT
 
+
+# could these be programmatically generated from the .yaml (or vice versa)?
 brain = Brain(
     policy="CnnPolicy",
     algorithm="PPO",
