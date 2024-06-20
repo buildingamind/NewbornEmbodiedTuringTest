@@ -9,11 +9,12 @@ Brain:
   train_encoder: False
 Body:
   type: basic
+  wrappers: []
   dvs: False
 Environment:
   use_ship: True
   background: A
-  # is this an absolute or relative path?
+  # Use and absolute path
   executable_path: "/data/wjpeacoc/builds/parsing/ParsingBuild.x86_64"
   record_agent: True
   record_chamber: True
@@ -24,5 +25,5 @@ Config:
   mode: "full"
   train_eps: 10
   test_eps: 5
-  # is this an absolute or relative path?
+  # Use and absolute path
   output_dir: "/data/wjpeacoc/experiments/parsing_trial_data/"
