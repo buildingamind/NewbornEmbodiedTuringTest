@@ -1,4 +1,5 @@
 """This module contains the NETT configurations for different experiments."""
+# num_conditions is calculated as the the number of test (not training) runs for each background. This can be determined by the number of rows of test runs in the design sheet used to create the executable.
 
 import sys
 import inspect
