@@ -122,11 +122,13 @@ class Brain:
             # Estimate memory
 
             input_size: tuple[int] = (self.batch_size, *envs.observation_space.shape)
-            print('input_size: ',input_size, 'type: ', type(input_size))
+            print('input_size: ',input_size)
 
             # Calculate memory for model parameters
             param_size: int = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
             print('param_size: ',param_size, 'type: ', type(param_size))
+
+            # Calculate memory for encoder parameters
             
             # Calculate memory for input and output tensors    
             input_tensor: torch.Tensor = torch.zeros(input_size, device=device)
