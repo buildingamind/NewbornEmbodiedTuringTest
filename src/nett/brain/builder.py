@@ -82,12 +82,83 @@ class Brain:
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
 
+    def estimate_memory(self, model, feature_extractor, input_size, device, batch_size, cudnn_workspace_size=1024*1024*8):
+        # Move the models to the GPU
+        model = model.to(device)
+        feature_extractor = feature_extractor.to(device)
+        
+        # Calculate memory for model parameters
+        param_size_model = sum(param.numel() * param.element_size() for param in model.parameters())
+        param_size_extractor = sum(param.numel() * param.element_size() for param in feature_extractor.parameters())
+        param_size = param_size_model + param_size_extractor
+        
+        # Calculate memory for input and output tensors on the GPU
+        input_tensor = torch.zeros(input_size, device=device)
+        input_memory = input_tensor.numel() * input_tensor.element_size()
+        
+        # Forward pass to estimate output and intermediate tensors memory
+        def forward_hook(module, input, output):
+            nonlocal intermediate_memory
+            if isinstance(output, (tuple, list)):
+                for out in output:
+                    if isinstance(out, torch.Tensor):
+                        intermediate_memory += out.numel() * out.element_size()
+            elif isinstance(output, torch.Tensor):
+                intermediate_memory += output.numel() * output.element_size()
+        
+        intermediate_memory = 0
+        hooks = []
+        for layer in model.modules():
+            if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
+                hooks.append(layer.register_forward_hook(forward_hook))
+        
+        with torch.no_grad():
+            _ = model(input_tensor)
+        
+        for hook in hooks:
+            hook.remove()
+        
+        # Forward pass through the feature extractor
+        intermediate_memory_extractor = 0
+        hooks_extractor = []
+        for layer in feature_extractor.modules():
+            if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
+                hooks_extractor.append(layer.register_forward_hook(forward_hook))
+        
+        with torch.no_grad():
+            _ = feature_extractor(input_tensor)
+        
+        for hook in hooks_extractor:
+            hook.remove()
+        
+        intermediate_memory += intermediate_memory_extractor
+        
+        # Backward pass to estimate gradients memory
+        output_tensor = model(input_tensor)
+        if isinstance(output_tensor, (tuple, list)):
+            output_tensor = output_tensor[0]  # Assuming the first output is the main tensor for backward pass
+        model.zero_grad()
+        output_tensor.backward(torch.ones_like(output_tensor))
+        
+        grad_memory_model = sum(param.grad.numel() * param.grad.element_size() for param in model.parameters() if param.grad is not None)
+        grad_memory_extractor = sum(param.grad.numel() * param.grad.element_size() for param in feature_extractor.parameters() if param.grad is not None)
+        grad_memory = grad_memory_model + grad_memory_extractor
+
+        # Total memory calculation
+        total_memory = param_size + input_memory + intermediate_memory + grad_memory + cudnn_workspace_size
+        
+        # Convert to MB
+        total_memory_MB = total_memory / (1024 ** 2)
+        return total_memory_MB
+
 
     def getMemoryEstimate(self,
                         env: "nett.Body",
                         device_type: str,
                         device: int,
                         paths: dict[str, Path]):
+        
+    # def estimate_memory(model, feature_extractor, input_size, device, batch_size, cudnn_workspace_size=1024*1024*8):
 
         # validate environment
         env = self._validate_env(env)
@@ -120,73 +191,9 @@ class Brain:
                 device=torch.device(device_type, device))
             
             # Estimate memory
-
-            input_size: tuple[int] = (self.batch_size, *envs.observation_space.shape)
-            print('input_size: ',input_size)
-
-            # Calculate memory for model parameters
-            param_size: int = sum(param.numel() * param.element_size() for param in self.model.policy.parameters())
-            print('param_size: ',param_size, 'type: ', type(param_size))
-
-            # Calculate memory for encoder parameters
-            
-            # Calculate memory for input and output tensors    
-            input_tensor: torch.Tensor = torch.zeros(input_size, device=device)
-            print('input_tensor: ',input_tensor, 'type: ', type(input_tensor))
-            input_memory: int = input_tensor.numel() * input_tensor.element_size()
-            print('input_memory: ',input_memory, 'type: ', type(input_memory))
-            ########
-
-
-            # Forward pass to estimate output and intermediate tensors memory
-            def forward_hook(module, input, output):
-                nonlocal intermediate_memory
-                if isinstance(output, (tuple, list)):
-                    for out in output:
-                        if isinstance(out, torch.Tensor):
-                            intermediate_memory += out.numel() * out.element_size()
-                elif isinstance(output, torch.Tensor):
-                    intermediate_memory += output.numel() * output.element_size()
-            
-            intermediate_memory = 0
-            hooks = []
-            for layer in self.model.policy.modules():
-                if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
-                    hooks.append(layer.register_forward_hook(forward_hook))
-            
-            with torch.no_grad():
-                _ = self.model.policy(input_tensor)
-            
-            for hook in hooks:
-                hook.remove()
-            
-            # Backward pass to estimate gradients memory
-            output_tensor = self.model.policy(input_tensor)
-            print('output_tensor0: ',output_tensor, 'type: ', type(output_tensor))
-            if isinstance(output_tensor, (tuple, list)):
-                output_tensor = output_tensor[0]  # Assuming the first output is the main tensor for backward pass
-            print('output_tensor1: ',output_tensor, 'type: ', type(output_tensor))
-            self.model.policy.zero_grad()
-            output_tensor.backward(torch.ones_like(output_tensor))
-            
-            grad_memory = sum(param.grad.numel() * param.grad.element_size() for param in self.model.policy.parameters() if param.grad is not None)
-            print('output_memory: ',grad_memory, 'type: ', type(grad_memory))
-            
-            # Estimating cuDNN workspace
-            # cudnn_workspace_size = 0
-            # if torch.backends.cudnn.enabled:
-            #     cudnn_workspace_size = torch.backends.cudnn.get_max_workspace_size()
-            #     print('cudnn_workspace_size: ',cudnn_workspace_size, 'type: ', type(cudnn_workspace_size))
-
-            # Total memory calculation
-            total_memory: int = param_size + input_memory + intermediate_memory + grad_memory #+ cudnn_workspace_size
-            print('total_memory: ',total_memory, 'type: ', type(total_memory))
-            
-            # Convert to MB
-            total_memory_MB: float = total_memory / (1024 ** 2)
-            print('total_memory_MB: ',total_memory_MB, 'type: ', type(total_memory_MB))
-
-            self.logger.info(f'Estimated GPU memory needed: {total_memory_MB:.2f} MB')
+            input_size = (self.batch_size, *envs.observation_space.shape)
+            memory_needed = self.estimate_memory(self.model.policy, self.encoder, input_size, torch.device(device_type, device), self.batch_size)
+            self.logger.info(f'Estimated GPU memory needed: {memory_needed:.2f} MB')
             exit()
 
         except Exception as e:
