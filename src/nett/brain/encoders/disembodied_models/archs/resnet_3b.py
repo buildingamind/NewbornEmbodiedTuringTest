@@ -41,8 +41,20 @@ MODEL_URLS = {
 }
 
 
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
-    """3x3 convolution with padding"""
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> nn.Conv2d:
+    """
+    3x3 convolution with padding
+
+    Args:
+        in_planes (int): number of input planes
+        out_planes (int): number of output planes
+        stride (int, optional): stride. Defaults to 1.
+        groups (int, optional): number of groups. Defaults to 1.
+        dilation (int, optional): dilation. Defaults to 1.
+
+    Returns:
+        nn.Conv2d: convolution layer
+    """
     return nn.Conv2d(
         in_planes,
         out_planes,
@@ -55,12 +67,35 @@ def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     )
 
 
-def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution"""
+def conv1x1(in_planes, out_planes, stride=1) -> nn.Conv2d:
+    """
+    1x1 convolution
+    
+    Args:
+        in_planes (int): number of input planes
+        out_planes (int): number of output planes
+        stride (int, optional): stride. Defaults to 1.
+    
+    Returns:
+        nn.Conv2d: convolution layer
+    """
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
+    """
+    Basic block for ResNet
+
+    Args:
+        inplanes (int): number of input planes
+        planes (int): number of planes
+        stride (int, optional): stride. Defaults to 1.
+        downsample (nn.Module, optional): downsample. Defaults to None.
+        groups (int, optional): number of groups. Defaults to 1.
+        base_width (int, optional): base width. Defaults to 64.
+        dilation (int, optional): dilation. Defaults to 1.
+        norm_layer (nn.Module, optional): normalization layer. Defaults to None.
+    """
     expansion = 1
 
     def __init__(
@@ -85,7 +120,16 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x) -> torch.Tensor:
+        """
+        Forward pass in the network
+        
+        Args:
+            x (torch.Tensor): input tensor
+        
+        Returns:
+            torch.Tensor: output tensor
+        """
         # saving x to pass over the bridge connection
         identity = x
 
@@ -106,6 +150,22 @@ class BasicBlock(nn.Module):
 
 
 class ResNet(nn.Module):
+    """
+    ResNet model
+
+    Args:
+        block (nn.Module): block type
+        layers (list): list of layers
+        num_classes (int, optional): number of classes. Defaults to 1000.
+        zero_init_residual (bool, optional): If True, zero-initialize the last BN in each residual branch. Defaults to False.
+        groups (int, optional): number of groups. Defaults to 1.
+        width_per_group (int, optional): width per group. Defaults to 64.
+        replace_stride_with_dilation (tuple, optional): replace stride with dilation. Defaults to None.
+        norm_layer (nn.Module, optional): normalization layer. Defaults to None.
+        return_all_feature_maps (bool, optional): If True, returns all feature maps. Defaults to False.
+        first_conv (bool, optional): If True, uses a 7x7 kernel for the first convolution. Defaults to True.
+        maxpool1 (bool, optional): If True, uses a maxpool layer after the first convolution. Defaults to True.
+    """
 
     def __init__(
         self,
@@ -183,7 +243,20 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False) -> nn.Sequential:
+        """
+        Create a layer of residual blocks
+        
+        Args:
+            block (nn.Module): block type
+            planes (int): number of planes
+            blocks (int): number of blocks
+            stride (int): stride
+            dilate (bool): If True, use dilation
+
+        Returns:
+            nn.Sequential: layer of residual blocks
+        """
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -224,7 +297,16 @@ class ResNet(nn.Module):
 
         return nn.Sequential(*layers)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass in the network
+        
+        Args:
+            x (torch.Tensor): input tensor
+        
+        Returns:
+            torch.Tensor: output tensor
+        """
         
         # passing input from pre-processing layers
         x0 = self.conv1(x)
@@ -253,7 +335,20 @@ class ResNet(nn.Module):
             return x0
 
 
-def _resnet(arch, block, layers, pretrained, progress, **kwargs):
+def _resnet(arch, block, layers, pretrained, progress, **kwargs) -> ResNet:
+    """
+    Constructs a ResNet model.
+
+    Args:
+        arch (str): model architecture
+        block (nn.Module): block type
+        layers (list): list of layers
+        pretrained (bool): If True, returns a model pre-trained on ImageNet
+        progress (bool): If True, displays a progress bar of the download to stderr
+
+    Returns:
+        ResNet: model
+    """
     model = ResNet(block, layers, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(MODEL_URLS[arch], progress=progress)
@@ -263,13 +358,16 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     return model
 
 
-def resnet_3blocks(pretrained: bool = False, progress: bool = True, **kwargs):
-    r"""ResNet-18 model from
-    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
+def resnet_3blocks(pretrained: bool = False, progress: bool = True, **kwargs) -> ResNet:
+    """ResNet-18 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`
 
     Args:
         pretrained: If True, returns a model pre-trained on ImageNet
         progress: If True, displays a progress bar of the download to stderr
+    
+    Returns:
+        ResNet: model
     """
     
     return _resnet('resnet18', BasicBlock, [2, 2, 2, 2], pretrained, progress, **kwargs)

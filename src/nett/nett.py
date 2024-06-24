@@ -58,12 +58,16 @@ class NETT:
             batch_mode: bool = True,
             device_type: str = "cuda",
             devices: list[int] | int =  -1,
-            description: str = None,
+            description: Optional[str] = None,
             job_memory: int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 1000,
-            verbosity: int = 1, run_id: str = '',
-            synchronous=True) -> list[Future]: # pylint: disable=unused-argument
+            conditions: Optional[list[str]] = None,
+            verbosity: int = 1, 
+            run_id: str = '',
+            synchronous=True,
+            save_checkpoints: bool = False,
+            checkpoint_freq: int = 30_000) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -81,6 +85,9 @@ class NETT:
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbosity (int, optional): The verbosity level of the run. Defaults to 1.
+            run_id (str, optional): The run ID. Defaults to ''.
+            save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
+            checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -107,10 +114,11 @@ class NETT:
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
         self.run_id = run_id
-        
+        self.save_checkpoints = save_checkpoints
+        self.checkpoint_freq = checkpoint_freq
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs()
+        jobs, waitlist = self._schedule_jobs(conditions=conditions)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -261,10 +269,27 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _schedule_jobs(self) -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
         # create jobs
-        # create set of all brain-environment combinations
-        task_set: set[tuple[str,int]] = set(product(self.environment.config.conditions, set(range(1, self.num_brains + 1))))
+        
+        # create set of all conditions
+        all_conditions: set[str] = set(self.environment.config.conditions)
+    
+        # check if user-defined their own conditions
+        if (conditions is not None):
+            # create a set of user-defined conditions
+            user_conditions: set[str] = set(conditions)
+
+            if user_conditions.issubset(all_conditions):
+                self.logger.info(f"Using user specified conditions: {conditions}")
+                # create set of all brain-environment combinations for user-defined conditions
+                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
+            else:
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+        # default to all conditions
+        else:
+            # create set of all brain-environment combinations
+            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
 
         jobs: list[Job] = []
         waitlist: list[Job] = []
@@ -340,10 +365,12 @@ class NETT:
                     device_type=self.device_type,
                     device=job.device,
                     index=job.index,
-                    paths=job.paths)
+                    paths=job.paths,
+                    save_checkpoints=self.save_checkpoints,
+                    checkpoint_freq=self.checkpoint_freq,)
                 train_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
+                self.logger.error(f"Error in training: {e}")
                 train_environment.close()
                 exit()    
 
@@ -374,14 +401,6 @@ class NETT:
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
-    def _get_memory_status(self) -> dict[int, dict[str, int]]:
-        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {
-            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in self.devices
-        }
-        return memory_status
-
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
         # TODO (v0.5) add a dummy job to gauge memory consumption
@@ -408,6 +427,14 @@ class NETT:
         jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
+
+    def _get_memory_status(self) -> dict[int, dict[str, int]]:
+        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
+        memory_status = {
+            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+            for device_id in self.devices
+        }
+        return memory_status
 
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar

@@ -4,8 +4,8 @@ sb3-contrib
 torchvision
 timm
 nvidia-ml-py
-pytorch-lightning
-pytorch-lightning-bolts
+lightning
+lightning-bolts
 scikit-learn
 sphinx
 mkdocs

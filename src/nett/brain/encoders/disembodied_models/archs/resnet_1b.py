@@ -30,8 +30,20 @@ MODEL_URLS = {
 }
 
 
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
-    """3x3 convolution with padding"""
+def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> nn.Conv2d:
+    """
+    3x3 convolution with padding
+    
+    Args:
+        in_planes (int): number of input channels
+        out_planes (int): number of output channels
+        stride (int): stride for the convolution
+        groups (int): number of groups for the convolution
+        dilation (int): dilation rate for the convolution
+    
+    Returns:
+        nn.Conv2d: 3x3 convolution layer
+    """
     return nn.Conv2d(
         in_planes,
         out_planes,
@@ -44,12 +56,35 @@ def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1):
     )
 
 
-def conv1x1(in_planes, out_planes, stride=1):
-    """1x1 convolution"""
+def conv1x1(in_planes, out_planes, stride=1) -> nn.Conv2d:
+    """
+    1x1 convolution
+    
+    Args:
+        in_planes (int): number of input channels
+        out_planes (int): number of output channels
+        stride (int): stride for the convolution
+    
+    Returns:
+        nn.Conv2d: 1x1 convolution layer
+    """
     return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
 
 
 class BasicBlock(nn.Module):
+    """
+    Basic block for ResNet
+
+    Args:
+        inplanes (int): number of input channels
+        planes (int): number of output channels
+        stride (int): stride for the first convolution
+        downsample (nn.Module): downsample layer
+        groups (int): number of groups for the 3x3 convolution
+        base_width (int): number of channels per group
+        dilation (int): dilation rate for the 3x3 convolution
+        norm_layer (nn.Module): normalization layer
+    """
     expansion = 1
 
     def __init__(
@@ -71,7 +106,16 @@ class BasicBlock(nn.Module):
         self.downsample = downsample
         self.stride = stride
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass in the network
+
+        Args:
+            x (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: output tensor
+        """
         identity = x
 
         out = self.conv1(x)
@@ -90,6 +134,22 @@ class BasicBlock(nn.Module):
         return out
 
 class ResNet(nn.Module):
+    """
+    ResNet model
+
+    Args:
+        block (nn.Module): the block type to be used in the network
+        layers (list of int): the number of layers for each block
+        num_classes (int): number of classes
+        zero_init_residual (bool): whether the residual block should be initialized to zero
+        groups (int): number of groups for the 3x3 convolution
+        width_per_group (int): number of channels per group
+        replace_stride_with_dilation (tuple): replace stride with dilation
+        norm_layer (nn.Module): normalization layer
+        return_all_feature_maps (bool): whether to return all feature maps
+        first_conv (bool): whether to use the first convolution
+        maxpool1 (bool): whether to use the first maxpool
+    """
 
     def __init__(
         self,
@@ -168,7 +228,20 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False):
+    def _make_layer(self, block, planes, blocks, stride=1, dilate=False) -> nn.Sequential:
+        """
+        Make a layer of blocks.
+
+        Args:
+            block (nn.Module): the block type to be used in the layer
+            planes (int): number of output channels for the layer
+            blocks (int): number of blocks to be used
+            stride (int): stride for the first block. Default: 1
+            dilate (bool): whether to apply dilation strategy to the layer. Default: False
+
+        Returns:
+            nn.Sequential: a layer of blocks
+        """
         norm_layer = self._norm_layer
         downsample = None
         previous_dilation = self.dilation
@@ -210,7 +283,16 @@ class ResNet(nn.Module):
         return nn.Sequential(*layers)
 
     
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Forward pass in the network
+
+        Args:
+            x (torch.Tensor): input tensor
+
+        Returns:
+            torch.Tensor: output tensor
+        """
         x0 = self.conv1(x)
         x0 = self.bn1(x0)
         x0 = self.relu(x0)
@@ -228,7 +310,20 @@ class ResNet(nn.Module):
             return x0
 
 
-def _resnet(arch, block, layers, pretrained, progress, **kwargs):
+def _resnet(arch, block, layers, pretrained, progress, **kwargs) -> ResNet:
+    """
+    Constructs a ResNet model.
+
+    Args:
+        arch (str): model architecture
+        block (nn.Module): the block type to be used in the network
+        layers (list of int): the number of layers for each block
+        pretrained (bool): if True, returns a model pre-trained on ImageNet
+        progress (bool): if True, displays a progress bar of the download to stderr
+
+    Returns:
+        ResNet: model
+    """
     model = ResNet(block, layers, **kwargs)
     if pretrained:
         state_dict = load_state_dict_from_url(MODEL_URLS[arch], progress=progress)
@@ -241,13 +336,16 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs):
     return model
 
 
-def resnet_1block(pretrained: bool = False, progress: bool = True, **kwargs):
-    r"""ResNet-18 model from
-    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`_
+def resnet_1block(pretrained: bool = False, progress: bool = True, **kwargs) -> ResNet:
+    """ResNet-18 model from
+    `"Deep Residual Learning for Image Recognition" <https://arxiv.org/pdf/1512.03385.pdf>`
 
     Args:
         pretrained: If True, returns a model pre-trained on ImageNet
         progress: If True, displays a progress bar of the download to stderr
+
+    Returns:
+        ResNet: ResNet-18 model
     """
 
     return _resnet('resnet18', BasicBlock, [1, 1, 1, 1], pretrained, progress, **kwargs)
