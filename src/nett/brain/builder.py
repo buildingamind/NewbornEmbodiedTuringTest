@@ -631,8 +631,12 @@ class Brain:
             checkpoint_callback = CheckpointCallback(
                 save_freq=checkpoint_freq, # defaults to 30_000 steps
                 save_path=paths["checkpoints"],
-                save_replay_buffer=True,
-                save_vecnormalize=True)
+                save_replay_buffer=True, # save the replay buffer if the model has one, defaults to False 
+                # TODO: The replay buffer is only used for OffPolicy Algorithms intended to replay the experience. If the goal is only to save the model, this should be False
+                save_vecnormalize=True) # if the environment uses a VecNormalize wrapper, it will save the corresponding statistics. defaults to False
+                # TODO: The VecNormalize wrapper is never mentioned in the code. Unless something inherits it or we intend to use the VecNormalize wrapper in the future, this should be False as it is unnecessary
+
+
             return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
         else:
             return CallbackList([hparam_callback, bar_callback])
