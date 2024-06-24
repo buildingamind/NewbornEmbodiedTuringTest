@@ -4,7 +4,6 @@ import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
-import pdb
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -19,7 +18,6 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
@@ -110,7 +108,7 @@ class Brain:
         if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
-        self.logger.info(f'Training with {self.algorithm.__name__}')
+        self.logger.info(f"Training with {self.algorithm.__name__}")
         try:
             self.model = self.algorithm(
                 self.policy,
