@@ -25,7 +25,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import HParamCallback, multiBarCallback
+from nett.utils.callbacks import HParamCallback, multiBarCallback, MemoryCallback
 # from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -501,21 +501,6 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
-    
-    def checkpoint_on_event(self):
-        """
-        Checkpoint the model on an event.
-
-        Args:
-            model (OnPolicyAlgorithm | OffPolicyAlgorithm): The model to checkpoint.
-        """
-        # starting the monitoring
-        tracemalloc.start()
-
-        getMemory = lambda: self.logger.info('MEMORY TRACED: ', tracemalloc.get_traced_memory()[1])
-
-        return getMemory
-
 
     def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int) -> CallbackList:
         """
@@ -533,7 +518,7 @@ class Brain:
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
         # creates the parallel progress bars
         bar_callback = multiBarCallback(index)
-        memory_estimate_callback = EveryNTimesteps(n_steps=500, callback=self.checkpoint_on_event())
+        memory_estimate_callback = MemoryCallback()
 
         if save_checkpoints:
             checkpoint_callback = CheckpointCallback(
