@@ -84,9 +84,9 @@ class Brain:
 
     def estimate_memory(self, model, feature_extractor, input_size, device, batch_size, cudnn_workspace_size=1024*1024*8):
         # Move the models to the GPU
-        print("Moving models to the GPU")
-        model = model.to(device)
-        print('1')
+        print("Moving encoder to the GPU")
+        # model = model.to(device)
+        # print('1')
         feature_extractor = feature_extractor.to(device)
         
         # Calculate memory for model parameters
