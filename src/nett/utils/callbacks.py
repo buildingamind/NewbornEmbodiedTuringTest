@@ -6,6 +6,7 @@ Classes:
 """
 from pathlib import Path
 import tracemalloc
+import torch
 from tqdm import tqdm
 import numpy as np
 from stable_baselines3.common.results_plotter import load_results, ts2xy
@@ -66,7 +67,6 @@ class MemoryCallback(BaseCallback):
     """
     def __init__(self, verbose: int = 1):
         super().__init__(verbose)
-        tracemalloc.start()
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
         # The RL model
@@ -86,46 +86,12 @@ class MemoryCallback(BaseCallback):
         # to have access to the parent object
         # self.parent = None  # type: Optional[BaseCallback]
 
-    def _on_training_start(self) -> None:
-        """
-        This method is called before the first rollout starts.
-        """
-        self.logger.info("Memory callback: training starts: ", tracemalloc.get_traced_memory()[1])
-        pass
-
     def _on_rollout_start(self) -> None:
         """
         A rollout is the collection of environment interaction
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        self.logger.info("Memory callback: rollout starts: ", tracemalloc.get_traced_memory()[1])
-        pass
-
-    def _on_step(self) -> bool:
-        """
-        This method will be called by the model after each call to `env.step()`.
-
-        For child callback (of an `EventCallback`), this will be called
-        when the event is triggered.
-
-        :return: If the callback returns False, training is aborted early.
-        """
-        if self.num_timesteps % 100 == 0:
-            self.logger.info("Memory callback: step: ", tracemalloc.get_traced_memory()[1])
-
-        return True
-
-    def _on_rollout_end(self) -> None:
-        """
-        This event is triggered before updating the policy.
-        """
-        self.logger.info("Memory callback: rollout ends: ", tracemalloc.get_traced_memory()[1])
-        pass
-
-    def _on_training_end(self) -> None:
-        """
-        This event is triggered before exiting the `learn()` method.
-        """
-        self.logger.info("Memory callback: training ends: ", tracemalloc.get_traced_memory()[1])
+        self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
+        self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
