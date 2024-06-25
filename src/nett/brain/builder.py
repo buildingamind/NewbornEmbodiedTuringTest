@@ -84,70 +84,112 @@ class Brain:
 
     def estimate_memory(self, model, feature_extractor, input_size, device, batch_size, cudnn_workspace_size=1024*1024*8):
         # Move the models to the GPU
+        print("Moving models to the GPU")
         model = model.to(device)
+        print('1')
         feature_extractor = feature_extractor.to(device)
         
         # Calculate memory for model parameters
+        print("Calculating memory for model parameters")
         param_size_model = sum(param.numel() * param.element_size() for param in model.parameters())
+        print('1')
         param_size_extractor = sum(param.numel() * param.element_size() for param in feature_extractor.parameters())
+        print('2')
         param_size = param_size_model + param_size_extractor
         
         # Calculate memory for input and output tensors on the GPU
+        print("Calculating memory for input and output tensors on the GPU")
         input_tensor = torch.zeros(input_size, device=device)
+        print('1')
         input_memory = input_tensor.numel() * input_tensor.element_size()
         
         # Forward pass to estimate output and intermediate tensors memory
+        print("Performing forward pass to estimate output and intermediate tensors memory")
         def forward_hook(module, input, output):
+            print("Forward hook")
             nonlocal intermediate_memory
             if isinstance(output, (tuple, list)):
+                print("Tuple or list")
                 for out in output:
+                    print("Output")
                     if isinstance(out, torch.Tensor):
+                        print("1")
                         intermediate_memory += out.numel() * out.element_size()
-            elif isinstance(output, torch.Tensor):
-                intermediate_memory += output.numel() * output.element_size()
+                    elif isinstance(output, torch.Tensor):
+                        print("2")
+                        intermediate_memory += output.numel() * output.element_size()
         
+        print('1')
         intermediate_memory = 0
+        print('2')
         hooks = []
+        print('3')
         for layer in model.modules():
+            print('4')
             if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
+                print('5')
                 hooks.append(layer.register_forward_hook(forward_hook))
         
+        print('6')
         with torch.no_grad():
+            print('7')
             _ = model(input_tensor)
         
+        print('8')
         for hook in hooks:
+            print('9')
             hook.remove()
         
         # Forward pass through the feature extractor
+        print("Performing forward pass through the feature extractor")
         intermediate_memory_extractor = 0
+        print('1')
         hooks_extractor = []
+        print('2')
         for layer in feature_extractor.modules():
+            print('3')
             if isinstance(layer, (torch.nn.Conv2d, torch.nn.Linear, torch.nn.ReLU, torch.nn.MaxPool2d, torch.nn.BatchNorm2d, torch.nn.Dropout)):
+                print('4')
                 hooks_extractor.append(layer.register_forward_hook(forward_hook))
         
+        print('5')
         with torch.no_grad():
+            print('6')
             _ = feature_extractor(input_tensor)
         
+        print('7')
         for hook in hooks_extractor:
+            print('8')
             hook.remove()
         
+        print('9')
         intermediate_memory += intermediate_memory_extractor
         
         # Backward pass to estimate gradients memory
+        print("Performing backward pass to estimate gradients memory")
         output_tensor = model(input_tensor)
+        print('1')
         if isinstance(output_tensor, (tuple, list)):
+            print('2')
             output_tensor = output_tensor[0]  # Assuming the first output is the main tensor for backward pass
+        print('3')
         model.zero_grad()
+        print('4')
         output_tensor.backward(torch.ones_like(output_tensor))
         
+        print('5')
         grad_memory_model = sum(param.grad.numel() * param.grad.element_size() for param in model.parameters() if param.grad is not None)
+        print('6')
         grad_memory_extractor = sum(param.grad.numel() * param.grad.element_size() for param in feature_extractor.parameters() if param.grad is not None)
+        print('7')
         grad_memory = grad_memory_model + grad_memory_extractor
 
         # Total memory calculation
+        print("Calculating total memory")
         total_memory = param_size + input_memory + intermediate_memory + grad_memory + cudnn_workspace_size
         
         # Convert to MB
+        print("Converting to MB")
         total_memory_MB = total_memory / (1024 ** 2)
         return total_memory_MB
 
