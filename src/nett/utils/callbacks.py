@@ -5,7 +5,6 @@ Classes:
     HParamCallback(BaseCallback)
 """
 from pathlib import Path
-import tracemalloc
 import torch
 from tqdm import tqdm
 import numpy as np
@@ -86,6 +85,12 @@ class MemoryCallback(BaseCallback):
         # to have access to the parent object
         # self.parent = None  # type: Optional[BaseCallback]
 
+    def _on_training_start(self) -> None:
+        """
+        This method is called before the first rollout starts.
+        """
+        pass
+
     def _on_rollout_start(self) -> None:
         """
         A rollout is the collection of environment interaction
@@ -94,4 +99,28 @@ class MemoryCallback(BaseCallback):
         """
         self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
+        pass
+        pass
+
+    def _on_step(self) -> bool:
+        """
+        This method will be called by the model after each call to `env.step()`.
+
+        For child callback (of an `EventCallback`), this will be called
+        when the event is triggered.
+
+        :return: If the callback returns False, training is aborted early.
+        """
+        return True
+
+    def _on_rollout_end(self) -> None:
+        """
+        This event is triggered before updating the policy.
+        """
+        pass
+
+    def _on_training_end(self) -> None:
+        """
+        This event is triggered before exiting the `learn()` method.
+        """
         pass
