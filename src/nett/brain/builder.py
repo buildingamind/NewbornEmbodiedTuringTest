@@ -229,6 +229,7 @@ class Brain:
             ValueError: If the environment fails the validation check.
         """
         self.getMemoryEstimate(env, device_type, device, paths)
+        exit()
         # validate environment
         env = self._validate_env(env)
 
