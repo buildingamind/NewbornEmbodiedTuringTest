@@ -97,8 +97,9 @@ class MemoryCallback(BaseCallback):
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
-        self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
+        self.logger.info("SUMMARY: ", torch.cuda.memory_summary())
+        # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
+        # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
         pass
 
