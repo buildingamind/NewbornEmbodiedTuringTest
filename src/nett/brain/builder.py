@@ -1,6 +1,7 @@
 """Module for the Brain class."""
 
 import os
+import tracemalloc
 from typing import Any, Optional
 from pathlib import Path
 import inspect
@@ -11,7 +12,7 @@ import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EveryNTimesteps
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
@@ -500,6 +501,21 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
+    
+    def checkpoint_on_event(self):
+        """
+        Checkpoint the model on an event.
+
+        Args:
+            model (OnPolicyAlgorithm | OffPolicyAlgorithm): The model to checkpoint.
+        """
+        # starting the monitoring
+        tracemalloc.start()
+
+        getMemory = lambda: self.logger.info('MEMORY TRACED: ', tracemalloc.get_traced_memory()[1])
+
+        return getMemory
+
 
     def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int) -> CallbackList:
         """
@@ -517,6 +533,7 @@ class Brain:
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
         # creates the parallel progress bars
         bar_callback = multiBarCallback(index)
+        memory_estimate_callback = EveryNTimesteps(n_steps=500, callback=self.checkpoint_on_event())
 
         if save_checkpoints:
             checkpoint_callback = CheckpointCallback(
@@ -524,6 +541,6 @@ class Brain:
                 save_path=paths["checkpoints"],
                 save_replay_buffer=True,
                 save_vecnormalize=True)
-            return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
+            return CallbackList([memory_estimate_callback, hparam_callback, checkpoint_callback, bar_callback])
         else:
-            return CallbackList([hparam_callback, bar_callback])
+            return CallbackList([memory_estimate_callback, hparam_callback, bar_callback])
