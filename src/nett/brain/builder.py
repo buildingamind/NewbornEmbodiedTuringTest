@@ -22,10 +22,9 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
-from stable_baselines3 import PPO
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import SupervisedSaveBestModelCallback, HParamCallback, multiBarCallback
+from nett.utils.callbacks import HParamCallback, multiBarCallback
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -93,7 +92,9 @@ class Brain:
         device_type: str,
         device: int,
         index: int,
-        paths: dict[str, Path]):
+        paths: dict[str, Path],
+        save_checkpoints: bool,
+        checkpoint_freq: int):
         """
         Train the brain.
 
@@ -104,6 +105,8 @@ class Brain:
             device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
+            save_checkpoints (bool): Whether to save checkpoints or not.
+            checkpoint_freq (int): The frequency of saving checkpoints.
 
         Raises:
             ValueError: If the environment fails the validation check.
@@ -115,8 +118,7 @@ class Brain:
         log_path = paths["env_logs"]
         
         
-        env = Monitor(env, str(log_path))
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
         policy_kwargs = {
@@ -157,7 +159,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index)
+        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -169,6 +171,8 @@ class Brain:
         self.logger.info("Training Complete")
 
         # save
+        ## create save directory
+        paths["model"].mkdir(parents=True, exist_ok=True)
         self.save_encoder_policy_network(paths["model"])
         print("Save feature extractor")
         
@@ -190,8 +194,7 @@ class Brain:
         iterations,
         model_path: str,
         rec_path: str,
-        index: int,
-        record_prefix: Optional[str] = None): # pylint: disable=unused-argument
+        index: int): # pylint: disable=unused-argument
         """
         Test the brain.
 
@@ -200,7 +203,6 @@ class Brain:
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
             index (int): The index of the model to test, needed for tracking bar.
-            record_prefix (str, optional): The prefix for recording videos of the testing process. Defaults to None.
         """
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
@@ -283,7 +285,7 @@ class Brain:
         """
         self.model.save(path)
         
-    def save_encoder_policy_network(self,path):
+    def save_encoder_policy_network(self,path: Path):
         """
         Saves the policy and feature extractor of the agent's model.
 
@@ -294,8 +296,7 @@ class Brain:
 
         Returns:
             None
-        """
-        
+        """        
         ## save policy
         policy = self.model.policy
         policy.save(os.path.join(path, "policy.pkl"))
@@ -499,27 +500,29 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int) -> CallbackList:
         """
         Initialize the callbacks for training.
 
         Args:
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
             index (int): The index of the model to test, needed for tracking bar.
+            save_checkpoints (bool): Whether to save checkpoints or not.
+            checkpoint_freq (int): The frequency of saving checkpoints.
         
         Returns:
             CallbackList: The list of callbacks for training.
         """
-        save_best_model_callback = SupervisedSaveBestModelCallback(
-            summary_freq=30000, 
-            save_dir=paths["model"], 
-            env_log_path=paths["env_logs"])
-        hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(
-            save_freq=30000,
-            save_path=paths["checkpoints"],
-            name_prefix=self.algorithm.__name__,
-            save_replay_buffer=True,
-            save_vecnormalize=True)
+        hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
+        # creates the parallel progress bars
         bar_callback = multiBarCallback(index)
-        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
+
+        if save_checkpoints:
+            checkpoint_callback = CheckpointCallback(
+                save_freq=checkpoint_freq, # defaults to 30_000 steps
+                save_path=paths["checkpoints"],
+                save_replay_buffer=True,
+                save_vecnormalize=True)
+            return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
+        else:
+            return CallbackList([hparam_callback, bar_callback])
