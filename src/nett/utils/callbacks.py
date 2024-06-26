@@ -14,6 +14,8 @@ from stable_baselines3.common.logger import HParam
 
 from nett.utils.train import compute_train_performance
 
+from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetComputeRunningProcesses, nvmlDeviceGetComputeRunningProcesses_v3, nvmlDeviceGetUtilizationRates
+
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
     """
@@ -66,6 +68,11 @@ class MemoryCallback(BaseCallback):
     """
     def __init__(self, verbose: int = 1):
         super().__init__(verbose)
+        self.logger.info("MEMORY INFO 0: ", nvmlDeviceGetMemoryInfo)
+        self.logger.info("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses)
+        self.logger.info("PROCESSES_V3 0: ", nvmlDeviceGetComputeRunningProcesses_v3)
+        self.logger.info("RATES 0: ", nvmlDeviceGetUtilizationRates)
+
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
         # The RL model
@@ -97,7 +104,10 @@ class MemoryCallback(BaseCallback):
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        self.logger.info("SUMMARY: ", torch.cuda.memory_summary())
+        self.logger.info("MEMORY INFO: ", nvmlDeviceGetMemoryInfo)
+        self.logger.info("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses)
+        self.logger.info("PROCESSES_V3: ", nvmlDeviceGetComputeRunningProcesses_v3)
+        self.logger.info("RATES: ", nvmlDeviceGetUtilizationRates)
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
