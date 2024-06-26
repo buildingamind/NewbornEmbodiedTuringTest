@@ -6,7 +6,7 @@ Brain:
   policy: CnnPolicy
   seed: 42
   encoder: small
-  train_encoder: False
+  train_encoder: True
 Body:
   type: basic
   wrappers: []
@@ -22,7 +22,7 @@ Environment:
 Config:
   run_id: "parsing_trial_1"
   num_brains: 5
-  mode: "full"
+  mode: full
   train_eps: 10
   test_eps: 5
   # Use and absolute path

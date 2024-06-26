@@ -20,7 +20,9 @@ body = Body(
 
 environment = Environment(
     config = "parsing",
-    executable_path = "home/wjpeacoc/nett_env/builds/parsing2/parsing.x86_64"
+    executable_path = "data/wjpeacoc/builds/parsing.x86_64",
+    record_agent=True,
+    record_chamber=True
 )
 
 benchmarks = NETT(
@@ -31,13 +33,14 @@ benchmarks = NETT(
 
 job_sheet = benchmarks.run(
     output_dir="/data/wjpeacoc/experiments/results/parsing",
-    num_brains=1,
-    train_eps=1,
-    test_eps=1
+    num_brains=5,
+    mode="full",
+    train_eps=1000,
+    test_eps=20
 )
 
-benchmarks.analyze(
-    config = "parsing",
-    run_dir="/data/wjpeacoc/experiments/results/parsing",
-    output_dir = "/data/wjpeacoc/experiments/results/parsing/analysis"
-)
+# benchmarks.analyze(
+#     config = "parsing",
+#     run_dir="/data/wjpeacoc/experiments/results/parsing",
+#     output_dir = "/data/wjpeacoc/experiments/results/parsing/analysis"
+# )
