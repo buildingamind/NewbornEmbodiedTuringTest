@@ -70,9 +70,8 @@ class MemoryCallback(BaseCallback):
         super().__init__(verbose)
         handle = nvmlDeviceGetHandleByIndex(7)
         print("MEMORY INFO 0: ", nvmlDeviceGetMemoryInfo(handle))
-        print("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses(handle))
-        print("PROCESSES_V3 0: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
-        print("RATES 0: ", nvmlDeviceGetUtilizationRates(handle))
+        print("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
+        
 
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
@@ -107,15 +106,18 @@ class MemoryCallback(BaseCallback):
         """
         handle = nvmlDeviceGetHandleByIndex(7)
         print("MEMORY INFO: ", nvmlDeviceGetMemoryInfo(handle))
-        print("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses(handle))
-        print("PROCESSES_V3: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
-        print("RATES: ", nvmlDeviceGetUtilizationRates(handle))
+        print("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
         pass
 
     def _on_step(self) -> bool:
+        if self.n_calls % 100 == 0:
+            handle = nvmlDeviceGetHandleByIndex(7)
+            print("MEMORY INFO",self.n_calls, ": ", nvmlDeviceGetMemoryInfo(handle))
+            print("PROCESSES",self.n_calls, ": ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
+            print("RATES ", self.n_calls, ": ", nvmlDeviceGetUtilizationRates(handle))
         """
         This method will be called by the model after each call to `env.step()`.
 
