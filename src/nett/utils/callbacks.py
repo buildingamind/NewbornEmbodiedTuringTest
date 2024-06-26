@@ -68,10 +68,10 @@ class MemoryCallback(BaseCallback):
     """
     def __init__(self, verbose: int = 1):
         super().__init__(verbose)
-        print("MEMORY INFO 0: ", nvmlDeviceGetMemoryInfo)
-        print("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses)
-        print("PROCESSES_V3 0: ", nvmlDeviceGetComputeRunningProcesses_v3)
-        print("RATES 0: ", nvmlDeviceGetUtilizationRates)
+        print("MEMORY INFO 0: ", nvmlDeviceGetMemoryInfo())
+        print("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses())
+        print("PROCESSES_V3 0: ", nvmlDeviceGetComputeRunningProcesses_v3())
+        print("RATES 0: ", nvmlDeviceGetUtilizationRates())
 
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
@@ -104,10 +104,10 @@ class MemoryCallback(BaseCallback):
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        print("MEMORY INFO: ", nvmlDeviceGetMemoryInfo)
-        print("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses)
-        print("PROCESSES_V3: ", nvmlDeviceGetComputeRunningProcesses_v3)
-        print("RATES: ", nvmlDeviceGetUtilizationRates)
+        print("MEMORY INFO: ", nvmlDeviceGetMemoryInfo())
+        print("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses())
+        print("PROCESSES_V3: ", nvmlDeviceGetComputeRunningProcesses_v3())
+        print("RATES: ", nvmlDeviceGetUtilizationRates())
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
