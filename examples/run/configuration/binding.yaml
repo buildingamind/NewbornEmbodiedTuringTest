@@ -25,4 +25,3 @@ Config:
   train_eps: 1000
   test_eps: 20
   output_dir: "/data/mchivuku/embodiedai/neurips_experiments/binding/base_agents_new/large/object2_exp4"
-

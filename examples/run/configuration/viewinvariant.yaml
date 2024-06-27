@@ -24,4 +24,3 @@ Config:
   train_eps: 1
   test_eps: 20
   output_dir: "/home/mchivuku/projects/neurips/NewbornEmbodiedTuringTest/data/runs/viewpt"
-

@@ -105,15 +105,12 @@ class Experiment:
         # Extract attributes from brain_config
         brain_config_attrs = {attr: getattr(self.brain_config, attr) for attr in dir(self.brain_config) \
                               if not attr.startswith('__')}
-
         
         ## update encoder attr in brain_config
         if brain_config_attrs['encoder']:
             encoder_config = self.encoder_config[brain_config_attrs['encoder']]
             brain_config_attrs['encoder'] = encoder_config['encoder']
-            brain_config_attrs['embedding_dim'] = encoder_config['feature_dimensions']
-
-        
+            brain_config_attrs['embedding_dim'] = encoder_config['feature_dimensions']        
         
         ## Add checkpoint path
         if brain_config_attrs.get('encoder') == 'frozensimclr':
@@ -266,8 +263,7 @@ def main():
         
         if exp_name == 'parsing':
             exp = ParsingExperiment(**config)
-            exp.run()
-            
+            exp.run()        
         
         elif exp_name == 'binding':
             exp = BindingExperiment(**config)
@@ -285,7 +281,6 @@ def parse_args():
     parser.add_argument('-exp_name', '--exp_name', type=str, required=True, default="binding",
                         help='name of the experiment')
     return parser.parse_args()
-
 
 if __name__ == '__main__':
     main()
