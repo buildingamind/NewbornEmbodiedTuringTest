@@ -145,7 +145,7 @@ class Brain:
                 device=torch.device(device_type, device))
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
             raise e
 
         # setup tensorboard logger and attach to model
@@ -233,7 +233,7 @@ class Brain:
                 device=torch.device(device_type, device))
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
             raise e
         
         

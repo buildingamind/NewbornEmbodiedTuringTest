@@ -376,7 +376,7 @@ class NETT:
                     checkpoint_freq=self.checkpoint_freq,)
                 train_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in training: {e}")
+                self.logger.error(f"Error in training: {e}", exc_info=1)
                 train_environment.close()
                 exit()    
 
@@ -401,7 +401,7 @@ class NETT:
                     index=job.index)
                 test_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
+                self.logger.error(f"Error in testing: {e}", exc_info=1)
                 test_environment.close()
                 exit()
 
@@ -463,7 +463,7 @@ class NETT:
                                 checkpoint_freq=self.checkpoint_freq,)
                             train_environment.close()
                         except Exception as e:
-                            self.logger.error(f"Error in training: {e}")
+                            self.logger.error(f"Error in training: {e}", exc_info=1)
                             train_environment.close()
                             exit() 
                     else:
