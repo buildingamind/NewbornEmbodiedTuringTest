@@ -427,7 +427,9 @@ class NETT:
             try:
                 if (self.job_memory == "auto"):
                     currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-                    job = Job(0, self.environment.config.conditions[0], 0, "./.tmp/", 0) #TODO: May need to change the card being chosen here
+                    tmp_path = self.output_dir / ".tmp/"
+                    tmp_path.mkdir(parents=True, exist_ok=True)
+                    job = Job(0, self.environment.config.conditions[0], 0, tmp_path, 0) #TODO: May need to change the card being chosen here
 
                     brain: "nett.Brain" = deepcopy(self.brain)
 
@@ -472,6 +474,9 @@ class NETT:
             except Exception as e:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
                 exit()
+            finally:
+                if (self.output_dir / ".tmp/").exists():
+                    (self.output_dir / ".tmp/").rmdir()
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
