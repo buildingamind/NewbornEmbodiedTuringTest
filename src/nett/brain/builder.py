@@ -158,10 +158,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
-
-        # adding a memory callback
-        callback_list.callbacks = callback_list.callbacks.append(MemoryCallback())
+        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -589,7 +586,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int, estimate_memory: bool = False) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -605,14 +602,17 @@ class Brain:
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
         # creates the parallel progress bars
         bar_callback = multiBarCallback(index)
-        memory_estimate_callback = MemoryCallback()
+
+        callback_list = [hparam_callback, bar_callback]
+
+        if estimate_memory:
+            callback_list.append(MemoryCallback())
 
         if save_checkpoints:
-            checkpoint_callback = CheckpointCallback(
+            callback_list.append(CheckpointCallback(
                 save_freq=checkpoint_freq, # defaults to 30_000 steps
                 save_path=paths["checkpoints"],
                 save_replay_buffer=True,
-                save_vecnormalize=True)
-            return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
-        else:
-            return CallbackList([hparam_callback, bar_callback])
+                save_vecnormalize=True))
+
+        return CallbackList(callback_list)
