@@ -107,12 +107,7 @@ class MemoryCallback(BaseCallback):
         """
         # Create the directory if it doesn't exist
 
-        os.makedirs("./.tmp", exist_ok=True)
-        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # Write the used memory to a file
-        with open("./.tmp/memory_use", "w") as f:
-            f.write(str(used_memory))
-        self.close = True
+
 
         # Rest of the code...
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
@@ -135,6 +130,13 @@ class MemoryCallback(BaseCallback):
         """
         This event is triggered before updating the policy.
         """
+
+        os.makedirs("./.tmp", exist_ok=True)
+        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # Write the used memory to a file
+        with open("./.tmp/memory_use", "w") as f:
+            f.write(str(used_memory))
+        self.close = True
         pass
 
     def _on_training_end(self) -> None:
