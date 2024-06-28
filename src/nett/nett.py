@@ -470,7 +470,7 @@ class NETT:
                         memory_allocated = int(file.readline()) - currentMemory
                     self.logger.info(f"Estimated memory: {memory_allocated}")
             except Exception as e:
-                self.logger.error(f"Error in estimating memory: {e}")
+                self.logger.error(f"Error in estimating memory: {e}", stack_info==True)
                 exit()
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
