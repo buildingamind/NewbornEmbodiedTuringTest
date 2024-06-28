@@ -106,18 +106,20 @@ class MemoryCallback(BaseCallback):
         This event is triggered before collecting new samples.
         """
         # Create the directory if it doesn't exist
-        os.makedirs("./.tmp", exist_ok=True)
-        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # Write the used memory to a file
-        with open("./.tmp/memory_use", "w") as f:
-            f.write(str(used_memory))
+
+        # os.makedirs("./.tmp", exist_ok=True)
+        # used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # # Write the used memory to a file
+        # with open("./.tmp/memory_use", "w") as f:
+        #     f.write(str(used_memory))
+
+
         # Rest of the code...
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
 
     def _on_step(self) -> bool:
-        print('STEP!!!!!!')
         """
         This method will be called by the model after each call to `env.step()`.
 
@@ -126,6 +128,12 @@ class MemoryCallback(BaseCallback):
 
         :return: If the callback returns False, training is aborted early.
         """
+        print('STEP!!!!!!')
+        os.makedirs("./.tmp", exist_ok=True)
+        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # Write the used memory to a file
+        with open("./.tmp/memory_use", "w") as f:
+            f.write(str(used_memory))
         return False
 
     def _on_rollout_end(self) -> None:

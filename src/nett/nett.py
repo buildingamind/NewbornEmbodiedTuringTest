@@ -471,6 +471,7 @@ class NETT:
 
                     with open("./.tmp/memory_use", "r") as file:
                         memory_allocated = int(file.readline()) - currentMemory
+                    self.logger.info(f"MEMORY INITIALLY USED: {currentMemory}")
                     self.logger.info(f"Estimated memory: {memory_allocated}")
             except Exception as e:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
