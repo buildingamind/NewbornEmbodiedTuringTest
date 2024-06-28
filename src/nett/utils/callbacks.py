@@ -15,6 +15,7 @@ from stable_baselines3.common.logger import HParam
 from nett.utils.train import compute_train_performance
 
 from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetComputeRunningProcesses, nvmlDeviceGetComputeRunningProcesses_v3, nvmlDeviceGetUtilizationRates
+import os
 
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
@@ -104,20 +105,19 @@ class MemoryCallback(BaseCallback):
         using the current policy.
         This event is triggered before collecting new samples.
         """
-        handle = nvmlDeviceGetHandleByIndex(7)
-        print("MEMORY INFO: ", nvmlDeviceGetMemoryInfo(handle))
-        print("PROCESSES: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
+        # Create the directory if it doesn't exist
+        os.makedirs("./.tmp", exist_ok=True)
+        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # Write the used memory to a file
+        with open("./.tmp/memory_use", "w") as f:
+            f.write(str(used_memory))
+        # Rest of the code...
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
         # self.logger.info("STATS: ", torch.cuda.memory_stats(device=None))
         pass
-        pass
 
     def _on_step(self) -> bool:
-        if self.n_calls % 100 == 0:
-            handle = nvmlDeviceGetHandleByIndex(7)
-            print("MEMORY INFO",self.n_calls, ": ", nvmlDeviceGetMemoryInfo(handle))
-            print("PROCESSES",self.n_calls, ": ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
-            print("RATES ", self.n_calls, ": ", nvmlDeviceGetUtilizationRates(handle))
+        print('STEP!!!!!!')
         """
         This method will be called by the model after each call to `env.step()`.
 
@@ -126,7 +126,7 @@ class MemoryCallback(BaseCallback):
 
         :return: If the callback returns False, training is aborted early.
         """
-        return True
+        return False
 
     def _on_rollout_end(self) -> None:
         """

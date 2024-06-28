@@ -59,7 +59,7 @@ class NETT:
             device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: Optional[str] = None,
-            job_memory: int = 4,
+            job_memory: str | int = "auto",
             buffer: float = 1.2,
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
@@ -67,7 +67,7 @@ class NETT:
             run_id: str = '',
             synchronous=True,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
+            checkpoint_freq: int = 30_000) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -301,8 +301,13 @@ class NETT:
         # get the free memory status for each device
         free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
+        #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
+
         # estimate memory for a single job
         job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+        print('JOB MEMORY:: ', job_memory)
+
+        exit()
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
@@ -418,7 +423,57 @@ class NETT:
 
         # return a hurestic value for now (4GiB per job)
         # multiply to return in bytes
-        memory_allocated = self.job_memory * (1024 * 1024 * 1024)
+        if (self.job_memory == "auto"):
+            try:
+                if (self.job_memory == "auto"):
+                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+                    job = Job(0, self.environment.config.conditions[0], 0, "./.tmp/", 0) #TODO: May need to change the card being chosen here
+
+                    brain: "nett.Brain" = deepcopy(self.brain)
+
+                    # common environment kwargs
+                    kwargs = {"rewarded": bool(brain.reward),
+                            "rec_path": str(job.paths["env_recs"]),
+                            "log_path": str(job.paths["env_logs"]),
+                            "condition": job.condition,
+                            "run_id": job.brain_id,
+                            "episode_steps": self.steps_per_episode,
+                            "device_type": self.device_type,
+                            "batch_mode": self.batch_mode}
+
+                    # for train
+                    if self.mode in ["train", "full"]:
+                        try:
+                            # initialize environment with necessary arguments
+                            train_environment = self._wrap_env("train", kwargs)
+                            # calculate iterations
+                            iterations = self.steps_per_episode * self.train_eps
+                            # train
+                            brain.testrun(
+                                env=train_environment,
+                                iterations=iterations,
+                                device_type=self.device_type,
+                                device=job.device,
+                                index=job.index,
+                                paths=job.paths,
+                                save_checkpoints=False,
+                                checkpoint_freq=self.checkpoint_freq,)
+                            train_environment.close()
+                        except Exception as e:
+                            self.logger.error(f"Error in training: {e}")
+                            train_environment.close()
+                            exit() 
+                    else:
+                        raise NotImplementedError("Only train or full mode is supported for now") 
+
+                    with open("./.tmp/memory_use", "r") as file:
+                        memory_allocated = int(file.readline()) - currentMemory
+                    self.logger.info(f"Estimated memory: {memory_allocated}")
+            except Exception as e:
+                self.logger.error(f"Error in estimating memory: {e}")
+                exit()
+        else:
+            memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:

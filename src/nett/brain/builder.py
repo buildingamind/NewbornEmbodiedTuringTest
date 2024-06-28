@@ -12,7 +12,7 @@ import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback, EveryNTimesteps
+from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
@@ -84,7 +84,94 @@ class Brain:
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
-               
+
+    def testrun(
+        self,
+        env: "nett.Body",
+        iterations: int,
+        device_type: str,
+        device: int,
+        index: int,
+        paths: dict[str, Path],
+        save_checkpoints: bool,
+        checkpoint_freq: int):
+        """
+        Train the brain.
+
+        Args:
+            env (nett.Body): The environment used for training.
+            iterations (int): The number of training iterations.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
+            index (int): The index of the model to test, needed for tracking bar.
+            paths (dict[str, Path]): The paths for saving logs, models, and plots.
+            save_checkpoints (bool): Whether to save checkpoints or not.
+            checkpoint_freq (int): The frequency of saving checkpoints.
+
+        Raises:
+            ValueError: If the environment fails the validation check.
+        """
+        # validate environment
+        env = self._validate_env(env)
+
+        # initialize environment
+        log_path = paths["env_logs"]
+        
+        
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+        
+        # build model
+        policy_kwargs = {
+            "features_extractor_class": self.encoder,
+            "features_extractor_kwargs": {
+                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
+                
+            }
+        } if self.encoder else {}
+        
+        if len(self.custom_encoder_args) >0:
+            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+            
+        self.logger.info(f'Training with {self.algorithm.__name__}')
+        try:
+            
+            self.model = self.algorithm(
+                self.policy,
+                envs,
+                batch_size=self.batch_size,
+                n_steps=self.buffer_size,
+                verbose=1,
+                policy_kwargs=policy_kwargs,
+                device=torch.device(device_type, device))
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            raise e
+
+        # setup tensorboard logger and attach to model
+        tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
+        self.model.set_logger(tb_logger)
+        
+        # set encoder as eval only if train_encoder is not True
+        if not self.train_encoder:
+            self.model = self._set_encoder_as_eval(self.model)
+            self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
+
+        # initialize callbacks
+        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
+
+        # adding a memory callback
+        callback_list.callbacks = callback_list.callbacks.append(MemoryCallback())
+
+        # train
+        self.logger.info(f"Total number of training steps: {iterations}")
+        self.model.learn(
+            total_timesteps=iterations,
+            tb_log_name=self.algorithm.__name__,
+            progress_bar=False,
+            callback=[callback_list])
+        self.logger.info("Training Complete")
+
 
     def train(
         self,
@@ -526,6 +613,6 @@ class Brain:
                 save_path=paths["checkpoints"],
                 save_replay_buffer=True,
                 save_vecnormalize=True)
-            return CallbackList([memory_estimate_callback, hparam_callback, checkpoint_callback, bar_callback])
+            return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
         else:
-            return CallbackList([memory_estimate_callback, hparam_callback, bar_callback])
+            return CallbackList([hparam_callback, bar_callback])
