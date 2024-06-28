@@ -72,7 +72,7 @@ class MemoryCallback(BaseCallback):
         handle = nvmlDeviceGetHandleByIndex(7)
         print("MEMORY INFO 0: ", nvmlDeviceGetMemoryInfo(handle))
         print("PROCESSES 0: ", nvmlDeviceGetComputeRunningProcesses_v3(handle))
-        
+        self.close = False
 
         # Those variables will be accessible in the callback
         # (they are defined in the base class)
@@ -107,12 +107,12 @@ class MemoryCallback(BaseCallback):
         """
         # Create the directory if it doesn't exist
 
-        # os.makedirs("./.tmp", exist_ok=True)
-        # used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # # Write the used memory to a file
-        # with open("./.tmp/memory_use", "w") as f:
-        #     f.write(str(used_memory))
-
+        os.makedirs("./.tmp", exist_ok=True)
+        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # Write the used memory to a file
+        with open("./.tmp/memory_use", "w") as f:
+            f.write(str(used_memory))
+        self.close = True
 
         # Rest of the code...
         # self.logger.info("SNAPSHOT: ", torch.cuda.memory_snapshot())
@@ -128,13 +128,8 @@ class MemoryCallback(BaseCallback):
 
         :return: If the callback returns False, training is aborted early.
         """
-        print('STEP!!!!!!')
-        os.makedirs("./.tmp", exist_ok=True)
-        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # Write the used memory to a file
-        with open("./.tmp/memory_use", "w") as f:
-            f.write(str(used_memory))
-        return False
+        # print('STEP!!!!!!')
+        return not self.close
 
     def _on_rollout_end(self) -> None:
         """
