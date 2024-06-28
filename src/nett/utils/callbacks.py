@@ -124,18 +124,19 @@ class MemoryCallback(BaseCallback):
         :return: If the callback returns False, training is aborted early.
         """
         # print('STEP!!!!!!')
-        return not self.close
+        if self.close:
+            os.makedirs("./.tmp", exist_ok=True)
+            used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+            # Write the used memory to a file
+            with open("./.tmp/memory_use", "w") as f:
+                f.write(str(used_memory))
+            return False
+        return True
 
     def _on_rollout_end(self) -> None:
         """
         This event is triggered before updating the policy.
         """
-
-        os.makedirs("./.tmp", exist_ok=True)
-        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # Write the used memory to a file
-        with open("./.tmp/memory_use", "w") as f:
-            f.write(str(used_memory))
         self.close = True
         pass
 
