@@ -8,6 +8,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 import time
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 from copy import deepcopy
@@ -476,7 +477,7 @@ class NETT:
                 exit()
             finally:
                 if (self.output_dir / ".tmp/").exists():
-                    (self.output_dir / ".tmp/").rmdir()
+                    shutil.rmtree(self.output_dir / ".tmp/")
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
