@@ -308,7 +308,7 @@ class NETT:
         job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
         print('JOB MEMORY:: ', job_memory)
 
-        exit()
+        # exit()
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
