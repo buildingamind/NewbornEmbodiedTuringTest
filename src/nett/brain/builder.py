@@ -397,7 +397,7 @@ class Brain:
                 #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = env.reset()
-                # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = env.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
