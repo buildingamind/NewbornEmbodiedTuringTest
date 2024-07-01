@@ -20,7 +20,7 @@ body = Body(
 
 environment = Environment(
     config = "biomotion",
-    executable_path = "/home/wjpeacoc/nett_env/builds/biomotion.x86_64"
+    executable_path = "/data/wjpeacoc/builds/biomotion.x86_64"
 )
 
 benchmarks = NETT(
