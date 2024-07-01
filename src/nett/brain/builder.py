@@ -26,7 +26,7 @@ from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import HParamCallback, multiBarCallback, MemoryCallback
 from pynvml import nvmlDeviceGetMemoryInfo, nvmlDeviceGetHandleByIndex, nvmlInit
-# from gym.wrappers.monitoring.video_recorder import VideoRecorder
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -359,9 +359,9 @@ class Brain:
         ## record - test video
         print(rec_path)
         try:
-            # vr = VideoRecorder(env=envs,
-            # path="{}/agent_{}.mp4".format(rec_path, \
-                # str(index)), enabled=True)
+            vr = VideoRecorder(env=envs,
+            path="{}/agent_{}.mp4".format(rec_path, \
+                str(index)), enabled=True)
             
             
             # for when algorithm is RecurrentPPO
@@ -387,10 +387,10 @@ class Brain:
                         episode_starts = done
                         episode_length += 1
                         env.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                        # vr.capture_frame()    
+                        vr.capture_frame()    
 
-                # vr.close()
-                # vr.enabled = False
+                vr.close()
+                vr.enabled = False
 
             # for all other algorithms
             else:
