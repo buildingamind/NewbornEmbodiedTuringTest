@@ -3,7 +3,6 @@ from gym import Env, ObservationWrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
-from nett.body.wrappers.dvs import DVSWrapper
 # from nett.body import ascii_art
 
 # this will have the necessary wrappers before the observations interact with the brain,
