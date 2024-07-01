@@ -456,7 +456,7 @@ class NETT:
                             self.logger.error(f"Error in training: {e}", exc_info=1)
                             train_environment.close()
                             exit() 
-                    if self.mode in ["test", "full"]:
+                    if self.mode in ["test"]: #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                         try:
                             # initialize environment with necessary arguments
                             test_environment = self._wrap_env("test", kwargs)
