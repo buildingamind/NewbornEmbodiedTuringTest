@@ -66,7 +66,7 @@ class NETT:
             conditions: Optional[list[str]] = None,
             verbosity: int = 1,
             run_id: str = '',
-            synchronous=True,
+            synchronous=False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000) -> list[Future]:
         """
