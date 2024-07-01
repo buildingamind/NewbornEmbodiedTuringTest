@@ -414,10 +414,14 @@ class NETT:
         if (self.job_memory == "auto"):
             try:
                 if (self.job_memory == "auto"):
-                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+
                     tmp_path = self.output_dir / ".tmp/"
                     tmp_path.mkdir(parents=True, exist_ok=True)
-                    job = Job(0, self.environment.config.conditions[0], 0, tmp_path, 0) #TODO: May need to change the card being chosen here
+                    free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                    max_index = free_memory.index(max(free_memory))
+
+                    job = Job(0, self.environment.config.conditions[0], max_index, tmp_path, 0) #TODO: May need to change the card being chosen here
+                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(max_index)).used
 
                     brain: "nett.Brain" = deepcopy(self.brain)
 

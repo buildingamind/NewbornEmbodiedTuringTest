@@ -157,7 +157,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True)
+        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True, device=device)
 
         # train
         self.model.learn(
@@ -641,7 +641,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int, estimate_memory: bool = False) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int, estimate_memory: bool = False, device: int=0) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -661,7 +661,7 @@ class Brain:
         callback_list = [hparam_callback, bar_callback]
 
         if estimate_memory:
-            callback_list.append(MemoryCallback())
+            callback_list.append(MemoryCallback(device))
 
         if save_checkpoints:
             callback_list.append(CheckpointCallback(
