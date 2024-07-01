@@ -31,6 +31,7 @@ benchmarks = NETT(
 
 job_sheet = benchmarks.run(
     output_dir="/data/wjpeacoc/experiments/results/biomotion",
+    mode="full",
     num_brains=1,
     train_eps=1,
     test_eps=1
