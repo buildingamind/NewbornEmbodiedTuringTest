@@ -403,7 +403,7 @@ class Brain:
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                    print('DONE'+ str(done))
+                    self.logger.info('DONE'+ str(done))
                     # t.update(1)
                     # t.refresh()
                     if done:
