@@ -73,35 +73,35 @@ class Environment(Wrapper):
         # set the display for Unity environment
         self._set_display()
 
-    def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
-        """
-        Validates the configuration for the environment.
+    # def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
+    #     """
+    #     Validates the configuration for the environment.
 
-        Args:
-            config (str | NETTConfig): The configuration to validate.
+    #     Args:
+    #         config (str | NETTConfig): The configuration to validate.
 
-        Returns:
-            NETTConfig: The validated configuration.
+    #     Returns:
+    #         NETTConfig: The validated configuration.
 
-        Raises:
-            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
-        """
-        # for when config is a str
-        if isinstance(config, str):
-            config_dict = {config_str.lower(): config_str for config_str in list_configs()}
-            if config not in config_dict.keys():
-                raise ValueError(f"Should be one of {config_dict.keys()}")
+    #     Raises:
+    #         ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+    #     """
+    #     # for when config is a str
+    #     if isinstance(config, str):
+    #         config_dict = {config_str.lower(): config_str for config_str in list_configs()}
+    #         if config not in config_dict.keys():
+    #             raise ValueError(f"Should be one of {config_dict.keys()}")
 
-            config = getattr(configs, config_dict[config])()
+    #         config = getattr(configs, config_dict[config])()
 
-        # for when config is a NETTConfig
-        elif isinstance(config, NETTConfig):
-            pass
+    #     # for when config is a NETTConfig
+    #     elif isinstance(config, NETTConfig):
+    #         pass
 
-        else:
-            raise ValueError(f"Should either be one of {list(config_dict.keys())} or a subclass of NETTConfig")
+    #     else:
+    #         raise ValueError(f"Should either be one of {list(config_dict.keys())} or a subclass of NETTConfig")
 
-        return config
+    #     return config
 
     def _set_executable_permission(self) -> None:
         """

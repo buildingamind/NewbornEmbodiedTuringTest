@@ -12,16 +12,19 @@ Body:
   dvs: False
 Environment:
   # condition
-  object: ""
+  imprinting_condition: "ChickBiologicalMotion"
+  test_condition: "Rest"
+  target_video: "biomo.webm"
+  nontarget_video: "Rest"
   # generic config
-  executable_path: "/home/wjpeacoc/dev_env/nett_env/biological_motion_recognition/.../..."
-  record_chamber: True
-  record_agent: True
+  executable_path: "/data/wjpeacoc/builds/biomotion.x86_64"
+  record_chamber: False
+  record_agent: False
   recording_frames: 100
 Config:
-  run_id: ""
+  run_id: "biomotion-test1"
   num_brains: 1
   mode: "full"
-  train_eps: 0
-  test_eps: 0
-  output_dir: "/data/wjpeacoc/dev_env/nett_env/biological_motion_recognition/.../..."
+  train_eps: 1
+  test_eps: 1
+  output_dir: "/data/wjpeacoc/experiments/results/biomotion/"

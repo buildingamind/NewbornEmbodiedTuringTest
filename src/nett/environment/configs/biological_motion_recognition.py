@@ -11,7 +11,7 @@ class BiologicalMotionRecognition(NETTConfig):
 
     Args:
         imprinting_condition (str | list[str], optional): Motion type. Defaults to ["ChickBiologicalMotion", "InvertedBiologicalMotion"].
-        test_condition (str | list[str], optional): Test condition. Defaults to ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary"].
+        test_condition (str | list[str], optional): Test condition. Defaults to ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary", "White"].
         target_video (str | list[str], optional): Motion Type video. Defaults to ["biomo.webm", "Inverted.webm"]. 
         nontarget_video (str | list[str], optional): Condition video. 
         left_monitor (str | list[str], optional): Video-to-monitor assignment. 
@@ -20,11 +20,11 @@ class BiologicalMotionRecognition(NETTConfig):
 
     def __init__(self,
                     imprinting_condition: str | list[str] = ["ChickBiologicalMotion", "InvertedBiologicalMotion"],
-                    test_condition: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary"],
-                    target_video: str | list[str] = [],
-                    nontarget_video: str | list[str] = [],
-                    left_monitor: str | list[str] = [],
-                    right_monitor: str | list[str] = []
+                    test_condition: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
+                    target_video: str | list[str] = ["biomo.webm", "Inverted.webm"],
+                    nontarget_video: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
+                    # left_monitor: str | list[str] = [],
+                    # right_monitor: str | list[str] = []
                 ) -> None:
         """Constructor method
         """
@@ -34,8 +34,8 @@ class BiologicalMotionRecognition(NETTConfig):
                     test_condition = test_condition,
                     target_video = target_video,
                     nontarget_video = nontarget_video,
-                    left_monitor = left_monitor,
-                    right_monitor = right_monitor
+                    # left_monitor = left_monitor,
+                    # right_monitor = right_monitor
                 )
 
     @property
