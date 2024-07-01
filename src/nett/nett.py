@@ -187,7 +187,8 @@ class NETT:
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
     @staticmethod
-    def analyze(config: str,
+    def analyze(
+        # config: str,
                 run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
