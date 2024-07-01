@@ -348,7 +348,8 @@ class Brain:
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
-                for _ in range(iterations):
+                print("MEMORY ESTIMATE 2: ", nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
+                for i in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info
                     t.update(1)
@@ -356,6 +357,9 @@ class Brain:
                     if done:
                         env.reset()
                     env.render(mode="rgb_array")
+
+                    if (i == 0):
+                        print("MEMORY ESTIMATE 3: ", nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
                     # vr.capture_frame()    
 
                 # vr.close()
