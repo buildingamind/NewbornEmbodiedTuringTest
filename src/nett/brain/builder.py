@@ -306,7 +306,7 @@ class Brain:
         ## record - test video
         print(rec_path)
         try:
-            print("MEMORY ESTIMATE: ", nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
+            print("MEMORY ESTIMATE: ", str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(rec_path, \
                 # str(index)), enabled=True)
@@ -348,7 +348,7 @@ class Brain:
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = envs.reset()
                 # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
-                self.logger.info("MEMORY ESTIMATE 2: " + nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
+                self.logger.info("MEMORY ESTIMATE 2: " + str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
                 for i in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info
@@ -359,7 +359,7 @@ class Brain:
                     env.render(mode="rgb_array")
 
                     if (i == 0):
-                        self.logger.info("MEMORY ESTIMATE 3: "+ nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
+                        self.logger.info("MEMORY ESTIMATE 3: "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
                     # vr.capture_frame()    
 
                 # vr.close()
@@ -367,7 +367,7 @@ class Brain:
         except Exception as ex:
             print(str(ex))
             
-        t.close()
+        # t.close()
 
     def save(self, path: str) -> None:
         """
