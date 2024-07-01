@@ -332,7 +332,7 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         obs, _, done, _ = env.step(action) # obs, rewards, done, info
-                        t.update(1)
+                        # t.update(1)
                         # t.refresh()
                         episode_starts = done
                         episode_length += 1
@@ -352,7 +352,7 @@ class Brain:
                 for i in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                    t.update(1)
+                    # t.update(1)
                     # t.refresh()
                     if done:
                         env.reset()
