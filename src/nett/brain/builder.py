@@ -403,13 +403,12 @@ class Brain:
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info
-                    self.logger.info("MEMORY ESTIMATE 2 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
+                    print('DONE'+ str(done))
                     # t.update(1)
                     # t.refresh()
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-                    self.logger.info("MEMORY ESTIMATE 3 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
 
                     # vr.capture_frame()    
 
