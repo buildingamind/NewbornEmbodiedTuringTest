@@ -26,7 +26,7 @@ from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import HParamCallback, multiBarCallback, MemoryCallback
-from pynvml import nvmlDeviceGetMemoryInfo, nvmlDeviceGetHandleByIndex
+from pynvml import nvmlDeviceGetMemoryInfo, nvmlDeviceGetHandleByIndex, nvmlInit
 # from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -290,6 +290,7 @@ class Brain:
             model_path (str): The path to the trained model.
             index (int): The index of the model to test, needed for tracking bar.
         """
+        nvmlInit()
         initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path)
