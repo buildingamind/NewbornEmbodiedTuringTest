@@ -306,7 +306,6 @@ class NETT:
 
         # estimate memory for a single job
         job_memory: float = self.buffer * self._estimate_job_memory()
-        print('JOB MEMORY:: ', job_memory)
 
         # exit()
 
