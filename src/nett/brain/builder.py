@@ -170,6 +170,58 @@ class Brain:
             callback=[callback_list])
         self.logger.info("Training Complete")
 
+    def test2(
+        self,
+        env,
+        iterations,
+        model_path: str,
+        rec_path: str,
+        index: int): # pylint: disable=unused-argument
+        """
+        Test the brain.
+
+        Args:
+            env (gym.Env): The environment used for testing.
+            iterations (int): The number of testing iterations.
+            model_path (str): The path to the trained model.
+            index (int): The index of the model to test, needed for tracking bar.
+        """
+        nvmlInit()
+        initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
+        # load previously trained model from save_dir, if it exists
+        self.model = self.load(model_path)
+
+        # validate environment
+        env = self._validate_env(env)
+
+        # initialize environment
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+
+        self.logger.info(f'Testing with {self.algorithm.__name__}')
+
+        try:
+            # for when algorithm is RecurrentPPO
+            if issubclass(self.algorithm, RecurrentPPO):
+                num_envs = 1
+                obs = env.reset()
+                # episode start signals are used to reset the lstm states
+                episode_starts = np.ones((num_envs,), dtype=bool)
+
+                self.model.predict(
+                    obs,
+                    state=None,
+                    episode_start=episode_starts,
+                    deterministic=True)
+                self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
+
+            # for all other algorithms
+            else:
+                obs = envs.reset()
+                self.model.predict(obs, deterministic=True) # action, states
+                self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
+
+        except Exception as ex:
+            print(str(ex))
 
     def train(
         self,
@@ -299,7 +351,8 @@ class Brain:
         env = self._validate_env(env)
 
         # initialize environment
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        num_envs = 1
+        envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
@@ -314,11 +367,10 @@ class Brain:
             # for when algorithm is RecurrentPPO
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
-                num_envs = 1
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = env.reset()
+                    obs = envs.reset()
                     # cell and hidden state of the LSTM
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
@@ -330,12 +382,12 @@ class Brain:
                             state=lstm_states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        obs, _, done, _ = env.step(action) # obs, rewards, done, info
+                        obs, _, done, _ = envs.step(action) # obs, rewards, done, info
                         # t.update(1)
                         # t.refresh()
                         episode_starts = done
                         episode_length += 1
-                        env.render(mode="rgb_array")
+                        envs.render(mode="rgb_array")
                         # vr.capture_frame()    
 
                 # vr.close()
@@ -355,8 +407,8 @@ class Brain:
                     # t.update(1)
                     # t.refresh()
                     if done:
-                        env.reset()
-                    env.render(mode="rgb_array")
+                        envs.reset()
+                    envs.render(mode="rgb_array")
                     self.logger.info("MEMORY ESTIMATE 3 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
 
                     # vr.capture_frame()    
