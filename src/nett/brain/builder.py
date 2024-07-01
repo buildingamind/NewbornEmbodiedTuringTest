@@ -317,7 +317,7 @@ class Brain:
                 self.logger.info(f"Total number of episodes: {iterations}")
                 num_envs = 1
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
-                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
                     obs = env.reset()
                     # cell and hidden state of the LSTM
@@ -347,7 +347,7 @@ class Brain:
                 #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = envs.reset()
-                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 print("MEMORY ESTIMATE 2: ", nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem)
                 for i in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
