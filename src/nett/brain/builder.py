@@ -370,8 +370,8 @@ class Brain:
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = envs.reset()
-                    # cell and hidden state of the LSTM
+                    obs = env.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs
+                    # cell and hidden state of the LSTM #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
@@ -382,12 +382,11 @@ class Brain:
                             state=lstm_states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        obs, _, done, _ = envs.step(action) # obs, rewards, done, info
-                        # t.update(1)
-                        # t.refresh()
+                        obs, _, done, _ = env.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
+                        t.update(1)
                         episode_starts = done
                         episode_length += 1
-                        envs.render(mode="rgb_array")
+                        env.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                         # vr.capture_frame()    
 
                 # vr.close()
@@ -397,18 +396,18 @@ class Brain:
             else:
                 #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
-                obs = envs.reset()
+                obs = env.reset()
                 # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for i in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
                     self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
-                    obs, _, done, _ = env.step(action) # obs, reward, done, info
+                    obs, _, done, _ = env.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     self.logger.info('DONE'+ str(done))
                     # t.update(1)
                     # t.refresh()
                     if done:
-                        envs.reset()
-                    envs.render(mode="rgb_array")
+                        env.reset()
+                    env.render(mode="rgb_array")
 
                     # vr.capture_frame()    
 
