@@ -1,7 +1,6 @@
 """Module for the Brain class."""
 
 import os
-import tracemalloc
 from typing import Any, Optional
 from pathlib import Path
 import inspect

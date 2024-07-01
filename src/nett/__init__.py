@@ -20,7 +20,6 @@ import os
 import stat
 import logging
 from pathlib import Path
-import tracemalloc
 # simplify imports
 from nett.brain.builder import Brain
 from nett.body.builder import Body
