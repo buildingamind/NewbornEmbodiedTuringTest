@@ -86,7 +86,7 @@ class Brain:
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
 
-    def testrun(
+    def estimate_train(
         self,
         env: "nett.Body",
         iterations: int,
@@ -132,8 +132,7 @@ class Brain:
         
         if len(self.custom_encoder_args) >0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
-            
-        self.logger.info(f'Training with {self.algorithm.__name__}')
+
         try:
             
             self.model = self.algorithm(
@@ -162,34 +161,30 @@ class Brain:
         callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True)
 
         # train
-        self.logger.info(f"Total number of training steps: {iterations}")
         self.model.learn(
             total_timesteps=iterations,
             tb_log_name=self.algorithm.__name__,
             progress_bar=False,
             callback=[callback_list])
-        self.logger.info("Training Complete")
+        self.logger.info("Estimate Training Complete")
 
-    def test2(
+    def estimate_test(
         self,
         env,
-        iterations,
         model_path: str,
-        rec_path: str,
-        index: int): # pylint: disable=unused-argument
+        device_type: str,
+        device: int,) -> int:
         """
         Test the brain.
 
         Args:
             env (gym.Env): The environment used for testing.
-            iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
-            index (int): The index of the model to test, needed for tracking bar.
         """
         nvmlInit()
         initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path)
+        self.model = self.load(model_path, device_type, device)
 
         # validate environment
         env = self._validate_env(env)
@@ -212,16 +207,20 @@ class Brain:
                     state=None,
                     episode_start=episode_starts,
                     deterministic=True)
-                self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
+                mem_estimate = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem
 
             # for all other algorithms
             else:
-                obs = envs.reset()
+                obs = env.reset()
                 self.model.predict(obs, deterministic=True) # action, states
-                self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
+                mem_estimate = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem
 
         except Exception as ex:
-            print(str(ex))
+            self.logger.error(str(ex), exc_info=1)
+        
+        self.logger.info("Estimate Testing Complete")
+
+        return mem_estimate
 
     def train(
         self,
@@ -332,6 +331,8 @@ class Brain:
         iterations,
         model_path: str,
         rec_path: str,
+        device_type: str,
+        device: int,
         index: int): # pylint: disable=unused-argument
         """
         Test the brain.
@@ -345,7 +346,7 @@ class Brain:
         nvmlInit()
         initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path)
+        self.model = self.load(model_path, device_type, device)
 
         # validate environment
         env = self._validate_env(env)
@@ -368,10 +369,10 @@ class Brain:
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
-                # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = env.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs
-                    # cell and hidden state of the LSTM #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    obs = env.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    # cell and hidden state of the LSTM 
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
@@ -398,13 +399,10 @@ class Brain:
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = env.reset()
                 # t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
-                for i in range(iterations):
+                for _ in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
-                    self.logger.info("MEMORY ESTIMATE 1 "+str(i)+": "+ str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem))
                     obs, _, done, _ = env.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                    self.logger.info('DONE'+ str(done))
-                    # t.update(1)
-                    # t.refresh()
+                    t.update(1)
                     if done:
                         env.reset()
                     env.render(mode="rgb_array")
@@ -416,7 +414,7 @@ class Brain:
         except Exception as ex:
             print(str(ex))
             
-        # t.close()
+        t.close()
 
     def save(self, path: str) -> None:
         """
@@ -452,7 +450,8 @@ class Brain:
         self.logger.info(f"Saved feature_extractor: {save_path}")
         return
 
-    def load(self, model_path: str | Path) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    def load(self, model_path: str | Path, device_type: str, 
+        device: int,) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Load a trained model.
 
@@ -462,7 +461,7 @@ class Brain:
         Returns:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The loaded model.
         """
-        return self.algorithm.load(model_path)
+        return self.algorithm.load(model_path, device = torch.device(device_type, device))
 
     def plot_results(self,
         iterations: int,
