@@ -246,6 +246,7 @@ class NETT:
                   "log_path": str(job.paths["env_logs"]),
                   "condition": job.condition,
                   "run_id": job.brain_id,
+                  "device": job.device,
                   "episode_steps": self.steps_per_episode,
                   "device_type": self.device_type,
                   "batch_mode": self.batch_mode}
@@ -324,6 +325,7 @@ class NETT:
                             "log_path": str(job.paths["env_logs"]),
                             "condition": job.condition,
                             "run_id": job.brain_id,
+                            "device": job.device,
                             "episode_steps": self.steps_per_episode,
                             "device_type": self.device_type,
                             "batch_mode": self.batch_mode}

@@ -159,9 +159,9 @@ class Environment(Wrapper):
         
         
         # TODO: Figure out a way to run on multiple GPUs
-        # if ("device" in kwargs):
-        #     args.extend(["-force-device-index", str(kwargs["device"])])
-        #     args.extend(["-gpu", str(kwargs["device"])])
+        if ("device" in kwargs):
+            args.extend(["-force-device-index", str(kwargs["device"])])
+            args.extend(["-gpu", str(kwargs["device"])])
 
         # find unused port
         while port_in_use(self.base_port):
