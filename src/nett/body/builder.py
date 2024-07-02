@@ -119,8 +119,14 @@ class Body:
                         raise Exception(f"Failed env check")
             except Exception as ex:
                 print(str(ex))
-        return env
+        self.env = env
+        return self.env
     
+    def __enter__(self):
+        return self.env
+
+    def __exit__(self):
+        self.env.close()
 
     def __repr__(self) -> str:
         """
