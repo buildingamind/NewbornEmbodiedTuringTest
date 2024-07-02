@@ -124,53 +124,10 @@ class NETT:
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self.launch_jobs(jobs, synchronous, waitlist)
+        job_sheet = self._launch_jobs(jobs, synchronous, waitlist)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
-
-    def launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = [], ) -> dict[Future, Job]:
-        """
-        Launch the jobs in the job sheet.
-
-        Args:
-            jobs (list[Job]): The jobs to be launched.
-            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
-
-        Returns:
-            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
-        """
-        try:
-            max_workers = 1 if len(jobs) == 1 else None
-            initializer = mute if not self.verbosity else None
-            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-            job_sheet: dict[Future, dict[str, Job]] = {}
-
-            for job in jobs:
-                job_future = executor.submit(self._execute_job, job)
-                job_sheet[job_future] = job
-                time.sleep(1)
-
-            while waitlist:
-                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                for doneFuture in done:
-                    freeDevice: int = job_sheet.pop(doneFuture).device
-                    job = waitlist.pop()
-                    job.device = freeDevice
-                    job_future = executor.submit(self._execute_job, job)
-                    job_sheet[job_future] = job
-                    time.sleep(1)
-
-            if wait:
-                while job_sheet:
-                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                    for doneFuture in done:
-                        job_sheet.pop(doneFuture)
-                    time.sleep(1)
-
-            return job_sheet
-        except Exception as e:
-            print(str(e))
 
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
@@ -189,6 +146,11 @@ class NETT:
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
+
+    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
+        '''Generate a toml file and save it to the run directory.'''
+        raise NotImplementedError
+
 
 # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
@@ -269,74 +231,6 @@ class NETT:
                         "--chick-file", str(chick_data_dir)], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
-
-    def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
-        # create jobs
-        
-        # create set of all conditions
-        all_conditions: set[str] = set(self.environment.config.conditions)
-    
-        # check if user-defined their own conditions
-        if (conditions is not None):
-            # create a set of user-defined conditions
-            user_conditions: set[str] = set(conditions)
-
-            if user_conditions.issubset(all_conditions):
-                self.logger.info(f"Using user specified conditions: {conditions}")
-                # create set of all brain-environment combinations for user-defined conditions
-                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
-            else:
-                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
-        # default to all conditions
-        else:
-            # create set of all brain-environment combinations
-            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
-
-        jobs: list[Job] = []
-        waitlist: list[Job] = []
-
-        # assign devices based on memory availability
-        # get the list of devices
-        free_devices: list[int] | int = self.devices.copy()
-
-        # get the free memory status for each device
-        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
-
-        #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
-
-        # estimate memory for a single job
-        job_memory: float = self.buffer * self._estimate_job_memory()
-
-        # exit()
-
-        while task_set:
-            # if there are no free devices, add jobs to the waitlist
-            if not free_devices:
-                waitlist = [
-                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
-                    for i, (condition, brain_id) in enumerate(task_set)
-                ]
-                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
-                break
-            # remove devices that don't have enough memory
-            elif free_device_memory[free_devices[-1]] < job_memory:
-                free_devices.pop()
-            # assign device to job
-            else:
-                # allocate memory
-                free_device_memory[free_devices[-1]] -= job_memory
-                # create job
-                condition, brain_id = task_set.pop()
-                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
-                jobs.append(job)
-
-        return jobs, waitlist
-
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
-        copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode=mode, **kwargs)
-        # apply wrappers (body)
-        return self.body(copy_environment)
 
     def _execute_job(self, job: Job) -> Future:
 
@@ -424,7 +318,7 @@ class NETT:
 
                     brain: "nett.Brain" = deepcopy(self.brain)
 
-                    # common environment kwargs
+                    # common environment kwargs # TODO: pack this into Job as a function. May need to create a partial to remove redundancy
                     kwargs = {"rewarded": bool(brain.reward),
                             "rec_path": str(job.paths["env_recs"]),
                             "log_path": str(job.paths["env_logs"]),
@@ -502,6 +396,112 @@ class NETT:
             for device_id in self.devices
         }
         return memory_status
+    
+    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = [], ) -> dict[Future, Job]:
+        """
+        Launch the jobs in the job sheet.
+
+        Args:
+            jobs (list[Job]): The jobs to be launched.
+            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
+
+        Returns:
+            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
+        """
+        try:
+            max_workers = 1 if len(jobs) == 1 else None
+            initializer = mute if not self.verbosity else None
+            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+            job_sheet: dict[Future, dict[str, Job]] = {}
+
+            for job in jobs:
+                job_future = executor.submit(self._execute_job, job)
+                job_sheet[job_future] = job
+                time.sleep(1)
+
+            while waitlist:
+                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                for doneFuture in done:
+                    freeDevice: int = job_sheet.pop(doneFuture).device
+                    job = waitlist.pop()
+                    job.device = freeDevice
+                    job_future = executor.submit(self._execute_job, job)
+                    job_sheet[job_future] = job
+                    time.sleep(1)
+
+            if wait:
+                while job_sheet:
+                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                    for doneFuture in done:
+                        job_sheet.pop(doneFuture)
+                    time.sleep(1)
+
+            return job_sheet
+        except Exception as e:
+            print(str(e))
+
+    def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
+        # create jobs
+        
+        # create set of all conditions
+        all_conditions: set[str] = set(self.environment.config.conditions)
+    
+        # check if user-defined their own conditions
+        if (conditions is not None):
+            # create a set of user-defined conditions
+            user_conditions: set[str] = set(conditions)
+
+            if user_conditions.issubset(all_conditions):
+                self.logger.info(f"Using user specified conditions: {conditions}")
+                # create set of all brain-environment combinations for user-defined conditions
+                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
+            else:
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+        # default to all conditions
+        else:
+            # create set of all brain-environment combinations
+            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
+
+        jobs: list[Job] = []
+        waitlist: list[Job] = []
+
+        # assign devices based on memory availability
+        # get the list of devices
+        free_devices: list[int] | int = self.devices.copy()
+
+        # get the free memory status for each device
+        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
+
+        #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
+
+        # estimate memory for a single job
+        job_memory: float = self.buffer * self._estimate_job_memory()
+
+        # exit()
+
+        while task_set:
+            # if there are no free devices, add jobs to the waitlist
+            if not free_devices:
+                waitlist = [
+                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                    for i, (condition, brain_id) in enumerate(task_set)
+                ]
+                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                break
+            # remove devices that don't have enough memory
+            elif free_device_memory[free_devices[-1]] < job_memory:
+                free_devices.pop()
+            # assign device to job
+            else:
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # create job
+                condition, brain_id = task_set.pop()
+                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
+                jobs.append(job)
+
+        return jobs, waitlist
+
 
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
@@ -523,6 +523,8 @@ class NETT:
 
         return devices
 
-    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
-        '''Generate a toml file and save it to the run directory.'''
-        raise NotImplementedError
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+        copy_environment = deepcopy(self.environment)
+        copy_environment.initialize(mode=mode, **kwargs)
+        # apply wrappers (body)
+        return self.body(copy_environment)
