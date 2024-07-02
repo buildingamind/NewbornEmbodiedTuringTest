@@ -189,7 +189,7 @@ class Brain:
         env = self._validate_env(env)
 
         # initialize environment
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
