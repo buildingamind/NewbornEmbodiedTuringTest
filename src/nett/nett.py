@@ -17,7 +17,7 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -48,7 +48,7 @@ class NETT:
         self.environment = environment
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
-        nvmlInitWithFlags(1)
+        nvmlInit()
 
     def run(self,
             output_dir: Path | str,
