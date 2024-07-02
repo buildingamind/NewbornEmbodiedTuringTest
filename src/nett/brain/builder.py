@@ -4,7 +4,6 @@ import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
-import pdb
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -19,13 +18,11 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import HParamCallback, multiBarCallback, MemoryCallback
-from pynvml import nvmlDeviceGetMemoryInfo, nvmlDeviceGetHandleByIndex, nvmlInit
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -111,28 +108,27 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        # validate environment
-        env = self._validate_env(env)
-
-        # initialize environment
-        log_path = paths["env_logs"]
-        
-        
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
-        
-        # build model
-        policy_kwargs = {
-            "features_extractor_class": self.encoder,
-            "features_extractor_kwargs": {
-                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
-                
-            }
-        } if self.encoder else {}
-        
-        if len(self.custom_encoder_args) >0:
-            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
-
         try:
+            self.logger.info("Running Memory Estimate")
+            # validate environment
+            env = self._validate_env(env)
+
+            # initialize environment
+            log_path = paths["env_logs"]
+
+            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+            
+            # build model
+            policy_kwargs = {
+                "features_extractor_class": self.encoder,
+                "features_extractor_kwargs": {
+                    "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
+                    
+                }
+            } if self.encoder else {}
+            
+            if len(self.custom_encoder_args) > 0:
+                policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
             self.model = self.algorithm(
                 self.policy,
@@ -142,37 +138,37 @@ class Brain:
                 verbose=1,
                 policy_kwargs=policy_kwargs,
                 device=torch.device(device_type, device))
+
+            # setup tensorboard logger and attach to model
+            tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
+            self.model.set_logger(tb_logger)
+            
+            # set encoder as eval only if train_encoder is not True
+            if not self.train_encoder:
+                self.model = self._set_encoder_as_eval(self.model)
+                self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
+
+            # initialize callbacks
+            callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True, device=device)
+
+            # train
+            self.model.learn(
+                total_timesteps=iterations,
+                tb_log_name=self.algorithm.__name__,
+                progress_bar=False,
+                callback=[callback_list])
+            self.logger.info("Memory Estimate Complete")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
             raise e
-
-        # setup tensorboard logger and attach to model
-        tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
-        self.model.set_logger(tb_logger)
-        
-        # set encoder as eval only if train_encoder is not True
-        if not self.train_encoder:
-            self.model = self._set_encoder_as_eval(self.model)
-            self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
-
-        # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True, device=device)
-
-        # train
-        self.model.learn(
-            total_timesteps=iterations,
-            tb_log_name=self.algorithm.__name__,
-            progress_bar=False,
-            callback=[callback_list])
-        self.logger.info("Estimate Training Complete")
 
     def estimate_test(
         self,
         env,
         model_path: str,
         device_type: str,
-        device: int,) -> int:
+        device: int):
         """
         Test the brain.
 
@@ -180,24 +176,23 @@ class Brain:
             env (gym.Env): The environment used for testing.
             model_path (str): The path to the trained model.
         """
-        nvmlInit()
-        initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
-        # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path, device_type, device)
-
-        # validate environment
-        env = self._validate_env(env)
-
-        # initialize environment
-        # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
-
-        self.logger.info(f'Testing with {self.algorithm.__name__}')
-
         try:
+            self.logger.info("Running Memory Estimate")
+            # load previously trained model from save_dir, if it exists
+            self.model = self.load(model_path, device_type, device)
+
+            # validate environment
+            env = self._validate_env(env)
+
+            num_envs = 1
+            obs = env.reset()
+
+            # initialize environment
+            # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+
             # for when algorithm is RecurrentPPO
             if issubclass(self.algorithm, RecurrentPPO):
-                num_envs = 1
-                obs = env.reset()
+
                 # episode start signals are used to reset the lstm states
                 episode_starts = np.ones((num_envs,), dtype=bool)
 
@@ -206,20 +201,15 @@ class Brain:
                     state=None,
                     episode_start=episode_starts,
                     deterministic=True)
-                mem_estimate = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem
 
             # for all other algorithms
             else:
-                obs = env.reset()
                 self.model.predict(obs, deterministic=True) # action, states
-                mem_estimate = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used - initMem
 
         except Exception as ex:
             self.logger.error(str(ex), exc_info=1)
         
-        self.logger.info("Estimate Testing Complete")
-
-        return mem_estimate
+        self.logger.info("Memory Estimate Complete")
 
     def train(
         self,
@@ -342,8 +332,6 @@ class Brain:
             model_path (str): The path to the trained model.
             index (int): The index of the model to test, needed for tracking bar.
         """
-        nvmlInit()
-        initMem = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(0)).used
         # load previously trained model from save_dir, if it exists
         self.model = self.load(model_path, device_type, device)
 

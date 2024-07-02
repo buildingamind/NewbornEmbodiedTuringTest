@@ -320,7 +320,7 @@ class NETT:
                 # create a test job to estimate memory
                 job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
                 # calculate current memory usage for baseline for comparison
-                currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
                 brain: "nett.Brain" = deepcopy(self.brain)
 
@@ -355,28 +355,33 @@ class NETT:
                         train_environment.close()
 
                         with open("./.tmp/memory_use", "r") as file:
-                            memory_allocated = int(file.readline()) - currentMemory
+                            post_memory = int(file.readline())
                     except Exception as e:
                         self.logger.error(f"Error in training: {e}", exc_info=1)
                         train_environment.close()
                         exit()
 
-                if self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
+                elif self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                     try:
                         # initialize environment with necessary arguments
                         test_environment = self._wrap_env("test", kwargs)
 
                         # Calculate memory allocated under test conditions
-                        memory_allocated = brain.estimate_test(
+                        brain.estimate_test(
                             env=test_environment,
                             model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                             device_type=self.device_type,
                             device=job.device,)
+                        post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
                         test_environment.close()
                     except Exception as e:
                         self.logger.error(f"Error in testing: {e}", exc_info=1)
                         test_environment.close()
                         exit()
+                else:
+                    raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
+                # estimate memory allocated
+                memory_allocated = post_memory - pre_memory
 
                 self.logger.info(f"Estimated memory for job: {memory_allocated}")
             except Exception as e:
