@@ -32,8 +32,6 @@ from nett.environment import list_configs
 # release version
 __version__ = "0.4.0"
 
-# change permissions of the ml-agents binaries directory
-
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
 

@@ -5,17 +5,14 @@ Classes:
     HParamCallback(BaseCallback)
 """
 import os
-from pathlib import Path
 
 from tqdm import tqdm
-import numpy as np
-from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback
 from stable_baselines3.common.logger import HParam
 
-from nett.utils.train import compute_train_performance
+# from nett.utils.train import compute_train_performance
 
-from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlDeviceGetComputeRunningProcesses, nvmlDeviceGetComputeRunningProcesses_v3, nvmlDeviceGetUtilizationRates
+from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 
 # TODO (v0.4): refactor needed, especially logging
