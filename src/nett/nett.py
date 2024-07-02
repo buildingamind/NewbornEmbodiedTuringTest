@@ -190,6 +190,9 @@ class NETT:
         # TODO may need to clean up this file structure
         # set paths
         run_dir = Path(run_dir).resolve()
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
+
         analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
         if output_dir is None:
             output_dir = run_dir.joinpath("results")
