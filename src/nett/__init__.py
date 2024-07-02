@@ -33,7 +33,7 @@ from nett.environment import list_configs
 __version__ = "0.4.0"
 
 # path to store library cache (such as configs etc)
-cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
+cache_dir = Path.joinpath(Path.home(), ".cache", "nett") #TODO: See if and how this is used. No mention of it in the codebase.
 
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)

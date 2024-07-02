@@ -61,7 +61,7 @@ class Environment(Wrapper):
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
         # TODO (v0.5) what might be a way to check if it is a valid executable path?
-        self.executable_path = executable_path
+        self.executable_path = self.validate_executable(executable_path)
         self.base_port = base_port
         self.record_chamber = record_chamber
         self.record_agent = record_agent
@@ -73,51 +73,6 @@ class Environment(Wrapper):
         # set the display for Unity environment
         self._set_display()
 
-    def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
-        """
-        Validates the configuration for the environment.
-
-        Args:
-            config (str | NETTConfig): The configuration to validate.
-
-        Returns:
-            NETTConfig: The validated configuration.
-
-        Raises:
-            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
-        """
-        # for when config is a str
-        if isinstance(config, str):
-            config_dict = {config_str.lower(): config_str for config_str in list_configs()}
-            if config not in config_dict.keys():
-                raise ValueError(f"Should be one of {config_dict.keys()}")
-
-            config = getattr(configs, config_dict[config])()
-
-        # for when config is a NETTConfig
-        elif isinstance(config, NETTConfig):
-            pass
-
-        else:
-            raise ValueError(f"Should either be one of {list(config_dict.keys())} or a subclass of NETTConfig")
-
-        return config
-
-    def _set_executable_permission(self) -> None:
-        """
-        Sets the executable permission for the Unity executable file.
-        """
-        subprocess.run(["chmod", "-R", "755", self.executable_path], check=True)
-        self.logger.info("Executable permission is set")
-
-    def _set_display(self) -> None:
-        """
-        Sets the display environment variable for the Unity environment.
-        """
-        os.environ["DISPLAY"] = str(f":{self.display}")
-        self.logger.info("Display is set")
-
-    
     # copied from __init__() of chickai_env_wrapper.py (legacy)
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
@@ -178,6 +133,15 @@ class Environment(Wrapper):
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
 
+    def log(self, msg: str) -> None:
+        """
+        Logs a message to the environment.
+
+        Args:
+            msg (str): The message to log.
+        """
+        self.log.log_str(msg)
+
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
     # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
@@ -192,29 +156,7 @@ class Environment(Wrapper):
             numpy.ndarray: The rendered frame of the environment.
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
-
-    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
-        """
-        Takes a step in the environment with the given action.
-
-        Args:
-            action (list[Any]): The action to take in the environment.
-
-        Returns:
-            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
-        """
-        next_state, reward, done, info = self.env.step(action)
-        return next_state, float(reward), done, info
-
-    def log(self, msg: str) -> None:
-        """
-        Logs a message to the environment.
-
-        Args:
-            msg (str): The message to log.
-        """
-        self.log.log_str(msg)
-
+    
     def reset(self, seed: Optional[int] = None, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
         """
@@ -228,6 +170,96 @@ class Environment(Wrapper):
             numpy.ndarray: The initial state of the environment.
         """
         return self.env.reset(**kwargs)
+
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+        """
+        Takes a step in the environment with the given action.
+
+        Args:
+            action (list[Any]): The action to take in the environment.
+
+        Returns:
+            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
+        """
+        next_state, reward, done, info = self.env.step(action)
+        return next_state, float(reward), done, info
+    
+    def _set_executable_permission(self) -> None:
+        """
+        Sets the executable permission for the Unity executable file.
+        """
+        subprocess.run(["chmod", "-R", "755", self.executable_path], check=True)
+        self.logger.info("Executable permission is set")
+
+    def _set_display(self) -> None:
+        """
+        Sets the display environment variable for the Unity environment.
+        """
+        os.environ["DISPLAY"] = str(f":{self.display}")
+        self.logger.info("Display is set")
+
+    def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
+        """
+        Validates the configuration for the environment.
+
+        Args:
+            config (str | NETTConfig): The configuration to validate.
+
+        Returns:
+            NETTConfig: The validated configuration.
+
+        Raises:
+            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
+        """
+        # for when config is a str
+        if isinstance(config, str):
+            config_dict = {config_str.lower(): config_str for config_str in list_configs()}
+            if config not in config_dict.keys():
+                raise ValueError(f"Should be one of {config_dict.keys()}")
+
+            config = getattr(configs, config_dict[config])()
+
+        # for when config is a NETTConfig
+        elif isinstance(config, NETTConfig):
+            pass
+
+        else:
+            raise ValueError(f"Should either be one of {list(config_dict.keys())} or a subclass of NETTConfig")
+
+        return config
+    
+    def _validate_executable(self, executable_path: str) -> str:
+        """
+        Validates the Unity executable path.
+
+        Args:
+            executable_path (str): The path to the Unity executable file.
+
+        Returns:
+            str: The validated path to the Unity executable file.
+        """
+        # check if the executable path exists
+        if not os.path.exists(executable_path):
+            raise FileNotFoundError(f"{executable_path} does not exist")
+        
+        # get the filename of the executable without '.x86_64'
+        filename, extension = os.path.splitext(os.path.basename(executable_path))
+
+        # check if executable is correct filetype
+        if extension != ".x86_64" and extension != ".x86":
+            raise ValueError(f"{executable_path} is not a valid Unity executable file")
+
+        # check if the directory contains the 'UnityPlayer.so' file
+        if not os.path.isfile(os.path.join(os.path.dirname(executable_path), "UnityPlayer.so")):
+            raise FileNotFoundError(f"The directory {os.path.dirname(executable_path)} does not contain the file 'UnityPlayer.so'. This may not be a valid Unity executable.")
+
+        # check if the data directory exists
+        data_directory = filename + '_Data'
+        if not os.path.isdir(data_directory):
+            raise FileNotFoundError(f"Expected {data_directory} to exist in executable directory, but it does not exist. Please check that the path to the Unity executable is correct and that the data directory and executable use the same naming convention.")
+
+        return executable_path
+
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
