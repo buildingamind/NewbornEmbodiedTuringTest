@@ -311,11 +311,13 @@ class NETT:
 
                     tmp_path = self.output_dir / ".tmp/"
                     tmp_path.mkdir(parents=True, exist_ok=True)
-                    free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
-                    max_index = free_memory.index(max(free_memory))
 
-                    job = Job(0, self.environment.config.conditions[0], max_index, tmp_path, 0) #TODO: May need to change the card being chosen here
-                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(max_index)).used
+                    # find the GPU with the most free memory
+                    free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                    most_free_gpu = free_memory.index(max(free_memory))
+
+                    job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
+                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
                     brain: "nett.Brain" = deepcopy(self.brain)
 
@@ -390,6 +392,10 @@ class NETT:
         jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
+    
+    def _most_free_GPU(self):
+        free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+        return free_memory.index(max(free_memory))
 
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
@@ -490,17 +496,21 @@ class NETT:
                 ]
                 self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                 break
+
             # remove devices that don't have enough memory
-            elif free_device_memory[free_devices[-1]] < job_memory:
+            if free_device_memory[free_devices[-1]] < job_memory:
                 free_devices.pop()
             # assign device to job
             else:
-                # allocate memory
-                free_device_memory[free_devices[-1]] -= job_memory
                 # create job
                 condition, brain_id = task_set.pop()
                 job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
                 jobs.append(job)
+
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # rotate devices
+                free_devices = [free_devices[-1]] + free_devices[:-1]
 
         return jobs, waitlist
 
