@@ -310,75 +310,75 @@ class NETT:
     def _estimate_job_memory(self) -> int:
         if (self.job_memory == "auto"):
             try:
-                if (self.job_memory == "auto"):
+                tmp_path = self.output_dir / ".tmp/"
+                tmp_path.mkdir(parents=True, exist_ok=True)
 
-                    tmp_path = self.output_dir / ".tmp/"
-                    tmp_path.mkdir(parents=True, exist_ok=True)
+                # find the GPU with the most free memory
+                free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                most_free_gpu = free_memory.index(max(free_memory))
 
-                    # find the GPU with the most free memory
-                    free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
-                    most_free_gpu = free_memory.index(max(free_memory))
+                # create a test job to estimate memory
+                job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
+                # calculate current memory usage for baseline for comparison
+                currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-                    job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
-                    currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                brain: "nett.Brain" = deepcopy(self.brain)
 
-                    brain: "nett.Brain" = deepcopy(self.brain)
+                # common environment kwargs # TODO: pack this into Job as a function. May need to create a partial to remove redundancy
+                kwargs = {"rewarded": bool(brain.reward),
+                        "rec_path": str(job.paths["env_recs"]),
+                        "log_path": str(job.paths["env_logs"]),
+                        "condition": job.condition,
+                        "run_id": job.brain_id,
+                        "device": job.device,
+                        "episode_steps": self.steps_per_episode,
+                        "device_type": self.device_type,
+                        "batch_mode": self.batch_mode}
 
-                    # common environment kwargs # TODO: pack this into Job as a function. May need to create a partial to remove redundancy
-                    kwargs = {"rewarded": bool(brain.reward),
-                            "rec_path": str(job.paths["env_recs"]),
-                            "log_path": str(job.paths["env_logs"]),
-                            "condition": job.condition,
-                            "run_id": job.brain_id,
-                            "device": job.device,
-                            "episode_steps": self.steps_per_episode,
-                            "device_type": self.device_type,
-                            "batch_mode": self.batch_mode}
+                # for train
+                if self.mode in ["train", "full"]:
+                    try:
+                        # initialize environment with necessary arguments
+                        train_environment = self._wrap_env("train", kwargs)
+                        # calculate iterations
+                        iterations = self.steps_per_episode * self.train_eps
+                        # calculate memory allocated under train conditions
+                        brain.estimate_train(
+                            env=train_environment,
+                            iterations=iterations, #TODO: remove need to calculate iterations
+                            device_type=self.device_type,
+                            device=job.device,
+                            index=job.index,
+                            paths=job.paths,
+                            save_checkpoints=False,
+                            checkpoint_freq=self.checkpoint_freq,)
+                        train_environment.close()
 
-                    # for train
-                    if self.mode in ["train", "full"]:
-                        try:
-                            # initialize environment with necessary arguments
-                            train_environment = self._wrap_env("train", kwargs)
-                            # calculate iterations
-                            iterations = self.steps_per_episode * self.train_eps
-                            # train
-                            brain.estimate_train(
-                                env=train_environment,
-                                iterations=iterations, #TODO: remove need to calculate iterations
-                                device_type=self.device_type,
-                                device=job.device,
-                                index=job.index,
-                                paths=job.paths,
-                                save_checkpoints=False,
-                                checkpoint_freq=self.checkpoint_freq,)
-                            train_environment.close()
+                        with open("./.tmp/memory_use", "r") as file:
+                            memory_allocated = int(file.readline()) - currentMemory
+                    except Exception as e:
+                        self.logger.error(f"Error in training: {e}", exc_info=1)
+                        train_environment.close()
+                        exit()
 
-                            with open("./.tmp/memory_use", "r") as file:
-                                memory_allocated = int(file.readline()) - currentMemory
-                        except Exception as e:
-                            self.logger.error(f"Error in training: {e}", exc_info=1)
-                            train_environment.close()
-                            exit() 
-                    if self.mode in ["test"]: #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
-                        try:
-                            # initialize environment with necessary arguments
-                            test_environment = self._wrap_env("test", kwargs)
-                            # calculate iterations
+                if self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
+                    try:
+                        # initialize environment with necessary arguments
+                        test_environment = self._wrap_env("test", kwargs)
 
-                            # test
-                            memory_allocated = brain.estimate_test(
-                                env=test_environment,
-                                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                                device_type=self.device_type,
-                                device=job.device,)
-                            test_environment.close()
-                        except Exception as e:
-                            self.logger.error(f"Error in testing: {e}", exc_info=1)
-                            test_environment.close()
-                            exit()
+                        # Calculate memory allocated under test conditions
+                        memory_allocated = brain.estimate_test(
+                            env=test_environment,
+                            model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                            device_type=self.device_type,
+                            device=job.device,)
+                        test_environment.close()
+                    except Exception as e:
+                        self.logger.error(f"Error in testing: {e}", exc_info=1)
+                        test_environment.close()
+                        exit()
 
-                    self.logger.info(f"Estimated memory for job: {memory_allocated}")
+                self.logger.info(f"Estimated memory for job: {memory_allocated}")
             except Exception as e:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
                 exit()
