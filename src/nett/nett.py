@@ -8,6 +8,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 import time
 import subprocess
+import shutil
 from pathlib import Path
 from typing import Any, Optional
 from copy import deepcopy
@@ -16,7 +17,7 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from pynvml import nvmlInitWithFlags, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -47,7 +48,7 @@ class NETT:
         self.environment = environment
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
-        nvmlInitWithFlags(1)
+        nvmlInit()
 
     def run(self,
             output_dir: Path | str,
@@ -59,14 +60,15 @@ class NETT:
             device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: Optional[str] = None,
-            job_memory: int = 4,
+            job_memory: str | int = "auto",
             buffer: float = 1.2,
-            steps_per_episode: int = 200,
+            steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
-            verbosity: int = 1, 
+            verbosity: int = 1,
             run_id: str = '',
+            synchronous=False,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
+            checkpoint_freq: int = 30_000) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -82,7 +84,7 @@ class NETT:
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbosity (int, optional): The verbosity level of the run. Defaults to 1.
             run_id (str, optional): The run ID. Defaults to ''.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
@@ -122,46 +124,10 @@ class NETT:
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self.launch_jobs(jobs, waitlist)
+        job_sheet = self._launch_jobs(jobs, synchronous, waitlist)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
-
-    def launch_jobs(self, jobs: list[Job], waitlist: list[Job] = []) -> dict[Future, Job]:
-        """
-        Launch the jobs in the job sheet.
-
-        Args:
-            jobs (list[Job]): The jobs to be launched.
-            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
-
-        Returns:
-            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
-        """
-        try:
-            max_workers = 1 if len(jobs) == 1 else None
-            initializer = mute if not self.verbosity else None
-            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-            job_sheet: dict[Future, dict[str, Job]] = {}
-
-            for job in jobs:
-                job_future = executor.submit(self._execute_job, job)
-                job_sheet[job_future] = job
-                time.sleep(1)
-
-            while waitlist:
-                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                for doneFuture in done:
-                    freeDevice: int = job_sheet.pop(doneFuture).device
-                    job = waitlist.pop()
-                    job.device = freeDevice
-                    job_future = executor.submit(self._execute_job, job)
-                    job_sheet[job_future] = job
-                    time.sleep(1)
-        
-            return job_sheet
-        except Exception as e:
-            print(str(e))
 
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
@@ -180,6 +146,11 @@ class NETT:
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
+
+    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
+        '''Generate a toml file and save it to the run directory.'''
+        raise NotImplementedError
+
 
 # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
@@ -219,6 +190,9 @@ class NETT:
         # TODO may need to clean up this file structure
         # set paths
         run_dir = Path(run_dir).resolve()
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
+
         analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
         if output_dir is None:
             output_dir = run_dir.joinpath("results")
@@ -261,6 +235,222 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
+    def _execute_job(self, job: Job) -> Future:
+
+        # for train
+        if self.mode not in ["train", "test", "full"]:
+            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
+
+        brain: "nett.Brain" = deepcopy(self.brain)
+
+        # common environment kwargs
+        kwargs = {"rewarded": bool(brain.reward),
+                  "rec_path": str(job.paths["env_recs"]),
+                  "log_path": str(job.paths["env_logs"]),
+                  "condition": job.condition,
+                  "run_id": job.brain_id,
+                  "device": job.device,
+                  "episode_steps": self.steps_per_episode,
+                  "device_type": self.device_type,
+                  "batch_mode": self.batch_mode}
+
+        # for train
+        if self.mode in ["train", "full"]:
+            try:
+                # initialize environment with necessary arguments
+                train_environment = self._wrap_env("train", kwargs)
+                # calculate iterations
+                iterations = self.steps_per_episode * self.train_eps
+                # train
+                brain.train(
+                    env=train_environment,
+                    iterations=iterations,
+                    device_type=self.device_type,
+                    device=job.device,
+                    index=job.index,
+                    paths=job.paths,
+                    save_checkpoints=self.save_checkpoints,
+                    checkpoint_freq=self.checkpoint_freq,)
+                train_environment.close()
+            except Exception as e:
+                self.logger.error(f"Error in training: {e}", exc_info=1)
+                train_environment.close()
+                exit()    
+
+        # for test
+        if self.mode in ["test", "full"]:
+            try:
+                # initialize environment with necessary arguments
+                test_environment = self._wrap_env("test", kwargs)
+                # calculate iterations
+                iterations = self.test_eps * test_environment.config.num_conditions
+
+                # Q: Why in test but not in train?
+                if not issubclass(brain.algorithm, RecurrentPPO):
+                    iterations *= self.steps_per_episode
+
+                # test
+                brain.test(
+                    env=test_environment,
+                    iterations=iterations,
+                    model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                    rec_path = str(job.paths["env_recs"]),
+                    device_type=self.device_type,
+                    device=job.device,
+                    index=job.index)
+                test_environment.close()
+            except Exception as e:
+                self.logger.error(f"Error in testing: {e}", exc_info=1)
+                test_environment.close()
+                exit()
+
+        return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
+
+    # pylint: disable-next=unused-argument
+    def _estimate_job_memory(self) -> int:
+        if (self.job_memory == "auto"):
+            try:
+                tmp_path = self.output_dir / ".tmp/"
+                tmp_path.mkdir(parents=True, exist_ok=True)
+
+                # find the GPU with the most free memory
+                free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                most_free_gpu = free_memory.index(max(free_memory))
+
+                # create a test job to estimate memory
+                job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
+                # calculate current memory usage for baseline for comparison
+                currentMemory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+
+                brain: "nett.Brain" = deepcopy(self.brain)
+
+                # common environment kwargs # TODO: pack this into Job as a function. May need to create a partial to remove redundancy
+                kwargs = {"rewarded": bool(brain.reward),
+                        "rec_path": str(job.paths["env_recs"]),
+                        "log_path": str(job.paths["env_logs"]),
+                        "condition": job.condition,
+                        "run_id": job.brain_id,
+                        "device": job.device,
+                        "episode_steps": self.steps_per_episode,
+                        "device_type": self.device_type,
+                        "batch_mode": self.batch_mode}
+
+                # for train
+                if self.mode in ["train", "full"]:
+                    try:
+                        # initialize environment with necessary arguments
+                        train_environment = self._wrap_env("train", kwargs)
+                        # calculate iterations
+                        iterations = self.steps_per_episode * self.train_eps
+                        # calculate memory allocated under train conditions
+                        brain.estimate_train(
+                            env=train_environment,
+                            iterations=iterations, #TODO: remove need to calculate iterations
+                            device_type=self.device_type,
+                            device=job.device,
+                            index=job.index,
+                            paths=job.paths,
+                            save_checkpoints=False,
+                            checkpoint_freq=self.checkpoint_freq,)
+                        train_environment.close()
+
+                        with open("./.tmp/memory_use", "r") as file:
+                            memory_allocated = int(file.readline()) - currentMemory
+                    except Exception as e:
+                        self.logger.error(f"Error in training: {e}", exc_info=1)
+                        train_environment.close()
+                        exit()
+
+                if self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
+                    try:
+                        # initialize environment with necessary arguments
+                        test_environment = self._wrap_env("test", kwargs)
+
+                        # Calculate memory allocated under test conditions
+                        memory_allocated = brain.estimate_test(
+                            env=test_environment,
+                            model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                            device_type=self.device_type,
+                            device=job.device,)
+                        test_environment.close()
+                    except Exception as e:
+                        self.logger.error(f"Error in testing: {e}", exc_info=1)
+                        test_environment.close()
+                        exit()
+
+                self.logger.info(f"Estimated memory for job: {memory_allocated}")
+            except Exception as e:
+                self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
+                exit()
+            finally:
+                if (self.output_dir / ".tmp/").exists():
+                    shutil.rmtree(self.output_dir / ".tmp/")
+        else:
+            memory_allocated = self.job_memory * (1024 * 1024 * 1024)
+        return memory_allocated
+
+    def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
+        # TODO include waitlisted jobs
+        runStatus = lambda job_future: {'running': job_future.running()}
+        jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
+
+        return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
+    
+    def _most_free_GPU(self):
+        free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+        return free_memory.index(max(free_memory))
+
+    def _get_memory_status(self) -> dict[int, dict[str, int]]:
+        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
+        memory_status = {
+            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+            for device_id in self.devices
+        }
+        return memory_status
+    
+    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = [], ) -> dict[Future, Job]:
+        """
+        Launch the jobs in the job sheet.
+
+        Args:
+            jobs (list[Job]): The jobs to be launched.
+            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
+
+        Returns:
+            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
+        """
+        try:
+            max_workers = 1 if len(jobs) == 1 else None
+            initializer = mute if not self.verbosity else None
+            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+            job_sheet: dict[Future, dict[str, Job]] = {}
+
+            for job in jobs:
+                job_future = executor.submit(self._execute_job, job)
+                job_sheet[job_future] = job
+                time.sleep(1)
+
+            while waitlist:
+                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                for doneFuture in done:
+                    freeDevice: int = job_sheet.pop(doneFuture).device
+                    job = waitlist.pop()
+                    job.device = freeDevice
+                    job_future = executor.submit(self._execute_job, job)
+                    job_sheet[job_future] = job
+                    time.sleep(1)
+
+            if wait:
+                while job_sheet:
+                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                    for doneFuture in done:
+                        job_sheet.pop(doneFuture)
+                    time.sleep(1)
+
+            return job_sheet
+        except Exception as e:
+            print(str(e))
+
     def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
         # create jobs
         
@@ -293,8 +483,12 @@ class NETT:
         # get the free memory status for each device
         free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
+        #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
+
         # estimate memory for a single job
-        job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+        job_memory: float = self.buffer * self._estimate_job_memory()
+
+        # exit()
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
@@ -305,128 +499,24 @@ class NETT:
                 ]
                 self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                 break
+
             # remove devices that don't have enough memory
-            elif free_device_memory[free_devices[-1]] < job_memory:
+            if free_device_memory[free_devices[-1]] < job_memory:
                 free_devices.pop()
             # assign device to job
             else:
-                # allocate memory
-                free_device_memory[free_devices[-1]] -= job_memory
                 # create job
                 condition, brain_id = task_set.pop()
                 job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
                 jobs.append(job)
 
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # rotate devices
+                free_devices = [free_devices[-1]] + free_devices[:-1]
+
         return jobs, waitlist
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
-        copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode=mode, **kwargs)
-        # apply wrappers (body)
-        return self.body(copy_environment)
-
-    def _execute_job(self, job: Job) -> Future:
-
-        # for train
-        if self.mode not in ["train", "test", "full"]:
-            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
-
-        brain: "nett.Brain" = deepcopy(self.brain)
-
-        # common environment kwargs
-        kwargs = {"rewarded": bool(brain.reward),
-                  "rec_path": str(job.paths["env_recs"]),
-                  "log_path": str(job.paths["env_logs"]),
-                  "condition": job.condition,
-                  "run_id": job.brain_id,
-                  "episode_steps": self.steps_per_episode,
-                  "device_type": self.device_type,
-                  "batch_mode": self.batch_mode}
-
-        # for train
-        if self.mode in ["train", "full"]:
-            try:
-                # initialize environment with necessary arguments
-                train_environment = self._wrap_env("train", kwargs)
-                # calculate iterations
-                iterations = self.steps_per_episode * self.train_eps
-                # train
-                brain.train(
-                    env=train_environment,
-                    iterations=iterations,
-                    device_type=self.device_type,
-                    device=job.device,
-                    index=job.index,
-                    paths=job.paths,
-                    save_checkpoints=self.save_checkpoints,
-                    checkpoint_freq=self.checkpoint_freq,)
-                train_environment.close()
-            except Exception as e:
-                self.logger.error(f"Error in training: {e}")
-                train_environment.close()
-                exit()    
-
-        # for test
-        if self.mode in ["test", "full"]:
-            try:
-                # initialize environment with necessary arguments
-                test_environment = self._wrap_env("test", kwargs)
-                # calculate iterations
-                iterations = self.test_eps * test_environment.config.num_conditions
-
-                # Q: Why in test but not in train?
-                if not issubclass(brain.algorithm, RecurrentPPO):
-                    iterations *= self.steps_per_episode
-
-                # test
-                brain.test(
-                    env=test_environment,
-                    iterations=iterations,
-                    model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                    rec_path = str(job.paths["env_recs"]),
-                    index=job.index)
-                test_environment.close()
-            except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
-                test_environment.close()
-                exit()
-
-        return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
-
-    # pylint: disable-next=unused-argument
-    def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
-        # TODO (v0.5) add a dummy job to gauge memory consumption
-
-        # # get device with the maxmium memory available
-        # max_memory_device = max(device_memory_status,
-        #                         key=lambda device: device_memory_status[device].free)
-        # # send a dummy job to gauge memory consumption
-        # dummy_job = self._create_job(device=max_memory_device,
-        #                              mode=random.choice(self.environment.config.modes),
-        #                              brain_id=-1)
-
-        # # send the job
-        # self.logger.info("Estimating memory by executing a single job")
-
-        # return a hurestic value for now (4GiB per job)
-        # multiply to return in bytes
-        memory_allocated = self.job_memory * (1024 * 1024 * 1024)
-        return memory_allocated
-
-    def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
-        # TODO include waitlisted jobs
-        runStatus = lambda job_future: {'running': job_future.running()}
-        jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
-
-        return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
-
-    def _get_memory_status(self) -> dict[int, dict[str, int]]:
-        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {
-            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in self.devices
-        }
-        return memory_status
 
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
@@ -448,7 +538,8 @@ class NETT:
 
         return devices
 
-    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
-        '''Generate a toml file and save it to the run directory.'''
-        raise NotImplementedError
-    
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+        copy_environment = deepcopy(self.environment)
+        copy_environment.initialize(mode=mode, **kwargs)
+        # apply wrappers (body)
+        return self.body(copy_environment)
