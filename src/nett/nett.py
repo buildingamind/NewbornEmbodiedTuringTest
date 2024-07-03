@@ -495,6 +495,7 @@ class NETT:
         while task_set:
             # if there are no free devices, add jobs to the waitlist
             if not free_devices:
+                self.logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
                     Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
                     for i, (condition, brain_id) in enumerate(task_set)
@@ -504,9 +505,11 @@ class NETT:
 
             # remove devices that don't have enough memory
             if free_device_memory[free_devices[-1]] < job_memory:
+                self.logger.info(f"Device {free_devices[-1]} does not have enough memory. Removing from list of available devices.")
                 free_devices.pop()
             # assign device to job
             else:
+                self.logger.info(f"Assigning device {free_devices[-1]} to job")
                 # create job
                 condition, brain_id = task_set.pop()
                 job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
