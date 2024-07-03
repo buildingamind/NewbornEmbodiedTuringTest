@@ -61,7 +61,7 @@ class Environment(Wrapper):
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
         # TODO (v0.5) what might be a way to check if it is a valid executable path?
-        self.executable_path = self.validate_executable(executable_path)
+        self.executable_path = self._validate_executable(executable_path)
         self.base_port = base_port
         self.record_chamber = record_chamber
         self.record_agent = record_agent
@@ -255,7 +255,7 @@ class Environment(Wrapper):
 
         # check if the data directory exists
         data_directory = filename + '_Data'
-        if not os.path.isdir(data_directory):
+        if not os.path.isdir(os.path.join(os.path.dirname(executable_path), data_directory)):
             raise FileNotFoundError(f"Expected {data_directory} to exist in executable directory, but it does not exist. Please check that the path to the Unity executable is correct and that the data directory and executable use the same naming convention.")
 
         return executable_path
