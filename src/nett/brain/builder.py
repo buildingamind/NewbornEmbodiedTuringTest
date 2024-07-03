@@ -643,13 +643,14 @@ class Brain:
             CallbackList: The list of callbacks for training.
         """
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
-        # creates the parallel progress bars
-        bar_callback = multiBarCallback(index)
 
-        callback_list = [hparam_callback, bar_callback]
+        callback_list = [hparam_callback]
 
         if estimate_memory:
             callback_list.append(MemoryCallback(device))
+        else:
+            # creates the parallel progress bars
+            callback_list.append(multiBarCallback(index))
 
         if save_checkpoints:
             callback_list.append(CheckpointCallback(
