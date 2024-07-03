@@ -258,45 +258,45 @@ class NETT:
         if self.mode in ["train", "full"]:
             try:
                 # initialize environment with necessary arguments
-                train_environment = self._wrap_env("train", kwargs)
-                # calculate iterations
-                iterations = self.steps_per_episode * self.train_eps
-                # train
-                brain.train(
-                    env=train_environment,
-                    iterations=iterations,
-                    device_type=self.device_type,
-                    device=job.device,
-                    index=job.index,
-                    paths=job.paths,
-                    save_checkpoints=self.save_checkpoints,
-                    checkpoint_freq=self.checkpoint_freq,)
-                train_environment.close()
+                with self._wrap_env("train", kwargs) as train_environment:
+                    # calculate iterations
+                    iterations = self.steps_per_episode * self.train_eps
+                    # train
+                    brain.train(
+                        env=train_environment,
+                        iterations=iterations,
+                        device_type=self.device_type,
+                        device=job.device,
+                        index=job.index,
+                        paths=job.paths,
+                        save_checkpoints=self.save_checkpoints,
+                        checkpoint_freq=self.checkpoint_freq,)
+                # train_environment.close()
             except Exception as e:
                 self.logger.error(f"Error in training: {e}", exc_info=1)
                 # train_environment.close()
                 exit()    
 
         # for test
-        if self.mode == "test":
+        if self.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
-                test_environment = self._wrap_env("test", kwargs)
-                # calculate iterations
-                iterations = self.test_eps * test_environment.config.num_conditions
+                with self._wrap_env("test", kwargs) as test_environment:
+                    # calculate iterations
+                    iterations = self.test_eps * test_environment.config.num_conditions
 
-                if not issubclass(brain.algorithm, RecurrentPPO):
-                    iterations *= self.steps_per_episode
+                    if not issubclass(brain.algorithm, RecurrentPPO):
+                        iterations *= self.steps_per_episode
 
-                brain.test(
-                    env=test_environment,
-                    iterations=iterations,
-                    model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                    rec_path = str(job.paths["env_recs"]),
-                    device_type=self.device_type,
-                    device=job.device,
-                    index=job.index)
-                test_environment.close()
+                    brain.test(
+                        env=test_environment,
+                        iterations=iterations,
+                        model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                        rec_path = str(job.paths["env_recs"]),
+                        device_type=self.device_type,
+                        device=job.device,
+                        index=job.index)
+                # test_environment.close()
             except Exception as e:
                 self.logger.error(f"Error in testing: {e}", exc_info=1)
                 # test_environment.close()
@@ -337,20 +337,20 @@ class NETT:
                 if self.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        train_environment = self._wrap_env("train", kwargs)
-                        # calculate iterations
-                        iterations = self.steps_per_episode * self.train_eps
-                        # calculate memory allocated under train conditions
-                        brain.estimate_train(
-                            env=train_environment,
-                            iterations=iterations, #TODO: remove need to calculate iterations
-                            device_type=self.device_type,
-                            device=job.device,
-                            index=job.index,
-                            paths=job.paths,
-                            save_checkpoints=False,
-                            checkpoint_freq=self.checkpoint_freq,)
-                        train_environment.close()
+                        with self._wrap_env("train", kwargs) as train_environment:
+                            # calculate iterations
+                            iterations = self.steps_per_episode * self.train_eps
+                            # calculate memory allocated under train conditions
+                            brain.estimate_train(
+                                env=train_environment,
+                                iterations=iterations, #TODO: remove need to calculate iterations
+                                device_type=self.device_type,
+                                device=job.device,
+                                index=job.index,
+                                paths=job.paths,
+                                save_checkpoints=False,
+                                checkpoint_freq=self.checkpoint_freq,)
+                        # train_environment.close()
 
                         with open("./.tmp/memory_use", "r") as file:
                             post_memory = int(file.readline())
@@ -362,15 +362,15 @@ class NETT:
                 elif self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                     try:
                         # initialize environment with necessary arguments
-                        test_environment = self._wrap_env("test", kwargs)
-                        # Calculate memory allocated under test conditions
-                        brain.estimate_test(
-                            env=test_environment,
-                            model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                            device_type=self.device_type,
-                            device=job.device,)
-                        post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                        test_environment.close()
+                        with self._wrap_env("test", kwargs) as test_environment:
+                            # Calculate memory allocated under test conditions
+                            brain.estimate_test(
+                                env=test_environment,
+                                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                                device_type=self.device_type,
+                                device=job.device,)
+                            post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                        # test_environment.close()
                     except Exception as e:
                         self.logger.error(f"Error in testing: {e}", exc_info=1)
                         # test_environment.close()
