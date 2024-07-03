@@ -378,6 +378,7 @@ class NETT:
                 else:
                     raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
                 # estimate memory allocated
+                self.logger.info(f"Pre-memory: {pre_memory}, Post-memory: {post_memory}")
                 memory_allocated = post_memory - pre_memory
 
                 self.logger.info(f"Estimated memory for job: {memory_allocated}")
