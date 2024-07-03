@@ -384,9 +384,9 @@ class NETT:
             except Exception as e:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
                 exit()
-            finally:
-                if (self.output_dir / ".tmp/").exists():
-                    shutil.rmtree(self.output_dir / ".tmp/")
+            # finally:
+            #     if (self.output_dir / ".tmp/").exists():
+            #         shutil.rmtree(self.output_dir / ".tmp/")
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
@@ -489,6 +489,8 @@ class NETT:
 
         # estimate memory for a single job
         job_memory: float = self.buffer * self._estimate_job_memory()
+
+        self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
         # exit()
 
