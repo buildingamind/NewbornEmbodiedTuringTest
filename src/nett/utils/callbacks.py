@@ -58,7 +58,10 @@ class multiBarCallback(ProgressBarCallback):
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
         self.pbar = tqdm(total=self.model.n_steps, position=self.index)
-        # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
+        pass
+    def _on_training_end(self) -> None:
+        self.pbar.close()
+        pass
 
 class MemoryCallback(BaseCallback):
     """
