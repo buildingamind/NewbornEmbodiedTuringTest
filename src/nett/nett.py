@@ -385,7 +385,7 @@ class NETT:
                 exit()
             finally:
                 if Path("./.tmp/").resolve().exists():
-                    shutil.rmtree(self.output_dir / ".tmp/")
+                    shutil.rmtree(Path("./.tmp/").resolve())
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
