@@ -499,7 +499,7 @@ class NETT:
 
         self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
-        # exit()
+        exit()
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
