@@ -314,6 +314,8 @@ class NETT:
                 # find the GPU with the most free memory
                 free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
                 self.logger.info(f"Free memory: {str(free_memory)}")
+                used_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).used for device in self.devices]
+                self.logger.info(f"Used memory: {str(free_memory)}")
                 time.sleep(5)
                 most_free_gpu = free_memory.index(max(free_memory))
                 self.logger.info(f"Most free GPU: {str(most_free_gpu)}")
