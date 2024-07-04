@@ -5,6 +5,7 @@ Classes:
     HParamCallback(BaseCallback)
 """
 import os
+import time
 from typing import Optional
 
 from tqdm import tqdm
@@ -70,6 +71,7 @@ class MemoryCallback(BaseCallback):
         super().__init__(verbose)
         self.device = device
         self.close = False
+        self.count = 0
 
     def _on_step(self) -> bool:
         """
@@ -89,8 +91,13 @@ class MemoryCallback(BaseCallback):
             # Write the used memory to a file
             with open("./.tmp/memory_use", "w") as f:
                 f.write(str(used_memory))
-            # Close the callback
-            return False
+            time.sleep(1)
+            if self.count > 10:
+                # Close the callback
+                return False
+            else:
+                self.count += 1
+                return True
         return True
 
     def _on_rollout_end(self) -> None:
