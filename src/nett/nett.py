@@ -313,12 +313,16 @@ class NETT:
 
                 # find the GPU with the most free memory
                 free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                self.logger.info(f"Free memory: ", str(free_memory))
+                time.sleep(5)
                 most_free_gpu = free_memory.index(max(free_memory))
+                self.logger.info(f"Most free GPU: ", str(most_free_gpu))
 
                 # create a test job to estimate memory
                 job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
                 # calculate current memory usage for baseline for comparison
                 pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                time.sleep(5)
 
                 brain: "nett.Brain" = deepcopy(self.brain)
 
@@ -350,6 +354,7 @@ class NETT:
                                 paths=job.paths,
                                 save_checkpoints=False,
                                 checkpoint_freq=self.checkpoint_freq,)
+                            time.sleep(5) # could be the writing is async
                         # train_environment.close()
 
                         with open("./.tmp/memory_use", "r") as file:
@@ -370,6 +375,7 @@ class NETT:
                                 device_type=self.device_type,
                                 device=job.device,)
                             post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                            time.sleep(5)
                         # test_environment.close()
                     except Exception as e:
                         self.logger.error(f"Error in testing: {e}", exc_info=1)
