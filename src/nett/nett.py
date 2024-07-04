@@ -37,7 +37,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment", environment2: "nett.Environment") -> None:
+    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
         """
         Initialize the NETT class.
         """
