@@ -107,7 +107,6 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        print("Estimate Train: Device: ", device)
         try:
             self.logger.info("Running Memory Estimate")
             # validate environment
@@ -642,7 +641,6 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
-        print("Initializing Callbacks: Device: ", device)
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
         # creates the parallel progress bars

@@ -313,21 +313,12 @@ class NETT:
 
                 # find the GPU with the most free memory
                 free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
-                self.logger.info(f"Free memory: {str(free_memory)}")
-                used_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).used for device in self.devices]
-                self.logger.info(f"Used memory: {str(used_memory)}")                
-                total_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).total for device in self.devices]
-                self.logger.info(f"Total memory: {str(total_memory)}")
-                time.sleep(5)
                 most_free_gpu = free_memory.index(max(free_memory))
-                self.logger.info(f"Most free GPU: {str(most_free_gpu)}")
 
                 # create a test job to estimate memory
                 job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
                 # calculate current memory usage for baseline for comparison
                 pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                print("Estimate Job Memory: Device: ", job.device)
-                time.sleep(5)
 
                 brain: "nett.Brain" = deepcopy(self.brain)
 
@@ -358,7 +349,6 @@ class NETT:
                                 paths=job.paths,
                                 save_checkpoints=False,
                                 checkpoint_freq=self.checkpoint_freq,)
-                            time.sleep(5) # could be the writing is async
                         # train_environment.close()
 
                         with open("./.tmp/memory_use", "r") as file:
@@ -379,7 +369,6 @@ class NETT:
                                 device_type=self.device_type,
                                 device=job.device,)
                             post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                            time.sleep(5)
                         # test_environment.close()
                     except Exception as e:
                         self.logger.error(f"Error in testing: {e}", exc_info=1)
@@ -388,16 +377,15 @@ class NETT:
                 else:
                     raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
                 # estimate memory allocated
-                self.logger.info(f"Pre-memory: {pre_memory}, Post-memory: {post_memory}")
                 memory_allocated = post_memory - pre_memory
 
                 self.logger.info(f"Estimated memory for job: {memory_allocated}")
             except Exception as e:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
                 exit()
-            # finally:
-            #     if (self.output_dir / ".tmp/").exists():
-            #         shutil.rmtree(self.output_dir / ".tmp/")
+            finally:
+                if (self.output_dir / ".tmp/").exists():
+                    shutil.rmtree(self.output_dir / ".tmp/")
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
@@ -499,15 +487,17 @@ class NETT:
         #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
 
         # estimate memory for a single job
-        job_memory: float = self.buffer * self._estimate_job_memory()
+        job_memory: int = int(self.buffer * self._estimate_job_memory())
 
         self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
-        exit()
+
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
             if not free_devices:
+                if not jobs:
+                    raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 self.logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
                     Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
