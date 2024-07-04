@@ -37,7 +37,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
+    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment", environment2: "nett.Environment") -> None:
         """
         Initialize the NETT class.
         """
@@ -46,6 +46,7 @@ class NETT:
         self.brain = brain
         self.body = body
         self.environment = environment
+        self.environment2 = environment2
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInit()
@@ -337,7 +338,7 @@ class NETT:
                 if self.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("train", kwargs) as train_environment:
+                        with self._wrap_env2("train", kwargs) as train_environment:
                             # calculate iterations
                             iterations = self.steps_per_episode * self.train_eps
                             # calculate memory allocated under train conditions
@@ -362,7 +363,7 @@ class NETT:
                 elif self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("test", kwargs) as test_environment:
+                        with self._wrap_env2("test", kwargs) as test_environment:
                             # Calculate memory allocated under test conditions
                             brain.estimate_test(
                                 env=test_environment,
@@ -388,9 +389,8 @@ class NETT:
             # finally:
             #     if (self.output_dir / ".tmp/").exists():
             #         shutil.rmtree(self.output_dir / ".tmp/")
-        # else:
-        #     memory_allocated = self.job_memory * (1024 * 1024 * 1024)
-        memory_allocated = 4 * (1024 * 1024 * 1024)
+        else:
+            memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
@@ -549,6 +549,12 @@ class NETT:
 
     def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
+        copy_environment.initialize(mode=mode, **kwargs)
+        # apply wrappers (body)
+        return self.body(copy_environment)    
+
+    def _wrap_env2(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+        copy_environment = deepcopy(self.environment2)
         copy_environment.initialize(mode=mode, **kwargs)
         # apply wrappers (body)
         return self.body(copy_environment)
