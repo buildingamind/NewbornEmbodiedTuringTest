@@ -88,7 +88,6 @@ class Brain:
         iterations: int,
         device_type: str,
         device: int,
-        index: int,
         paths: dict[str, Path],
         save_checkpoints: bool,
         checkpoint_freq: int):
@@ -149,7 +148,7 @@ class Brain:
                 self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
             # initialize callbacks
-            callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, estimate_memory=True, device=device)
+            callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=None, estimate_memory=True, device=device)
 
             # train
             self.model.learn(
@@ -285,7 +284,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
+        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -629,7 +628,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int, estimate_memory: bool = False, device: int=0) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int=0) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -644,13 +643,13 @@ class Brain:
         """
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
-        callback_list = [hparam_callback]
+        # creates the parallel progress bars
+        loading_bar_callback = multiBarCallback(index)
+
+        callback_list = [hparam_callback, loading_bar_callback]
 
         if estimate_memory:
             callback_list.append(MemoryCallback(device))
-        else:
-            # creates the parallel progress bars
-            callback_list.append(multiBarCallback(index))
 
         if save_checkpoints:
             callback_list.append(CheckpointCallback(

@@ -350,7 +350,6 @@ class NETT:
                                 iterations=iterations, #TODO: remove need to calculate iterations
                                 device_type=self.device_type,
                                 device=job.device,
-                                index=job.index,
                                 paths=job.paths,
                                 save_checkpoints=False,
                                 checkpoint_freq=self.checkpoint_freq,)

@@ -5,6 +5,7 @@ Classes:
     HParamCallback(BaseCallback)
 """
 import os
+from typing import Optional
 
 from tqdm import tqdm
 from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback
@@ -49,7 +50,7 @@ class multiBarCallback(ProgressBarCallback):
     using tqdm and rich packages.
     """
 
-    def __init__(self, index) -> None: #, num_steps
+    def __init__(self, index:Optional[int] = None) -> None: #, num_steps
         super().__init__()
         self.index = index
 
