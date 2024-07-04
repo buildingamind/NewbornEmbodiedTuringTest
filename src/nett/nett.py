@@ -388,8 +388,9 @@ class NETT:
             # finally:
             #     if (self.output_dir / ".tmp/").exists():
             #         shutil.rmtree(self.output_dir / ".tmp/")
-        else:
-            memory_allocated = self.job_memory * (1024 * 1024 * 1024)
+        # else:
+        #     memory_allocated = self.job_memory * (1024 * 1024 * 1024)
+        memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
     def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
