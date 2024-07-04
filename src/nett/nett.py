@@ -308,7 +308,7 @@ class NETT:
     def _estimate_job_memory(self) -> int:
         if (self.job_memory == "auto"):
             try:
-                tmp_path = Path("./.tmp/").resolve() #TODO logs are sent here but mem use is sent elsewhere
+                tmp_path = Path("./.tmp/").resolve()
                 tmp_path.mkdir(parents=True, exist_ok=True)
 
                 # find the GPU with the most free memory

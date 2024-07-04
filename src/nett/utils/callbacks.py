@@ -63,11 +63,9 @@ class multiBarCallback(ProgressBarCallback):
 class MemoryCallback(BaseCallback):
     """
     A custom callback that derives from ``BaseCallback``.
-
-    :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
     def __init__(self, device: int):
-        super().__init__(verbose)
+        super().__init__()
         self.device = device
         self.close = False
 
