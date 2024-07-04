@@ -107,6 +107,7 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
+        print("Estimate Train: Device: ", device)
         try:
             self.logger.info("Running Memory Estimate")
             # validate environment
@@ -284,7 +285,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index)
+        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=index, device=device)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -628,7 +629,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int=0) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int = 0) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -641,6 +642,7 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
+        print("Initializing Callbacks: Device: ", device)
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
         # creates the parallel progress bars

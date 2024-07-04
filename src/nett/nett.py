@@ -308,7 +308,7 @@ class NETT:
     def _estimate_job_memory(self) -> int:
         if (self.job_memory == "auto"):
             try:
-                tmp_path = self.output_dir / ".tmp/"
+                tmp_path = self.output_dir / ".tmp/" #TODO logs are sent here but mem use is sent elsewhere
                 tmp_path.mkdir(parents=True, exist_ok=True)
 
                 # find the GPU with the most free memory
@@ -326,6 +326,7 @@ class NETT:
                 job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
                 # calculate current memory usage for baseline for comparison
                 pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                print("Estimate Job Memory: Device: ", job.device)
                 time.sleep(5)
 
                 brain: "nett.Brain" = deepcopy(self.brain)

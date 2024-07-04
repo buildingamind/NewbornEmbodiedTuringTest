@@ -67,11 +67,11 @@ class MemoryCallback(BaseCallback):
 
     :param verbose: Verbosity level: 0 for no output, 1 for info messages, 2 for debug messages
     """
-    def __init__(self, verbose: int = 1, device: int = 0):
+    def __init__(self, device: int, verbose: int = 1):
         super().__init__(verbose)
         self.device = device
         self.close = False
-        self.count = 0
+        print(f"Memory Callback Init: Device: {self.device}")
 
     def _on_step(self) -> bool:
         """
@@ -86,20 +86,16 @@ class MemoryCallback(BaseCallback):
             # Create a temporary directory to store the memory usage
             os.makedirs("./.tmp", exist_ok=True)
             # Grab the memory being used by the GPU
-            used_memories = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(dev)).used for dev in range(8)]
-            print(f"Used memory: {str(used_memories)}")
+            # used_memories = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(dev)).used for dev in range(8)]
+            # print(f"Used memory: {str(used_memories)}")
             used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
-            print(f"Used memory: {used_memory} Device: {self.device}")
+            # print(f"Used memory: {used_memory} Device: {self.device}")
             # Write the used memory to a file
             with open("./.tmp/memory_use", "w") as f:
                 f.write(str(used_memory))
-            time.sleep(1)
-            if self.count > 10:
-                # Close the callback
-                return False
-            else:
-                self.count += 1
-                return True
+            print(f"On Step: Device: {self.device}")
+
+            return False
         return True
 
     def _on_rollout_end(self) -> None:
