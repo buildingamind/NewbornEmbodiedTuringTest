@@ -313,10 +313,10 @@ class NETT:
 
                 # find the GPU with the most free memory
                 free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
-                self.logger.info(f"Free memory: ", str(free_memory))
+                self.logger.info(f"Free memory: {str(free_memory)}")
                 time.sleep(5)
                 most_free_gpu = free_memory.index(max(free_memory))
-                self.logger.info(f"Most free GPU: ", str(most_free_gpu))
+                self.logger.info(f"Most free GPU: {str(most_free_gpu)}")
 
                 # create a test job to estimate memory
                 job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
