@@ -308,7 +308,7 @@ class NETT:
     def _estimate_job_memory(self) -> int:
         if (self.job_memory == "auto"):
             try:
-                tmp_path = self.output_dir / ".tmp/" #TODO logs are sent here but mem use is sent elsewhere
+                tmp_path = "./.tmp/" #TODO logs are sent here but mem use is sent elsewhere
                 tmp_path.mkdir(parents=True, exist_ok=True)
 
                 # find the GPU with the most free memory
@@ -351,7 +351,7 @@ class NETT:
                                 checkpoint_freq=self.checkpoint_freq,)
                         # train_environment.close()
 
-                        with open("./.tmp/memory_use", "r") as file:
+                        with open(Path("./.tmp/memory_use").resolve(), "r") as file:
                             post_memory = int(file.readline())
                     except Exception as e:
                         self.logger.error(f"Error in training: {e}", exc_info=1)
@@ -384,7 +384,7 @@ class NETT:
                 self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
                 exit()
             finally:
-                if (self.output_dir / ".tmp/").exists():
+                if Path("./.tmp/").resolve().exists():
                     shutil.rmtree(self.output_dir / ".tmp/")
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
