@@ -550,11 +550,13 @@ class NETT:
     def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode=mode, **kwargs)
+        copy_body = deepcopy(self.body)
         # apply wrappers (body)
-        return self.body(copy_environment)    
+        return copy_body(copy_environment)    
 
     def _wrap_env2(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment2)
         copy_environment.initialize(mode=mode, **kwargs)
+        copy_body = deepcopy(self.body)
         # apply wrappers (body)
-        return self.body(copy_environment)
+        return copy_body(copy_environment)
