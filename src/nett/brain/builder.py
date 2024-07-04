@@ -154,7 +154,7 @@ class Brain:
             self.model.learn(
                 total_timesteps=iterations,
                 tb_log_name=self.algorithm.__name__,
-                progress_bar=True,
+                progress_bar=False,
                 callback=[callback_list])
             self.logger.info("Memory Estimate Complete")
             
