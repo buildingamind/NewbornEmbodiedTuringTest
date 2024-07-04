@@ -87,9 +87,9 @@ class MemoryCallback(BaseCallback):
             os.makedirs("./.tmp", exist_ok=True)
             # Grab the memory being used by the GPU
             used_memories = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(dev)).used for dev in range(8)]
-            self.logger.info(f"Used memory: {str(used_memories)}")
+            print(f"Used memory: {str(used_memories)}")
             used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
-            self.logger.info(f"Used memory: {used_memory} Device: {self.device}")
+            print(f"Used memory: {used_memory} Device: {self.device}")
             # Write the used memory to a file
             with open("./.tmp/memory_use", "w") as f:
                 f.write(str(used_memory))
