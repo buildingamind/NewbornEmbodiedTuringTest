@@ -7,7 +7,7 @@ from typing import Any
 from abc import ABC, abstractmethod
 from itertools import product
 
-# from configs.biological_motion_recognition import BiologicalMotionRecognition
+# from configs.biological_motion_recognition import Biomotion
 
 # the naming is confusing since it is used for train or test too.
 class NETTConfig(ABC):
@@ -99,9 +99,9 @@ class NETTConfig(ABC):
         pass
 
 # this won't work I'm 1000% certain
-# biomotion = BiologicalMotionRecognition(NETTConfig)
+# biomotion = Biomotion(NETTConfig)
 
-class BiologicalMotionRecognition(NETTConfig):
+class Biomotion(NETTConfig):
     # is the Args block right? Not totally sure...
     """
     NETT configuration for Biological Motion Recognition experiment
@@ -118,8 +118,8 @@ class BiologicalMotionRecognition(NETTConfig):
     def __init__(self,
                      imprinting_condition: str | list[str] = ["ChickBiologicalMotion", "InvertedBiologicalMotion"],
                     test_condition: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
-                    target_video: str | list[str] = ["biomo.webm", "Inverted.webm"],
-                    nontarget_video: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
+                    # target_video: str | list[str] = ["biomo.webm", "Inverted.webm"],
+                    # nontarget_video: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
                     # left_monitor: str | list[str] = [],
                     # right_monitor: str | list[str] = []
                 ) -> None:
@@ -129,8 +129,8 @@ class BiologicalMotionRecognition(NETTConfig):
                     param_defaults = self.defaults,
                     imprinting_condition = imprinting_condition,
                     test_condition = test_condition,
-                    target_video = target_video,
-                    nontarget_video = nontarget_video,
+                    # target_video = target_video,
+                    # nontarget_video = nontarget_video,
                     # left_monitor = left_monitor,
                     # right_monitor = right_monitor
                 )
@@ -147,8 +147,8 @@ class BiologicalMotionRecognition(NETTConfig):
         # TODO: pull the name of the .csv programmatically from the user-provided sheet 
         design_file = csv.reader(open("biomotion.csv")) 
         # '4' is hard-coded for now to remove 4 lines from DesignSheet w/o data; programmatic implementation should happen
-        row_count = len(list(design_file)) - 4 
-
+        row_count = len(list(design_file)) - 4
+        print(row_count)
         return row_count
 
 class IdentityAndView(NETTConfig):
