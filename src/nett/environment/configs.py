@@ -145,7 +145,7 @@ class Biomotion(NETTConfig):
             int: The number of conditions.
         """
         # TODO: pull the name of the .csv programmatically from the user-provided sheet 
-        design_file = csv.reader(open("biomotion.csv")) 
+        design_file = csv.reader(open("./configs/biomotion.csv")) 
         # '4' is hard-coded for now to remove 4 lines from DesignSheet w/o data; programmatic implementation should happen
         row_count = len(list(design_file)) - 4
         print(row_count)
