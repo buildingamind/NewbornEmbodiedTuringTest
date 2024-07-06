@@ -308,6 +308,7 @@ class NETT:
     def _estimate_job_memory(self) -> int:
         if (self.job_memory == "auto"):
             try:
+                # create a temporary directory to hold memory estimate during runtime
                 tmp_path = Path("./.tmp/").resolve()
                 tmp_path.mkdir(parents=True, exist_ok=True)
 

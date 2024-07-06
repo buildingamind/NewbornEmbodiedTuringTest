@@ -83,14 +83,14 @@ class MemoryCallback(BaseCallback):
         """
         if self.close:
             # Create a temporary directory to store the memory usage
-            os.makedirs("./.tmp", exist_ok=True)
+            # os.makedirs("./.tmp", exist_ok=True)
             # Grab the memory being used by the GPU
             used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
             # Write the used memory to a file
             with open("./.tmp/memory_use", "w") as f:
                 f.write(str(used_memory))
             # Close the callback
-            return False
+            # return False
         return True
 
     def _on_rollout_end(self) -> None:

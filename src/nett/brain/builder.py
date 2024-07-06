@@ -152,7 +152,7 @@ class Brain:
 
             # train
             self.model.learn(
-                total_timesteps=iterations,
+                total_timesteps=self.buffer_size+10,
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
                 callback=[callback_list])
