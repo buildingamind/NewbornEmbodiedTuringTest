@@ -109,15 +109,24 @@ class Biomotion(NETTConfig):
     Args:
         imprinting_condition (str | list[str], optional): Motion type. Defaults to ["ChickBiologicalMotion", "InvertedBiologicalMotion"].
         test_condition (str | list[str], optional): Test condition. Defaults to ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary"].
-        target_video (str | list[str], optional): Motion Type video. Defaults to ["biomo.webm", "Inverted.webm"]. 
-        nontarget_video (str | list[str], optional): Condition video. 
-        left_monitor (str | list[str], optional): Video-to-monitor assignment. 
-        right_monitor (str | list[str], optional): Video-to-monitor assignment. 
     """
 
     def __init__(self,
-                     imprinting_condition: str | list[str] = ["ChickBiologicalMotion", "InvertedBiologicalMotion"],
-                    test_condition: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
+                    imprinting_condition: str | list[str] = [
+                        "ChickBiologicalMotion", 
+                        "InvertedBiologicalMotion"
+                    ],
+                    test_condition: str | list[str] = [
+                        "Rest",
+                        "Inverted",
+                        "Random",
+                        "Rigid",
+                        "Cat",
+                        "Scrambled",
+                        "Color",
+                        "Stationary",
+                        "White"
+                    ],
                     # target_video: str | list[str] = ["biomo.webm", "Inverted.webm"],
                     # nontarget_video: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
                     # left_monitor: str | list[str] = [],
@@ -144,12 +153,13 @@ class Biomotion(NETTConfig):
         Returns:
             int: The number of conditions.
         """
-        # TODO: pull the name of the .csv programmatically from the user-provided sheet 
-        design_file = csv.reader(open("./configs/biomotion.csv")) 
-        # '4' is hard-coded for now to remove 4 lines from DesignSheet w/o data; programmatic implementation should happen
-        row_count = len(list(design_file)) - 4
-        print(row_count)
-        return row_count
+        # # TODO: pull the name of the .csv programmatically from the user-provided sheet 
+        # design_file = csv.reader(open("./configs/biomotion.csv")) 
+        # # '4' is hard-coded for now to remove 4 lines from DesignSheet w/o data; programmatic implementation should happen
+        # row_count = len(list(design_file)) - 4
+        # print(row_count)
+        # return row_count
+        return 148
 
 class IdentityAndView(NETTConfig):
     """
