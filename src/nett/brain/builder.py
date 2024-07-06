@@ -16,8 +16,9 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-from stable_baselines3.common.env_util import make_vec_env
+# from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
@@ -114,8 +115,9 @@ class Brain:
 
             # initialize environment
             log_path = paths["env_logs"]
+            env = Monitor(env, str(log_path))
 
-            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+            # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
             
             # build model
             policy_kwargs = {
@@ -131,7 +133,7 @@ class Brain:
             
             self.model = self.algorithm(
                 self.policy,
-                envs,
+                env,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 verbose=1,
@@ -241,9 +243,9 @@ class Brain:
 
         # initialize environment
         log_path = paths["env_logs"]
+        env = Monitor(env, str(log_path))
         
-        
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+        # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
         policy_kwargs = {
@@ -262,7 +264,7 @@ class Brain:
             
             self.model = self.algorithm(
                 self.policy,
-                envs,
+                env,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 verbose=1,
@@ -340,14 +342,14 @@ class Brain:
 
         # initialize environment
         num_envs = 1
-        envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
+        # envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
         print(rec_path)
         try:
-            vr = VideoRecorder(env=envs,
+            vr = VideoRecorder(env=env,
             path="{}/agent_{}.mp4".format(rec_path, \
                 str(index)), enabled=True)
             

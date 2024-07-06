@@ -593,4 +593,5 @@ class NETT:
         # apply wrappers (body)
         return copy_body2(copy_environment2)   
 
-
+# NOTE: estimate appears to not use the device for Unity that is used for training/testing. Might be an off-by one error? (Unity = 2 and estimate training = 3)
+# Issue: Appears that body needed deepcopy, but when running auto, the Unity environments are created but the python processes do not boot up. Seems like there are other conflicting pieces that may need to be deepcopied as well for auto. This does not occur when setting job_memory to an int.
