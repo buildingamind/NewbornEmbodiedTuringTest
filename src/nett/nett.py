@@ -38,7 +38,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
+    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment", body2: "nett.Body", environment2: "nett.Environment") -> None:
         """
         Initialize the NETT class.
         """
@@ -46,7 +46,9 @@ class NETT:
         self.logger = logger.getChild(__class__.__name__)
         self.brain = brain
         self.body = body
-        self.environment = environment
+        self.environment = environment        
+        self.body2 = body2
+        self.environment2 = environment2
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInit()
@@ -356,7 +358,7 @@ class NETT:
                 if self.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("train", job.port, kwargs) as train_environment:
+                        with self._wrap_env2("train", job.port, kwargs) as train_environment:
                             # calculate iterations
                             iterations = self.steps_per_episode * self.train_eps
                             # calculate memory allocated under train conditions
@@ -583,4 +585,12 @@ class NETT:
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
+    
+    def _wrap_env2(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
+        copy_environment2 = deepcopy(self.environment2)
+        copy_environment2.initialize(mode, port, **kwargs)
+        copy_body2 = deepcopy(self.body2)
+        # apply wrappers (body)
+        return copy_body2(copy_environment2)   
+
 

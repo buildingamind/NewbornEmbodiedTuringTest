@@ -273,11 +273,12 @@ class Brain:
             self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
             raise e
         
-        
+        self.logger.info(f"Model initialized with {self.policy} policy and {self.encoder} encoder")
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
         
+        self.logger.info(f"Tensorboard logs saved at {str(paths['logs'])}")
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             self.model = self._set_encoder_as_eval(self.model)
@@ -641,6 +642,7 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
+        self.logger.info("Initializing Callbacks")
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
         # creates the parallel progress bars
