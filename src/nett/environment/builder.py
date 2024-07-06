@@ -18,7 +18,7 @@ except PermissionError as _:
 
 from nett.environment import configs
 from nett.environment.configs import NETTConfig, list_configs
-from nett.utils.environment import Logger, port_in_use
+from nett.utils.environment import Logger
 
 class Environment(Wrapper):
     """
@@ -34,7 +34,6 @@ class Environment(Wrapper):
         config (str | NETTConfig): The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
         executable_path (str): The path to the Unity executable file.
         display (int, optional): The display number to use for the Unity environment. Defaults to 0.
-        base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
         record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
         record_agent (bool, optional): Whether to record the agent. Defaults to False.
         recording_frames (int, optional): The number of frames to record. Defaults to 1000.
@@ -51,7 +50,6 @@ class Environment(Wrapper):
                  config: str | NETTConfig,
                  executable_path: str,
                  display: int = 0,
-                 base_port: int = 5004,
                  record_chamber: bool = False,
                  record_agent: bool = False,
                  recording_frames: int = 1000) -> None:
@@ -62,7 +60,6 @@ class Environment(Wrapper):
         self.config = self._validate_config(config)
         # TODO (v0.5) what might be a way to check if it is a valid executable path?
         self.executable_path = self._validate_executable(executable_path)
-        self.base_port = base_port
         self.record_chamber = record_chamber
         self.record_agent = record_agent
         self.recording_frames = recording_frames
@@ -77,7 +74,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, **kwargs) -> None:
+    def initialize(self, mode: str, port: int, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -118,16 +115,12 @@ class Environment(Wrapper):
             args.extend(["-force-device-index", str(kwargs["device"])])
             args.extend(["-gpu", str(kwargs["device"])])
 
-        # find unused port
-        while port_in_use(self.base_port):
-            self.base_port += 1
-
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['run_id']}-{mode}",
                           log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
-        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
+        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
         self.env = UnityToGymWrapper(self.env, uint8_visual=True)
 
         # initialize the parent class (gym.Wrapper)

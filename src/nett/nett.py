@@ -21,6 +21,7 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 
 from nett.utils.io import mute
 from nett.utils.job import Job
+from nett.utils.environment import port_in_use
 
 class NETT:
     """
@@ -68,7 +69,8 @@ class NETT:
             run_id: str = '',
             synchronous=False,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]:
+            checkpoint_freq: int = 30_000,
+            base_port: int = 5004) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -89,6 +91,7 @@ class NETT:
             run_id (str, optional): The run ID. Defaults to ''.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
+            base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -117,6 +120,7 @@ class NETT:
         self.run_id = run_id
         self.save_checkpoints = save_checkpoints
         self.checkpoint_freq = checkpoint_freq
+        self.base_port = base_port
         
         # schedule jobs
         jobs, waitlist = self._schedule_jobs(conditions=conditions)
@@ -258,7 +262,7 @@ class NETT:
         if self.mode in ["train", "full"]:
             try:
                 # initialize environment with necessary arguments
-                with self._wrap_env("train", kwargs) as train_environment:
+                with self._wrap_env("train", job.port, kwargs) as train_environment:
                     # calculate iterations
                     iterations = self.steps_per_episode * self.train_eps
                     # train
@@ -281,7 +285,7 @@ class NETT:
         if self.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
-                with self._wrap_env("test", kwargs) as test_environment:
+                with self._wrap_env("test", job.port, kwargs) as test_environment:
                     # calculate iterations
                     iterations = self.test_eps * test_environment.config.num_conditions
 
@@ -316,8 +320,22 @@ class NETT:
                 free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
                 most_free_gpu = free_memory.index(max(free_memory))
 
+                # find unused port
+                while port_in_use(self.base_port):
+                    self.base_port += 1
+
                 # create a test job to estimate memory
-                job = Job(0, self.environment.config.conditions[0], most_free_gpu, tmp_path, 0)
+                job = Job(
+                    brain_id=0, 
+                    condition=self.environment.config.conditions[0], 
+                    device=most_free_gpu, 
+                    dir=tmp_path, 
+                    index=0,
+                    port=self.base_port)
+
+                # change initial port for next job
+                self.base_port += 1
+
                 # calculate current memory usage for baseline for comparison
                 pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
@@ -338,7 +356,7 @@ class NETT:
                 if self.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("train", kwargs) as train_environment:
+                        with self._wrap_env("train", job.port, kwargs) as train_environment:
                             # calculate iterations
                             iterations = self.steps_per_episode * self.train_eps
                             # calculate memory allocated under train conditions
@@ -362,7 +380,7 @@ class NETT:
                 elif self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("test", kwargs) as test_environment:
+                        with self._wrap_env("test", job.port, kwargs) as test_environment:
                             # Calculate memory allocated under test conditions
                             brain.estimate_test(
                                 env=test_environment,
@@ -492,8 +510,6 @@ class NETT:
 
         self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
-
-
         while task_set:
             # if there are no free devices, add jobs to the waitlist
             if not free_devices:
@@ -516,8 +532,22 @@ class NETT:
                 self.logger.info(f"Assigning device {free_devices[-1]} to job")
                 # create job
                 condition, brain_id = task_set.pop()
-                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
+
+                # find unused port
+                while port_in_use(self.base_port):
+                    self.base_port += 1
+
+                job = Job(
+                    brain_id=brain_id, 
+                    condition=condition, 
+                    device=free_devices[-1], 
+                    dir=self.output_dir, 
+                    index=len(jobs),
+                    port=self.base_port)
                 jobs.append(job)
+
+                # change initial port for next job
+                self.base_port += 1
 
                 # allocate memory
                 free_device_memory[free_devices[-1]] -= job_memory
@@ -547,9 +577,9 @@ class NETT:
 
         return devices
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+    def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode=mode, **kwargs)
+        copy_environment.initialize(mode, port, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
