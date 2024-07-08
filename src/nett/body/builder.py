@@ -99,13 +99,13 @@ class Body:
         return wrappers
 
     @staticmethod
-    def _wrap(env: Env, wrapper: ObservationWrapper) -> Env:
+    def _wrap(env: Env, wrapper: Wrapper) -> Env:
         """
         Wraps the environment with the registered wrappers.
 
         Args:
             env (Env): The environment to wrap.
-            wrapper (ObservationWrapper): The wrapper to apply.
+            wrapper (Wrapper): The wrapper to apply.
 
         Returns:
             Env: The wrapped environment.
