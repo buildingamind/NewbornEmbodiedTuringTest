@@ -65,7 +65,7 @@ class NETT:
             conditions: Optional[list[str]] = None,
             verbosity: int = 1,
             run_id: str = '',
-            synchronous=False,
+            synchronous=True,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
         """
@@ -460,4 +460,3 @@ class NETT:
     def summary(self) -> None: # TODO: only raises a NotImplementedError for now
         '''Generate a toml file and save it to the run directory.'''
         raise NotImplementedError
-    

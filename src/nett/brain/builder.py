@@ -285,7 +285,7 @@ class Brain:
         """
         self.model.save(path)
         
-    def save_encoder_policy_network(self,path: Path):
+    def save_encoder_policy_network(self, path: Path):
         """
         Saves the policy and feature extractor of the agent's model.
 

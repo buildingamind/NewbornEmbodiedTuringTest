@@ -1,4 +1,5 @@
 """This module contains the NETT configurations for different experiments."""
+# num_conditions is calculated as the the number of test (not training) runs for each background. This can be determined by the number of rows of test runs in the design sheet used to create the executable.
 
 import sys
 import inspect
@@ -95,6 +96,35 @@ class NETTConfig(ABC):
         """
         pass
 
+class StatisticalLearning(NETTConfig):
+    """
+    NETT configuration for Statistical Learning.
+
+    Args:
+        object (str | list[str]): The object(s) to be used. Defaults to ["fork", "ship"].
+        range (str | list[str]): The range(s) to be used. Defaults to ["360", "small", "1"].
+        view (str | list[str]): The view(s) to be used. Defaults to ["front", "side"].
+
+    Raises:
+        ValueError: If any parameter value is not a value or subset of the default values.
+    """
+
+    def __init__(self,
+                 series: str | list[str] = ["A", "B"]) -> None:
+        """Constructor method
+        """
+        super().__init__(param_defaults=self.defaults,
+                         series=series)
+
+    @property
+    def num_conditions(self) -> int:
+        """
+        Get the number of conditions for the configuration.
+
+        Returns:
+            int: The number of conditions.
+        """
+        return 10
 
 class IdentityAndView(NETTConfig):
     """
