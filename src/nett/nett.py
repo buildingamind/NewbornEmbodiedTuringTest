@@ -61,10 +61,11 @@ class NETT:
             description: Optional[str] = None,
             job_memory: int = 4,
             buffer: float = 1.2,
-            steps_per_episode: int = 200,
+            steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
-            verbosity: int = 1, 
+            verbosity: int = 1,
             run_id: str = '',
+            synchronous=False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
         """
@@ -82,9 +83,10 @@ class NETT:
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbosity (int, optional): The verbosity level of the run. Defaults to 1.
             run_id (str, optional): The run ID. Defaults to ''.
+            synchronous (bool, optional): Whether to wait for all jobs to end rather than return a Promise. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
 
@@ -122,12 +124,12 @@ class NETT:
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self.launch_jobs(jobs, waitlist)
+        job_sheet = self.launch_jobs(jobs, synchronous, waitlist)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
-    def launch_jobs(self, jobs: list[Job], waitlist: list[Job] = []) -> dict[Future, Job]:
+    def launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = []) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -158,7 +160,14 @@ class NETT:
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
                     time.sleep(1)
-        
+
+            if wait:
+                while job_sheet:
+                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                    for doneFuture in done:
+                        job_sheet.pop(doneFuture)
+                    time.sleep(1)
+
             return job_sheet
         except Exception as e:
             print(str(e))
