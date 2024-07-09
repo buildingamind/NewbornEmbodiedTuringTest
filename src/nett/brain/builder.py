@@ -4,7 +4,6 @@ import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
-import pdb
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -22,9 +21,11 @@ from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
+
+from rllte.xplore.reward import E3B
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import HParamCallback, multiBarCallback
+from nett.utils.callbacks import *
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -117,7 +118,7 @@ class Brain:
         # initialize environment
         log_path = paths["env_logs"]
 
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+        envs: "stable_baselines3.common.vec_env.VecEnv" = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
         policy_kwargs = {
@@ -133,7 +134,6 @@ class Brain:
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
-            
             self.model = self.algorithm(
                 self.policy,
                 envs,
@@ -156,8 +156,10 @@ class Brain:
             self.model = self._set_encoder_as_eval(self.model)
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
+        irs = E3B(envs, device=torch.device(device_type, device))
+
         # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
+        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, reward=irs)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -209,7 +211,7 @@ class Brain:
         env = self._validate_env(env)
 
         # initialize environment
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+        envs: "stable_baselines3.common.vec_env.VecEnv" = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
@@ -499,7 +501,7 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int) -> CallbackList:
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int, save_checkpoints: bool, checkpoint_freq: int, reward: "rllte.common.prototype.BaseReward" = None) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -514,14 +516,20 @@ class Brain:
         """
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
         # creates the parallel progress bars
-        bar_callback = multiBarCallback(index)
+        bar_callback = MultiBarCallback(index)
+
+        callbacks = [hparam_callback, bar_callback]
 
         if save_checkpoints:
-            checkpoint_callback = CheckpointCallback(
+            callbacks.append(CheckpointCallback(
                 save_freq=checkpoint_freq, # defaults to 30_000 steps
                 save_path=paths["checkpoints"],
                 save_replay_buffer=True,
-                save_vecnormalize=True)
-            return CallbackList([hparam_callback, checkpoint_callback, bar_callback])
-        else:
-            return CallbackList([hparam_callback, bar_callback])
+                save_vecnormalize=True))
+
+        if reward is not None:
+            # add custom reward callback
+            # ===================== build the reward ===================== #
+            callbacks.append(RLeXploreWithOnPolicyRL(reward))
+
+        return CallbackList(callbacks)
