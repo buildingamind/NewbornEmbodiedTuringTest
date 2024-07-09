@@ -148,10 +148,10 @@ class Environment(Wrapper):
         # needs to fixed in Unity code where the default is always false
         if mode == "train":
             args.extend(["--random-pos", "true"])
-        #if kwargs.get("rewarded", False):
-        args.extend(["--rewarded", "true"]) #TODO: Add back the rewarded argument
+        if kwargs.get("rewarded", False):
+            args.extend(["--rewarded", "true"])
         self.step_per_episode = kwargs.get("episode_steps", 200)
-        #if kwargs.get("episode_steps", False): #TODO: Ensure that setting episode_steps to 1000 is the same as not setting it
+        #if kwargs.get("episode_steps", False):
         
         #if kwargs.get("episode_steps", False):
         #    args.extend(["--episode-steps", str(kwargs["episode_steps"])])

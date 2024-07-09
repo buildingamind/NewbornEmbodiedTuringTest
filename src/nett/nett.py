@@ -343,7 +343,7 @@ class NETT:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # common environment kwargs
-        kwargs = {"rewarded": bool(brain.reward),
+        kwargs = {"rewarded": bool(brain.reward == "supervised"),
                   "rec_path": str(job.paths["env_recs"]),
                   "log_path": str(job.paths["env_logs"]),
                   "condition": job.condition,

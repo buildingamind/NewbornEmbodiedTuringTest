@@ -23,6 +23,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 
 from rllte.xplore.reward import E3B
+from rllte.xplore.reward import Disagreement
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.utils.callbacks import *
@@ -156,10 +157,15 @@ class Brain:
             self.model = self._set_encoder_as_eval(self.model)
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
-        irs = E3B(envs, device=torch.device(device_type, device))
+        reward = self._get_reward()
 
-        # initialize callbacks
-        callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, reward=irs)
+        if reward is not None:
+            irs = reward(envs, device=torch.device(device_type, device))
+            # initialize callbacks
+            callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq, reward=irs)
+        else:
+            # initialize callbacks
+            callback_list = self._initialize_callbacks(paths, index, save_checkpoints, checkpoint_freq)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -344,6 +350,16 @@ class Brain:
         plots_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
         plt.clf()
+
+    def _get_reward(self) -> "Optional[BaseReward]":
+        if self.reward == "supervised":
+            return None
+        elif self.reward == "E3B":
+            return E3B
+        elif self.reward == "Disagreement":
+            return Disagreement
+        else:
+            raise ValueError("Invalid reward type")
 
     def _validate_encoder(self, encoder: Any | str) -> BaseFeaturesExtractor:
         """
