@@ -116,8 +116,7 @@ class Brain:
 
         # initialize environment
         log_path = paths["env_logs"]
-        
-        
+
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
@@ -147,8 +146,7 @@ class Brain:
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
             raise e
-        
-        
+
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
@@ -230,7 +228,7 @@ class Brain:
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = env.reset()
+                    obs = envs.reset()
                     # cell and hidden state of the LSTM
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
@@ -242,12 +240,12 @@ class Brain:
                             state=lstm_states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        obs, _, done, _ = env.step(action) # obs, rewards, done, info
+                        obs, _, dones, _ = envs.step(action) # obs, rewards, done, info
                         t.update(1)
                         # t.refresh()
-                        episode_starts = done
+                        episode_starts = dones
                         episode_length += 1
-                        env.render(mode="rgb_array")
+                        envs.render(mode="rgb_array")
                         vr.capture_frame()    
 
                 vr.close()
@@ -261,12 +259,12 @@ class Brain:
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
-                    obs, _, done, _ = envs.step(action) # obs, reward, done, info
+                    obs, _, dones, _ = envs.step(action) # obs, reward, done, info
                     t.update(1)
                     # t.refresh()
-                    if done:
-                        env.reset()
-                    env.render(mode="rgb_array")
+                    if dones[0]:
+                        envs.reset()
+                    envs.render(mode="rgb_array")
                     vr.capture_frame()    
 
                 vr.close()
