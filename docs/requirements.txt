@@ -7,6 +7,7 @@ nvidia-ml-py
 lightning
 lightning-bolts
 scikit-learn
+rllte-core
 sphinx
 mkdocs
 sphinx-rtd-theme
