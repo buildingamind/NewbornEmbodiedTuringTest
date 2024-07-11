@@ -241,7 +241,7 @@ class Brain:
         """
         importlib.reload(stable_baselines3)
         # validate environment
-        env = self._validate_env(envs)
+        env = self._validate_env(env)
 
         # initialize environment
         log_path = paths["env_logs"]
