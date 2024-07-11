@@ -116,17 +116,17 @@ class Biomotion(NETTConfig):
                         "ChickBiologicalMotion", 
                         "InvertedBiologicalMotion"
                     ],
-                    test_condition: str | list[str] = [
-                        "Rest",
-                        "Inverted",
-                        "Random",
-                        "Rigid",
-                        "Cat",
-                        "Scrambled",
-                        "Color",
-                        "Stationary",
-                        "White"
-                    ],
+                    # test_condition: str | list[str] = [
+                    #     "Rest",
+                    #     "Inverted",
+                    #     "Random",
+                    #     "Rigid",
+                    #     "Cat",
+                    #     "Scrambled",
+                    #     "Color",
+                    #     "Stationary",
+                    #     ""
+                    # ],
                     # target_video: str | list[str] = ["biomo.webm", "Inverted.webm"],
                     # nontarget_video: str | list[str] = ["Rest", "Inverted", "Random", "Rigid", "Cat", "Scrambled", "Color", "Stationary",  "White"],
                     # left_monitor: str | list[str] = [],
@@ -137,7 +137,7 @@ class Biomotion(NETTConfig):
         super().__init__(
                     param_defaults = self.defaults,
                     imprinting_condition = imprinting_condition,
-                    test_condition = test_condition,
+                    # test_condition = test_condition,
                     # target_video = target_video,
                     # nontarget_video = nontarget_video,
                     # left_monitor = left_monitor,
@@ -159,7 +159,7 @@ class Biomotion(NETTConfig):
         # row_count = len(list(design_file)) - 4
         # print(row_count)
         # return row_count
-        return 148
+        return 72
 
 class IdentityAndView(NETTConfig):
     """

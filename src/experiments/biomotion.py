@@ -19,7 +19,7 @@ body = Body(
 )
 
 environment = Environment(
-    config = "biomotion",
+    config = "Biomotion",
     executable_path = "/data/wjpeacoc/builds/biomotion.x86_64"
 )
 
@@ -38,7 +38,6 @@ job_sheet = benchmarks.run(
 )
 
 benchmarks.analyze(
-    config = environment.config,
-    run_dir = job_sheet.output_dir,
-    output_dir = job_sheet.output_dir + "/analysis"
+    run_dir = "/data/wjpeacoc/experiments/results/biomotion",
+    output_dir = "/data/wjpeacoc/experiments/results/biomotion"
 )

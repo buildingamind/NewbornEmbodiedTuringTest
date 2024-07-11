@@ -50,6 +50,6 @@ class Biomotion(NETTConfig):
         # TODO: pull the name of the .csv programmatically from the user-provided sheet 
         design_file = csv.reader(open("./biomotion.csv")) 
         # '4' is hard-coded for now to remove 4 lines from DesignSheet w/o data; programmatic implementation should happen
-        row_count = len(list(design_file)) - 4 
+        test_count = (len(list(design_file)) - 8)/2 
 
-        return row_count
+        return test_count
