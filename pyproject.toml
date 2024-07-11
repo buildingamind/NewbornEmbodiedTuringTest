@@ -20,11 +20,17 @@ dependencies = [
     "sb3-contrib==1.8.0",
     "torchvision",
     "timm",
-    "nvidia-ml-py",
     "lightning==2.2.5",
     "lightning-bolts==0.7.0",
     "scikit-learn==1.5.0",
-    "rllte-core"
+    "rllte-core",
+    "gymnasium<=0.26.1",
+    "termcolor",
+    "scipy>= 1.7.0",
+    "pynvml==11.5.0",
+    "matplotlib==3.6.0",
+    "seaborn==0.12.2",
+    "huggingface_hub==0.14.1"
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
