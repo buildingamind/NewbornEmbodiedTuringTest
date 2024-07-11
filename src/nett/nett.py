@@ -6,6 +6,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 
+import importlib
 import time
 import subprocess
 import shutil
@@ -18,6 +19,7 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+import mlagents_envs
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -407,6 +409,7 @@ class NETT:
             finally:
                 if tmp_path.exists():
                     shutil.rmtree(tmp_path)
+                importlib.reload(mlagents_envs)
         else:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
