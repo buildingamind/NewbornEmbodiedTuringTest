@@ -1,9 +1,9 @@
 """The body of the agent in the environment."""
-from typing import Any, Optional
-from gym import Wrapper, Env,ObservationWrapper
+from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
+from nett.body.wrappers.dvs import DVSWrapper
 # from nett.body import ascii_art
 
 # this will have the necessary wrappers before the observations interact with the brain,
@@ -63,7 +63,6 @@ class Body:
             raise ValueError(f"agent type must be one of {types}")
         return type
 
-
     def _validate_dvs(self, dvs: bool) -> bool:
         """
         Validate the dvs flag.
@@ -95,10 +94,37 @@ class Body:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
         for wrapper in wrappers:
-            if not issubclass(wrapper, ObservationWrapper):
+            if not issubclass(wrapper, Wrapper):
                 raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
+    @staticmethod
+    def _wrap(env: Env, wrapper: Wrapper) -> Env:
+        """
+        Wraps the environment with the registered wrappers.
+
+        Args:
+            env (Env): The environment to wrap.
+            wrapper (Wrapper): The wrapper to apply.
+
+        Returns:
+            Env: The wrapped environment.
+
+        Raises:
+            Exception: If the environment does not follow the Gym API.
+        """
+        try:
+            # wrap env
+            env = wrapper(env)
+            # check that the env follows Gym API
+            env_check = check_env(env, warn=True)
+            if env_check != None:
+                raise Exception(f"Failed env check")
+
+            return env
+
+        except Exception as ex:
+            print(str(ex))
 
     def __call__(self, env: Env) -> Env:
         """
@@ -110,15 +136,15 @@ class Body:
         Returns:
             Env: The modified environment.
         """
+        # apply DVS wrapper
+        # TODO: Should this wrapper go in a different order?
+        if self.dvs:
+            env = self._wrap(env, DVSWrapper)
+        # apply all custom wrappers
         if self.wrappers:
-            try:
-                for wrapper in self.wrappers:
-                    env = wrapper(env)
-                    env_check = check_env(env, warn=True)
-                    if env_check != None:
-                        raise Exception(f"Failed env check")
-            except Exception as ex:
-                print(str(ex))
+            for wrapper in self.wrappers:
+                env = self._wrap(env, wrapper)
+
         return env
     
 

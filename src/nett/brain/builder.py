@@ -299,6 +299,7 @@ class Brain:
         """        
         ## save policy
         policy = self.model.policy
+        path.mkdir(parents=True, exist_ok=True)
         policy.save(os.path.join(path, "policy.pkl"))
         
         ## save encoder
