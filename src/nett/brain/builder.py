@@ -16,7 +16,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-# from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
@@ -115,9 +115,9 @@ class Brain:
 
             # initialize environment
             log_path = paths["env_logs"]
-            env = Monitor(env, str(log_path))
+            # env = Monitor(env, str(log_path))
 
-            # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
+            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
             
             # build model
             policy_kwargs = {
@@ -133,7 +133,7 @@ class Brain:
             
             self.model = self.algorithm(
                 self.policy,
-                env,
+                envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 verbose=1,
@@ -186,10 +186,10 @@ class Brain:
             env = self._validate_env(env)
 
             num_envs = 1
-            obs = env.reset()
 
             # initialize environment
-            # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
+            obs = envs.reset()
 
             # for when algorithm is RecurrentPPO
             if issubclass(self.algorithm, RecurrentPPO):
@@ -239,13 +239,13 @@ class Brain:
             ValueError: If the environment fails the validation check.
         """
         # validate environment
-        env = self._validate_env(env)
+        env = self._validate_env(envs)
 
         # initialize environment
         log_path = paths["env_logs"]
-        env = Monitor(env, str(log_path))
+        # env = Monitor(env, str(log_path))
         
-        # envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
         
         # build model
         policy_kwargs = {
@@ -264,7 +264,7 @@ class Brain:
             
             self.model = self.algorithm(
                 self.policy,
-                env,
+                envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 verbose=1,
@@ -342,7 +342,7 @@ class Brain:
 
         # initialize environment
         num_envs = 1
-        # envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
+        envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
@@ -360,7 +360,7 @@ class Brain:
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = env.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
                     # cell and hidden state of the LSTM 
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
@@ -372,11 +372,11 @@ class Brain:
                             state=lstm_states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        obs, _, done, _ = env.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
+                        obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
                         episode_starts = done
                         episode_length += 1
-                        env.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                        envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                         vr.capture_frame()    
 
                 vr.close()
@@ -386,15 +386,15 @@ class Brain:
             else:
                 #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
-                obs = env.reset()
+                obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
                     action, _ = self.model.predict(obs, deterministic=True) # action, states
-                    obs, _, done, _ = env.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                    obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
-                        env.reset()
-                    env.render(mode="rgb_array")
+                        envs.reset()
+                    envs.render(mode="rgb_array")
 
                     # vr.capture_frame()    
 
