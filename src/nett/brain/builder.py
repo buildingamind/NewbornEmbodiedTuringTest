@@ -1,5 +1,6 @@
 """Module for the Brain class."""
 
+import importlib
 import os
 from typing import Any, Optional
 from pathlib import Path
@@ -238,6 +239,7 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
+        importlib.reload(stable_baselines3)
         # validate environment
         env = self._validate_env(envs)
 
