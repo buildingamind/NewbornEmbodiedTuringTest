@@ -4,8 +4,6 @@ from nett import Body, Brain, Environment
 from nett import NETT
 
 brain = Brain(
-    # how can we ensure that this is set correctly such that 
-    # the Unity build's brain matches the parameters of the Brain from NETTS? 
     policy="CnnPolicy",
     algorithm="PPO",
     train_encoder=True,
@@ -29,15 +27,18 @@ benchmarks = NETT(
     environment = environment
 )
 
-job_sheet = benchmarks.run(
-    output_dir="/data/wjpeacoc/experiments/results/biomotion",
-    mode="full",
-    num_brains=5,
-    train_eps=1000,
-    test_eps=20
-)
+async def job_sheet():
+    benchmarks.run(
+        output_dir="/data/wjpeacoc/experiments/results/biomotion",
+        mode="full",
+        num_brains=3,
+        train_eps=1000,
+        test_eps=20
+    )
 
-benchmarks.analyze(
+
+job_sheet.analyze(
+    config="biomotion",
     run_dir = "/data/wjpeacoc/experiments/results/biomotion",
     output_dir = "/data/wjpeacoc/experiments/results/biomotion"
 )
