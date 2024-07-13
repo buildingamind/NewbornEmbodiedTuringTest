@@ -3,6 +3,8 @@
 from nett import Body, Brain, Environment
 from nett import NETT
 
+# num_brains = 5
+
 brain = Brain(
     policy="CnnPolicy",
     algorithm="PPO",
@@ -27,8 +29,7 @@ benchmarks = NETT(
     environment = environment
 )
 
-async def job_sheet():
-    benchmarks.run(
+job_sheet = benchmarks.run(
         output_dir="/data/wjpeacoc/experiments/results/biomotion",
         mode="full",
         num_brains=3,
