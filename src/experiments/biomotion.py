@@ -30,12 +30,12 @@ benchmarks = NETT(
 )
 
 job_sheet = benchmarks.run(
-        output_dir="/data/wjpeacoc/experiments/results/biomotion",
-        mode="full",
-        num_brains=3,
-        train_eps=1000,
-        test_eps=20
-    )
+    output_dir="/data/wjpeacoc/experiments/results/biomotion",
+    mode="full",
+    num_brains=3,
+    train_eps=1000,
+    test_eps=20
+)
 
 
 job_sheet.analyze(

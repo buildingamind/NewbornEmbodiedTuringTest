@@ -5,7 +5,7 @@ Brain:
   algorithm: PPO
   policy: CnnPolicy
   seed: 42
-  encoder: large
+  encoder: small
   train_encoder: True
 Body:
   type: basic
@@ -13,9 +13,9 @@ Body:
 Environment:
   # condition
   imprinting_condition: "ChickBiologicalMotion"
-  test_condition: "Rest"
+  test_condition: ""
   target_video: "biomo.webm"
-  nontarget_video: "Rest"
+  nontarget_video: "White.webm"
   # generic config
   executable_path: "/data/wjpeacoc/builds/biomotion.x86_64"
   record_chamber: False
@@ -23,8 +23,8 @@ Environment:
   recording_frames: 100
 Config:
   run_id: "biomotion-test1"
-  num_brains: 1
+  num_brains: 5
   mode: "full"
-  train_eps: 1
-  test_eps: 1
+  train_eps: 1000
+  test_eps: 10
   output_dir: "/data/wjpeacoc/experiments/results/biomotion/"

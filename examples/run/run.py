@@ -6,7 +6,7 @@ import argparse
 import yaml
 from nett import Brain, Body, Environment
 from nett import NETT
-from nett.environment.configs import Binding, Parsing, ViewInvariant
+from nett.environment.configs import Binding, Parsing, ViewInvariant, Biomotion
 from wrapper.dvs_wrapper import DVSWrapper
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ class EnvironmentConfiguration:
 
 class Experiment:
     """
-    Generic Experiment Class To Run 3 experiments - Parsing, Binding and ViewInvariant
+    Generic Experiment Class To Run 3 experiments - Parsing, Binding, ViewInvariant and Biomotion
     """
 
     def __init__(self, **kwargs) -> None:
@@ -139,14 +139,17 @@ class Experiment:
     def run(self):
         benchmarks = NETT(brain=self.brain, body=self.body, environment=self.env)
         print(self.mode)
-        benchmarks.run(num_brains=self.num_brains, \
-            train_eps=self.train_eps, \
-            test_eps=self.train_eps, \
-            mode=self.mode, \
-            job_memory=21, \
-            output_dir=self.output_dir,run_id=self.run_id)
+        benchmarks.run(
+            num_brains=self.num_brains,
+            train_eps=self.train_eps,
+            test_eps=self.train_eps,
+            mode=self.mode,
+            job_memory=21,
+            output_dir=self.output_dir,
+            run_id=self.run_id
+        )
         
-        #logger.info("Experiment completed successfully")
+        logger.info("Experiment completed successfully")
 
 class ParsingExperiment(Experiment):
     def __init__(self, **kwargs) -> None:
@@ -256,6 +259,36 @@ class ViewInvariantExperiment(Experiment):
         env_config_attrs['config'] = ViewInvariant(object=self.object, view=self.view)
         return Environment(**env_config_attrs)
 
+class BiomotionExperiment(Experiment):
+    def __init__(self, **kwargs) -> None:
+            super().__init__(**kwargs)
+
+    def get_checkpoint_path(self):
+        ## compute simclr checkpoints
+        checkpoint_dict = {
+            "ChickBiologicalMotion": "",
+            "InverseBiologicalMotion": ""
+        }
+
+        biomo_checkpoint = os.path.join(self.base_simclr_checkpoint_path, 'simclr_biomo')
+        checkpoint_key = f"{self.object}_{self.view.lower()}"
+        path = checkpoint_dict.get(checkpoint_key, '')
+        return os.path.join(biomo_checkpoint, path)
+ 
+    def initialize_environment(self):
+            """
+            Initialize environment class with the attributes extracted from the env_config
+
+            Returns:
+                _type_: _description_
+            """
+
+            # Extract attributes from brain_config
+           
+            env_config_attrs = {attr: getattr(self.env_config, attr) for attr in dir(self.env_config) if not attr.startswith('__')}
+            env_config_attrs['config'] = Biomotion(self)
+            return Environment(**env_config_attrs)
+    
 def main():
     args = parse_args()
 
@@ -268,7 +301,6 @@ def main():
             exp = ParsingExperiment(**config)
             exp.run()
             
-        
         elif exp_name == 'binding':
             exp = BindingExperiment(**config)
             exp.run()
@@ -276,6 +308,10 @@ def main():
         elif exp_name == 'viewinvariant':
             exp = ViewInvariantExperiment(**config)
             exp.run()
+
+        elif exp_name == 'biomotion':
+            exp = BiomotionExperiment(**config)
+            exp.run
         
         else:
             raise ValueError("Invalid Experiment Name")
