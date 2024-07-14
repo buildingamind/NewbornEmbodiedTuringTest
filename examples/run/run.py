@@ -149,7 +149,7 @@ class Experiment:
             run_id=self.run_id
         )
         
-        logger.info("Experiment completed successfully")
+        # logger.info("Experiment completed successfully")
 
 class ParsingExperiment(Experiment):
     def __init__(self, **kwargs) -> None:
