@@ -59,7 +59,7 @@ class Environment(Wrapper):
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        # self.config = self._validate_config(config)
+        self.config = self._validate_config(config)
         # TODO (v0.5) what might be a way to check if it is a valid executable path?
         self.executable_path = executable_path
         self.base_port = base_port

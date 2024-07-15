@@ -197,7 +197,7 @@ class NETT:
 
     @staticmethod
     def analyze(
-        # config: str,
+                config: str,
                 run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
@@ -235,10 +235,10 @@ class NETT:
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        chick_data_dir = Path(analysis_dir).joinpath("ChickData", "biomotion.csv")
+        chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}")
 
-        # if not chick_data_dir.exists():
-        #     raise ValueError(f"'{config}' is not a valid config.")
+        if not chick_data_dir.exists():
+            raise ValueError(f"'{config}' is not a valid config.")
 
         # translate bar_order for R to read
         bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
