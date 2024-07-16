@@ -19,7 +19,7 @@ body = Body(
 )
 
 environment = Environment(
-    config = "Biomotion",
+    config = "biomotion",
     executable_path = "/data/wjpeacoc/builds/biomotion.x86_64"
 )
 
@@ -32,14 +32,10 @@ benchmarks = NETT(
 job_sheet = benchmarks.run(
     output_dir="/data/wjpeacoc/experiments/results/biomotion",
     mode="full",
-    num_brains=3,
+    num_brains=1,
     train_eps=1000,
     test_eps=20
 )
 
 
-job_sheet.analyze(
-    config="biomotion",
-    run_dir = "/data/wjpeacoc/experiments/results/biomotion",
-    output_dir = "/data/wjpeacoc/experiments/results/biomotion"
-)
+

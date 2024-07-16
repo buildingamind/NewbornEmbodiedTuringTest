@@ -132,7 +132,7 @@ class Environment(Wrapper):
         """
 
         args = []
-
+        
         # from environment arguments
         if self.recording_frames:
             args.extend(["--recording-steps", str(self.recording_frames)])
@@ -176,6 +176,8 @@ class Environment(Wrapper):
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['run_id']}-{mode}",
                           log_dir=f"{kwargs['log_path']}/")
 
+        print(args)
+        exit()
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
         self.env = UnityToGymWrapper(self.env, uint8_visual=True)
