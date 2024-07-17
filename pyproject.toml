@@ -15,15 +15,16 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
-    "mlagents==1.0.0",
-    "stable-baselines3[extra_no_roms]==1.8.0",
-    "sb3-contrib==1.8.0",
+    "mlagents_envs==1.0.0",
+    "stable-baselines3[extra_no_roms]",
+    "sb3-contrib",
     "torchvision",
     "timm",
     "lightning==2.2.5",
     "lightning-bolts==0.7.0",
     "scikit-learn==1.5.0",
     "rllte-core",
+    "gym>=0.25",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
