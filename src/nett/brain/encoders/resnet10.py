@@ -2,7 +2,7 @@
 Resnet10CNN feature extractor for stable-baselines3
 """
 import pdb
-import gymnasium
+import gym
 
 
 import torch as th
@@ -19,11 +19,11 @@ class Resnet10CNN(BaseFeaturesExtractor):
     Resnet10CNN feature extractor for stable-baselines3
 
     Args:
-        observation_space (gymnasium.spaces.Box): Observation space
+        observation_space (gym.spaces.Box): Observation space
         features_dim (int, optional): Output dimension of features extractor. Defaults to 256.
     """
 
-    def __init__(self, observation_space: gymnasium.spaces.Box, features_dim: int = 256):
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
         super(Resnet10CNN, self).__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper

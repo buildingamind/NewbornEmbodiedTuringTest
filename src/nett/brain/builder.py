@@ -27,7 +27,7 @@ from rllte.xplore.reward import Disagreement
 from nett.brain import algorithms, policies, encoder_dict, rewards
 from nett.brain import encoders
 from nett.utils.callbacks import *
-from gymnasium.wrappers.monitoring.video_recorder import VideoRecorder
+from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -205,7 +205,7 @@ class Brain:
         Test the brain.
 
         Args:
-            env (gymnasium.Env): The environment used for testing.
+            env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
             index (int): The index of the model to test, needed for tracking bar.
@@ -476,15 +476,15 @@ class Brain:
             raise ValueError(f"Invalid reward. reward should be one of: {rewards}")
         return reward
 
-    def _validate_env(self, env: "gymnasium.Env") -> "gymnasium.Env":
+    def _validate_env(self, env: "gym.Env") -> "gym.Env":
         """
         Validate the environment.
 
         Args:
-            env (gymnasium.Env): The environment to validate.
+            env (gym.Env): The environment to validate.
 
         Returns:
-            gymnasium.Env: The validated environment.
+            gym.Env: The validated environment.
 
         Raises:
             ValueError: If the environment fails the validation check.

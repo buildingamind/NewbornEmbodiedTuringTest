@@ -1,7 +1,7 @@
 """CNNLSTM module for the brain"""
 
 ### DELETE WILL NOT BE USING ####
-import gymnasium
+import gym
 import torch as th
 from torch import nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -13,10 +13,10 @@ class CNNLSTM(BaseFeaturesExtractor):
     extractor in reinforcement learning algorithms.
 
     Args:
-        observation_space (gymnasium.Space): The observation space of the environment.
+        observation_space (gym.Space): The observation space of the environment.
         features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 256.
     """
-    def __init__(self, observation_space: gymnasium.spaces.Box, features_dim: int = 256) -> None:
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
         """Constructor method
         """
         super(CNNLSTM, self).__init__(observation_space, features_dim)

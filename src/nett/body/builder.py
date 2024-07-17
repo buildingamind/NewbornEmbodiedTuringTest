@@ -1,5 +1,5 @@
 """The body of the agent in the environment."""
-from gymnasium import Env, Wrapper
+from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
@@ -91,11 +91,11 @@ class Body:
             list[Wrapper]: The validated list of wrappers.
 
         Raises:
-            ValueError: If any wrapper is not an instance of gymnasium.Wrapper.
+            ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
         for wrapper in wrappers:
             if not issubclass(wrapper, Wrapper):
-                raise ValueError("Wrappers must inherit from gymnasium.Wrapper")
+                raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
     @staticmethod

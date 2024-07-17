@@ -17,7 +17,7 @@ architecture, respectively.
 
 Example usage:
 
-    observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
+    observation_space = gym.spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
     features_dim = 256
     encoder = Resnet18CNN(observation_space, features_dim)
     features = encoder(observation)
@@ -27,7 +27,7 @@ Example usage:
 #!/usr/bin/env python3
 
 # import pdb
-import gymnasium
+import gym
 
 import torch as th
 from torch import nn
@@ -42,11 +42,11 @@ class Resnet18CNN(BaseFeaturesExtractor):
     Custom feature extractor based on the ResNet-18 architecture.
 
     Args:
-        observation_space (gymnasium.Space): The observation space of the environment.
+        observation_space (gym.Space): The observation space of the environment.
         features_dim (int): Number of features to be extracted.
     """
 
-    def __init__(self, observation_space: gymnasium.spaces.Box, features_dim: int = 256) -> None:
+    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
         super(Resnet18CNN, self).__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
