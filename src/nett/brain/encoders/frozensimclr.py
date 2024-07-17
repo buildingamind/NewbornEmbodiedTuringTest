@@ -17,12 +17,12 @@ class FrozenSimCLR(BaseFeaturesExtractor):
     Frozen SimCLR encoder for stable-baselines3
 
     Args:
-        observation_space (gym.spaces.Box): Observation space
+        observation_space (gymnasium.spaces.Box): Observation space
         features_dim (int, optional): Output dimension of features extractor. Defaults to 512.
         checkpoint_path (str, optional): Path to the SimCLR checkpoint. Defaults to "simclr".
     """
 
-    def __init__(self, observation_space: "gym.spaces.Box", features_dim: int = 512, checkpoint_path: str = "simclr") -> None:
+    def __init__(self, observation_space: "gymnasium.spaces.Box", features_dim: int = 512, checkpoint_path: str = "simclr") -> None:
         super(FrozenSimCLR, self).__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
         logger.info("FrozenSimCLR Encoder: ")

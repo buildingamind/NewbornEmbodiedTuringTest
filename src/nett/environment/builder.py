@@ -180,12 +180,12 @@ class Environment(Wrapper):
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self.base_port)
         self.env = UnityToGymWrapper(self.env, uint8_visual=True)
 
-        # initialize the parent class (gym.Wrapper)
+        # initialize the parent class (gymnasium.Wrapper)
         super().__init__(self.env)
 
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
-    # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
+    # HACK: mode is not used, but is required by the gymnasium.Wrapper class (might be unnecessary but keeping for now)
     def render(self, mode="rgb_array") -> np.ndarray: # pylint: disable=unused-argument
         """
         Renders the current frame of the environment.
@@ -208,8 +208,8 @@ class Environment(Wrapper):
         Returns:
             tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
         """
-        next_state, reward, done, info = self.env.step(action)
-        return next_state, float(reward), done, info
+        next_state, reward, done, truncated, info = self.env.step(action)
+        return next_state, float(reward), done, truncated, info
 
     def log(self, msg: str) -> None:
         """

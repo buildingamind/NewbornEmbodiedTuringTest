@@ -118,7 +118,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 - **Body** 
 
-   Set up the agent's physical interface with the environment. It's possible to apply gym.Wrappers for data preprocessing.
+   Set up the agent's physical interface with the environment. It's possible to apply gymnasium.Wrappers for data preprocessing.
    ```python
    body = Body(type="basic", dvs=False, wrappers=None)
    ```

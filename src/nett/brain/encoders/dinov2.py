@@ -4,7 +4,7 @@ This module provides a feature extractor based on the DINOv2 model. It takes in 
 
 Example:
 
-    >>> observation_space = gym.spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
+    >>> observation_space = gymnasium.spaces.Box(low=0, high=255, shape=(3, 84, 84), dtype=np.uint8)
     >>> features_dim = 384
     >>> extractor = DinoV2(observation_space, features_dim)
     >>> observations = torch.randn(1, 3, 84, 84)
@@ -23,7 +23,7 @@ class DinoV2(BaseFeaturesExtractor):
     DinoV2 is a feature extractor based on the DINOv2 model.
 
     Args:
-        observation_space (gym.spaces.Box): The observation space of the environment.
+        observation_space (gymnasium.spaces.Box): The observation space of the environment.
         features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
 
     Attributes:
@@ -31,7 +31,7 @@ class DinoV2(BaseFeaturesExtractor):
         transforms (torchvision.transforms.Compose): Preprocessing transforms applied to the input observations.
         model (torch.nn.Module): DINOv2 model loaded from the Facebook Research hub.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
+    def __init__(self, observation_space: gymnasium.spaces.Box, features_dim: int = 384) -> None:
         super(DinoV2, self).__init__(observation_space, features_dim)
         """Constructor method"""
         self.n_input_channels = observation_space.shape[0]

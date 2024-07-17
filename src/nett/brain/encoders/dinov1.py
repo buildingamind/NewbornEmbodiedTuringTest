@@ -11,10 +11,10 @@ class DinoV1(BaseFeaturesExtractor):
     Initialize DinoV1 feature extractor.
 
     Args:
-        observation_space (gym.spaces.Box): The observation space of the environment.
+        observation_space (gymnasium.spaces.Box): The observation space of the environment.
         features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 384.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
+    def __init__(self, observation_space: gymnasium.spaces.Box, features_dim: int = 384) -> None:
         """Constructor method
         """
         super(DinoV1, self).__init__(observation_space, features_dim)

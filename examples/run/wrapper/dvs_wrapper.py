@@ -1,6 +1,6 @@
 # pylint: skip-file
 import collections
-import gym
+import gymnasium
 from scipy.ndimage import gaussian_filter
 import numpy as np
 import matplotlib.pyplot as plt
@@ -15,12 +15,12 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-class DVSWrapper(gym.ObservationWrapper):
+class DVSWrapper(gymnasium.ObservationWrapper):
     """
-    A gym observation wrapper that performs Dynamic Vision Sensor (DVS) transformation on the environment observations.
+    A gymnasium observation wrapper that performs Dynamic Vision Sensor (DVS) transformation on the environment observations.
 
     Args:
-        env (gym.Env): The environment to wrap.
+        env (gymnasium.Env): The environment to wrap.
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
         kernel_size (tuple): The size of the Gaussian kernel used for blurring.
         sigma (float): The standard deviation of the Gaussian kernel.
@@ -30,10 +30,10 @@ class DVSWrapper(gym.ObservationWrapper):
         kernel_size (tuple): The size of the Gaussian kernel used for blurring.
         sigma (float): The standard deviation of the Gaussian kernel.
         num_stack (int): The number of frames to stack.
-        env (gym.Env): The wrapped environment.
+        env (gymnasium.Env): The wrapped environment.
         stack (collections.deque): A deque to store the stacked frames.
         shape (tuple): The shape of the observation space.
-        observation_space (gym.spaces.Box): The modified observation space.
+        observation_space (gymnasium.spaces.Box): The modified observation space.
 
     Methods:
         create_grayscale(image): Converts an image to grayscale.
@@ -51,14 +51,14 @@ class DVSWrapper(gym.ObservationWrapper):
         self.kernel_size = kernel_size
         self.sigma = sigma
         self.num_stack = 2 ## default
-        self.env = gym.wrappers.FrameStack(env,self.num_stack)
+        self.env = gymnasium.wrappers.FrameStack(env,self.num_stack)
         self.stack = collections.deque(maxlen=self.num_stack)
         self.is_color = is_color
         
         try:
             stack, channels, width, height = self.env.observation_space.shape
             self.shape=(3, width, height)
-            self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
+            self.observation_space = gymnasium.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
             logger.info("In dvs wrapper")
         except Exception as ex:
             print(str(ex))
