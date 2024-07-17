@@ -1,9 +1,9 @@
 """
 This module contains the implementation of the SegmentAnything class, which is a custom feature extractor
-for image observations in a gym environment. It uses a pre-trained model from the timm library to extract
+for image observations in a gymnasium environment. It uses a pre-trained model from the timm library to extract
 features from the input images.
 """
-import gym
+import gymnasium
 
 import torch as th
 import timm
@@ -14,7 +14,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 class SegmentAnything(BaseFeaturesExtractor):
     """
-    Custom feature extractor for image observations in a gym environment.
+    Custom feature extractor for image observations in a gymnasium environment.
 
     Args:
         observation_space (gymnasium.spaces.Box): The observation space of the environment.

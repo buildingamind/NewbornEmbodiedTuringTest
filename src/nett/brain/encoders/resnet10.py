@@ -2,7 +2,7 @@
 Resnet10CNN feature extractor for stable-baselines3
 """
 import pdb
-import gym
+import gymnasium
 
 
 import torch as th

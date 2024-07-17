@@ -7,7 +7,7 @@ import subprocess
 from typing import Optional, Any
 
 import numpy as np
-from gym import Wrapper
+from gymnasium import Wrapper
 from mlagents_envs.environment import UnityEnvironment
 
 # checks to see if ml-agents tmp files have the proper permissions

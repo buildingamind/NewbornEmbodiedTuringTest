@@ -1,7 +1,7 @@
 """CNNLSTM module for the brain"""
 
 ### DELETE WILL NOT BE USING ####
-import gym
+import gymnasium
 import torch as th
 from torch import nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor

@@ -27,7 +27,7 @@ Example usage:
 #!/usr/bin/env python3
 
 # import pdb
-import gym
+import gymnasium
 
 import torch as th
 from torch import nn

@@ -1,5 +1,5 @@
 """DINO (Emerging Properties in Self-Supervised Vision Transformers) model"""
-import gym
+import gymnasium
 import torch
 import timm
 
