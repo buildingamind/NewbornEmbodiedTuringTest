@@ -26,7 +26,7 @@ from nett.body.builder import Body
 from nett.environment.builder import Environment
 from nett.nett import NETT
 
-from nett.brain import list_encoders, list_algorithms, list_policies
+from nett.brain import list_encoders, list_algorithms, list_policies, list_rewards
 from nett.environment import list_configs
 
 # release version

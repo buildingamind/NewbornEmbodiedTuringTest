@@ -114,7 +114,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    brain = Brain(policy="CnnPolicy", algorithm="PPO")
    ```
-   To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively.
+   To get a list of all available policies, algorithms, encoders, and rewards, run `nett.list_policies()`, `nett.list_algorithms()`, `nett.list_encoders()`, and `nett.list_rewards()` respectively.
 
 - **Body** 
 

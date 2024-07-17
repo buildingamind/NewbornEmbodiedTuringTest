@@ -24,7 +24,7 @@ from stable_baselines3.common import results_plotter
 
 from rllte.xplore.reward import E3B
 from rllte.xplore.reward import Disagreement
-from nett.brain import algorithms, policies, encoder_dict
+from nett.brain import algorithms, policies, encoder_dict, rewards
 from nett.brain import encoders
 from nett.utils.callbacks import *
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
@@ -352,15 +352,17 @@ class Brain:
         plt.clf()
 
     def _get_reward(self) -> "Optional[BaseReward]":
-        if self.reward == "supervised":
-            return None
-        elif self.reward == "E3B":
-            return E3B
-        elif self.reward == "Disagreement":
-            return Disagreement
-        else:
-            raise ValueError("Invalid reward type")
 
+        match self.reward:
+            case "supervised" | "unsupervised":
+                return None
+            case "E3B":
+                return E3B
+            case "Disagreement":
+                return Disagreement
+            case _:
+                raise ValueError("Invalid reward type")
+        
     def _validate_encoder(self, encoder: Any | str) -> BaseFeaturesExtractor:
         """
         Validate the encoder.
@@ -467,11 +469,11 @@ class Brain:
             str: The validated reward type.
 
         Raises:
-            ValueError: If the reward is a string and not one of the supported reward types.
+            ValueError: If the reward is not a string or not one of the supported reward types.
         """
         # for when reward is a string
-        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
-            raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
+        if not isinstance(reward, str) or reward not in rewards:
+            raise ValueError(f"Invalid reward. reward should be one of: {rewards}")
         return reward
 
     def _validate_env(self, env: "gym.Env") -> "gym.Env":

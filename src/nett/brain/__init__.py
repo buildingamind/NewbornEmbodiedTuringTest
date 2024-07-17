@@ -75,3 +75,14 @@ def get_encoder_dict() -> dict[str, str]:
     return encoders_dict
 
 encoder_dict = get_encoder_dict()
+
+def list_rewards() -> list[str]:
+    """
+    Returns a list of all available reward functions.
+
+    Returns:
+        list[str]: Set of reward function names.
+    """
+    return ['supervised', 'unsupervised', 'E3B', 'Disagreement']
+
+rewards = list_rewards()
