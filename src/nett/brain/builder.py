@@ -153,6 +153,9 @@ class Brain:
             # initialize callbacks
             callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=None, estimate_memory=True, device=device)
 
+            self.logger.info(f"MODEL ARCHITECTURE: \n{self.model.policy}")
+            exit()
+
             # train
             self.model.learn(
                 total_timesteps=self.buffer_size+10,
