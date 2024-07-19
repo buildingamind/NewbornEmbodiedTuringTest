@@ -51,7 +51,7 @@ class Environment(Wrapper):
                  config: str | NETTConfig,
                  executable_path: str,
                  display: int = 0,
-                 base_port: int = 5004,
+                 base_port: int = 6000,
                  record_chamber: bool = False,
                  record_agent: bool = False,
                  recording_frames: int = 1000) -> None:

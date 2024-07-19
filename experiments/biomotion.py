@@ -36,6 +36,3 @@ job_sheet = benchmarks.run(
     train_eps=1000,
     test_eps=20
 )
-
-
-
