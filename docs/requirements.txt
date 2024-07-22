@@ -4,6 +4,9 @@ sb3-contrib
 torchvision
 timm
 nvidia-ml-py
+lightning
+lightning-bolts
+scikit-learn
 sphinx
 mkdocs
 sphinx-rtd-theme

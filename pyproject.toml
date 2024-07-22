@@ -8,6 +8,7 @@ dynamic = ["version"]
 authors = [
   { name="Bhargav Desai", email="desabh@iu.edu" },
   { name="Zachary Laborde", email="zlaborde@iu.edu" },
+  { name="Manju Garimella", email="mchivuku@iu.edu" },
 ]
 description = "A testbed for comparing the learning abilities of newborn animals and autonomous artificial agents."
 readme = "README.md"
@@ -20,6 +21,9 @@ dependencies = [
     "torchvision",
     "timm",
     "nvidia-ml-py",
+    "lightning==2.2.5",
+    "lightning-bolts==0.7.0",
+    "scikit-learn==1.5.0"
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
