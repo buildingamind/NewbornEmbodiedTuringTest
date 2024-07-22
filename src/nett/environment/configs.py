@@ -157,8 +157,6 @@ class Binding(NETTConfig):
         return 50
 
 
-
-
 class Parsing(NETTConfig):
     """
     NETT configuration for Parsing.
@@ -322,9 +320,7 @@ class ViewInvariant(NETTConfig):
         if self.view.lower()=="front":
             return 50
         return 26
-        
-        
-    
+
 
 def list_configs() -> list[str]:
     """

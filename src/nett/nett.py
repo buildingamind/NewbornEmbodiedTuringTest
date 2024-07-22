@@ -343,7 +343,7 @@ class NETT:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # common environment kwargs
-        kwargs = {"rewarded": bool(brain.reward),
+        kwargs = {"rewarded": bool(brain.reward == "rewarded"),
                   "rec_path": str(job.paths["env_recs"]),
                   "log_path": str(job.paths["env_logs"]),
                   "condition": job.condition,
@@ -460,4 +460,3 @@ class NETT:
     def summary(self) -> None: # TODO: only raises a NotImplementedError for now
         '''Generate a toml file and save it to the run directory.'''
         raise NotImplementedError
-    
