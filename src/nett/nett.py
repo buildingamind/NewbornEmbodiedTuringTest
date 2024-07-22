@@ -460,4 +460,3 @@ class NETT:
     def summary(self) -> None: # TODO: only raises a NotImplementedError for now
         '''Generate a toml file and save it to the run directory.'''
         raise NotImplementedError
-    

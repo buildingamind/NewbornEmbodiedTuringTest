@@ -78,12 +78,11 @@ class Brain:
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
-        self.embedding_dim = embedding_dim
+        self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
-               
 
     def train(
         self,
@@ -124,12 +123,11 @@ class Brain:
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
-                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
-                
+                "features_dim": self.embedding_dim,
             }
         } if self.encoder else {}
         
-        if len(self.custom_encoder_args) >0:
+        if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
@@ -285,7 +283,7 @@ class Brain:
         """
         self.model.save(path)
         
-    def save_encoder_policy_network(self,path: Path):
+    def save_encoder_policy_network(self, path: Path):
         """
         Saves the policy and feature extractor of the agent's model.
 
