@@ -352,9 +352,7 @@ class ViewInvariant(NETTConfig):
         if self.view.lower()=="front":
             return 50
         return 26
-        
-        
-    
+
 
 def list_configs() -> list[str]:
     """
