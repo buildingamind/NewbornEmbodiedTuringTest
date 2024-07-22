@@ -1,149 +1,149 @@
-Imprinting Condition     ,Phase                                ,Test Condition ,Target Video  ,Non-Target Video ,Left Monitor   ,Right Monitor
-ChickBiologicalMotion    ,Training                             ,               ,biomo.webm    ,White.webm       ,biomo.webm     ,White.webm
-ChickBiologicalMotion    ,Training                             ,               ,biomo.webm    ,White.webm       ,White.webm     ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Rest           ,biomo.webm    ,White.webm       ,biomo.webm     ,White.webm
-ChickBiologicalMotion    ,Test                                 ,Rest           ,biomo.webm    ,White.webm       ,White.webm     ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Inverted       ,biomo.webm    ,Inverted.webm    ,biomo.webm     ,Inverted.webm
-ChickBiologicalMotion    ,Test                                 ,Random         ,biomo.webm    ,Random.webm      ,biomo.webm     ,Random.webm
-ChickBiologicalMotion    ,Test                                 ,Rigid          ,biomo.webm    ,Rigid.webm       ,biomo.webm     ,Rigid.webm
-ChickBiologicalMotion    ,Test                                 ,Cat            ,biomo.webm    ,Cat.webm         ,biomo.webm     ,Cat.webm
-ChickBiologicalMotion    ,Test                                 ,Scrambled      ,biomo.webm    ,Scrambled.webm   ,biomo.webm     ,Scrambled.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_a.webm     ,biomo.webm     ,Color_a.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_b.webm     ,biomo.webm     ,Color_b.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_c.webm     ,biomo.webm     ,Color_c.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_d.webm     ,biomo.webm     ,Color_d.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_e.webm     ,biomo.webm     ,Color_e.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_f.webm     ,biomo.webm     ,Color_f.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat01.webm      ,biomo.webm     ,Stat01.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat02.webm      ,biomo.webm     ,Stat02.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat03.webm      ,biomo.webm     ,Stat03.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat04.webm      ,biomo.webm     ,Stat04.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat05.webm      ,biomo.webm     ,Stat05.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat06.webm      ,biomo.webm     ,Stat06.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat07.webm      ,biomo.webm     ,Stat07.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat08.webm      ,biomo.webm     ,Stat08.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat09.webm      ,biomo.webm     ,Stat09.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat10.webm      ,biomo.webm     ,Stat10.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat11.webm      ,biomo.webm     ,Stat11.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat12.webm      ,biomo.webm     ,Stat12.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat13.webm      ,biomo.webm     ,Stat13.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat14.webm      ,biomo.webm     ,Stat14.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat15.webm      ,biomo.webm     ,Stat15.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat16.webm      ,biomo.webm     ,Stat16.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat17.webm      ,biomo.webm     ,Stat17.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat18.webm      ,biomo.webm     ,Stat18.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat19.webm      ,biomo.webm     ,Stat19.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat20.webm      ,biomo.webm     ,Stat20.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat21.webm      ,biomo.webm     ,Stat21.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat22.webm      ,biomo.webm     ,Stat22.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat23.webm      ,biomo.webm     ,Stat23.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat24.webm      ,biomo.webm     ,Stat24.webm
-ChickBiologicalMotion    ,Test                                 ,Inverted       ,biomo.webm    ,Inverted.webm    ,Inverted.webm  ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Random         ,biomo.webm    ,Random.webm      ,Random.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Rigid          ,biomo.webm    ,Rigid.webm       ,Rigid.webm     ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Cat            ,biomo.webm    ,Cat.webm         ,Cat.webm       ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Scrambled      ,biomo.webm    ,Scrambled.webm   ,Scrambled.webm ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_a.webm     ,Color_a.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_b.webm     ,Color_b.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_c.webm     ,Color_c.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_d.webm     ,Color_d.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_e.webm     ,Color_e.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Color          ,biomo.webm    ,Color_f.webm     ,Color_f.webm   ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat01.webm      ,Stat01.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat02.webm      ,Stat02.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat03.webm      ,Stat03.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat04.webm      ,Stat04.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat05.webm      ,Stat05.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat06.webm      ,Stat06.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat07.webm      ,Stat07.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat08.webm      ,Stat08.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat09.webm      ,Stat09.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat10.webm      ,Stat10.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat11.webm      ,Stat11.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat12.webm      ,Stat12.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat13.webm      ,Stat13.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat14.webm      ,Stat14.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat15.webm      ,Stat15.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat16.webm      ,Stat16.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat17.webm      ,Stat17.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat18.webm      ,Stat18.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat19.webm      ,Stat19.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat20.webm      ,Stat20.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat21.webm      ,Stat21.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat22.webm      ,Stat22.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat23.webm      ,Stat23.webm    ,biomo.webm
-ChickBiologicalMotion    ,Test                                 ,Stationary     ,biomo.webm    ,Stat24.webm      ,Stat24.webm    ,biomo.webm
-InvertedBiologicalMotion ,Training                             ,               ,Inverted.webm ,White.webm       ,Inverted.webm  ,White.webm
-InvertedBiologicalMotion ,Training                             ,               ,Inverted.webm ,White.webm       ,White.webm     ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Rest           ,Inverted.webm ,White.webm       ,Inverted.webm  ,White.webm
-InvertedBiologicalMotion ,Test                                 ,Rest           ,Inverted.webm ,White.webm       ,White.webm     ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Inverted       ,Inverted.webm ,biomo.webm       ,Inverted.webm  ,biomo.webm
-InvertedBiologicalMotion ,Test                                 ,Random         ,Inverted.webm ,Random.webm      ,Inverted.webm  ,Random.webm
-InvertedBiologicalMotion ,Test                                 ,Rigid          ,Inverted.webm ,Rigid.webm       ,Inverted.webm  ,Rigid.webm
-InvertedBiologicalMotion ,Test                                 ,Cat            ,Inverted.webm ,Cat.webm         ,Inverted.webm  ,Cat.webm
-InvertedBiologicalMotion ,Test                                 ,Scrambled      ,Inverted.webm ,Scrambled.webm   ,Inverted.webm  ,Scrambled.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_a.webm     ,Inverted.webm  ,Color_a.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_b.webm     ,Inverted.webm  ,Color_b.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_c.webm     ,Inverted.webm  ,Color_c.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_d.webm     ,Inverted.webm  ,Color_d.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_e.webm     ,Inverted.webm  ,Color_e.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_f.webm     ,Inverted.webm  ,Color_f.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat01.webm      ,Inverted.webm  ,Stat01.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat02.webm      ,Inverted.webm  ,Stat02.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat03.webm      ,Inverted.webm  ,Stat03.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat04.webm      ,Inverted.webm  ,Stat04.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat05.webm      ,Inverted.webm  ,Stat05.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat06.webm      ,Inverted.webm  ,Stat06.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat07.webm      ,Inverted.webm  ,Stat07.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat08.webm      ,Inverted.webm  ,Stat08.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat09.webm      ,Inverted.webm  ,Stat09.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat10.webm      ,Inverted.webm  ,Stat10.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat11.webm      ,Inverted.webm  ,Stat11.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat12.webm      ,Inverted.webm  ,Stat12.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat13.webm      ,Inverted.webm  ,Stat13.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat14.webm      ,Inverted.webm  ,Stat14.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat15.webm      ,Inverted.webm  ,Stat15.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat16.webm      ,Inverted.webm  ,Stat16.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat17.webm      ,Inverted.webm  ,Stat17.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat18.webm      ,Inverted.webm  ,Stat18.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat19.webm      ,Inverted.webm  ,Stat19.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat20.webm      ,Inverted.webm  ,Stat20.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat21.webm      ,Inverted.webm  ,Stat21.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat22.webm      ,Inverted.webm  ,Stat22.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat23.webm      ,Inverted.webm  ,Stat23.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat24.webm      ,Inverted.webm  ,Stat24.webm
-InvertedBiologicalMotion ,Test                                 ,Inverted       ,Inverted.webm ,biomo.webm       ,biomo.webm     ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Random         ,Inverted.webm ,Random.webm      ,Random.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Rigid          ,Inverted.webm ,Rigid.webm       ,Rigid.webm     ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Cat            ,Inverted.webm ,Cat.webm         ,Cat.webm       ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Scrambled      ,Inverted.webm ,Scrambled.webm   ,Scrambled.webm ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_a.webm     ,Color_a.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_b.webm     ,Color_b.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_c.webm     ,Color_c.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_d.webm     ,Color_d.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_e.webm     ,Color_e.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Color          ,Inverted.webm ,Color_f.webm     ,Color_f.webm   ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat01.webm      ,Stat01.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat02.webm      ,Stat02.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat03.webm      ,Stat03.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat04.webm      ,Stat04.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat05.webm      ,Stat05.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat06.webm      ,Stat06.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat07.webm      ,Stat07.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat08.webm      ,Stat08.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat09.webm      ,Stat09.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat10.webm      ,Stat10.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat11.webm      ,Stat11.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat12.webm      ,Stat12.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat13.webm      ,Stat13.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat14.webm      ,Stat14.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat15.webm      ,Stat15.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat16.webm      ,Stat16.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat17.webm      ,Stat17.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat18.webm      ,Stat18.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat19.webm      ,Stat19.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat20.webm      ,Stat20.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat21.webm      ,Stat21.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat22.webm      ,Stat22.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat23.webm      ,Stat23.webm    ,Inverted.webm
-InvertedBiologicalMotion ,Test                                 ,Stationary     ,Inverted.webm ,Stat24.webm      ,Stat24.webm    ,Inverted.webm
+Imprinting Condition,Phase,Test Condition,Target Video,Non-Target Video,Left Monitor,Right Monitor
+ChickBiologicalMotion,Training,,biomo.webm,White.webm,biomo.webm,White.webm
+ChickBiologicalMotion,Training,,biomo.webm,White.webm,White.webm,biomo.webm
+ChickBiologicalMotion,Test,Rest,biomo.webm,White.webm,biomo.webm,White.webm
+ChickBiologicalMotion,Test,Rest,biomo.webm,White.webm,White.webm,biomo.webm
+ChickBiologicalMotion,Test,Inverted,biomo.webm,Inverted.webm,biomo.webm,Inverted.webm
+ChickBiologicalMotion,Test,Random,biomo.webm,Random.webm,biomo.webm,Random.webm
+ChickBiologicalMotion,Test,Rigid,biomo.webm,Rigid.webm,biomo.webm,Rigid.webm
+ChickBiologicalMotion,Test,Cat,biomo.webm,Cat.webm,biomo.webm,Cat.webm
+ChickBiologicalMotion,Test,Scrambled,biomo.webm,Scrambled.webm,biomo.webm,Scrambled.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_a.webm,biomo.webm,Color_a.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_b.webm,biomo.webm,Color_b.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_c.webm,biomo.webm,Color_c.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_d.webm,biomo.webm,Color_d.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_e.webm,biomo.webm,Color_e.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_f.webm,biomo.webm,Color_f.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat01.webm,biomo.webm,Stat01.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat02.webm,biomo.webm,Stat02.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat03.webm,biomo.webm,Stat03.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat04.webm,biomo.webm,Stat04.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat05.webm,biomo.webm,Stat05.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat06.webm,biomo.webm,Stat06.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat07.webm,biomo.webm,Stat07.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat08.webm,biomo.webm,Stat08.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat09.webm,biomo.webm,Stat09.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat10.webm,biomo.webm,Stat10.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat11.webm,biomo.webm,Stat11.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat12.webm,biomo.webm,Stat12.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat13.webm,biomo.webm,Stat13.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat14.webm,biomo.webm,Stat14.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat15.webm,biomo.webm,Stat15.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat16.webm,biomo.webm,Stat16.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat17.webm,biomo.webm,Stat17.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat18.webm,biomo.webm,Stat18.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat19.webm,biomo.webm,Stat19.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat20.webm,biomo.webm,Stat20.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat21.webm,biomo.webm,Stat21.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat22.webm,biomo.webm,Stat22.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat23.webm,biomo.webm,Stat23.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat24.webm,biomo.webm,Stat24.webm
+ChickBiologicalMotion,Test,Inverted,biomo.webm,Inverted.webm,Inverted.webm,biomo.webm
+ChickBiologicalMotion,Test,Random,biomo.webm,Random.webm,Random.webm,biomo.webm
+ChickBiologicalMotion,Test,Rigid,biomo.webm,Rigid.webm,Rigid.webm,biomo.webm
+ChickBiologicalMotion,Test,Cat,biomo.webm,Cat.webm,Cat.webm,biomo.webm
+ChickBiologicalMotion,Test,Scrambled,biomo.webm,Scrambled.webm,Scrambled.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_a.webm,Color_a.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_b.webm,Color_b.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_c.webm,Color_c.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_d.webm,Color_d.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_e.webm,Color_e.webm,biomo.webm
+ChickBiologicalMotion,Test,Color,biomo.webm,Color_f.webm,Color_f.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat01.webm,Stat01.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat02.webm,Stat02.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat03.webm,Stat03.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat04.webm,Stat04.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat05.webm,Stat05.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat06.webm,Stat06.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat07.webm,Stat07.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat08.webm,Stat08.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat09.webm,Stat09.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat10.webm,Stat10.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat11.webm,Stat11.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat12.webm,Stat12.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat13.webm,Stat13.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat14.webm,Stat14.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat15.webm,Stat15.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat16.webm,Stat16.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat17.webm,Stat17.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat18.webm,Stat18.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat19.webm,Stat19.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat20.webm,Stat20.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat21.webm,Stat21.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat22.webm,Stat22.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat23.webm,Stat23.webm,biomo.webm
+ChickBiologicalMotion,Test,Stationary,biomo.webm,Stat24.webm,Stat24.webm,biomo.webm
+InvertedBiologicalMotion,Training,,Inverted.webm,White.webm,Inverted.webm,White.webm
+InvertedBiologicalMotion,Training,,Inverted.webm,White.webm,White.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Rest,Inverted.webm,White.webm,Inverted.webm,White.webm
+InvertedBiologicalMotion,Test,Rest,Inverted.webm,White.webm,White.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Inverted,Inverted.webm,biomo.webm,Inverted.webm,biomo.webm
+InvertedBiologicalMotion,Test,Random,Inverted.webm,Random.webm,Inverted.webm,Random.webm
+InvertedBiologicalMotion,Test,Rigid,Inverted.webm,Rigid.webm,Inverted.webm,Rigid.webm
+InvertedBiologicalMotion,Test,Cat,Inverted.webm,Cat.webm,Inverted.webm,Cat.webm
+InvertedBiologicalMotion,Test,Scrambled,Inverted.webm,Scrambled.webm,Inverted.webm,Scrambled.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_a.webm,Inverted.webm,Color_a.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_b.webm,Inverted.webm,Color_b.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_c.webm,Inverted.webm,Color_c.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_d.webm,Inverted.webm,Color_d.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_e.webm,Inverted.webm,Color_e.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_f.webm,Inverted.webm,Color_f.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat01.webm,Inverted.webm,Stat01.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat02.webm,Inverted.webm,Stat02.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat03.webm,Inverted.webm,Stat03.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat04.webm,Inverted.webm,Stat04.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat05.webm,Inverted.webm,Stat05.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat06.webm,Inverted.webm,Stat06.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat07.webm,Inverted.webm,Stat07.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat08.webm,Inverted.webm,Stat08.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat09.webm,Inverted.webm,Stat09.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat10.webm,Inverted.webm,Stat10.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat11.webm,Inverted.webm,Stat11.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat12.webm,Inverted.webm,Stat12.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat13.webm,Inverted.webm,Stat13.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat14.webm,Inverted.webm,Stat14.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat15.webm,Inverted.webm,Stat15.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat16.webm,Inverted.webm,Stat16.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat17.webm,Inverted.webm,Stat17.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat18.webm,Inverted.webm,Stat18.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat19.webm,Inverted.webm,Stat19.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat20.webm,Inverted.webm,Stat20.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat21.webm,Inverted.webm,Stat21.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat22.webm,Inverted.webm,Stat22.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat23.webm,Inverted.webm,Stat23.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat24.webm,Inverted.webm,Stat24.webm
+InvertedBiologicalMotion,Test,Inverted,Inverted.webm,biomo.webm,biomo.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Random,Inverted.webm,Random.webm,Random.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Rigid,Inverted.webm,Rigid.webm,Rigid.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Cat,Inverted.webm,Cat.webm,Cat.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Scrambled,Inverted.webm,Scrambled.webm,Scrambled.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_a.webm,Color_a.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_b.webm,Color_b.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_c.webm,Color_c.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_d.webm,Color_d.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_e.webm,Color_e.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Color,Inverted.webm,Color_f.webm,Color_f.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat01.webm,Stat01.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat02.webm,Stat02.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat03.webm,Stat03.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat04.webm,Stat04.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat05.webm,Stat05.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat06.webm,Stat06.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat07.webm,Stat07.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat08.webm,Stat08.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat09.webm,Stat09.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat10.webm,Stat10.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat11.webm,Stat11.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat12.webm,Stat12.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat13.webm,Stat13.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat14.webm,Stat14.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat15.webm,Stat15.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat16.webm,Stat16.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat17.webm,Stat17.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat18.webm,Stat18.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat19.webm,Stat19.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat20.webm,Stat20.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat21.webm,Stat21.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat22.webm,Stat22.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat23.webm,Stat23.webm,Inverted.webm
+InvertedBiologicalMotion,Test,Stationary,Inverted.webm,Stat24.webm,Stat24.webm,Inverted.webm
