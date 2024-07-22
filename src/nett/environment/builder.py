@@ -148,21 +148,18 @@ class Environment(Wrapper):
         # needs to fixed in Unity code where the default is always false
         if mode == "train":
             args.extend(["--random-pos", "true"])
-        #if kwargs.get("rewarded", False):
-        args.extend(["--rewarded", "true"]) #TODO: Add back the rewarded argument
-        self.step_per_episode = kwargs.get("episode_steps", 200)
-        #if kwargs.get("episode_steps", False): #TODO: Ensure that setting episode_steps to 1000 is the same as not setting it
-        
-        #if kwargs.get("episode_steps", False):
-        #    args.extend(["--episode-steps", str(kwargs["episode_steps"])])
+        if kwargs.get("rewarded", False):
+            args.extend(["--rewarded", "true"])
+        self.step_per_episode = kwargs.get("episode_steps", 1000)
+        args.extend(["--episode-steps", str(self.step_per_episode)])
 
         
-        if kwargs["device_type"] == "cpu":
-            args.extend(["-batchmode", "-nographics"])
-        elif kwargs["batch_mode"]:
+        # if kwargs["device_type"] == "cpu":
+        #     args.extend(["-batchmode", "-nographics"])
+        # elif kwargs["batch_mode"]:
+        if kwargs["batch_mode"]:
             args.append("-batchmode")
-        
-        
+
         # TODO: Figure out a way to run on multiple GPUs
         # if ("device" in kwargs):
         #     args.extend(["-force-device-index", str(kwargs["device"])])
