@@ -235,7 +235,7 @@ class NETT:
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}")
+        chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}.csv")
 
         if not chick_data_dir.exists():
             raise ValueError(f"'{config}' is not a valid config.")
