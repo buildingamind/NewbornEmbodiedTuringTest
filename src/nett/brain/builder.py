@@ -144,6 +144,8 @@ class Brain:
                 verbose=1,
                 policy_kwargs=policy_kwargs,
                 device=torch.device(device_type, device))
+            print(self.model.policy)
+            exit()
             
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
