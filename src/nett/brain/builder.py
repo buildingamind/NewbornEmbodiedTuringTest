@@ -144,12 +144,13 @@ class Brain:
                 verbose=1,
                 policy_kwargs=policy_kwargs,
                 device=torch.device(device_type, device))
-            print(self.model.policy)
-            exit()
             
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
             raise e
+        
+        print(self.model.policy)
+        exit()
 
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
