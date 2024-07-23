@@ -29,9 +29,6 @@ from nett.nett import NETT
 from nett.brain import list_encoders, list_algorithms, list_policies
 from nett.environment import list_configs
 
-from nett.brain import list_encoders, list_algorithms, list_policies
-from nett.environment import list_configs
-
 # release version
 from ._version import __version__
 
