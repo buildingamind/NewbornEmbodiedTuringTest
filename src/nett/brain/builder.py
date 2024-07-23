@@ -148,9 +148,6 @@ class Brain:
         except Exception as e:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
             raise e
-        
-        self.logger.info(self.model.policy)
-        exit()
 
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
