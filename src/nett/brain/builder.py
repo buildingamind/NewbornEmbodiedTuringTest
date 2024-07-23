@@ -149,7 +149,7 @@ class Brain:
             self.logger.error(f"Failed to initialize model with error: {str(e)}")
             raise e
         
-        print(self.model.policy)
+        self.logger.info(self.model.policy)
         exit()
 
         # setup tensorboard logger and attach to model
