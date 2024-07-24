@@ -67,7 +67,8 @@ class NETT:
             run_id: str = '',
             synchronous=True,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
+            checkpoint_freq: int = 30_000,
+            resetVideo: bool = True) -> list[Future]: # pylint: disable=unused-argument
         """
         Run the training and testing of the brains in the environment.
 
@@ -89,6 +90,7 @@ class NETT:
             synchronous (bool, optional): Whether to wait for all jobs to end rather than return a Promise. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
+            resetVideo (bool, optional): Whether to reset the video player between episodes. Defaults to True.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -117,6 +119,7 @@ class NETT:
         self.run_id = run_id
         self.save_checkpoints = save_checkpoints
         self.checkpoint_freq = checkpoint_freq
+        self.resetVideo = resetVideo
         
         # schedule jobs
         jobs, waitlist = self._schedule_jobs(conditions=conditions)
@@ -350,7 +353,8 @@ class NETT:
                   "run_id": job.brain_id,
                   "episode_steps": self.steps_per_episode,
                   "device_type": self.device_type,
-                  "batch_mode": self.batch_mode}
+                  "batch_mode": self.batch_mode,
+                  "resetVideo": self.resetVideo}
 
         # for train
         if self.mode in ["train", "full"]:

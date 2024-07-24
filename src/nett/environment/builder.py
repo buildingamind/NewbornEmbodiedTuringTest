@@ -150,6 +150,8 @@ class Environment(Wrapper):
             args.extend(["--random-pos", "true"])
         if kwargs.get("rewarded", False):
             args.extend(["--rewarded", "true"])
+        if not kwargs.get("resetVideo", False):
+            args.extend(["--continue-video", "true"])
         self.step_per_episode = kwargs.get("episode_steps", 1000)
         args.extend(["--episode-steps", str(self.step_per_episode)])
 
