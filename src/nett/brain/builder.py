@@ -45,6 +45,7 @@ class Brain:
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to False.
         seed (int, optional): The random seed used for training. Defaults to 12.
+        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
 
     Example:
 
@@ -78,12 +79,11 @@ class Brain:
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
-        self.embedding_dim = embedding_dim
+        self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
-               
 
     def train(
         self,
@@ -116,20 +116,18 @@ class Brain:
 
         # initialize environment
         log_path = paths["env_logs"]
-        
-        
+
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
-        
+
         # build model
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
-                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
-                
+                "features_dim": self.embedding_dim,
             }
         } if self.encoder else {}
-        
-        if len(self.custom_encoder_args) >0:
+
+        if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
@@ -202,6 +200,7 @@ class Brain:
             env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
+            rec_path (str): The path to save the test video.
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
@@ -368,8 +367,6 @@ class Brain:
 
         if encoder and not hasattr(self, 'train_encoder'):
             raise ValueError("encoder passed without setting train_encoder, should be one of: [True, False]")
-
-        
         return encoder
 
     def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
@@ -488,7 +485,6 @@ class Brain:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
-        
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model
