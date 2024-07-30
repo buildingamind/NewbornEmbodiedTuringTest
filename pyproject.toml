@@ -41,7 +41,7 @@ notebook = ["ipywidgets"]
 "Documentation" = "https://buildingamind.github.io/NewbornEmbodiedTuringTest/index.html"
 
 [tool.setuptools.dynamic]
-version = { attr = "nett.__version__" }
+version = { attr = "nett._version.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
