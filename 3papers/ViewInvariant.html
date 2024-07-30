@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>A Newborn Embodied Turing Test for View-Invariant Recognition &mdash; NETT 0.4.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom_styles.css?v=2fd9c8d7" />
+
+  
+    <link rel="canonical" href="/html/3papers/ViewInvariant.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../_static/documentation_options.js?v=c87aa342"></script>
+        <script src="../_static/doctools.js?v=9a2dae69"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="prev" title="A Newborn Embodied Turing Test for Visual Parsing" href="Parsing.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            NETT
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="../1gettingstarted/index.html">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../2documentation/index.html">Documentation</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="index.html">Research Papers</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="Parsing.html">A Newborn Embodied Turing Test for Visual Parsing</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">A Newborn Embodied Turing Test for View-Invariant Recognition</a></li>
+</ul>
+</li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">NETT</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+          <li class="breadcrumb-item"><a href="index.html">Research Papers</a></li>
+      <li class="breadcrumb-item active">A Newborn Embodied Turing Test for View-Invariant Recognition</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/3papers/ViewInvariant.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="a-newborn-embodied-turing-test-for-view-invariant-recognition">
+<h1>A Newborn Embodied Turing Test for View-Invariant Recognition<a class="headerlink" href="#a-newborn-embodied-turing-test-for-view-invariant-recognition" title="Link to this heading"></a></h1>
+<p>Denizhan Pak, Donsuk Lee, Samantha M. W. Wood &amp; Justin N. Wood</p>
+<video controls>
+   <source src="../_static/video/viewpoint.mp4" type="video/mp4">
+</video>
+<section id="abstract">
+<h2>Abstract<a class="headerlink" href="#abstract" title="Link to this heading"></a></h2>
+<p><em>Recent progress in artificial intelligence has renewed interest in building machines that learn like animals. Almost all of the work comparing learning across biological and artificial systems comes from studies where animals and machines received different training data, obscuring whether differences between animals and machines emerged from differences in learning mechanisms versus training data. We present an experimental approach—a “newborn embodied Turing Test”—that allows newborn animals and machines to be raised in the same environments and tested with the same tasks, permitting direct comparison of their learning abilities. To make this platform, we first collected controlled-rearing data from newborn chicks, then performed “digital twin” experiments in which machines were raised in virtual environments that mimicked the rearing conditions of the chicks. We found that (1) machines (deep reinforcement learning agents with intrinsic motivation) can spontaneously develop visually guided preference behavior, akin to imprinting in newborn chicks, and (2) machines are still far from newborn-level performance on object recognition tasks. Almost all of the chicks developed view-invariant object recognition, whereas the machines tended to develop view-dependent recognition. The learning outcomes were also far more constrained in the chicks versus machines. Ultimately, we anticipate that this approach will help researchers develop embodied AI systems that learn like newborn animals.</em></p>
+</section>
+<section id="experiment-design">
+<h2>Experiment Design<a class="headerlink" href="#experiment-design" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>VR chambers were equipped with two display walls (LCD monitors) for displaying object stimuli.</p></li>
+<li><p>During the Training Phase, artificial chicks were reared in an environment containing a single 3D object rotating 15° around a vertical axis in front of a blank background scene. The object made a full rotation every 3s. Agents can be imprinted to one of 4 possible conditions: side and front views of the Fork object or side and front views of the ship object.</p></li>
+<li><p>During the Test Phase, the VR chambers measured the artificial chicks’ imprinting response and object recognition performance. The “imprinting trials” measured whether the chicks developed an imprinting response.  The “test trials” measured the aritifical chicks’ ability to visually discriminate their imprinted object. During these trials, the imprinted object, rotated at an alternate angle to the imprint condition, was presented on one display wall and an unfamiliar object was presented on the other display wall, the angle of which was either the same as the imprint condition (fixed trials) or matched to the viewpoint in the test condition (matched trials).</p></li>
+</ul>
+</section>
+<section id="arguments">
+<h2>Arguments<a class="headerlink" href="#arguments" title="Link to this heading"></a></h2>
+<section id="train-configuration">
+<h3>Train configuration<a class="headerlink" href="#train-configuration" title="Link to this heading"></a></h3>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">agent_count</span><span class="p">:</span> <span class="mi">1</span>
+<span class="n">run_id</span><span class="p">:</span><span class="n">ship_front_exp</span>
+<span class="n">log_path</span><span class="p">:</span> <span class="n">data</span><span class="o">/</span><span class="n">ship_front_exp</span>
+<span class="n">mode</span><span class="p">:</span> <span class="n">full</span>
+<span class="n">train_eps</span><span class="p">:</span> <span class="mi">1000</span>
+<span class="n">test_eps</span><span class="p">:</span> <span class="mi">40</span>
+<span class="n">cuda</span><span class="p">:</span> <span class="mi">0</span>
+<span class="n">Agent</span><span class="p">:</span>
+  <span class="n">reward</span><span class="p">:</span> <span class="n">supervised</span>
+  <span class="n">encoder</span><span class="p">:</span> <span class="n">small</span>
+<span class="n">Environment</span><span class="p">:</span>
+  <span class="n">use_ship</span><span class="p">:</span> <span class="n">true</span>
+  <span class="n">side_view</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">background</span><span class="p">:</span> <span class="n">A</span>
+  <span class="n">base_port</span><span class="p">:</span> <span class="mi">5100</span>
+  <span class="n">env_path</span><span class="p">:</span> <span class="n">data</span><span class="o">/</span><span class="n">executables</span><span class="o">/</span><span class="n">viewpoint_benchmark</span><span class="o">/</span><span class="n">viewpoint</span><span class="o">.</span><span class="n">x86_64</span>
+  <span class="n">log_path</span><span class="p">:</span> <span class="n">data</span><span class="o">/</span><span class="n">ship_front_exp</span><span class="o">/</span><span class="n">Env_Logs</span>
+  <span class="n">rec_path</span><span class="p">:</span> <span class="n">data</span><span class="o">/</span><span class="n">ship_front_exp</span><span class="o">/</span><span class="n">Recordings</span><span class="o">/</span>
+  <span class="n">record_chamber</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">record_agent</span><span class="p">:</span> <span class="n">false</span>
+  <span class="n">recording_frames</span><span class="p">:</span> <span class="mi">0</span>
+</pre></div>
+</div>
+</section>
+</section>
+<section id="executables">
+<h2>Executables<a class="headerlink" href="#executables" title="Link to this heading"></a></h2>
+<p><a class="reference external" href="https://origins.luddy.indiana.edu/unity/executables/">Exectuable can be found here</a>.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="Parsing.html" class="btn btn-neutral float-left" title="A Newborn Embodied Turing Test for Visual Parsing" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Zachary Laborde.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

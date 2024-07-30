@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="../">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Getting Started &mdash; NETT 0.4.1 documentation</title>
+      <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=80d5e7a1" />
+      <link rel="stylesheet" type="text/css" href="../_static/css/theme.css?v=19f00094" />
+      <link rel="stylesheet" type="text/css" href="../_static/custom_styles.css?v=2fd9c8d7" />
+
+  
+    <link rel="canonical" href="/html/1gettingstarted/index.html" />
+  <!--[if lt IE 9]>
+    <script src="../_static/js/html5shiv.min.js"></script>
+  <![endif]-->
+  
+        <script src="../_static/jquery.js?v=5d32c60e"></script>
+        <script src="../_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+        <script src="../_static/documentation_options.js?v=c87aa342"></script>
+        <script src="../_static/doctools.js?v=9a2dae69"></script>
+        <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="../_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="../genindex.html" />
+    <link rel="search" title="Search" href="../search.html" />
+    <link rel="next" title="Documentation" href="../2documentation/index.html" />
+    <link rel="prev" title="Newborn Embodied Turing Test (NETT)" href="../index.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="../index.html" class="icon icon-home">
+            NETT
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="../search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../2documentation/index.html">Documentation</a></li>
+<li class="toctree-l1"><a class="reference internal" href="../3papers/index.html">Research Papers</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="../index.html">NETT</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="../index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Getting Started</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="../_sources/1gettingstarted/index.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Link to this heading"></a></h1>
+<!-- This comment is here to denote the start of the "Getting Started" page for Sphinx documentation -->
+<p>To begin benchmarking your first embodied agent with NETT, please be aware:</p>
+<p><strong>Important</strong>: The <code class="docutils literal notranslate"><span class="pre">mlagents==1.0.0</span></code> dependency is incompatible with Apple Silicon (M1, M2, etc.) chips. Please utilize an alternate device to execute this codebase.</p>
+<section id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Link to this heading"></a></h2>
+<ol class="arabic">
+<li><p><strong>Virtual Environment Setup (Highly Recommended)</strong></p>
+<p>Create and activate a virtual environment to avoid dependency conflicts.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>create<span class="w"> </span>-y<span class="w"> </span>-n<span class="w"> </span>nett_env<span class="w"> </span><span class="nv">python</span><span class="o">=</span><span class="m">3</span>.10.12
+conda<span class="w"> </span>activate<span class="w"> </span>nett_env
+</pre></div>
+</div>
+<p>See <a class="reference external" href="https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda" title="Link for how to set-up a virtual env">here</a> for detailed instructions.</p>
+</li>
+<li><p><strong>Install Prerequistes</strong></p>
+<p>Install the needed versions of <code class="docutils literal notranslate"><span class="pre">setuptools</span></code> and <code class="docutils literal notranslate"><span class="pre">pip</span></code>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">setuptools</span><span class="o">==</span><span class="m">65</span>.5.0<span class="w"> </span><span class="nv">pip</span><span class="o">==</span><span class="m">21</span><span class="w"> </span><span class="nv">wheel</span><span class="o">==</span><span class="m">0</span>.38.4
+</pre></div>
+</div>
+<p><strong>NOTE:</strong> This is a result of incompatibilities with the subdependency <code class="docutils literal notranslate"><span class="pre">gym==0.21</span></code>. More information about this issue can be found <a class="reference external" href="https://github.com/openai/gym/issues/3176#issuecomment-1560026649">here</a></p>
+</li>
+<li><p><strong>Toolkit Installation</strong></p>
+<p>Install the toolkit using <code class="docutils literal notranslate"><span class="pre">pip</span></code>.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>nett-benchmarks
+</pre></div>
+</div>
+<p><strong>NOTE:</strong>: Installation outside a virtual environment may fail due to conflicting dependencies. Ensure compatibility, especially with <code class="docutils literal notranslate"><span class="pre">gym==0.21</span></code> and <code class="docutils literal notranslate"><span class="pre">numpy&lt;=1.21.2</span></code>.</p>
+</li>
+</ol>
+</section>
+<section id="running-a-nett">
+<h2>Running a NETT<a class="headerlink" href="#running-a-nett" title="Link to this heading"></a></h2>
+<ol class="arabic">
+<li><p><strong>Download or Create the Unity Executable</strong></p>
+<p>Obtain a pre-made Unity executable from <a class="reference external" href="https://origins.luddy.indiana.edu/environments/">here</a>. The executable is required to run the virtual environment.</p>
+</li>
+<li><p><strong>Import NETT Components</strong></p>
+<p>Start by importing the NETT framework components - <code class="docutils literal notranslate"><span class="pre">Brain</span></code>, <code class="docutils literal notranslate"><span class="pre">Body</span></code>, and <code class="docutils literal notranslate"><span class="pre">Environment</span></code>, alongside the main <code class="docutils literal notranslate"><span class="pre">NETT</span></code> class.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="kn">from</span> <span class="nn">nett</span> <span class="kn">import</span> <span class="n">Brain</span><span class="p">,</span> <span class="n">Body</span><span class="p">,</span> <span class="n">Environment</span>
+<span class="kn">from</span> <span class="nn">nett</span> <span class="kn">import</span> <span class="n">NETT</span>
+</pre></div>
+</div>
+</li>
+<li><p><strong>Component Configuration</strong>:</p></li>
+</ol>
+<ul>
+<li><p><strong>Brain</strong></p>
+<p>Configure the learning aspects, including the policy network (e.g. “CnnPolicy”), learning algorithm (e.g. “PPO”), the reward function, and the encoder.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">brain</span> <span class="o">=</span> <span class="n">Brain</span><span class="p">(</span><span class="n">policy</span><span class="o">=</span><span class="s2">&quot;CnnPolicy&quot;</span><span class="p">,</span> <span class="n">algorithm</span><span class="o">=</span><span class="s2">&quot;PPO&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To get a list of all available policies, algorithms, and encoders, run <code class="docutils literal notranslate"><span class="pre">nett.list_policies()</span></code>, <code class="docutils literal notranslate"><span class="pre">nett.list_algorithms()</span></code>, and <code class="docutils literal notranslate"><span class="pre">nett.list_encoders()</span></code> respectively.</p>
+</li>
+<li><p><strong>Body</strong></p>
+<p>Set up the agent’s physical interface with the environment. It’s possible to apply gym.Wrappers for data preprocessing.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">body</span> <span class="o">=</span> <span class="n">Body</span><span class="p">(</span><span class="nb">type</span><span class="o">=</span><span class="s2">&quot;basic&quot;</span><span class="p">,</span> <span class="n">dvs</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">wrappers</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>Here, we do not pass any wrappers, letting information from the environment reach the brain “as is”. Alternative body types (e.g. <code class="docutils literal notranslate"><span class="pre">two-eyed</span></code>, <code class="docutils literal notranslate"><span class="pre">rag-doll</span></code>) are planned in future updates.</p>
+</li>
+<li><p><strong>Environment</strong></p>
+<p>Create the simulation environment using the path to your Unity executable (see Step 1).</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">environment</span> <span class="o">=</span> <span class="n">Environment</span><span class="p">(</span><span class="n">config</span><span class="o">=</span><span class="s2">&quot;identityandview&quot;</span><span class="p">,</span> <span class="n">executable_path</span><span class="o">=</span><span class="s2">&quot;path/to/executable.x86_64&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>To get a list of all available configurations, run <code class="docutils literal notranslate"><span class="pre">nett.list_configs()</span></code>.</p>
+</li>
+</ul>
+<ol class="arabic" start="4">
+<li><p><strong>Run the Benchmarking</strong></p>
+<p>Integrate all components into a NETT instance to facilitate experiment execution.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">benchmarks</span> <span class="o">=</span> <span class="n">NETT</span><span class="p">(</span><span class="n">brain</span><span class="o">=</span><span class="n">brain</span><span class="p">,</span> <span class="n">body</span><span class="o">=</span><span class="n">body</span><span class="p">,</span> <span class="n">environment</span><span class="o">=</span><span class="n">environment</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">NETT</span></code> instance has a <code class="docutils literal notranslate"><span class="pre">.run()</span></code> method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">job_sheet</span> <span class="o">=</span> <span class="n">benchmarks</span><span class="o">.</span><span class="n">run</span><span class="p">(</span><span class="n">output_dir</span><span class="o">=</span><span class="s2">&quot;path/to/run/output/directory/&quot;</span><span class="p">,</span> <span class="n">num_brains</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">trains_eps</span><span class="o">=</span><span class="mi">10</span><span class="p">,</span> <span class="n">test_eps</span><span class="o">=</span><span class="mi">5</span><span class="p">)</span>
+</pre></div>
+</div>
+<p>The <code class="docutils literal notranslate"><span class="pre">run</span></code> function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the <code class="docutils literal notranslate"><span class="pre">batch_mode</span></code> parameter to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p>
+</li>
+<li><p><strong>Check Status</strong>:</p></li>
+</ol>
+<p>To see the status of the benchmark processes, use the <code class="docutils literal notranslate"><span class="pre">.status()</span></code> method:</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">benchmarks</span><span class="o">.</span><span class="n">status</span><span class="p">(</span><span class="n">job_sheet</span><span class="p">)</span>
+</pre></div>
+</div>
+</section>
+<section id="running-standard-analysis">
+<h2>Running Standard Analysis<a class="headerlink" href="#running-standard-analysis" title="Link to this heading"></a></h2>
+<p>After running the experiments, the pipeline will generate a collection of datafiles in the defined output directory.</p>
+<ol class="arabic">
+<li><p><strong>Install R and dependencies</strong></p>
+<p>To run the analyses performed in previous experiments,this toolkit provides a set of analysis scripts. Prior to running them, you will need R and the packages <code class="docutils literal notranslate"><span class="pre">tidyverse</span></code>, <code class="docutils literal notranslate"><span class="pre">argparse</span></code>, and <code class="docutils literal notranslate"><span class="pre">scales</span></code> installed. To install these packages, run the following command in R:</p>
+<div class="highlight-R notranslate"><div class="highlight"><pre><span></span><span class="nf">install.packages</span><span class="p">(</span><span class="nf">c</span><span class="p">(</span><span class="s">&quot;tidyverse&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;argparse&quot;</span><span class="p">,</span><span class="w"> </span><span class="s">&quot;scales&quot;</span><span class="p">))</span>
+</pre></div>
+</div>
+<p>Alternatively, if you are having difficulty installing R on your system, you can install these using conda.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>install<span class="w"> </span>-y<span class="w"> </span>r<span class="w"> </span>r-tidyverse<span class="w"> </span>r-argparse<span class="w"> </span>r-scales
+</pre></div>
+</div>
+</li>
+<li><p><strong>Run the Analysis</strong></p>
+<p>To run the analysis, use the <code class="docutils literal notranslate"><span class="pre">analyze</span></code> method of the <code class="docutils literal notranslate"><span class="pre">NETT</span></code> class. This method will generate a set of plots and tables based on the datafiles in the output directory.</p>
+<div class="highlight-python notranslate"><div class="highlight"><pre><span></span><span class="n">benchmarks</span><span class="o">.</span><span class="n">analyze</span><span class="p">(</span><span class="n">run_dir</span><span class="o">=</span><span class="s2">&quot;path/to/run/output/directory/&quot;</span><span class="p">,</span> <span class="n">output_dir</span><span class="o">=</span><span class="s2">&quot;path/to/analysis/output/directory/&quot;</span><span class="p">)</span>
+</pre></div>
+</div>
+</li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="../index.html" class="btn btn-neutral float-left" title="Newborn Embodied Turing Test (NETT)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="../2documentation/index.html" class="btn btn-neutral float-right" title="Documentation" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2024, Zachary Laborde.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
