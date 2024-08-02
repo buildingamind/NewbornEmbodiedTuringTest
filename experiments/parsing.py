@@ -39,7 +39,7 @@ job_sheet = benchmarks.run(
     test_eps=20
 )
 
-benchmarks.analyze(
+job_sheet.analyze(
     config = "parsing",
     run_dir="/data/wjpeacoc/experiments/results/parsing/",
     output_dir = "/data/wjpeacoc/experiments/results/parsing/analysis/"
