@@ -238,6 +238,10 @@ class NETT:
 
         if not chick_data_dir.exists():
             raise ValueError(f"'{config}' is not a valid config.")
+        elif not run_dir.exists():
+            raise ValueError(f"'{run_dir}' is not a valid run directory.")
+        elif not analysis_dir.exists():
+            raise ValueError(f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package.")
 
         # translate bar_order for R to read
         bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
