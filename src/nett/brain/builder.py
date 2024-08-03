@@ -205,7 +205,7 @@ class Brain:
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path, device=torch.device(device_type, device))
+        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device(device_type, device))
 
         # validate environment
         env = self._validate_env(env)
@@ -309,18 +309,6 @@ class Brain:
         
         self.logger.info(f"Saved feature_extractor: {save_path}")
         return
-
-    def load(self, model_path: str | Path) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
-        """
-        Load a trained model.
-
-        Args:
-            model_path (str | Path): The path to the trained model.
-
-        Returns:
-            OnPolicyAlgorithm | OffPolicyAlgorithm: The loaded model.
-        """
-        return self.algorithm.load(model_path)
 
     def plot_results(self,
         iterations: int,
