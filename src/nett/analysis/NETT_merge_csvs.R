@@ -99,15 +99,20 @@ read_data <- function(filename)
 
 # Combine csv's and save results -----------------------------------------------
 
+
+
 # Combine all the training
+cat("Combining training data...\n")
 train_data <- lapply(train_files, FUN = read_data)
 train_data <- bind_rows(train_data)
 
 # Combine all the testing
+cat("Combining testing data...\n")
 test_data <- lapply(test_files, FUN = read_data)
 test_data <- bind_rows(test_data)
 
 # Save it
+cat("Saving data...\n")
 setwd(results_wd)
 save(train_data, test_data, file=results_name)
 if( !is.null(csv_train_name) ) write.csv(train_data, csv_train_name)

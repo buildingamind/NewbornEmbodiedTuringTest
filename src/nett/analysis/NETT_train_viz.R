@@ -33,6 +33,8 @@ load(data_loc)
 rm(test_data)
 setwd(results_wd)
 
+
+cat("Collating data for ", num_episodes, " training episodes...\n")
 train_data_fixed <- train_data %>%
   filter(Episode < num_episodes) %>%
   # Create variables for correct/incorrect calculations
@@ -51,9 +53,8 @@ train_data_fixed <- train_data %>%
   mutate(agent = as.numeric(agent)) %>%
   ungroup()
 
-
 # Plot line graphs by imprinting condition -------------------------------------
-
+cat("Plotting training data...\n")
 for (cond in unique(train_data_fixed$imprint.cond))
 {
   data <- train_data_fixed %>%
@@ -74,4 +75,3 @@ for (cond in unique(train_data_fixed$imprint.cond))
   img_name <- paste0(cond, "_train.png")
   ggsave(img_name)
 }
-
