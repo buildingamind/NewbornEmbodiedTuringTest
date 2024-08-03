@@ -43,6 +43,7 @@ chick_data <- read.csv(chick_file)
 load(data_loc)
 rm(train_data)
 
+cat("Collating data for test trials...\n")
 # Code each episode correct/incorrect
 test_data <- test_data %>%
   mutate(correct_steps = if_else(correct.monitor == " left", left_steps, right_steps)) %>%
@@ -50,7 +51,7 @@ test_data <- test_data %>%
   mutate(percent_correct = correct_steps / (correct_steps + incorrect_steps))
 
 # Adjust bar order according to user input -------------------------------------
-
+cat("Adjusting bar order...\n")
 # Create a variable to store the final order
 order <- NULL
 if (bar_order == "default" || bar_order == "asc" || bar_order == "desc"){
@@ -96,7 +97,7 @@ p <- ggplot() +
         axis.text.x = element_text(face="bold", size=7.5),
         axis.text.y = element_text(face="bold", size=7.5))
 
-
+cat("Creating bar charts...\n")
 # Bar Chart Function -----------------------------------------------------------
 make_bar_charts <- function(data, dots, aes_y, error_min, error_max, img_name)
 {
@@ -133,7 +134,7 @@ setwd(results_wd)
 
 # Plot by agent ----------------------------------------------------------------
 ## Leave rest data for agent-level graphs
-
+cat("Creating agent-level bar charts...\n") 
 ## Group data by test conditions
 by_test_cond <- test_data %>%
   group_by(imprint.cond, agent, test.cond) %>%
@@ -167,7 +168,7 @@ for (i in unique(by_test_cond$imp_agent))
 
 # Plot by imprinting condition -------------------------------------------------
 ## Remove rest data once we start to group agents (for ease of presentation)
-
+cat("Creating imprinting condition-level bar charts...\n")
 by_imp_cond <- by_test_cond %>%
   ungroup() %>%
   group_by(imprint.cond, test.cond) %>%
@@ -204,6 +205,7 @@ for (i in unique(by_imp_cond$imprint.cond))
 
 
 # Plot across all imprinting conditions ----------------------------------------
+cat("Creating bar chart for all imprinting conditions...\n")
 across_imp_cond <- by_test_cond %>%
   ungroup() %>%
   filter(test.cond != "Rest") %>%
