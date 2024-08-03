@@ -397,6 +397,8 @@ class NETT:
                     iterations=iterations,
                     model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                     rec_path = str(job.paths["env_recs"]),
+                    device_type = self.device_type,
+                    device = job.device,
                     index=job.index)
                 test_environment.close()
             except Exception as e:

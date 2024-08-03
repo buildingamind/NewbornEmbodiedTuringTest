@@ -185,10 +185,12 @@ class Brain:
 
     def test(
         self,
-        env,
-        iterations,
+        env: "gym.Env",
+        iterations: int,
         model_path: str,
         rec_path: str,
+        device_type: str,
+        device: int,
         index: int): # pylint: disable=unused-argument
         """
         Test the brain.
@@ -198,10 +200,12 @@ class Brain:
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
             rec_path (str): The path to save the test video.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path)
+        self.model = self.load(model_path, device=torch.device(device_type, device))
 
         # validate environment
         env = self._validate_env(env)
