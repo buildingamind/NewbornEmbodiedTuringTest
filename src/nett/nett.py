@@ -170,7 +170,8 @@ class NETT:
 
             return job_sheet
         except Exception as e:
-            print(str(e))
+            self.logger.exception(f"Error in launching jobs: {e}")
+            raise e
 
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
@@ -375,9 +376,9 @@ class NETT:
                     checkpoint_freq=self.checkpoint_freq,)
                 train_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in training: {e}")
+                self.logger.exception(f"Error in training: {e}")
                 train_environment.close()
-                exit()    
+                raise e  
 
         # for test
         if self.mode in ["test", "full"]:
@@ -402,9 +403,9 @@ class NETT:
                     index=job.index)
                 test_environment.close()
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}")
+                self.logger.exception(f"Error in testing: {e}")
                 test_environment.close()
-                exit()
+                raise e
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
