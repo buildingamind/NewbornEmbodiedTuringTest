@@ -67,7 +67,7 @@ class NETT:
             run_id: str = '',
             synchronous=False,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]: # pylint: disable=unused-argument
+            checkpoint_freq: int = 30_000) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -307,7 +307,7 @@ class NETT:
         free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
 
         # estimate memory for a single job
-        job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+        job_memory: float = self.buffer * self._estimate_job_memory()
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
@@ -409,7 +409,7 @@ class NETT:
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
     # pylint: disable-next=unused-argument
-    def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
+    def _estimate_job_memory(self) -> int: # , device_memory_status: dict
         # TODO (v0.5) add a dummy job to gauge memory consumption
 
         # # get device with the maxmium memory available

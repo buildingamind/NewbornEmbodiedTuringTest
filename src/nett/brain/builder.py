@@ -191,7 +191,7 @@ class Brain:
         rec_path: str,
         device_type: str,
         device: int,
-        index: int): # pylint: disable=unused-argument
+        index: int):
         """
         Test the brain.
 
@@ -216,7 +216,6 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        print(rec_path)
         try:
             vr = VideoRecorder(env=envs,
             path="{}/agent_{}.mp4".format(rec_path, \
