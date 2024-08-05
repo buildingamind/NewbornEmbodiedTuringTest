@@ -141,7 +141,7 @@ class Brain:
                 device=torch.device(device_type, device))
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            self.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
 
         # setup tensorboard logger and attach to model
@@ -191,7 +191,7 @@ class Brain:
         rec_path: str,
         device_type: str,
         device: int,
-        index: int): # pylint: disable=unused-argument
+        index: int):
         """
         Test the brain.
 
@@ -216,7 +216,6 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        print(rec_path)
         try:
             vr = VideoRecorder(env=envs,
             path="{}/agent_{}.mp4".format(rec_path, \
@@ -271,8 +270,9 @@ class Brain:
 
                 vr.close()
                 vr.enabled = False
-        except Exception as ex:
-            print(str(ex))
+        except Exception as e:
+            self.logger.exception(f"Failed to test model with error: {str(e)}")
+            raise e
             
         t.close()
 
