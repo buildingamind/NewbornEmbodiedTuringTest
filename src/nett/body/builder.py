@@ -137,7 +137,6 @@ class Body:
             Env: The modified environment.
         """
         # apply DVS wrapper
-        # TODO: Should this wrapper go in a different order?
         if self.dvs:
             env = self._wrap(env, DVSWrapper)
         # apply all custom wrappers

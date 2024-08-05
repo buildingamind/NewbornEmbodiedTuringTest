@@ -190,7 +190,7 @@ class NETT:
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
 
-# TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
+
     # TODO v0.3. add support for user specified output_dir
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
