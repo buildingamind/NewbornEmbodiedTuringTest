@@ -132,6 +132,7 @@ class Environment(Wrapper):
         """
 
         args = []
+        args.extend(["--get-design", "true"])
 
         # from environment arguments
         if self.recording_frames:
