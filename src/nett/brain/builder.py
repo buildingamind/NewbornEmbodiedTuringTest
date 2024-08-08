@@ -80,14 +80,7 @@ class Brain:
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
 
-        if (self.encoder is None):
-            self.embedding_dim = None
-        elif (embedding_dim is None):
-            self.embedding_dim = inspect.signature(self.encoder).parameters["features_dim"].default
-        else:
-            self.embedding_dim = embedding_dim
-
-        self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
+        self.embedding_dim = embedding_dim
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
@@ -133,9 +126,9 @@ class Brain:
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
-                "features_dim": self.embedding_dim,
+                "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
             }
-        } if self.encoder else {}
+        } if self.encoder is not None else {}
 
         if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
