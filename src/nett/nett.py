@@ -60,7 +60,6 @@ class NETT:
             train_eps: int = 1000,
             test_eps: int = 20,
             batch_mode: bool = True,
-            device_type: str = "cuda",
             devices: list[int] | int =  -1,
             description: Optional[str] = None,
             job_memory: str | int = "auto",
@@ -83,8 +82,6 @@ class NETT:
             train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
             test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
             batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
-            device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
             devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
@@ -117,7 +114,6 @@ class NETT:
         self.job_memory = job_memory
         self.buffer = buffer
         self.steps_per_episode = steps_per_episode
-        self.device_type = self._validate_device_type(device_type)
         self.devices: list[int] | int = self._validate_devices(devices)
         self.batch_mode: bool = batch_mode
         self.run_id = run_id
@@ -258,7 +254,6 @@ class NETT:
                   "run_id": job.brain_id,
                   "device": job.device,
                   "episode_steps": self.steps_per_episode,
-                  "device_type": self.device_type,
                   "batch_mode": self.batch_mode}
 
         # for train
@@ -272,7 +267,6 @@ class NETT:
                     brain.train(
                         env=train_environment,
                         iterations=iterations,
-                        device_type=self.device_type,
                         device=job.device,
                         index=job.index,
                         paths=job.paths,
@@ -300,7 +294,6 @@ class NETT:
                         iterations=iterations,
                         model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                         rec_path = str(job.paths["env_recs"]),
-                        device_type=self.device_type,
                         device=job.device,
                         index=job.index)
                 # test_environment.close()
@@ -352,7 +345,6 @@ class NETT:
                         "run_id": job.brain_id,
                         "device": job.device,
                         "episode_steps": self.steps_per_episode,
-                        "device_type": self.device_type,
                         "batch_mode": self.batch_mode}
 
                 # for train
@@ -366,7 +358,6 @@ class NETT:
                             brain.estimate_train(
                                 env=train_environment,
                                 iterations=iterations, #TODO: remove need to calculate iterations
-                                device_type=self.device_type,
                                 device=job.device,
                                 paths=job.paths,
                                 save_checkpoints=False,
@@ -388,7 +379,6 @@ class NETT:
                             brain.estimate_test(
                                 env=test_environment,
                                 model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                                device_type=self.device_type,
                                 device=job.device,)
                             post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
                         # test_environment.close()
@@ -556,14 +546,6 @@ class NETT:
                 free_devices = [free_devices[-1]] + free_devices[:-1]
 
         return jobs, waitlist
-
-    @staticmethod
-    def _validate_device_type(device_type: str) -> str:
-        # TODO (v0.5) add automatic type checking using pydantic or similar
-        if device_type not in ["cuda"]:
-            raise ValueError("Should be one of ['cuda']")
-
-        return device_type
 
     def _validate_devices(self, devices: list[int] | int) -> list[int]:
         # check if the devices are available and return the list of devices to be used

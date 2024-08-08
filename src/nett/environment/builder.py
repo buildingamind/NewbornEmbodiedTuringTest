@@ -105,10 +105,6 @@ class Environment(Wrapper):
         self.step_per_episode = kwargs.get("episode_steps", 1000)
         args.extend(["--episode-steps", str(self.step_per_episode)])
 
-        
-        # if kwargs["device_type"] == "cpu":
-        #     args.extend(["-batchmode", "-nographics"])
-        # elif kwargs["batch_mode"]:
         if kwargs["batch_mode"]:
             args.append("-batchmode")
         

@@ -93,7 +93,6 @@ class Brain:
         self,
         env: "nett.Body",
         iterations: int,
-        device_type: str,
         device: int,
         paths: dict[str, Path],
         save_checkpoints: bool,
@@ -104,7 +103,6 @@ class Brain:
         Args:
             env (nett.Body): The environment used for training.
             iterations (int): The number of training iterations.
-            device_type (str): The type of device used for training.
             device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
@@ -144,7 +142,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 verbose=1,
                 policy_kwargs=policy_kwargs,
-                device=torch.device(device_type, device))
+                device=torch.device("cuda", device))
 
             # setup tensorboard logger and attach to model
             tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
@@ -174,7 +172,6 @@ class Brain:
         self,
         env,
         model_path: str,
-        device_type: str,
         device: int):
         """
         Test the brain.
@@ -211,7 +208,7 @@ class Brain:
 
             # for all other algorithms
             else:
-                self.model.predict(obs, deterministic=True) # action, states
+                model.predict(obs, deterministic=True) # action, states
 
         except Exception as ex:
             self.logger.error(str(ex), exc_info=1)
@@ -222,7 +219,6 @@ class Brain:
         self,
         env: "nett.Body",
         iterations: int,
-        device_type: str,
         device: int,
         index: int,
         paths: dict[str, Path],
@@ -234,7 +230,6 @@ class Brain:
         Args:
             env (nett.Body): The environment used for training.
             iterations (int): The number of training iterations.
-            device_type (str): The type of device used for training.
             device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
             paths (dict[str, Path]): The paths for saving logs, models, and plots.
@@ -276,7 +271,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 verbose=1,
                 policy_kwargs=policy_kwargs,
-                device=torch.device(device_type, device))
+                device=torch.device("cuda", device))
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
@@ -334,7 +329,6 @@ class Brain:
         iterations: int,
         model_path: str,
         rec_path: str,
-        device_type: str,
         device: int,
         index: int): # pylint: disable=unused-argument
         """
@@ -345,12 +339,11 @@ class Brain:
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
             rec_path (str): The path to save the test video.
-            device_type (str): The type of device used for training.
             device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device(device_type, device))
+        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
 
         # validate environment
         env = self._validate_env(env)
