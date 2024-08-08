@@ -113,18 +113,14 @@ class Body:
         Raises:
             Exception: If the environment does not follow the Gym API.
         """
-        try:
-            # wrap env
-            env = wrapper(env)
-            # check that the env follows Gym API
-            env_check = check_env(env, warn=True)
-            if env_check != None:
-                raise Exception(f"Failed env check")
+        # wrap env
+        env = wrapper(env)
+        # check that the env follows Gym API
+        env_check = check_env(env, warn=True)
+        if env_check != None:
+            raise Exception(f"Failed env check")
 
-            return env
-
-        except Exception as ex:
-            print(str(ex))
+        return env
 
     def __call__(self, env: Env) -> Env:
         """
@@ -136,14 +132,17 @@ class Body:
         Returns:
             Env: The modified environment.
         """
-        # apply DVS wrapper
-        # TODO: Should this wrapper go in a different order?
-        if self.dvs:
-            env = self._wrap(env, DVSWrapper)
-        # apply all custom wrappers
-        if self.wrappers:
-            for wrapper in self.wrappers:
-                env = self._wrap(env, wrapper)
+        try:
+            # apply DVS wrapper
+            if self.dvs:
+                env = self._wrap(env, DVSWrapper)
+            # apply all custom wrappers
+            if self.wrappers:
+                for wrapper in self.wrappers:
+                    env = self._wrap(env, wrapper)
+        except Exception as e:
+            self.logger.exception(f"Failed to apply wrappers to environment")
+            raise e
 
         return env
     

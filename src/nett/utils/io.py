@@ -35,4 +35,3 @@ def mute() -> None:
     Mute the standard output and standard error
     """
     sys.stdout = open(os.devnull, "w")
-    sys.stderr = open(os.devnull, "w") # TODO Should we be suppressing error messages?

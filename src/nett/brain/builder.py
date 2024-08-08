@@ -145,7 +145,7 @@ class Brain:
                 device=torch.device(device_type, device))
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}")
+            self.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
         
         
@@ -190,11 +190,13 @@ class Brain:
 
     def test(
         self,
-        env,
-        iterations,
+        env: "gym.Env",
+        iterations: int,
         model_path: str,
         rec_path: str,
-        index: int): # pylint: disable=unused-argument
+        device_type: str,
+        device: int,
+        index: int):
         """
         Test the brain.
 
@@ -202,10 +204,13 @@ class Brain:
             env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
+            rec_path (str): The path to save the test video.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path)
+        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device(device_type, device))
 
         # validate environment
         env = self._validate_env(env)
@@ -216,7 +221,6 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        print(rec_path)
         try:
             vr = VideoRecorder(env=envs,
             path="{}/agent_{}.mp4".format(rec_path, \
@@ -271,8 +275,9 @@ class Brain:
 
                 vr.close()
                 vr.enabled = False
-        except Exception as ex:
-            print(str(ex))
+        except Exception as e:
+            self.logger.exception(f"Failed to test model with error: {str(e)}")
+            raise e
             
         t.close()
 
@@ -309,18 +314,6 @@ class Brain:
         
         self.logger.info(f"Saved feature_extractor: {save_path}")
         return
-
-    def load(self, model_path: str | Path) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
-        """
-        Load a trained model.
-
-        Args:
-            model_path (str | Path): The path to the trained model.
-
-        Returns:
-            OnPolicyAlgorithm | OffPolicyAlgorithm: The loaded model.
-        """
-        return self.algorithm.load(model_path)
 
     def plot_results(self,
         iterations: int,
