@@ -101,7 +101,6 @@ class NETT:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
-        # register run config
         self.mode = mode
         self.verbosity = verbosity
         self.num_brains = num_brains
@@ -196,6 +195,7 @@ class NETT:
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
+    # TODO: Add option to not have a config here either?
     @staticmethod
     def analyze(config: str,
                 run_dir: str | Path,
@@ -279,7 +279,7 @@ class NETT:
         # create jobs
         
         # create set of all conditions
-        all_conditions: set[str] = set(self.environment.config.conditions)
+        all_conditions: set[str] = set(self.environment.imprinting_conditions)
     
         # check if user-defined their own conditions
         if (conditions is not None):
@@ -291,7 +291,7 @@ class NETT:
                 # create set of all brain-environment combinations for user-defined conditions
                 task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
             else:
-                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.imprinting_conditions}")
         # default to all conditions
         else:
             # create set of all brain-environment combinations
@@ -386,7 +386,7 @@ class NETT:
                 # initialize environment with necessary arguments
                 test_environment = self._wrap_env("test", kwargs)
                 # calculate iterations
-                iterations = self.test_eps * test_environment.config.num_conditions
+                iterations = self.test_eps * test_environment.num_test_conditions
 
                 # Q: Why in test but not in train?
                 if not issubclass(brain.algorithm, RecurrentPPO):
