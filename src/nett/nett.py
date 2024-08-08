@@ -40,7 +40,7 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment", body2: "nett.Body", environment2: "nett.Environment") -> None:
+    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
         """
         Initialize the NETT class.
         """
@@ -49,8 +49,6 @@ class NETT:
         self.brain = brain
         self.body = body
         self.environment = environment        
-        self.body2 = body2
-        self.environment2 = environment2
         # for NVIDIA memory management
         # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInit()
@@ -110,7 +108,6 @@ class NETT:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
-        # register run config
         self.mode = mode
         self.verbosity = verbosity
         self.num_brains = num_brains
@@ -167,9 +164,8 @@ class NETT:
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
+    # TODO: Add option to not have a config here either?
     @staticmethod
-    def analyze(config: str,
-                run_dir: str | Path,
     def analyze(config: str,
                 run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
@@ -368,7 +364,7 @@ class NETT:
                 if self.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env2("train", job.port, kwargs) as train_environment:
+                        with self._wrap_env("train", job.port, kwargs) as train_environment:
                             # calculate iterations
                             iterations = self.steps_per_episode * self.train_eps
                             # calculate memory allocated under train conditions
@@ -488,7 +484,7 @@ class NETT:
         # create jobs
         
         # create set of all conditions
-        all_conditions: set[str] = set(self.environment.config.conditions)
+        all_conditions: set[str] = set(self.environment.imprinting_conditions)
     
         # check if user-defined their own conditions
         if (conditions is not None):
@@ -500,7 +496,7 @@ class NETT:
                 # create set of all brain-environment combinations for user-defined conditions
                 task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
             else:
-                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.imprinting_conditions}")
         # default to all conditions
         else:
             # create set of all brain-environment combinations
@@ -569,7 +565,6 @@ class NETT:
 
         return jobs, waitlist
 
-
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
         memory_status = {
@@ -604,10 +599,3 @@ class NETT:
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
-    
-    def _wrap_env2(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
-        copy_environment2 = deepcopy(self.environment2)
-        copy_environment2.initialize(mode, port, **kwargs)
-        copy_body2 = deepcopy(self.body2)
-        # apply wrappers (body)
-        return copy_body2(copy_environment2)

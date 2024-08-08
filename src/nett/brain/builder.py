@@ -43,7 +43,7 @@ class Brain:
         reward (str, optional): The type of reward used for training the brain. Defaults to "supervised".
         batch_size (int, optional): The batch size used for training. Defaults to 512.
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to False.
+        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
         custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
 
@@ -62,11 +62,10 @@ class Brain:
         reward: str = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
-        train_encoder: bool = False,
+        train_encoder: bool = True,
         seed: int = 12,
-        custom_encoder_args: dict[str, str]= {}
-        seed: int = 12,
-        custom_encoder_args: dict[str, str]= {}
+        custom_encoder_args: dict[str, str]= {},
+        custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
     ) -> None:
         """Constructor method
         """
@@ -81,11 +80,14 @@ class Brain:
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
-        self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
+
+        self.embedding_dim = embedding_dim
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
+        self.custom_policy_arch = custom_policy_arch
+
 
     def estimate_train(
         self,
@@ -226,9 +228,6 @@ class Brain:
         paths: dict[str, Path],
         save_checkpoints: bool,
         checkpoint_freq: int):
-        paths: dict[str, Path],
-        save_checkpoints: bool,
-        checkpoint_freq: int):
         """
         Train the brain.
 
@@ -258,13 +257,15 @@ class Brain:
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
-                "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
-                
+                "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
             }
-        } if self.encoder else {}
+        } if self.encoder is not None else {}
 
         if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+        
+        if self.custom_policy_arch:
+            policy_kwargs["net_arch"] = self.custom_policy_arch
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
