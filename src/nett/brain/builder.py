@@ -63,7 +63,8 @@ class Brain:
         buffer_size: int = 2048,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_encoder_args: dict[str, str]= {}
+        custom_encoder_args: dict[str, str]= {},
+        custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
     ) -> None:
         """Constructor method
         """
@@ -91,6 +92,8 @@ class Brain:
         self.buffer_size = buffer_size
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
+        self.custom_policy_arch = custom_policy_arch
+
 
     def train(
         self,
@@ -136,6 +139,9 @@ class Brain:
 
         if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
+        
+        if self.custom_policy_arch:
+            policy_kwargs["net_arch"] = self.custom_policy_arch
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
