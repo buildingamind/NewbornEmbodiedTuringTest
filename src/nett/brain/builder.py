@@ -42,7 +42,7 @@ class Brain:
         reward (str, optional): The type of reward used for training the brain. Defaults to "supervised".
         batch_size (int, optional): The batch size used for training. Defaults to 512.
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to False.
+        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
         custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
 
@@ -61,7 +61,7 @@ class Brain:
         reward: str = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
-        train_encoder: bool = False,
+        train_encoder: bool = True,
         seed: int = 12,
         custom_encoder_args: dict[str, str]= {}
     ) -> None:
