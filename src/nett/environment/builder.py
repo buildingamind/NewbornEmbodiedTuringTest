@@ -7,6 +7,8 @@ import subprocess
 from typing import Optional, Any
 
 import numpy as np
+import yaml
+
 from gym import Wrapper
 from mlagents_envs.environment import UnityEnvironment
 
@@ -16,8 +18,6 @@ try :
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
-from nett.environment import configs
-from nett.environment.configs import NETTConfig, list_configs
 from nett.utils.environment import Logger, port_in_use
 
 class Environment(Wrapper):
@@ -31,7 +31,6 @@ class Environment(Wrapper):
     It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
 
     Args:
-        config (str | NETTConfig): The configuration for the environment. It can be either a string representing the name of a pre-defined configuration, or an instance of the NETTConfig class.
         executable_path (str): The path to the Unity executable file.
         display (int, optional): The display number to use for the Unity environment. Defaults to 0.
         base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
@@ -45,10 +44,9 @@ class Environment(Wrapper):
     Example:
 
         >>> from nett import Environment
-        >>> env = Environment(config="identityandview", executable_path="path/to/executable")
+        >>> env = Environment(executable_path="path/to/executable")
     """
     def __init__(self,
-                 config: str | NETTConfig,
                  executable_path: str,
                  display: int = 0,
                  base_port: int = 5004,
@@ -59,49 +57,20 @@ class Environment(Wrapper):
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        self.config = self._validate_config(config)
-        # TODO (v0.5) what might be a way to check if it is a valid executable path?
-        self.executable_path = executable_path
+
+        self.executable_path = self._validate_executable_path(executable_path)
         self.base_port = base_port
         self.record_chamber = record_chamber
         self.record_agent = record_agent
         self.recording_frames = recording_frames
         self.display = display
+        # grab the experiment design from the executable directory
+        self.num_test_conditions, self.imprinting_conditions = self._get_experiment_design(self.executable_path)
 
         # set the correct permissions on the executable
         self._set_executable_permission()
         # set the display for Unity environment
         self._set_display()
-
-    def _validate_config(self, config: str | NETTConfig) -> NETTConfig:
-        """
-        Validates the configuration for the environment.
-
-        Args:
-            config (str | NETTConfig): The configuration to validate.
-
-        Returns:
-            NETTConfig: The validated configuration.
-
-        Raises:
-            ValueError: If the configuration is not a valid string or an instance of NETTConfig.
-        """
-        # for when config is a str
-        if isinstance(config, str):
-            config_dict = {config_str.lower(): config_str for config_str in list_configs()}
-            if config not in config_dict.keys():
-                raise ValueError(f"Should be one of {config_dict.keys()}")
-
-            config = getattr(configs, config_dict[config])()
-
-        # for when config is a NETTConfig
-        elif isinstance(config, NETTConfig):
-            pass
-
-        else:
-            raise ValueError(f"Should either be one of {list(config_dict.keys())} or a subclass of NETTConfig")
-
-        return config
 
     def _set_executable_permission(self) -> None:
         """
@@ -230,6 +199,60 @@ class Environment(Wrapper):
             numpy.ndarray: The initial state of the environment.
         """
         return self.env.reset(**kwargs)
+    
+    @staticmethod
+    def _get_experiment_design(executable_path: str) -> tuple[int, list[str]]:
+        """
+        Gets the experiment design from the executable directory.
+
+        Args:
+            executable_path (str): The path to the Unity executable file.
+
+        Returns:
+            tuple[int, list[str]]: A tuple containing the number of test conditions and the list of imprinting conditions.
+        """
+        # get the experiment design from the executable directory
+        parent_dir = os.path.dirname(executable_path)
+        yaml_file: str = [file for file in os.listdir(parent_dir) if file.endswith(".yaml")][0]
+        if not yaml_file:
+            raise FileNotFoundError("No experiment configuration file found in the executable directory. You may be using a Unity executable meant for nett versions prior to v0.5.0.")
+
+        yaml_file = os.path.join(parent_dir, yaml_file)
+
+        # read the yaml file
+        with open(yaml_file, "r") as file:
+            yaml_data = yaml.safe_load(file)
+
+            try:
+                num_test_conditions: int = yaml_data["num_test_conditions"]
+                imprinting_conditions: list[str] = yaml_data["imprinting_conditions"]
+            except KeyError:
+                raise KeyError("Experiment configuration file is not properly formatted. It should contain 'num_test_conditions' and 'imprinting_conditions' keys.")
+
+        return num_test_conditions, imprinting_conditions
+    
+    @staticmethod
+    def _validate_executable_path(executable_path: str) -> str:
+        """
+        Validates the executable path for the environment.
+    
+        Args:
+            executable_path (str): The executable path to validate.
+    
+        Returns:
+            str: The validated executable path.
+    
+        Raises:
+            ValueError: If the executable path is not a valid string.
+            FileNotFoundError: If the executable path does not exist.
+        """
+        if not isinstance(executable_path, str):
+            raise ValueError("Should be a string")
+        
+        if not os.path.exists(executable_path):
+            raise FileNotFoundError("Executable path does not exist")
+        
+        return executable_path
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
