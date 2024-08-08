@@ -120,6 +120,14 @@ class NETT:
         self.save_checkpoints = save_checkpoints
         self.checkpoint_freq = checkpoint_freq
         self.base_port = base_port
+
+        # calculate iterations
+        if self.mode in ["train", "full"]:
+            self.train_iterations = self.steps_per_episode * self.train_eps
+        if self.mode in ["test", "full"]:
+            self.test_iterations = self.test_eps * self.environment.num_test_conditions
+            if not issubclass(self.brain.algorithm, RecurrentPPO):
+                self.test_iterations *= self.steps_per_episode
         
         # schedule jobs
         jobs, waitlist = self._schedule_jobs(conditions=conditions)
@@ -239,8 +247,8 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job) -> Future:
-
-        # for train
+        # mode, brain, steps_per_episode, batch_mode, _wrap_env, train_eps/test_eps, save_checkpoints, checkpoint_freq, logger
+        # const, const, const, const, const, func, 
         if self.mode not in ["train", "test", "full"]:
             raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
 
@@ -261,21 +269,17 @@ class NETT:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, kwargs) as train_environment:
-                    # calculate iterations
-                    iterations = self.steps_per_episode * self.train_eps
                     # train
                     brain.train(
                         env=train_environment,
-                        iterations=iterations,
+                        iterations=self.train_iterations,
                         device=job.device,
                         index=job.index,
                         paths=job.paths,
                         save_checkpoints=self.save_checkpoints,
                         checkpoint_freq=self.checkpoint_freq,)
-                # train_environment.close()
             except Exception as e:
                 self.logger.error(f"Error in training: {e}", exc_info=1)
-                # train_environment.close()
                 exit()    
 
         # for test
@@ -283,23 +287,15 @@ class NETT:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("test", job.port, kwargs) as test_environment:
-                    # calculate iterations
-                    iterations = self.test_eps * test_environment.config.num_conditions
-
-                    if not issubclass(brain.algorithm, RecurrentPPO):
-                        iterations *= self.steps_per_episode
-
                     brain.test(
                         env=test_environment,
-                        iterations=iterations,
+                        iterations=self.test_iterations,
                         model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                         rec_path = str(job.paths["env_recs"]),
                         device=job.device,
                         index=job.index)
-                # test_environment.close()
             except Exception as e:
                 self.logger.error(f"Error in testing: {e}", exc_info=1)
-                # test_environment.close()
                 exit()
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
@@ -323,7 +319,7 @@ class NETT:
                 # create a test job to estimate memory
                 job = Job(
                     brain_id=0, 
-                    condition=self.environment.config.conditions[0], 
+                    condition=self.environment.imprinting_conditions[0], 
                     device=most_free_gpu, 
                     dir=tmp_path, 
                     index=0,
@@ -352,12 +348,10 @@ class NETT:
                     try:
                         # initialize environment with necessary arguments
                         with self._wrap_env("train", job.port, kwargs) as train_environment:
-                            # calculate iterations
-                            iterations = self.steps_per_episode * self.train_eps
                             # calculate memory allocated under train conditions
                             brain.estimate_train(
                                 env=train_environment,
-                                iterations=iterations, #TODO: remove need to calculate iterations
+                                iterations=self.train_iterations, #TODO: remove need to calculate iterations
                                 device=job.device,
                                 paths=job.paths,
                                 save_checkpoints=False,
