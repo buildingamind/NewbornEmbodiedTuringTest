@@ -101,7 +101,6 @@ class NETT:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
-        # register run config
         self.mode = mode
         self.verbosity = verbosity
         self.num_brains = num_brains

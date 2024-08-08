@@ -38,9 +38,6 @@ class Environment(Wrapper):
         record_agent (bool, optional): Whether to record the agent. Defaults to False.
         recording_frames (int, optional): The number of frames to record. Defaults to 1000.
 
-    Raises:
-        ValueError: If the configuration is not a valid string or an instance of NETTConfig.
-
     Example:
 
         >>> from nett import Environment
@@ -210,6 +207,10 @@ class Environment(Wrapper):
 
         Returns:
             tuple[int, list[str]]: A tuple containing the number of test conditions and the list of imprinting conditions.
+
+        Raises:
+            FileNotFoundError: If the experiment configuration file is not found.
+            KeyError: If the experiment configuration file is not properly formatted.
         """
         # get the experiment design from the executable directory
         parent_dir = os.path.dirname(executable_path)
