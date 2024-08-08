@@ -135,7 +135,7 @@ class Brain:
             if len(self.custom_encoder_args) > 0:
                 policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
-            self.model = self.algorithm(
+            model = self.algorithm(
                 self.policy,
                 envs,
                 batch_size=self.batch_size,
@@ -146,18 +146,19 @@ class Brain:
 
             # setup tensorboard logger and attach to model
             tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
-            self.model.set_logger(tb_logger)
+            model.set_logger(tb_logger)
             
             # set encoder as eval only if train_encoder is not True
             if not self.train_encoder:
-                self.model = self._set_encoder_as_eval(self.model)
+                model = self._set_encoder_as_eval(model)
                 self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
             # initialize callbacks
+            self.logger.info("Initializing Callbacks")
             callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=None, estimate_memory=True, device=device)
 
             # train
-            self.model.learn(
+            model.learn(
                 total_timesteps=self.buffer_size+10,
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
@@ -183,7 +184,7 @@ class Brain:
         try:
             self.logger.info("Running Memory Estimate")
             # load previously trained model from save_dir, if it exists
-            self.model = self.load(model_path, device_type, device)
+            model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
 
             # validate environment
             env = self._validate_env(env)
@@ -200,7 +201,7 @@ class Brain:
                 # episode start signals are used to reset the lstm states
                 episode_starts = np.ones((num_envs,), dtype=bool)
 
-                self.model.predict(
+                model.predict(
                     obs,
                     state=None,
                     episode_start=episode_starts,
@@ -264,7 +265,7 @@ class Brain:
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
-            self.model = self.algorithm(
+            model = self.algorithm(
                 self.policy,
                 envs,
                 batch_size=self.batch_size,
@@ -279,20 +280,21 @@ class Brain:
 
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
-        self.model.set_logger(tb_logger)
+        model.set_logger(tb_logger)
         
         self.logger.info(f"Tensorboard logs saved at {str(paths['logs'])}")
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
-            self.model = self._set_encoder_as_eval(self.model)
+            model = self._set_encoder_as_eval(model)
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
+        self.logger.info("Initializing Callbacks")
         callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=index, device=device)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
-        self.model.learn(
+        model.learn(
             total_timesteps=iterations,
             tb_log_name=self.algorithm.__name__,
             progress_bar=False,
@@ -302,26 +304,18 @@ class Brain:
         # save
         ## create save directory
         paths["model"].mkdir(parents=True, exist_ok=True)
-        self.save_encoder_policy_network(paths["model"])
-        print("Save feature extractor")
-        
-        ## create save directory
-        paths["model"].mkdir(parents=True, exist_ok=True)
-        self.save_encoder_policy_network(paths["model"])
-        print("Save feature extractor")
+        self.save_encoder_policy_network(model.policy, paths["model"])
+        print("Saved feature extractor")
         
         save_path = f"{paths['model'].joinpath('latest_model.zip')}"
-        self.save(save_path)
+        model.save(save_path)
         self.logger.info(f"Saved model at {save_path}")
-        # delete model to free up space
-        del self.model
+
         # plot reward graph
         self.plot_results(iterations=iterations,
                           model_log_dir=paths["env_logs"],
                           plots_dir=paths["plots"],
-                          name="reward_graph")
-        
-        
+                          name="reward_graph")   
 
     def test(
         self,
@@ -343,7 +337,7 @@ class Brain:
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
+        model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
 
         # validate environment
         env = self._validate_env(env)
@@ -373,7 +367,7 @@ class Brain:
                     episode_starts = np.ones((num_envs,), dtype=bool)
                     episode_length = 0
                     while not done:
-                        action, lstm_states = self.model.predict(
+                        action, lstm_states = model.predict(
                             obs,
                             state=lstm_states,
                             episode_start=episode_starts,
@@ -395,7 +389,7 @@ class Brain:
                 obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    action, _ = self.model.predict(obs, deterministic=True) # action, states
+                    action, _ = model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
@@ -410,17 +404,9 @@ class Brain:
             vr.enabled = False
         
         t.close()
-
-    def save(self, path: str) -> None:
-        """
-        Save the trained model.
-
-        Args:
-            path (str): The path to save the model.
-        """
-        self.model.save(path)
-        
-    def save_encoder_policy_network(self, path: Path):
+    
+    @staticmethod
+    def save_encoder_policy_network(policy, path: Path):
         """
         Saves the policy and feature extractor of the agent's model.
 
@@ -433,19 +419,18 @@ class Brain:
             None
         """        
         ## save policy
-        policy = self.model.policy
         path.mkdir(parents=True, exist_ok=True)
         policy.save(os.path.join(path, "policy.pkl"))
         
         ## save encoder
-        encoder = self.model.policy.features_extractor.state_dict()
+        encoder = policy.features_extractor.state_dict()
         save_path = os.path.join(path, "feature_extractor.pth")
         torch.save(encoder, save_path)
-        
-        self.logger.info(f"Saved feature_extractor: {save_path}")
+
         return
 
-    def plot_results(self,
+    @staticmethod
+    def plot_results(
         iterations: int,
         model_log_dir: Path,
         plots_dir: Path,
@@ -468,7 +453,8 @@ class Brain:
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
         plt.clf()
 
-    def _validate_encoder(self, encoder: Any | str) -> BaseFeaturesExtractor:
+    @staticmethod
+    def _validate_encoder(encoder: Any | str) -> BaseFeaturesExtractor:
         """
         Validate the encoder.
 
@@ -489,11 +475,10 @@ class Brain:
             # TODO (v0.3) pass dummy torch.tensor on "meta" device to validate embedding dim
             pass
 
-        if encoder and not hasattr(self, 'train_encoder'):
-            raise ValueError("encoder passed without setting train_encoder, should be one of: [True, False]")
         return encoder
 
-    def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    @staticmethod
+    def _validate_algorithm(algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Validate the optimization algorithm.
 
@@ -517,8 +502,6 @@ class Brain:
                 
             except:
                 algorithm = getattr(sb3_contrib, algorithm)
-                
-        
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
@@ -531,7 +514,8 @@ class Brain:
         
         return algorithm
 
-    def _validate_policy(self, policy: str | BasePolicy) -> str | BasePolicy:
+    @staticmethod
+    def _validate_policy(policy: str | BasePolicy) -> str | BasePolicy:
         """
         Validate the policy model.
 
@@ -561,7 +545,8 @@ class Brain:
 
         return policy
 
-    def _validate_reward(self, reward: str) -> str:
+    @staticmethod
+    def _validate_reward(reward: str) -> str:
         """
         Validate the reward type.
 
@@ -579,7 +564,8 @@ class Brain:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
-    def _validate_env(self, env: "gym.Env") -> "gym.Env":
+    @staticmethod
+    def _validate_env(env: "gym.Env") -> "gym.Env":
         """
         Validate the environment.
 
@@ -598,7 +584,8 @@ class Brain:
             raise ValueError(f"Failed training env check with {str(ex)}")
         return env
 
-    def _set_encoder_as_eval(self, model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    @staticmethod
+    def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 
@@ -622,7 +609,8 @@ class Brain:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
 
-    def _initialize_callbacks(self, paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int = 0) -> CallbackList:
+    @staticmethod
+    def _initialize_callbacks(paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int = 0) -> CallbackList:
         """
         Initialize the callbacks for training.
 
@@ -635,7 +623,6 @@ class Brain:
         Returns:
             CallbackList: The list of callbacks for training.
         """
-        self.logger.info("Initializing Callbacks")
         hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
         # creates the parallel progress bars
