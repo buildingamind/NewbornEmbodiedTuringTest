@@ -216,7 +216,7 @@ class Environment(Wrapper):
         parent_dir = os.path.dirname(executable_path)
         yaml_files: str = [file for file in os.listdir(parent_dir) if file.endswith(".yaml")]
         if not yaml_files:
-            raise FileNotFoundError("No experiment configuration file found in the executable directory. You may be using a Unity executable meant for nett versions prior to v0.5.0.")
+            raise FileNotFoundError("No experiment configuration file found in the executable directory. You may be using a Unity executable meant for nett versions prior to v0.5.0. Please update the Unity executable to the latest version or use nett v0.4.1 or older.")
 
         yaml_file: str = os.path.join(parent_dir, yaml_files[0])
 
