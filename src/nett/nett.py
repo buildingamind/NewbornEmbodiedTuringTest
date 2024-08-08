@@ -154,12 +154,7 @@ class NETT:
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
 
-    def summary(self) -> None: # TODO: only raises a NotImplementedError for now
-        '''Generate a toml file and save it to the run directory.'''
-        raise NotImplementedError
-
-
-# TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
+    # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
@@ -256,7 +251,7 @@ class NETT:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # common environment kwargs
-        kwargs = {"rewarded": bool(brain.reward == "supervised"),
+        kwargs = {"rewarded": bool(self.brain.reward == "supervised"),
                   "rec_path": str(job.paths["env_recs"]),
                   "log_path": str(job.paths["env_logs"]),
                   "condition": job.condition,
@@ -418,16 +413,13 @@ class NETT:
             memory_allocated = self.job_memory * (1024 * 1024 * 1024)
         return memory_allocated
 
-    def _filter_job_sheet(self, job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
+    @staticmethod
+    def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
         # TODO include waitlisted jobs
         runStatus = lambda job_future: {'running': job_future.running()}
         jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
-    
-    def _most_free_GPU(self):
-        free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
-        return free_memory.index(max(free_memory))
 
     def _get_memory_status(self) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
@@ -565,16 +557,9 @@ class NETT:
 
         return jobs, waitlist
 
-    def _get_memory_status(self) -> dict[int, dict[str, int]]:
-        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {
-            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in self.devices
-        }
-        return memory_status
-
-    def _validate_device_type(self, device_type: str) -> str:
-        # TODO (v0.5) add automatic type checking usimg pydantic or similar
+    @staticmethod
+    def _validate_device_type(device_type: str) -> str:
+        # TODO (v0.5) add automatic type checking using pydantic or similar
         if device_type not in ["cuda"]:
             raise ValueError("Should be one of ['cuda']")
 
