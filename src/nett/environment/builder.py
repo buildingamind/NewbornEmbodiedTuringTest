@@ -214,11 +214,11 @@ class Environment(Wrapper):
         """
         # get the experiment design from the executable directory
         parent_dir = os.path.dirname(executable_path)
-        yaml_file: str = [file for file in os.listdir(parent_dir) if file.endswith(".yaml")][0]
-        if not yaml_file:
+        yaml_files: str = [file for file in os.listdir(parent_dir) if file.endswith(".yaml")]
+        if not yaml_files:
             raise FileNotFoundError("No experiment configuration file found in the executable directory. You may be using a Unity executable meant for nett versions prior to v0.5.0.")
 
-        yaml_file = os.path.join(parent_dir, yaml_file)
+        yaml_file: str = os.path.join(parent_dir, yaml_files[0])
 
         # read the yaml file
         with open(yaml_file, "r") as file:
