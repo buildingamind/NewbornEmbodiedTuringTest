@@ -78,6 +78,14 @@ class Brain:
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
+
+        if (self.encoder is None):
+            self.embedding_dim = None
+        elif (embedding_dim is None):
+            self.embedding_dim = inspect.signature(self.encoder).parameters["features_dim"].default
+        else:
+            self.embedding_dim = embedding_dim
+
         self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
         self.batch_size = batch_size
         self.buffer_size = buffer_size
