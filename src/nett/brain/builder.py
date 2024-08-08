@@ -45,6 +45,7 @@ class Brain:
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to False.
         seed (int, optional): The random seed used for training. Defaults to 12.
+        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
 
     Example:
 
@@ -64,6 +65,8 @@ class Brain:
         train_encoder: bool = False,
         seed: int = 12,
         custom_encoder_args: dict[str, str]= {}
+        seed: int = 12,
+        custom_encoder_args: dict[str, str]= {}
     ) -> None:
         """Constructor method
         """
@@ -78,7 +81,7 @@ class Brain:
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
         self.reward = self._validate_reward(reward) if reward else None
-        self.embedding_dim = embedding_dim
+        self.embedding_dim = embedding_dim if embedding_dim else inspect.signature(self.encoder).parameters["features_dim"].default
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.seed = seed
@@ -223,6 +226,9 @@ class Brain:
         paths: dict[str, Path],
         save_checkpoints: bool,
         checkpoint_freq: int):
+        paths: dict[str, Path],
+        save_checkpoints: bool,
+        checkpoint_freq: int):
         """
         Train the brain.
 
@@ -245,10 +251,9 @@ class Brain:
 
         # initialize environment
         log_path = paths["env_logs"]
-        # env = Monitor(env, str(log_path))
-        
+
         envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
-        
+
         # build model
         policy_kwargs = {
             "features_extractor_class": self.encoder,
@@ -257,13 +262,12 @@ class Brain:
                 
             }
         } if self.encoder else {}
-        
-        if len(self.custom_encoder_args) >0:
+
+        if len(self.custom_encoder_args) > 0:
             policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
             
         self.logger.info(f'Training with {self.algorithm.__name__}')
         try:
-            
             self.model = self.algorithm(
                 self.policy,
                 envs,
@@ -274,10 +278,9 @@ class Brain:
                 device=torch.device(device_type, device))
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
+            self.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
-        
-        self.logger.info(f"Model initialized with {self.policy} policy and {self.encoder} encoder")
+
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
         self.model.set_logger(tb_logger)
@@ -306,6 +309,11 @@ class Brain:
         self.save_encoder_policy_network(paths["model"])
         print("Save feature extractor")
         
+        ## create save directory
+        paths["model"].mkdir(parents=True, exist_ok=True)
+        self.save_encoder_policy_network(paths["model"])
+        print("Save feature extractor")
+        
         save_path = f"{paths['model'].joinpath('latest_model.zip')}"
         self.save(save_path)
         self.logger.info(f"Saved model at {save_path}")
@@ -317,11 +325,12 @@ class Brain:
                           plots_dir=paths["plots"],
                           name="reward_graph")
         
+        
 
     def test(
         self,
-        env,
-        iterations,
+        env: "gym.Env",
+        iterations: int,
         model_path: str,
         rec_path: str,
         device_type: str,
@@ -334,10 +343,13 @@ class Brain:
             env (gym.Env): The environment used for testing.
             iterations (int): The number of testing iterations.
             model_path (str): The path to the trained model.
+            rec_path (str): The path to save the test video.
+            device_type (str): The type of device used for training.
+            device (int): The device index used for training.
             index (int): The index of the model to test, needed for tracking bar.
         """
         # load previously trained model from save_dir, if it exists
-        self.model = self.load(model_path, device_type, device)
+        self.model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device(device_type, device))
 
         # validate environment
         env = self._validate_env(env)
@@ -349,12 +361,10 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        print(rec_path)
         try:
-            vr = VideoRecorder(env=env,
+            vr = VideoRecorder(env=envs,
             path="{}/agent_{}.mp4".format(rec_path, \
                 str(index)), enabled=True)
-            
             
             # for when algorithm is RecurrentPPO
             if issubclass(self.algorithm, RecurrentPPO):
@@ -386,7 +396,7 @@ class Brain:
 
             # for all other algorithms
             else:
-                #iterations = 50*20*200 # 50 conditions of 20 steps each
+            #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
@@ -397,14 +407,14 @@ class Brain:
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-
-                    # vr.capture_frame()    
-
-                # vr.close()
-                # vr.enabled = False
-        except Exception as ex:
-            print(str(ex))
-            
+                    vr.capture_frame()    
+        except Exception as e:
+            self.logger.exception(f"Failed to test model with error: {str(e)}")
+            raise e
+        finally:
+            vr.close()
+            vr.enabled = False
+        
         t.close()
 
     def save(self, path: str) -> None:
@@ -440,19 +450,6 @@ class Brain:
         
         self.logger.info(f"Saved feature_extractor: {save_path}")
         return
-
-    def load(self, model_path: str | Path, device_type: str, 
-        device: int,) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
-        """
-        Load a trained model.
-
-        Args:
-            model_path (str | Path): The path to the trained model.
-
-        Returns:
-            OnPolicyAlgorithm | OffPolicyAlgorithm: The loaded model.
-        """
-        return self.algorithm.load(model_path, device = torch.device(device_type, device))
 
     def plot_results(self,
         iterations: int,
@@ -500,8 +497,6 @@ class Brain:
 
         if encoder and not hasattr(self, 'train_encoder'):
             raise ValueError("encoder passed without setting train_encoder, should be one of: [True, False]")
-
-        
         return encoder
 
     def _validate_algorithm(self, algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
@@ -620,7 +615,7 @@ class Brain:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
-        
+
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model

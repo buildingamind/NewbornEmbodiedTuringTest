@@ -30,7 +30,9 @@ from nett.brain import list_encoders, list_algorithms, list_policies
 from nett.environment import list_configs
 
 # release version
-__version__ = "0.4.0"
+from ._version import __version__
+
+# change permissions of the ml-agents binaries directory
 
 # path to store library cache (such as configs etc)
 cache_dir = Path.joinpath(Path.home(), ".cache", "nett") #TODO: See if and how this is used. No mention of it in the codebase.
@@ -41,9 +43,7 @@ logger = logging.getLogger(__name__)
 
 # path to store ml-agents binaries
 for tmp_dir in ["/tmp/ml-agents-binaries", "/tmp/ml-agents-binaries/binaries", "/tmp/ml-agents-binaries/tmp"]:
-  # TODO: May need to allow for permissions other than X777
   if stat.S_IMODE(os.stat(tmp_dir).st_mode) % 0o1000 != 0o777:
-    # TODO: May need to check for permissions other than W_OK
     if os.stat(tmp_dir).st_uid == os.getuid() or os.access(tmp_dir, os.W_OK):
       os.chmod(tmp_dir, 0o1777)
     else:

@@ -86,10 +86,12 @@ class NETT:
             test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
             batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
             device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
+            device_type (str, optional): The type of device to be used for training and testing. It can only be "cuda" currently. Defaults to "cuda".
             devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
             description (str, optional): A description of the run. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbosity (int, optional): The verbosity level of the run. Defaults to 1.
             run_id (str, optional): The run ID. Defaults to ''.
@@ -168,6 +170,8 @@ class NETT:
     @staticmethod
     def analyze(config: str,
                 run_dir: str | Path,
+    def analyze(config: str,
+                run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
@@ -211,6 +215,10 @@ class NETT:
 
         if not chick_data_dir.exists():
             raise ValueError(f"'{config}' is not a valid config.")
+        elif not run_dir.exists():
+            raise ValueError(f"'{run_dir}' is not a valid run directory.")
+        elif not analysis_dir.exists():
+            raise ValueError(f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package.")
 
         # translate bar_order for R to read
         bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
@@ -252,7 +260,7 @@ class NETT:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # common environment kwargs
-        kwargs = {"rewarded": bool(brain.reward),
+        kwargs = {"rewarded": bool(brain.reward == "supervised"),
                   "rec_path": str(job.paths["env_recs"]),
                   "log_path": str(job.paths["env_logs"]),
                   "condition": job.condition,
@@ -561,6 +569,14 @@ class NETT:
 
         return jobs, waitlist
 
+
+    def _get_memory_status(self) -> dict[int, dict[str, int]]:
+        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
+        memory_status = {
+            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
+            for device_id in self.devices
+        }
+        return memory_status
 
     def _validate_device_type(self, device_type: str) -> str:
         # TODO (v0.5) add automatic type checking usimg pydantic or similar
