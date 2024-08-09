@@ -6,13 +6,6 @@ from nett.body import types
 from nett.body.wrappers.dvs import DVSWrapper
 # from nett.body import ascii_art
 
-# this will have the necessary wrappers before the observations interact with the brain,
-# because it is the body that determines how the the observations will be processed.
-# specifically, in the case of the two-eyed agent, because the agent has two eyes, the observations are stereo
-# and need to be processed differently before they make it to the brain.
-# the body is the medium through which information travels from the environment to the brain.
-# the brain is limited by what the body can percieve and no information is objective.
-# NO INFORMATION IS OBJECTIVE (!!!!!!)
 class Body:
     """Represents the body of an agent in an environment.
 
