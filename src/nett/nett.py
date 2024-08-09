@@ -101,7 +101,6 @@ class NETT:
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         self.num_brains = num_brains
-        self.job_memory = job_memory
 
         # calculate iterations
         if mode in ["train", "full"]:
