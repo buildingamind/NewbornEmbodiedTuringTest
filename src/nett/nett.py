@@ -113,6 +113,8 @@ class NETT:
 
         Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, output_dir, self.brain.reward)
 
+        devices = self._validate_devices(devices)
+
         # estimate memory for a single job
         if job_memory == "auto":
             job_memory = int(buffer * self._estimate_job_memory(devices, base_port))  
@@ -123,7 +125,7 @@ class NETT:
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs(task_set=task_set, devices=self._validate_devices(devices), job_memory=job_memory, port=base_port)
+        jobs, waitlist = self._schedule_jobs(task_set=task_set, devices=devices, job_memory=job_memory, port=base_port)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
