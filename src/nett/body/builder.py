@@ -6,13 +6,6 @@ from nett.body import types
 from nett.body.wrappers.dvs import DVSWrapper
 # from nett.body import ascii_art
 
-# this will have the necessary wrappers before the observations interact with the brain,
-# because it is the body that determines how the the observations will be processed.
-# specifically, in the case of the two-eyed agent, because the agent has two eyes, the observations are stereo
-# and need to be processed differently before they make it to the brain.
-# the body is the medium through which information travels from the environment to the brain.
-# the brain is limited by what the body can percieve and no information is objective.
-# NO INFORMATION IS OBJECTIVE (!!!!!!)
 class Body:
     """Represents the body of an agent in an environment.
 
@@ -46,7 +39,8 @@ class Body:
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
 
-    def _validate_agent_type(self, type: str) -> str:
+    @staticmethod
+    def _validate_agent_type(type: str) -> str:
         """
         Validate the agent type.
 
@@ -63,7 +57,8 @@ class Body:
             raise ValueError(f"agent type must be one of {types}")
         return type
 
-    def _validate_dvs(self, dvs: bool) -> bool:
+    @staticmethod
+    def _validate_dvs(dvs: bool) -> bool:
         """
         Validate the dvs flag.
 
@@ -80,7 +75,8 @@ class Body:
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
-    def _validate_wrappers(self, wrappers: list[Wrapper]) -> list[Wrapper]:
+    @staticmethod
+    def _validate_wrappers(wrappers: list[Wrapper]) -> list[Wrapper]:
         """
         Validate the wrappers.
 
@@ -143,8 +139,14 @@ class Body:
         except Exception as e:
             self.logger.exception(f"Failed to apply wrappers to environment")
             raise e
+        self.env = env
+        return self.env
+    
+    def __enter__(self):
+        return self.env
 
-        return env
+    def __exit__(self):
+        self.env.close()
     
 
     def __repr__(self) -> str:

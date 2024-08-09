@@ -34,7 +34,7 @@ from ._version import __version__
 # change permissions of the ml-agents binaries directory
 
 # path to store library cache (such as configs etc)
-cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
+cache_dir = Path.joinpath(Path.home(), ".cache", "nett") #TODO: See if and how this is used. No mention of it in the codebase.
 
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
