@@ -9,7 +9,6 @@ class Job:
     brain_id (int): id for the brain
     condition (str): condition for the job
     device (int): device to run the job on
-    dir (Path): directory to store the job 
     index (int): index for the job
     port (int): port for the job
   """
@@ -18,7 +17,17 @@ class Job:
 
   @classmethod
   def initialize(cls, mode: str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int, batch_mode: bool, output_dir: Path | str, reward: str) -> None:
+    """Initialize the class
 
+    Args:
+        mode (str): mode for the job
+        steps_per_episode (int): number of steps per episode
+        save_checkpoints (bool): whether to save checkpoints
+        checkpoint_freq (int): frequency to save checkpoints
+        batch_mode (bool): whether to run in batch mode
+        output_dir (Path | str): output directory
+        reward (str): reward type
+    """
     cls.mode = cls._validate_mode(mode)
     cls.steps_per_episode: int = steps_per_episode
     cls.save_checkpoints: bool = save_checkpoints
@@ -57,6 +66,8 @@ class Job:
     return {subdir: Path.joinpath(job_dir, subdir) for subdir in SUBDIRS}
   
   def env_kwargs(self) -> dict[str, Any]:
+    """Get the environment kwargs
+    """
     return {
       "rewarded": bool(self.reward == "supervised"),
       "rec_path": str(self.paths["env_recs"]),

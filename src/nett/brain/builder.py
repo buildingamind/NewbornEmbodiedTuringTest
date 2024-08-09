@@ -196,9 +196,9 @@ class Brain:
         env: "gym.Env",
         iterations: int,
         model_path: str,
-        rec_path: str,
+        rec_path: str, # pylint: disable=unused-argument
         device: int,
-        index: int): # pylint: disable=unused-argument
+        index: int):
         """
         Test the brain.
 
