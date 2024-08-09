@@ -303,7 +303,7 @@ class NETT:
                 index=0,
                 port=base_port)
             
-            job.output_dir = tmp_path
+            job.output_dir = tmp_path #TODO: Fix this as Brain_0 is created and not removed, perhaps instead of tmp dir just use brain_0 dir
             job.save_checkpoints = False
 
             # change initial port for next job
@@ -317,6 +317,21 @@ class NETT:
                 test_iterations = self.test_iterations
                 self.test_iterations = 10
             self._execute_job(job, estimate_memory=True)
+            
+            try:
+                # initializer = mute if not verbose else None
+                # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+                executor = ProcessPoolExecutor(max_workers=1, initializer=None)
+                job_sheet: dict[Future, dict[str, Job]] = {}
+
+                job_future = executor.submit(self._execute_job, job)
+                job_sheet[job_future] = job
+
+                future_wait(job_sheet, return_when=FIRST_COMPLETED)
+
+            except Exception as e:
+                self.logger.exception(f"Error in estimating memory: {e}")
+
             if job.mode == "test":
                 post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
                 self.test_iterations = test_iterations
