@@ -19,7 +19,7 @@ class Job:
   _MODES: Final = ("train", "test", "full")
 
   @classmethod
-  def initialize(cls, mode: str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq, batch_mode, output_dir, reward) -> None:
+  def initialize(cls, mode: str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int, batch_mode: bool, output_dir: Path | str, reward: str) -> None:
 
     cls.mode = cls._validate_mode(mode)
     cls.steps_per_episode: int = steps_per_episode
