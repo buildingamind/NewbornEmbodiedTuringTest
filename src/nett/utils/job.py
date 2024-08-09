@@ -2,8 +2,6 @@
 from pathlib import Path
 from typing import Final, Any
 
-from nett import logger
-
 class Job:
   """Holds information for a job
 
@@ -40,6 +38,8 @@ class Job:
     self.port: int = port
 
     # Initialize logger
+    from nett import logger
+
     self.logger = logger.getChild(__class__.__name__+"."+condition+"."+str(brain_id))
 
   def _configure_paths(self, brain_id: int, condition: str) -> dict[str, Path]:
