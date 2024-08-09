@@ -302,8 +302,7 @@ class NETT:
                 device=most_free_gpu, 
                 index=0,
                 port=base_port)
-            
-            job.output_dir = tmp_path #TODO: Fix this as Brain_0 is created and not removed, perhaps instead of tmp dir just use brain_0 dir
+
             job.save_checkpoints = False
 
             # change initial port for next job
@@ -347,7 +346,7 @@ class NETT:
         finally:
             if tmp_path.exists():
                 shutil.rmtree(tmp_path)
-            job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "Brain_0"
+            job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "brain_0"
             if job_path.exists():
                 shutil.rmtree(job_path)
             # importlib.reload(mlagents_envs)

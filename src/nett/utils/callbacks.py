@@ -13,7 +13,7 @@ from stable_baselines3.common.logger import HParam
 
 # from nett.utils.train import compute_train_performance
 
-from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
 
 
 # TODO (v0.4): refactor needed, especially logging
@@ -71,6 +71,7 @@ class MemoryCallback(BaseCallback):
         super().__init__()
         self.device = device
         self.close = False
+        nvmlInit()
 
     def _on_step(self) -> bool:
         """
