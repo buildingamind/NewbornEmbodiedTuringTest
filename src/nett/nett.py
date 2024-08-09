@@ -282,6 +282,7 @@ class NETT:
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
     def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
+        self.logger.info("Estimating memory for a single job")
         try:
             # create a temporary directory to hold memory estimate during runtime
             tmp_path = Path("./.tmp/").resolve()
