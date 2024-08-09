@@ -56,7 +56,6 @@ class Environment(Wrapper):
         self.logger = logger.getChild(__class__.__name__)
 
         self.executable_path = self._validate_executable_path(executable_path)
-        self.base_port = base_port
         self.record_chamber = record_chamber
         self.record_agent = record_agent
         self.recording_frames = recording_frames
@@ -115,7 +114,7 @@ class Environment(Wrapper):
             args.extend(["-gpu", str(kwargs["device"])])
 
         # create logger
-        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['run_id']}-{mode}",
+        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}",
                           log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger

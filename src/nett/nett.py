@@ -60,14 +60,12 @@ class NETT:
             train_eps: int = 1000,
             test_eps: int = 20,
             batch_mode: bool = True,
-            devices: list[int] | int =  -1,
-            description: Optional[str] = None,
+            devices: Optional[list[int]] =  None,
             job_memory: str | int = "auto",
             buffer: float = 1.2,
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
-            verbosity: int = 1,
-            run_id: str = '',
+            verbose: int = True,
             synchronous=False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
@@ -82,14 +80,11 @@ class NETT:
             train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
             test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
             batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            devices (list[int] | int, optional): The list of devices to be used for training and testing. If -1, all available devices will be used. Defaults to -1.
-            description (str, optional): A description of the run. Defaults to None.
+            devices (list[int], optional): The list of devices to be used for training and testing. If None, all available devices will be used. Defaults to None.
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
-            verbosity (int, optional): The verbosity level of the run. Defaults to 1.
-            run_id (str, optional): The run ID. Defaults to ''.
+            verbose (int, optional): Whether or not to print info statements. Defaults to True.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
             base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
@@ -105,37 +100,32 @@ class NETT:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
 
-        self.mode = mode
-        self.verbosity = verbosity
         self.num_brains = num_brains
-        self.train_eps = train_eps
-        self.test_eps = test_eps
-        self.description = description
         self.job_memory = job_memory
-        self.buffer = buffer
-        self.steps_per_episode = steps_per_episode
-        self.devices: list[int] | int = self._validate_devices(devices)
-        self.batch_mode: bool = batch_mode
-        self.run_id = run_id
-        self.save_checkpoints = save_checkpoints
-        self.checkpoint_freq = checkpoint_freq
-        self.base_port = base_port
 
         # calculate iterations
-        if self.mode in ["train", "full"]:
-            self.train_iterations = self.steps_per_episode * self.train_eps
-        if self.mode in ["test", "full"]:
-            self.test_iterations = self.test_eps * self.environment.num_test_conditions
+        if mode in ["train", "full"]:
+            self.train_iterations = steps_per_episode * train_eps
+        if mode in ["test", "full"]:
+            self.test_iterations = test_eps * self.environment.num_test_conditions
             if not issubclass(self.brain.algorithm, RecurrentPPO):
-                self.test_iterations *= self.steps_per_episode
+                self.test_iterations *= steps_per_episode
+
+        Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, self.output_dir, self.brain.reward)
+
+        # estimate memory for a single job
+        job_memory: int = int(buffer * self._estimate_job_memory(devices, base_port))
+        self.logger.info(f"Estimated memory for a single job: {job_memory}")
+
+        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs(conditions=conditions)
+        jobs, waitlist = self._schedule_jobs(task_set=task_set, devices=self._validate_devices(devices), job_memory=job_memory, port=base_port)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self._launch_jobs(jobs, synchronous, waitlist)
+        job_sheet = self._launch_jobs(jobs, synchronous, waitlist, verbose)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
@@ -249,26 +239,13 @@ class NETT:
     def _execute_job(self, job: Job) -> Future:
         # mode, brain, steps_per_episode, batch_mode, _wrap_env, train_eps/test_eps, save_checkpoints, checkpoint_freq, logger
         # const, const, const, const, const, func, 
-        if self.mode not in ["train", "test", "full"]:
-            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
-
         brain: "nett.Brain" = deepcopy(self.brain)
 
-        # common environment kwargs
-        kwargs = {"rewarded": bool(self.brain.reward == "supervised"),
-                  "rec_path": str(job.paths["env_recs"]),
-                  "log_path": str(job.paths["env_logs"]),
-                  "condition": job.condition,
-                  "run_id": job.brain_id,
-                  "device": job.device,
-                  "episode_steps": self.steps_per_episode,
-                  "batch_mode": self.batch_mode}
-
         # for train
-        if self.mode in ["train", "full"]:
+        if job.mode in ["train", "full"]:
             try:
                 # initialize environment with necessary arguments
-                with self._wrap_env("train", job.port, kwargs) as train_environment:
+                with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
                     # train
                     brain.train(
                         env=train_environment,
@@ -276,17 +253,17 @@ class NETT:
                         device=job.device,
                         index=job.index,
                         paths=job.paths,
-                        save_checkpoints=self.save_checkpoints,
-                        checkpoint_freq=self.checkpoint_freq,)
+                        save_checkpoints=job.save_checkpoints,
+                        checkpoint_freq=job.checkpoint_freq,)
             except Exception as e:
                 self.logger.error(f"Error in training: {e}", exc_info=1)
                 exit()    
 
         # for test
-        if self.mode in ["test", "full"]:
+        if job.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
-                with self._wrap_env("test", job.port, kwargs) as test_environment:
+                with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
                     brain.test(
                         env=test_environment,
                         iterations=self.test_iterations,
@@ -301,7 +278,7 @@ class NETT:
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
     # pylint: disable-next=unused-argument
-    def _estimate_job_memory(self) -> int:
+    def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
         if (self.job_memory == "auto"):
             try:
                 # create a temporary directory to hold memory estimate during runtime
@@ -309,12 +286,12 @@ class NETT:
                 tmp_path.mkdir(parents=True, exist_ok=True)
 
                 # find the GPU with the most free memory
-                free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in self.devices]
+                free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
                 most_free_gpu = free_memory.index(max(free_memory))
 
                 # find unused port
-                while port_in_use(self.base_port):
-                    self.base_port += 1
+                while port_in_use(base_port):
+                    base_port += 1
 
                 # create a test job to estimate memory
                 job = Job(
@@ -323,31 +300,21 @@ class NETT:
                     device=most_free_gpu, 
                     dir=tmp_path, 
                     index=0,
-                    port=self.base_port)
+                    port=base_port)
 
                 # change initial port for next job
-                self.base_port += 1
+                base_port += 1
 
                 # calculate current memory usage for baseline for comparison
                 pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
                 brain: "nett.Brain" = deepcopy(self.brain)
 
-                # common environment kwargs # TODO: pack this into Job as a function. May need to create a partial to remove redundancy
-                kwargs = {"rewarded": bool(brain.reward),
-                        "rec_path": str(job.paths["env_recs"]),
-                        "log_path": str(job.paths["env_logs"]),
-                        "condition": job.condition,
-                        "run_id": job.brain_id,
-                        "device": job.device,
-                        "episode_steps": self.steps_per_episode,
-                        "batch_mode": self.batch_mode}
-
                 # for train
-                if self.mode in ["train", "full"]:
+                if job.mode in ["train", "full"]:
                     try:
                         # initialize environment with necessary arguments
-                        with self._wrap_env("train", job.port, kwargs) as train_environment:
+                        with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
                             # calculate memory allocated under train conditions
                             brain.estimate_train(
                                 env=train_environment,
@@ -355,7 +322,7 @@ class NETT:
                                 device=job.device,
                                 paths=job.paths,
                                 save_checkpoints=False,
-                                checkpoint_freq=self.checkpoint_freq,)
+                                checkpoint_freq=job.checkpoint_freq)
                         # train_environment.close()
 
                         with open(Path("./.tmp/memory_use").resolve(), "r") as file:
@@ -365,7 +332,7 @@ class NETT:
                         # train_environment.close()
                         exit()
 
-                elif self.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
+                elif job.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
                     try:
                         # initialize environment with necessary arguments
                         with self._wrap_env("test", job.port, kwargs) as test_environment:
@@ -380,8 +347,6 @@ class NETT:
                         self.logger.error(f"Error in testing: {e}", exc_info=1)
                         # test_environment.close()
                         exit()
-                else:
-                    raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
                 # estimate memory allocated
                 memory_allocated = post_memory - pre_memory
 
@@ -405,15 +370,16 @@ class NETT:
 
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
-    def _get_memory_status(self) -> dict[int, dict[str, int]]:
+    @staticmethod
+    def _get_memory_status(devices: list[int]) -> dict[int, dict[str, int]]:
         unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
         memory_status = {
             device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in self.devices
+            for device_id in devices
         }
         return memory_status
     
-    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = [], ) -> dict[Future, Job]:
+    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -426,7 +392,7 @@ class NETT:
         """
         try:
             max_workers = 1 if len(jobs) == 1 else None
-            initializer = mute if not self.verbosity else None
+            initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
 
@@ -456,44 +422,36 @@ class NETT:
         except Exception as e:
             print(str(e))
 
-    def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
-        # create jobs
-        
+    @staticmethod
+    def _get_task_set(num_brains: int, all_conditions: list[str], conditions: Optional[list[str]]) -> set[tuple[str,int]]: #TODO: Create a better name for this method
         # create set of all conditions
-        all_conditions: set[str] = set(self.environment.imprinting_conditions)
+        all_conditions_set: set[str] = set(all_conditions)
     
         # check if user-defined their own conditions
         if (conditions is not None):
             # create a set of user-defined conditions
-            user_conditions: set[str] = set(conditions)
+            condition_set: set[str] = set(conditions)
 
-            if user_conditions.issubset(all_conditions):
-                self.logger.info(f"Using user specified conditions: {conditions}")
-                # create set of all brain-environment combinations for user-defined conditions
-                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
-            else:
-                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.imprinting_conditions}")
+            if not condition_set.issubset(all_conditions_set):
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {all_conditions}")
         # default to all conditions
         else:
-            # create set of all brain-environment combinations
-            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
+            condition_set: set[str] = all_conditions_set
 
+        # create set of all brain-environment combinations
+        return set(product(condition_set, set(range(1, num_brains + 1))))
+
+    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int) -> tuple[list[Job], list[Job]]:
+        # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
 
         # assign devices based on memory availability
         # get the list of devices
-        free_devices: list[int] | int = self.devices.copy()
+        free_devices: list[int] = devices.copy()
 
         # get the free memory status for each device
-        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
-
-        #TODO: maybe waitlist all processes and then run them once a the initial job is complete, try running that for a short period of time?
-
-        # estimate memory for a single job
-        job_memory: int = int(self.buffer * self._estimate_job_memory())
-
-        self.logger.info(f"Estimated memory for a single job: {job_memory}")
+        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status(devices).items()}
 
         while task_set:
             # if there are no free devices, add jobs to the waitlist
@@ -519,8 +477,8 @@ class NETT:
                 condition, brain_id = task_set.pop()
 
                 # find unused port
-                while port_in_use(self.base_port):
-                    self.base_port += 1
+                while port_in_use(port):
+                    port += 1
 
                 job = Job(
                     brain_id=brain_id, 
@@ -528,11 +486,11 @@ class NETT:
                     device=free_devices[-1], 
                     dir=self.output_dir, 
                     index=len(jobs),
-                    port=self.base_port)
+                    port=port)
                 jobs.append(job)
 
                 # change initial port for next job
-                self.base_port += 1
+                port += 1
 
                 # allocate memory
                 free_device_memory[free_devices[-1]] -= job_memory
@@ -541,11 +499,11 @@ class NETT:
 
         return jobs, waitlist
 
-    def _validate_devices(self, devices: list[int] | int) -> list[int]:
+    def _validate_devices(self, devices: Optional[list[int]]) -> list[int]:
         # check if the devices are available and return the list of devices to be used
         available_devices: list[int] = list(range(nvmlDeviceGetCount()))
 
-        if devices == -1:
+        if devices is None:
             devices = available_devices
         elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
             raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
