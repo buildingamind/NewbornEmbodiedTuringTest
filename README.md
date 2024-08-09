@@ -96,7 +96,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 1. **Download or Create the Unity Executable**
 
-   Obtain a pre-made Unity executable from [here](https://origins.luddy.indiana.edu/environments/). The executable is required to run the virtual environment.
+   Download and unzip a pre-made Unity executable from [here](https://origins-of-intelligence.com/environments/). The executable is required to run the virtual environment.
 
 2. **Import NETT Components**
 

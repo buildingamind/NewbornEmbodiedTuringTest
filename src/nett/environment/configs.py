@@ -403,3 +403,4 @@ def list_configs() -> list[str]:
     clsmembers = inspect.getmembers(sys.modules[__name__], is_class_member)
     clsmembers = [clsmember[0] for clsmember in clsmembers if clsmember[0] != "NETTConfig"]
     return clsmembers
+

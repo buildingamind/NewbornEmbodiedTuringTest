@@ -27,7 +27,6 @@ from nett.environment.builder import Environment
 from nett.nett import NETT
 
 from nett.brain import list_encoders, list_algorithms, list_policies
-from nett.environment import list_configs
 
 # release version
 from ._version import __version__
@@ -35,7 +34,7 @@ from ._version import __version__
 # change permissions of the ml-agents binaries directory
 
 # path to store library cache (such as configs etc)
-cache_dir = Path.joinpath(Path.home(), ".cache", "nett")
+cache_dir = Path.joinpath(Path.home(), ".cache", "nett") #TODO: See if and how this is used. No mention of it in the codebase.
 
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
