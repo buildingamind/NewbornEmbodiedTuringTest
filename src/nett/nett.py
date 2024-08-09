@@ -338,7 +338,6 @@ class NETT:
             else:
                 with open(Path("./.tmp/memory_use").resolve(), "r") as file:
                     post_memory = int(file.readline())
-
             # estimate memory allocated
             memory_allocated = post_memory - pre_memory
 
@@ -349,6 +348,9 @@ class NETT:
         finally:
             if tmp_path.exists():
                 shutil.rmtree(tmp_path)
+            job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "Brain_0"
+            if job_path.exists():
+                shutil.rmtree(job_path)
             # importlib.reload(mlagents_envs)
 
         return memory_allocated
