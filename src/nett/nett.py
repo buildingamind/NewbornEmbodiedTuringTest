@@ -316,7 +316,6 @@ class NETT:
             if (job.mode == "test"):
                 test_iterations = self.test_iterations
                 self.test_iterations = 10
-            self._execute_job(job, estimate_memory=True)
             
             try:
                 # initializer = mute if not verbose else None
@@ -324,7 +323,7 @@ class NETT:
                 executor = ProcessPoolExecutor(max_workers=1, initializer=None)
                 job_sheet: dict[Future, dict[str, Job]] = {}
 
-                job_future = executor.submit(self._execute_job, job)
+                job_future = executor.submit(self._execute_job, job, True)
                 job_sheet[job_future] = job
 
                 future_wait(job_sheet, return_when=FIRST_COMPLETED)
