@@ -90,7 +90,7 @@ class MemoryCallback(BaseCallback):
             with open("./.tmp/memory_use", "w") as f:
                 f.write(str(used_memory))
             # Close the callback
-            # return False
+            return False
         return True
 
     def _on_rollout_end(self) -> None:

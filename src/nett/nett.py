@@ -96,9 +96,9 @@ class NETT:
             >>> job_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
         # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Set up run directory at: {self.output_dir.resolve()}")
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         self.num_brains = num_brains
         self.job_memory = job_memory
@@ -111,10 +111,13 @@ class NETT:
             if not issubclass(self.brain.algorithm, RecurrentPPO):
                 self.test_iterations *= steps_per_episode
 
-        Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, self.output_dir, self.brain.reward)
+        Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, output_dir, self.brain.reward)
 
         # estimate memory for a single job
-        job_memory: int = int(buffer * self._estimate_job_memory(devices, base_port))
+        if job_memory == "auto":
+            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))  
+        else:
+            job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
         self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
@@ -237,8 +240,6 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job) -> Future:
-        # mode, brain, steps_per_episode, batch_mode, _wrap_env, train_eps/test_eps, save_checkpoints, checkpoint_freq, logger
-        # const, const, const, const, const, func, 
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
@@ -277,89 +278,90 @@ class NETT:
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
-    # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
-        if (self.job_memory == "auto"):
-            try:
-                # create a temporary directory to hold memory estimate during runtime
-                tmp_path = Path("./.tmp/").resolve()
-                tmp_path.mkdir(parents=True, exist_ok=True)
+        try:
+            # create a temporary directory to hold memory estimate during runtime
+            tmp_path = Path("./.tmp/").resolve()
+            tmp_path.mkdir(parents=True, exist_ok=True)
 
-                # find the GPU with the most free memory
-                free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
-                most_free_gpu = free_memory.index(max(free_memory))
+            # find the GPU with the most free memory
+            free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
+            most_free_gpu = free_memory.index(max(free_memory))
 
-                # find unused port
-                while port_in_use(base_port):
-                    base_port += 1
-
-                # create a test job to estimate memory
-                job = Job(
-                    brain_id=0, 
-                    condition=self.environment.imprinting_conditions[0], 
-                    device=most_free_gpu, 
-                    dir=tmp_path, 
-                    index=0,
-                    port=base_port)
-
-                # change initial port for next job
+            # find unused port
+            while port_in_use(base_port):
                 base_port += 1
 
-                # calculate current memory usage for baseline for comparison
-                pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+            # create a test job to estimate memory
+            job = Job(
+                brain_id=0, 
+                condition=self.environment.imprinting_conditions[0], 
+                device=most_free_gpu, 
+                index=0,
+                port=base_port)
+            
+            job.output_dir = tmp_path
 
-                brain: "nett.Brain" = deepcopy(self.brain)
+            # change initial port for next job
+            base_port += 1
 
-                # for train
-                if job.mode in ["train", "full"]:
-                    try:
-                        # initialize environment with necessary arguments
-                        with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                            # calculate memory allocated under train conditions
-                            brain.estimate_train(
-                                env=train_environment,
-                                iterations=self.train_iterations, #TODO: remove need to calculate iterations
-                                device=job.device,
-                                paths=job.paths,
-                                save_checkpoints=False,
-                                checkpoint_freq=job.checkpoint_freq)
-                        # train_environment.close()
+            # calculate current memory usage for baseline for comparison
+            pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-                        with open(Path("./.tmp/memory_use").resolve(), "r") as file:
-                            post_memory = int(file.readline())
-                    except Exception as e:
-                        self.logger.error(f"Error in training: {e}", exc_info=1)
-                        # train_environment.close()
-                        exit()
+            brain: "nett.Brain" = deepcopy(self.brain)
 
-                elif job.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again betweenn train and test
-                    try:
-                        # initialize environment with necessary arguments
-                        with self._wrap_env("test", job.port, kwargs) as test_environment:
-                            # Calculate memory allocated under test conditions
-                            brain.estimate_test(
-                                env=test_environment,
-                                model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                                device=job.device,)
-                            post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                        # test_environment.close()
-                    except Exception as e:
-                        self.logger.error(f"Error in testing: {e}", exc_info=1)
-                        # test_environment.close()
-                        exit()
-                # estimate memory allocated
-                memory_allocated = post_memory - pre_memory
+            # for train
+            if job.mode in ["train", "full"]:
+                try:
+                    # initialize environment with necessary arguments
+                    with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
+                        # calculate memory allocated under train conditions
+                        brain.train(
+                            env=train_environment,
+                            iterations=self.train_iterations, #TODO: remove need to calculate iterations
+                            index=job.index,
+                            device=job.device,
+                            paths=job.paths,
+                            save_checkpoints=False,
+                            checkpoint_freq=job.checkpoint_freq,
+                            estimate_memory=True)
 
-                self.logger.info(f"Estimated memory for job: {memory_allocated}")
-            except Exception as e:
-                self.logger.error(f"Error in estimating memory: {e}", exc_info=1)
-                exit()
-            finally:
-                if tmp_path.exists():
-                    shutil.rmtree(tmp_path)
-                importlib.reload(mlagents_envs)
-        else:
-            memory_allocated = self.job_memory * (1024 * 1024 * 1024)
+                except Exception as e:
+                    self.logger.exception(f"Error in training: {e}")
+                    raise e
+
+                with open(Path("./.tmp/memory_use").resolve(), "r") as file:
+                    post_memory = int(file.readline())
+
+            elif job.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again between train and test
+                try:
+                    # initialize environment with necessary arguments
+                    with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
+                        # Calculate memory allocated under test conditions
+                        brain.test(
+                            env=test_environment,
+                            iterations=10,
+                            model_path=str(job.paths['model'].joinpath('latest_model.zip')),
+                            rec_path = str(job.paths["env_recs"]),
+                            device=job.device,
+                            index=job.index,
+                            estimate_memory=True)
+                        post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                except Exception as e:
+                    self.logger.error(f"Error in testing: {e}", exc_info=1)
+                    exit()
+            # estimate memory allocated
+            memory_allocated = post_memory - pre_memory
+
+            self.logger.info(f"Estimated memory for job: {memory_allocated}")
+        except Exception as e:
+            self.logger.exception(f"Error in estimating memory: {e}")
+            raise e
+        finally:
+            if tmp_path.exists():
+                shutil.rmtree(tmp_path)
+            # importlib.reload(mlagents_envs)
+
         return memory_allocated
 
     @staticmethod
@@ -460,7 +462,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 self.logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                    Job(brain_id, condition, -1, len(jobs)+i) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
@@ -484,7 +486,6 @@ class NETT:
                     brain_id=brain_id, 
                     condition=condition, 
                     device=free_devices[-1], 
-                    dir=self.output_dir, 
                     index=len(jobs),
                     port=port)
                 jobs.append(job)

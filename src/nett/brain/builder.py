@@ -88,134 +88,6 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
 
-
-    def estimate_train(
-        self,
-        env: "nett.Body",
-        iterations: int,
-        device: int,
-        paths: dict[str, Path],
-        save_checkpoints: bool,
-        checkpoint_freq: int):
-        """
-        Train the brain.
-
-        Args:
-            env (nett.Body): The environment used for training.
-            iterations (int): The number of training iterations.
-            device (int): The device index used for training.
-            index (int): The index of the model to test, needed for tracking bar.
-            paths (dict[str, Path]): The paths for saving logs, models, and plots.
-            save_checkpoints (bool): Whether to save checkpoints or not.
-            checkpoint_freq (int): The frequency of saving checkpoints.
-
-        Raises:
-            ValueError: If the environment fails the validation check.
-        """
-        try:
-            self.logger.info("Running Memory Estimate")
-            # validate environment
-            env = self._validate_env(env)
-
-            # initialize environment
-            log_path = paths["env_logs"]
-            # env = Monitor(env, str(log_path))
-
-            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
-            
-            # build model
-            policy_kwargs = {
-                "features_extractor_class": self.encoder,
-                "features_extractor_kwargs": {
-                    "features_dim": inspect.signature(self.encoder).parameters["features_dim"].default,
-                    
-                }
-            } if self.encoder else {}
-            
-            if len(self.custom_encoder_args) > 0:
-                policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
-            
-            model = self.algorithm(
-                self.policy,
-                envs,
-                batch_size=self.batch_size,
-                n_steps=self.buffer_size,
-                verbose=1,
-                policy_kwargs=policy_kwargs,
-                device=torch.device("cuda", device))
-
-            # setup tensorboard logger and attach to model
-            tb_logger = configure(str(paths["logs"]), ["csv", "tensorboard"])
-            model.set_logger(tb_logger)
-            
-            # set encoder as eval only if train_encoder is not True
-            if not self.train_encoder:
-                model = self._set_encoder_as_eval(model)
-                self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
-
-            # initialize callbacks
-            self.logger.info("Initializing Callbacks")
-            callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=None, estimate_memory=True, device=device)
-
-            # train
-            model.learn(
-                total_timesteps=self.buffer_size+10,
-                tb_log_name=self.algorithm.__name__,
-                progress_bar=False,
-                callback=[callback_list])
-            self.logger.info("Memory Estimate Complete")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize model with error: {str(e)}", exc_info=1)
-            raise e
-
-    def estimate_test(
-        self,
-        env,
-        model_path: str,
-        device: int):
-        """
-        Test the brain.
-
-        Args:
-            env (gym.Env): The environment used for testing.
-            model_path (str): The path to the trained model.
-        """
-        try:
-            self.logger.info("Running Memory Estimate")
-            # load previously trained model from save_dir, if it exists
-            model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
-
-            # validate environment
-            env = self._validate_env(env)
-
-            num_envs = 1
-
-            # initialize environment
-            envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed)
-            obs = envs.reset()
-
-            # for when algorithm is RecurrentPPO
-            if issubclass(self.algorithm, RecurrentPPO):
-
-                # episode start signals are used to reset the lstm states
-                episode_starts = np.ones((num_envs,), dtype=bool)
-
-                model.predict(
-                    obs,
-                    state=None,
-                    episode_start=episode_starts,
-                    deterministic=True)
-
-            # for all other algorithms
-            else:
-                model.predict(obs, deterministic=True) # action, states
-
-        except Exception as ex:
-            self.logger.error(str(ex), exc_info=1)
-        
-        self.logger.info("Memory Estimate Complete")
-
     def train(
         self,
         env: "nett.Body",
@@ -224,7 +96,8 @@ class Brain:
         index: int,
         paths: dict[str, Path],
         save_checkpoints: bool,
-        checkpoint_freq: int):
+        checkpoint_freq: int,
+        estimate_memory: bool = False):
         """
         Train the brain.
 
@@ -240,14 +113,14 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        importlib.reload(stable_baselines3)
+        # importlib.reload(stable_baselines3)
         # validate environment
         env = self._validate_env(env)
 
         # initialize environment
         log_path = paths["env_logs"]
 
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path))
+        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
 
         # build model
         policy_kwargs = {
@@ -290,7 +163,7 @@ class Brain:
 
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
-        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=index, device=device)
+        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=index, estimate_memory=estimate_memory, device=device)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -301,21 +174,22 @@ class Brain:
             callback=[callback_list])
         self.logger.info("Training Complete")
 
-        # save
-        ## create save directory
-        paths["model"].mkdir(parents=True, exist_ok=True)
-        self.save_encoder_policy_network(model.policy, paths["model"])
-        print("Saved feature extractor")
-        
-        save_path = f"{paths['model'].joinpath('latest_model.zip')}"
-        model.save(save_path)
-        self.logger.info(f"Saved model at {save_path}")
+        if not estimate_memory:
+            # save
+            ## create save directory
+            paths["model"].mkdir(parents=True, exist_ok=True)
+            self.save_encoder_policy_network(model.policy, paths["model"])
+            print("Saved feature extractor")
+            
+            save_path = f"{paths['model'].joinpath('latest_model.zip')}"
+            model.save(save_path)
+            self.logger.info(f"Saved model at {save_path}")
 
-        # plot reward graph
-        self.plot_results(iterations=iterations,
-                          model_log_dir=paths["env_logs"],
-                          plots_dir=paths["plots"],
-                          name="reward_graph")   
+            # plot reward graph
+            self.plot_results(iterations=iterations,
+                            model_log_dir=paths["env_logs"],
+                            plots_dir=paths["plots"],
+                            name="reward_graph")   
 
     def test(
         self,
@@ -324,7 +198,8 @@ class Brain:
         model_path: str,
         rec_path: str,
         device: int,
-        index: int): # pylint: disable=unused-argument
+        index: int,
+        estimate_memory: bool = False): # pylint: disable=unused-argument
         """
         Test the brain.
 
@@ -345,14 +220,15 @@ class Brain:
         # initialize environment
         num_envs = 1
         envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
+        obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
         try:
-            vr = VideoRecorder(env=envs,
-            path="{}/agent_{}.mp4".format(rec_path, \
-                str(index)), enabled=True)
+            # vr = VideoRecorder(env=envs,
+            # path="{}/agent_{}.mp4".format(rec_path, \
+            #     str(index)), enabled=True)
             
             # for when algorithm is RecurrentPPO
             if issubclass(self.algorithm, RecurrentPPO):
@@ -360,7 +236,6 @@ class Brain:
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
-                    obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
                     # cell and hidden state of the LSTM 
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
@@ -377,16 +252,15 @@ class Brain:
                         episode_starts = done
                         episode_length += 1
                         envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                        vr.capture_frame()    
+                        # vr.capture_frame()    
 
-                vr.close()
-                vr.enabled = False
+                # vr.close()
+                # vr.enabled = False
 
             # for all other algorithms
             else:
             #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
-                obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
                 for _ in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
@@ -395,13 +269,13 @@ class Brain:
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-                    vr.capture_frame()    
+                    # vr.capture_frame()    
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
-        finally:
-            vr.close()
-            vr.enabled = False
+        # finally:
+            # vr.close()
+            # vr.enabled = False
         
         t.close()
     
