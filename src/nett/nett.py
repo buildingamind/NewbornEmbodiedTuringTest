@@ -100,8 +100,6 @@ class NETT:
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
-        self.num_brains = num_brains
-
         # calculate iterations
         if mode in ["train", "full"]:
             self.train_iterations = steps_per_episode * train_eps
@@ -110,9 +108,12 @@ class NETT:
             if not issubclass(self.brain.algorithm, RecurrentPPO):
                 self.test_iterations *= steps_per_episode
 
+        # initialize job object
         Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, output_dir, self.brain.reward)
 
+        # validate devices
         devices = self._validate_devices(devices)
+        self.logger.info(f"Devices that will be used: {devices}")
 
         # estimate memory for a single job
         if job_memory == "auto":
@@ -121,10 +122,11 @@ class NETT:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
         self.logger.info(f"Estimated memory for a single job: {job_memory}")
 
+        # get task set
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs(task_set=task_set, devices=devices, job_memory=job_memory, port=base_port)
+        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, base_port, self.logger)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -337,9 +339,8 @@ class NETT:
                 with open(Path("./.tmp/memory_use").resolve(), "r") as file:
                     post_memory = int(file.readline())
             # estimate memory allocated
-            memory_allocated = post_memory - pre_memory
+            return post_memory - pre_memory
 
-            self.logger.info(f"Estimated memory for job: {memory_allocated}")
         except Exception as e:
             self.logger.exception(f"Error in estimating memory: {e}")
             raise e
@@ -350,8 +351,6 @@ class NETT:
             if job_path.exists():
                 shutil.rmtree(job_path)
             # importlib.reload(mlagents_envs)
-
-        return memory_allocated
 
     @staticmethod
     def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
@@ -432,7 +431,8 @@ class NETT:
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
 
-    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int) -> tuple[list[Job], list[Job]]:
+    @staticmethod
+    def _schedule_jobs(task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
         # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
@@ -449,21 +449,21 @@ class NETT:
             if not free_devices:
                 if not jobs:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
-                self.logger.info("No free devices. Jobs will be queued until a device is available.")
+                logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
                     Job(brain_id, condition, -1, len(jobs)+i) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
-                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
                 break
 
             # remove devices that don't have enough memory
             if free_device_memory[free_devices[-1]] < job_memory:
-                self.logger.info(f"Device {free_devices[-1]} does not have enough memory. Removing from list of available devices.")
+                logger.info(f"Device {free_devices[-1]} does not have enough memory. Removing from list of available devices.")
                 free_devices.pop()
             # assign device to job
             else:
-                self.logger.info(f"Assigning device {free_devices[-1]} to job")
+                logger.info(f"Assigning device {free_devices[-1]} to job")
                 # create job
                 condition, brain_id = task_set.pop()
 
@@ -489,7 +489,8 @@ class NETT:
 
         return jobs, waitlist
 
-    def _validate_devices(self, devices: Optional[list[int]]) -> list[int]:
+    @staticmethod
+    def _validate_devices(devices: Optional[list[int]]) -> list[int]:
         # check if the devices are available and return the list of devices to be used
         available_devices: list[int] = list(range(nvmlDeviceGetCount()))
 
@@ -497,8 +498,6 @@ class NETT:
             devices = available_devices
         elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
             raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
-
-        self.logger.info(f"Devices that will be used: {devices}")
 
         return devices
 

@@ -39,7 +39,8 @@ class Body:
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
 
-    def _validate_agent_type(self, type: str) -> str:
+    @staticmethod
+    def _validate_agent_type(type: str) -> str:
         """
         Validate the agent type.
 
@@ -56,7 +57,8 @@ class Body:
             raise ValueError(f"agent type must be one of {types}")
         return type
 
-    def _validate_dvs(self, dvs: bool) -> bool:
+    @staticmethod
+    def _validate_dvs(dvs: bool) -> bool:
         """
         Validate the dvs flag.
 
@@ -73,7 +75,8 @@ class Body:
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
-    def _validate_wrappers(self, wrappers: list[Wrapper]) -> list[Wrapper]:
+    @staticmethod
+    def _validate_wrappers(wrappers: list[Wrapper]) -> list[Wrapper]:
         """
         Validate the wrappers.
 

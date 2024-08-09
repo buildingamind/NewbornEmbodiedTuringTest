@@ -198,8 +198,7 @@ class Brain:
         model_path: str,
         rec_path: str,
         device: int,
-        index: int,
-        estimate_memory: bool = False): # pylint: disable=unused-argument
+        index: int): # pylint: disable=unused-argument
         """
         Test the brain.
 
@@ -475,14 +474,6 @@ class Brain:
             param.requires_grad = False
         return model
 
-    def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return f"{self.__class__.__name__}({attrs!r})"
-
-    def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
-        return f"{self.__class__.__name__}({attrs!r})"
-
     @staticmethod
     def _initialize_callbacks(paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int = 0) -> CallbackList:
         """
@@ -515,3 +506,11 @@ class Brain:
                 save_vecnormalize=True))
 
         return CallbackList(callback_list)
+    
+    def __repr__(self) -> str:
+        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        return f"{self.__class__.__name__}({attrs!r})"
+
+    def __str__(self) -> str:
+        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        return f"{self.__class__.__name__}({attrs!r})"
