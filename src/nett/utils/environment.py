@@ -17,16 +17,6 @@ from mlagents_envs.side_channel.side_channel import (
     OutgoingMessage,
 )
 
-
-def port_in_use(port) -> bool:
-    """This function checks if a port is in use. It returns True if the port is in use and False if it is not."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("localhost", port))
-    except socket.error:
-        return True
-    return False
-
 # Create the StringLogChannel class. This is how logging info is communicated between python and unity
 class Logger(SideChannel):
     """
