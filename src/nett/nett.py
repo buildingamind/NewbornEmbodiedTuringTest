@@ -239,7 +239,7 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _execute_job(self, job: Job) -> Future:
+    def _execute_job(self, job: Job, estimate_memory: bool = False) -> Future:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
@@ -255,7 +255,8 @@ class NETT:
                         index=job.index,
                         paths=job.paths,
                         save_checkpoints=job.save_checkpoints,
-                        checkpoint_freq=job.checkpoint_freq,)
+                        checkpoint_freq=job.checkpoint_freq,
+                        estimate_memory=estimate_memory)
             except Exception as e:
                 self.logger.error(f"Error in training: {e}", exc_info=1)
                 exit()    
@@ -301,6 +302,7 @@ class NETT:
                 port=base_port)
             
             job.output_dir = tmp_path
+            job.save_checkpoints = False
 
             # change initial port for next job
             base_port += 1
@@ -308,48 +310,18 @@ class NETT:
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-            brain: "nett.Brain" = deepcopy(self.brain)
-
-            # for train
-            if job.mode in ["train", "full"]:
-                try:
-                    # initialize environment with necessary arguments
-                    with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                        # calculate memory allocated under train conditions
-                        brain.train(
-                            env=train_environment,
-                            iterations=self.train_iterations, #TODO: remove need to calculate iterations
-                            index=job.index,
-                            device=job.device,
-                            paths=job.paths,
-                            save_checkpoints=False,
-                            checkpoint_freq=job.checkpoint_freq,
-                            estimate_memory=True)
-
-                except Exception as e:
-                    self.logger.exception(f"Error in training: {e}")
-                    raise e
-
+            # HACK: Fix this later
+            if (job.mode == "test"):
+                test_iterations = self.test_iterations
+                self.test_iterations = 10
+            self._execute_job(job, estimate_memory=True)
+            if job.mode == "test":
+                post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
+                self.test_iterations = test_iterations
+            else:
                 with open(Path("./.tmp/memory_use").resolve(), "r") as file:
                     post_memory = int(file.readline())
 
-            elif job.mode == "test": #TODO: seperate train and test jobs so that memory estimation can run again between train and test
-                try:
-                    # initialize environment with necessary arguments
-                    with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
-                        # Calculate memory allocated under test conditions
-                        brain.test(
-                            env=test_environment,
-                            iterations=10,
-                            model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                            rec_path = str(job.paths["env_recs"]),
-                            device=job.device,
-                            index=job.index,
-                            estimate_memory=True)
-                        post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                except Exception as e:
-                    self.logger.error(f"Error in testing: {e}", exc_info=1)
-                    exit()
             # estimate memory allocated
             memory_allocated = post_memory - pre_memory
 
