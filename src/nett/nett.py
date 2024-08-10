@@ -61,7 +61,7 @@ class NETT:
             test_eps: int = 20,
             batch_mode: bool = True,
             devices: Optional[list[int]] =  None,
-            job_memory: str | int = "auto",
+            job_memory: str | int = 4,
             buffer: float = 1.2,
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
@@ -432,8 +432,7 @@ class NETT:
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
 
-    @staticmethod
-    def _schedule_jobs(task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
         # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
