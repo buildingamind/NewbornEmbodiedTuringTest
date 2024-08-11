@@ -1,5 +1,5 @@
 """The body of the agent in the environment."""
-from typing import Any
+from typing import Any, Optional
 from gym import Wrapper, Env
 
 from nett.body import types
@@ -93,10 +93,9 @@ class Body:
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        if wrappers is not None:
-            for wrapper in wrappers:
-                if not isinstance(wrapper, Wrapper):
-                    raise ValueError("Wrappers must inherit from gym.Wrapper")
+        for wrapper in wrappers:
+            if not isinstance(wrapper, Wrapper):
+                raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
 

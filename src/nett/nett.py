@@ -389,7 +389,6 @@ class NETT:
         return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
 
     def _validate_device_type(self, device_type: str) -> str:
-        # TODO (v0.4) add automatic type checking usimg pydantic or similar
         if device_type not in ["cuda", "cpu"]:
             raise ValueError("Should be one of ['cuda', 'cpu']")
 

@@ -1,6 +1,6 @@
 """Module for the Brain class."""
 
-from typing import Any
+from typing import Any, Optional
 from pathlib import Path
 import inspect
 
@@ -60,7 +60,7 @@ class Brain:
         reward: Any | str = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
-        train_encoder: bool | None = False,
+        train_encoder: bool = True,
         seed: int = 12
     ) -> None:
         """Constructor method
@@ -140,19 +140,7 @@ class Brain:
             self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        save_best_model_callback = SupervisedSaveBestModelCallback(
-            summary_freq=30000, 
-            save_dir=paths["model"], 
-            env_log_path=paths["env_logs"])
-        hparam_callback = HParamCallback()
-        checkpoint_callback = CheckpointCallback(
-            save_freq=30000,
-            save_path=paths["checkpoints"],
-            name_prefix=self.algorithm.__name__,
-            save_replay_buffer=True,
-            save_vecnormalize=True)
-        bar_callback = multiBarCallback(index)
-        callback_list = CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
+        callback_list = self._initialize_callbacks(paths, index)
 
         # train
         self.logger.info(f"Total number of training steps: {iterations}")
@@ -181,7 +169,7 @@ class Brain:
         iterations,
         model_path: str,
         index: int,
-        record_prefix: str | None = None): # pylint: disable=unused-argument
+        record_prefix: Optional[str] = None): # pylint: disable=unused-argument
         """
         Test the brain.
 
@@ -438,3 +426,28 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
+
+    def _initialize_callbacks(self, paths: dict[str, Path], index: int) -> CallbackList:
+        """
+        Initialize the callbacks for training.
+
+        Args:
+            paths (dict[str, Path]): The paths for saving logs, models, and plots.
+            index (int): The index of the model to test, needed for tracking bar.
+        
+        Returns:
+            CallbackList: The list of callbacks for training.
+        """
+        save_best_model_callback = SupervisedSaveBestModelCallback(
+            summary_freq=30000, 
+            save_dir=paths["model"], 
+            env_log_path=paths["env_logs"])
+        hparam_callback = HParamCallback()
+        checkpoint_callback = CheckpointCallback(
+            save_freq=30000,
+            save_path=paths["checkpoints"],
+            name_prefix=self.algorithm.__name__,
+            save_replay_buffer=True,
+            save_vecnormalize=True)
+        bar_callback = multiBarCallback(index)
+        return CallbackList([save_best_model_callback, hparam_callback, checkpoint_callback, bar_callback])
