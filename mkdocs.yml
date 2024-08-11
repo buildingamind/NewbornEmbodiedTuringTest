@@ -1,0 +1,7 @@
+site_name: Newborn Embodied Turing Test
+site_url: https://origin.luddy.indiana.edu
+nav:
+    - Home: index.md
+    - Experiments: experiments.md
+    - Parsing: Parsing.md
+theme: readthedocs

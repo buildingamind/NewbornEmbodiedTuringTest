@@ -1,6 +1,4 @@
 """CNNLSTM module for the brain"""
-
-### DELETE WILL NOT BE USING ####
 import gym
 import torch as th
 from torch import nn

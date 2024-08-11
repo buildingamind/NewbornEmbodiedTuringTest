@@ -86,7 +86,7 @@ def average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', 
         return (percents,log,rv)
     except Exception as ex:
         print(str(ex))
-        return (None, None, None)
+        return (None, None)
 
 def moving_average(values: list, window: int) -> np.ndarray:
     """

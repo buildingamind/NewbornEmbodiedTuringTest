@@ -25,7 +25,7 @@ class NETTConfig(ABC):
         self.params = self._validate_params(params)
         self.conditions = self._create_conditions_from_params(self.params)
 
-    def _create_conditions_from_params(self, params: dict[str, str]) -> list[str]:
+    def _create_conditions_from_params(self, params: dict[str, str]) -> set[str]:
         """
         Creates conditions from the configuration parameters.
 
@@ -33,10 +33,10 @@ class NETTConfig(ABC):
             params (dict[str, str]): The configuration parameters.
 
         Returns:
-            list[str]: A list of conditions.
+            set[str]: A set of conditions.
         """
         combination_params = list(product(*params.values()))
-        conditions = ["-".join(combination).lower() for combination in combination_params]
+        conditions = {"-".join(combination).lower() for combination in combination_params}
         return conditions
 
     def _normalize_params(self, params: dict[str, str | int | float]) -> dict[str, str]:
@@ -290,46 +290,13 @@ class OneShotViewInvariant(NETTConfig):
         return 50
 
 
-class ViewInvariant(NETTConfig):
-    """
-    NETT configuration for Binding.
-
-    Args:
-        object (str | list[str]): The object(s) to be used. Defaults to ["object1", "object2"].
-
-    Raises:
-        ValueError: If any parameter value is not a value or subset of the default values.
-    """
-
-    def __init__(self,
-                 object: str | list[str] = ["ship", "fork"],
-                 view: str | list[str] = ["front", "side"]) -> None:
-        """Constructor method
-        """
-        super().__init__(param_defaults=self.defaults,
-                         object=object, view = view)
-
-    @property
-    def num_conditions(self) -> int:
-        """
-        Get the number of conditions for the configuration.
-
-        Returns:
-            int: The number of conditions.
-        """
-        if self.view.lower()=="front":
-            return 50
-        return 26
-
-
-def list_configs() -> list[str]:
+def list_configs() -> set[str]:
     """
     Lists all available NETT configurations.
 
     Returns:
-        list[str]: A list of configuration names.
+        set[str]: A set of configuration names.
     """
-    #TODO: Are these really strings?
     is_class_member = lambda member: inspect.isclass(member) and member.__module__ == __name__
     clsmembers = inspect.getmembers(sys.modules[__name__], is_class_member)
     clsmembers = [clsmember[0] for clsmember in clsmembers if clsmember[0] != "NETTConfig"]

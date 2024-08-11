@@ -60,7 +60,7 @@ class Environment(Wrapper):
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.config = self._validate_config(config)
-        # TODO (v0.5) what might be a way to check if it is a valid executable path?
+        # TODO (v0.4) what might be a way to check if it is a valid executable path?
         self.executable_path = executable_path
         self.base_port = base_port
         self.record_chamber = record_chamber
@@ -119,16 +119,19 @@ class Environment(Wrapper):
 
     
     # copied from __init__() of chickai_env_wrapper.py (legacy)
-    # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
+    # TODO (v0.3) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
-    # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, **kwargs) -> None:
+    # TODO (v0.3) fix random_pos logic inside of Unity code
+    def initialize(self, mode: str, **kwargs) -> Environment:
         """
         Initializes the environment with the given mode and arguments.
 
         Args:
             mode (str): The mode to set the environment for training or testing or both.
             **kwargs: The arguments to pass to the environment.
+
+        Returns:
+            Environment: The initialized environment.
         """
 
         args = []
@@ -150,14 +153,13 @@ class Environment(Wrapper):
             args.extend(["--random-pos", "true"])
         if kwargs.get("rewarded", False):
             args.extend(["--rewarded", "true"])
-        self.step_per_episode = kwargs.get("episode_steps", 1000)
-        args.extend(["--episode-steps", str(self.step_per_episode)])
+        self.step_per_episode = kwargs.get("episode_steps", 200)
+        if kwargs.get("episode_steps", False):
+            args.extend(["--episode-steps", str(kwargs["episode_steps"])])
 
-        
-        # if kwargs["device_type"] == "cpu":
-        #     args.extend(["-batchmode", "-nographics"])
-        # elif kwargs["batch_mode"]:
-        if kwargs["batch_mode"]:
+        if kwargs["device_type"] == "cpu":
+            args.extend(["-batchmode", "-nographics"])
+        elif kwargs["batch_mode"]:
             args.append("-batchmode")
 
         # TODO: Figure out a way to run on multiple GPUs

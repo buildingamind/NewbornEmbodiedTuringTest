@@ -38,23 +38,21 @@ The NETT toolkit comprises three key components:
 The directory structure of the code is as follows:
 
 ```
-├── docs                          # Documentation and guides
-├── examples
-│   ├── notebooks                 # Jupyter Notebooks for examples
-│      └── Getting Started.ipynb  # Introduction and setup notebook
-│   └── run                       # Terminal script example
+├── docs                       # Documentation and guides
+├── notebooks
+│   ├── Getting Started.ipynb  # Introduction and setup notebook
 ├── src/nett
-│   ├── analysis                  # Analysis scripts
-│   ├── body                      # Agent body configurations
-│   ├── brain                     # Neural network models and learning algorithms
-│   ├── environment               # Simulation environments
-│   ├── utils                     # Utility functions
-│   ├── nett.py                   # Main library script
-│   └── __init__.py               # Package initialization
-├── tests                         # Unit tests
-├── mkdocs.yml                    # MkDocs configuration
-├── pyproject.toml                # Project metadata
-└── README.md                     # This README file
+│   ├── analysis               # Analysis scripts
+│   ├── body                   # Agent body configurations
+│   ├── brain                  # Neural network models and learning algorithms
+│   ├── environment            # Simulation environments
+│   ├── utils                  # Utility functions
+│   ├── nett.py                # Main library script
+│   └── __init__.py            # Package initialization
+├── tests                      # Unit tests
+├── mkdocs.yml                 # MkDocs configuration
+├── pyproject.toml             # Project metadata
+└── README.md                  # This README file
 ```
 
 ## Getting Started
@@ -114,7 +112,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    brain = Brain(policy="CnnPolicy", algorithm="PPO")
    ```
-   To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively.
+   To get a list of all available policies, algorithms, and encoders, the `Brain` class contains the methods `list_policies()`, `list_algorithms()`, and `list_encoders()` respectively.
 
 - **Body** 
 
@@ -130,7 +128,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
    ```
-   To get a list of all available configurations, run `nett.list_configs()`.
+   To get a list of all available configurations, run `Environment.list_configs()`.
 
 4. **Run the Benchmarking**
 

@@ -8,48 +8,49 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
 from nett.brain import encoders
 
-def list_encoders() -> list[str]:
+def list_encoders() -> set[str]:
     """
-    Returns a list of all available encoders.
+    Returns a set of all available encoders.
 
     Returns:
-        list[str]: List of encoder names.
+        set[str]: Set of encoder names.
     """
     encoders_dir = Path.joinpath(Path(__file__).resolve().parent, 'encoders')
     encoders = [encoder.stem for encoder in list(encoders_dir.iterdir()) if "__" not in str(encoder)]
-    return encoders
+    # set is faster to access than a list
+    return set(encoders)
 
 encoders_list = list_encoders()
 
-def list_algorithms() -> list[str]:
+def list_algorithms() -> set[str]:
     """
-    Returns a list of all available policy algorithms.
+    Returns a set of all available policy algorithms.
 
     Returns:
-        list[str]: Set of algorithm names.
+        set[str]: Set of algorithm names.
     """
     sb3_policy_algorithms = [algorithm for algorithm in dir(stable_baselines3) if algorithm[0].isupper()]
     sb3_contrib_policy_algorithms = [algorithm for algorithm in dir(sb3_contrib) if algorithm[0].isupper()]
     available_policy_algorithms = sb3_policy_algorithms + sb3_contrib_policy_algorithms
-
-    return available_policy_algorithms
+    # set is faster to access than a list
+    return set(available_policy_algorithms)
 
 algorithms = list_algorithms()
 
-# TODO (v0.4) return all available policy models programmatically
-def list_policies() -> list[str]:
+# TODO (v0.3) return all available policy models programmatically
+def list_policies() -> set[str]:
     """
-    Returns a list of all available policy models.
+    Returns a set of all available policy models.
 
     Returns:
-        list[str]: Set of policy names.
+        set[str]: Set of policy names.
     """
-    return ['CnnPolicy', 'MlpPolicy', 'MultiInputPolicy', 'MultiInputLstmPolicy', 'CnnLstmPolicy']
+    return {'CnnPolicy', 'MlpPolicy', 'MultiInputPolicy', 'MultiInputLstmPolicy', 'CnnLstmPolicy'}
 
 policies = list_policies()
 
 # return encoder string to encoder class mapping
-# TODO (v0.4) optimized way to calculate and pass this dict around
+# TODO (v0.3) optimized way to calculate and pass this dict around
 def get_encoder_dict() -> dict[str, str]:
     """
     Returns a dictionary mapping encoder names to encoder class names.
@@ -74,4 +75,14 @@ def get_encoder_dict() -> dict[str, str]:
             encoders_dict[module_name] = encoder_class.name
     return encoders_dict
 
+# TODO (v0.3) return all available encoder classes programmatically
+# def get_encoder_dict() -> dict[str, str]:
+#     return {'cnnlstm': 'CNNLSTM',
+#             'cotracker': 'CoTracker',
+#             'dinov1': 'DinoV1',
+#             'dinov2': 'DinoV2',
+#             'vit': 'ViT',
+#             'resnet18': 'Resnet18CNN',
+#             'sam': 'SegmentAnything',
+#             'rnd': 'RND'}
 encoder_dict = get_encoder_dict()

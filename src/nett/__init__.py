@@ -26,11 +26,8 @@ from nett.body.builder import Body
 from nett.environment.builder import Environment
 from nett.nett import NETT
 
-from nett.brain import list_encoders, list_algorithms, list_policies
-from nett.environment import list_configs
-
 # release version
-from ._version import __version__
+__version__ = "0.2"
 
 # change permissions of the ml-agents binaries directory
 

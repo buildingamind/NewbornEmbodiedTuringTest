@@ -1,9 +1,8 @@
 """The body of the agent in the environment."""
-from gym import Env, Wrapper
-from stable_baselines3.common.env_checker import check_env
+from typing import Any
+from gym import Wrapper, Env
 
 from nett.body import types
-from nett.body.wrappers.dvs import DVSWrapper
 # from nett.body import ascii_art
 
 # this will have the necessary wrappers before the observations interact with the brain,
@@ -21,7 +20,7 @@ class Body:
 
     Args:
         type (str, optional): The type of the agent's body. Defaults to "basic".
-        wrappers (list[Wrapper], optional): List of wrappers to be applied to the environment. Defaults to [].
+        wrappers (list[Wrapper] | None, optional): List of wrappers to be applied to the environment. Defaults to None.
         dvs (bool, optional): Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
 
     Raises:
@@ -35,7 +34,7 @@ class Body:
     """
 
     def __init__(self, type: str = "basic",
-                    wrappers: list[Wrapper] = [],
+                    wrappers: list[Wrapper] | None = None,
                     dvs: bool = False) -> None:
         """
         Constructor method
@@ -63,6 +62,7 @@ class Body:
             raise ValueError(f"agent type must be one of {types}")
         return type
 
+
     def _validate_dvs(self, dvs: bool) -> bool:
         """
         Validate the dvs flag.
@@ -80,51 +80,25 @@ class Body:
             raise TypeError("dvs should be a boolean [True, False]")
         return dvs
 
-    def _validate_wrappers(self, wrappers: list[Wrapper]) -> list[Wrapper]:
+    def _validate_wrappers(self, wrappers: list[Wrapper] | None) -> list[Any] | None:
         """
         Validate the wrappers.
 
         Args:
-            wrappers (list[Wrapper]): The list of wrappers.
+            wrappers (list[Wrapper] | None): The list of wrappers.
 
         Returns:
-            list[Wrapper]: The validated list of wrappers.
+            list[Wrapper] | None: The validated list of wrappers.
 
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        for wrapper in wrappers:
-            if not issubclass(wrapper, Wrapper):
-                raise ValueError("Wrappers must inherit from gym.Wrapper")
+        if wrappers is not None:
+            for wrapper in wrappers:
+                if not isinstance(wrapper, Wrapper):
+                    raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 
-    @staticmethod
-    def _wrap(env: Env, wrapper: Wrapper) -> Env:
-        """
-        Wraps the environment with the registered wrappers.
-
-        Args:
-            env (Env): The environment to wrap.
-            wrapper (Wrapper): The wrapper to apply.
-
-        Returns:
-            Env: The wrapped environment.
-
-        Raises:
-            Exception: If the environment does not follow the Gym API.
-        """
-        try:
-            # wrap env
-            env = wrapper(env)
-            # check that the env follows Gym API
-            env_check = check_env(env, warn=True)
-            if env_check != None:
-                raise Exception(f"Failed env check")
-
-            return env
-
-        except Exception as ex:
-            print(str(ex))
 
     def __call__(self, env: Env) -> Env:
         """
@@ -136,17 +110,10 @@ class Body:
         Returns:
             Env: The modified environment.
         """
-        # apply DVS wrapper
-        # TODO: Should this wrapper go in a different order?
-        if self.dvs:
-            env = self._wrap(env, DVSWrapper)
-        # apply all custom wrappers
         if self.wrappers:
             for wrapper in self.wrappers:
-                env = self._wrap(env, wrapper)
-
+                env = wrapper(env)
         return env
-    
 
     def __repr__(self) -> str:
         """
