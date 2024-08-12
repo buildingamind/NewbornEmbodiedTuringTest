@@ -96,7 +96,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 1. **Download or Create the Unity Executable**
 
-   Obtain a pre-made Unity executable from [here](https://origins.luddy.indiana.edu/environments/). The executable is required to run the virtual environment.
+   Download and unzip a pre-made Unity executable from [here](https://origins-of-intelligence.com/environments/). The executable is required to run the virtual environment.
 
 2. **Import NETT Components**
 
@@ -140,7 +140,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```
    The `NETT` instance has a `.run()` method that initiates the benchmarking process. The method accepts parameters such as the number of brains, training/testing episodes, and the output directory.
    ```python
-   job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, trains_eps=10, test_eps=5)
+   job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, train_eps=10, test_eps=5)
    ```
    The `run` function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the `batch_mode` parameter to `False`.
 
