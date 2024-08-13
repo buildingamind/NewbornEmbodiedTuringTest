@@ -42,7 +42,7 @@ class Job:
     self.condition: str = condition
     self.brain_id: int = brain_id
 
-    self.paths: dict[str, Path] = self._configure_paths(self.output_dir, brain_id, condition)
+    self.paths: dict[str, Path] = self._configure_paths()
     self.index: int = index
     self.port: int = port
 
@@ -51,9 +51,8 @@ class Job:
 
     self.logger = logger.getChild(__class__.__name__+"."+condition+"."+str(brain_id))
 
-  @staticmethod
 
-  def _configure_paths(output_dir: Path, brain_id: int, condition: str) -> dict[str, Path]:
+  def _configure_paths(self) -> dict[str, Path]:
     """Configure Paths for the job
 
     Args:
@@ -65,7 +64,7 @@ class Job:
         dict[str, Path]: dictionary of the paths
     """
     paths: dict[str, Path] = {
-      "base": Path.joinpath(output_dir, condition, f"brain_{brain_id}")
+      "base": Path.joinpath(self.output_dir, self.condition, f"brain_{self.brain_id}")
       }
     SUBDIRS = ["model", "checkpoints", "plots", "logs", "env_recs", "env_logs"]
     for subdir in SUBDIRS:
