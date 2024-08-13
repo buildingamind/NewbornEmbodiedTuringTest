@@ -271,11 +271,14 @@ class NETT:
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
                     brain.test(
                         env=test_environment,
-                        iterations=self.test_iterations,
+                        iterations=self.test_iterations if not estimate_memory else 1,
                         model_path=str(job.paths['model'].joinpath('latest_model.zip')),
                         rec_path = str(job.paths["env_recs"]),
                         device=job.device,
                         index=job.index)
+                    if estimate_memory:                 
+                        with open(job.paths["logs"] / "mem.txt", "w") as file:
+                            file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
             except Exception as e:
                 self.logger.error(f"Error in testing: {e}", exc_info=1)
                 exit()
@@ -313,44 +316,28 @@ class NETT:
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-            # HACK: Fix this later
-            if (job.mode == "test"):
-                test_iterations = self.test_iterations
-                self.test_iterations = 10
-            
-            try:
-                # initializer = mute if not verbose else None
-                # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-                executor = ProcessPoolExecutor(max_workers=1, initializer=None)
-                job_sheet: dict[Future, dict[str, Job]] = {}
+            # initializer = mute if not verbose else None
+            # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+            executor = ProcessPoolExecutor(max_workers=1, initializer=None)
+            job_sheet: dict[Future, dict[str, Job]] = {}
 
-                job_future = executor.submit(self._execute_job, job, True)
-                job_sheet[job_future] = job
+            # run job with estimate_memory set to True
+            job_future = executor.submit(self._execute_job, job, True)
+            job_sheet[job_future] = job
 
-                future_wait(job_sheet, return_when=FIRST_COMPLETED)
+            future_wait(job_sheet, return_when=FIRST_COMPLETED)
 
-            except Exception as e:
-                self.logger.exception(f"Error in estimating memory: {e}")
-
-            if job.mode == "test":
-                post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                self.test_iterations = test_iterations
-            else:
-                with open(Path("./.tmp/memory_use").resolve(), "r") as file:
-                    post_memory = int(file.readline())
-            # estimate memory allocated
-            return post_memory - pre_memory
-
+            with open(Path.joinpath(job.paths["base"], "mem.txt").resolve(), "r") as file:
+                post_memory = int(file.readline())
         except Exception as e:
             self.logger.exception(f"Error in estimating memory: {e}")
             raise e
         finally:
-            if tmp_path.exists():
-                shutil.rmtree(tmp_path)
-            job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "brain_0"
-            if job_path.exists():
-                shutil.rmtree(job_path)
-            # importlib.reload(mlagents_envs)
+            if job.paths["base"].exists():
+                shutil.rmtree(job.paths["base"])
+        
+        # estimate memory allocated
+        return post_memory - pre_memory
 
     @staticmethod
     def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:

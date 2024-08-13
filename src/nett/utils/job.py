@@ -61,10 +61,15 @@ class Job:
     Returns:
         dict[str, Path]: dictionary of the paths
     """
+    paths: dict[str, Path] = {
+      "base": Path.joinpath(self.output_dir, condition, f"brain_{brain_id}")
+      }
     SUBDIRS = ["model", "checkpoints", "plots", "logs", "env_recs", "env_logs"]
-    job_dir = Path.joinpath(self.output_dir, condition, f"brain_{brain_id}")
-    return {subdir: Path.joinpath(job_dir, subdir) for subdir in SUBDIRS}
-  
+    for subdir in SUBDIRS:
+      paths[subdir] = Path.joinpath(paths["base"], subdir)
+
+    return paths
+
   def env_kwargs(self) -> dict[str, Any]:
     """Get the environment kwargs
     """

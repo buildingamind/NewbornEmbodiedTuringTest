@@ -496,7 +496,7 @@ class Brain:
         callback_list = [hparam_callback, loading_bar_callback]
 
         if estimate_memory:
-            callback_list.append(MemoryCallback(device))
+            callback_list.append(MemoryCallback(device, save_path=paths["base"]))
 
         if save_checkpoints:
             callback_list.append(CheckpointCallback(

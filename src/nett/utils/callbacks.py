@@ -5,6 +5,7 @@ Classes:
     HParamCallback(BaseCallback)
 """
 import os
+from pathlib import Path
 from typing import Optional
 
 from tqdm import tqdm
@@ -67,9 +68,10 @@ class MemoryCallback(BaseCallback):
     """
     A custom callback that derives from ``BaseCallback``.
     """
-    def __init__(self, device: int):
+    def __init__(self, device: int, save_path: str) -> None:
         super().__init__()
         self.device = device
+        self.save_path = save_path
         self.close = False
         nvmlInit()
 
@@ -88,7 +90,7 @@ class MemoryCallback(BaseCallback):
             # Grab the memory being used by the GPU
             used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
             # Write the used memory to a file
-            with open("./.tmp/memory_use", "w") as f:
+            with open(Path.joinpath(self.save_path, "mem.txt"), "w") as f:
                 f.write(str(used_memory))
             # Close the callback
             return False
