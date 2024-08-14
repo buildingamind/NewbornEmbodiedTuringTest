@@ -174,7 +174,7 @@ class NETT:
         This method is a static method and does not require an instance of the NETT class to be called.
 
         Args:
-            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", or "viewinvariant".
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", or "statisticallearning".
             run_dir (str | Path): The directory where the run results are stored.
             output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
