@@ -16,7 +16,7 @@ class Job:
   _MODES: Final = ("train", "test", "full")
 
   @classmethod
-  def initialize(cls, mode: str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int, batch_mode: bool, output_dir: Path | str, reward: str) -> None:
+  def initialize(cls, mode: str, steps_per_episode: int, checkpoint_freq: int, output_dir: Path | str, reward: str, save_checkpoints: bool, batch_mode: bool, iterations: dict[str, int]) -> None:
     """Initialize the class
 
     Args:
@@ -30,13 +30,14 @@ class Job:
     """
     cls.mode = cls._validate_mode(mode)
     cls.steps_per_episode: int = steps_per_episode
-    cls.save_checkpoints: bool = save_checkpoints
     cls.checkpoint_freq: int = checkpoint_freq
-    cls.batch_mode: bool = batch_mode
     cls.output_dir: Path = output_dir
     cls.reward: str = reward
+    cls.save_checkpoints: bool = save_checkpoints
+    cls.batch_mode: bool = batch_mode
+    cls.iterations: dict[str, int] = iterations
 
-  def __init__(self, brain_id: int, condition: str, device: int, index: int, port: int) -> None:
+  def __init__(self, brain_id: int, condition: str, device: int, index: int, port: int, estimate_memory: bool = False) -> None:
     """initialize job"""
     self.device: int = device
     self.condition: str = condition
@@ -45,6 +46,7 @@ class Job:
     self.paths: dict[str, Path] = self._configure_paths()
     self.index: int = index
     self.port: int = port
+    self.estimate_memory: bool = estimate_memory
 
     # Initialize logger
     from nett import logger

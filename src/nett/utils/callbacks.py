@@ -9,13 +9,41 @@ from pathlib import Path
 from typing import Optional
 
 from tqdm import tqdm
-from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback
+from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback, CheckpointCallback, CallbackList
 from stable_baselines3.common.logger import HParam
 
 # from nett.utils.train import compute_train_performance
 
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
 
+def initialize_callbacks(job: "Job") -> CallbackList:
+    """
+    Initialize the callbacks for training.
+
+    Args:
+        job (Job): The job for which to initialize the callbacks.
+    
+    Returns:
+        CallbackList: The list of callbacks for training.
+    """
+    hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
+
+    # creates the parallel progress bars
+    loading_bar_callback = multiBarCallback(job.index)
+
+    callback_list = [hparam_callback, loading_bar_callback]
+
+    if job.estimate_memory:
+        callback_list.append(MemoryCallback(job.device, save_path=job.paths["base"]))
+
+    if job.save_checkpoints:
+        callback_list.append(CheckpointCallback(
+            save_freq=job.checkpoint_freq, # defaults to 30_000 steps
+            save_path=job.paths["checkpoints"],
+            save_replay_buffer=True,
+            save_vecnormalize=True))
+
+    return CallbackList(callback_list)
 
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):

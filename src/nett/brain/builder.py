@@ -24,7 +24,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
-from nett.utils.callbacks import HParamCallback, multiBarCallback, MemoryCallback
+from nett.utils.callbacks import initialize_callbacks
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
@@ -88,27 +88,12 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
 
-    def train(
-        self,
-        env: "nett.Body",
-        iterations: int,
-        device: int,
-        index: int,
-        paths: dict[str, Path],
-        save_checkpoints: bool,
-        checkpoint_freq: int,
-        estimate_memory: bool = False):
+    def train(self, env: "gym.Env", job: "Job"):
         """
         Train the brain.
 
         Args:
-            env (nett.Body): The environment used for training.
-            iterations (int): The number of training iterations.
-            device (int): The device index used for training.
-            index (int): The index of the model to test, needed for tracking bar.
-            paths (dict[str, Path]): The paths for saving logs, models, and plots.
-            save_checkpoints (bool): Whether to save checkpoints or not.
-            checkpoint_freq (int): The frequency of saving checkpoints.
+            job(Job): The job object containing the environment, paths, and training parameters.
 
         Raises:
             ValueError: If the environment fails the validation check.
@@ -118,9 +103,11 @@ class Brain:
         env = self._validate_env(env)
 
         # initialize environment
-        log_path = paths["env_logs"]
-
-        envs = make_vec_env(env_id=lambda: env, n_envs=1, seed=self.seed, monitor_dir=str(log_path)) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
+        envs = make_vec_env(
+            env_id=lambda: env, 
+            n_envs=1, 
+            seed=self.seed, 
+            monitor_dir=str(job.paths["env_logs"])) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
 
         # build model
         policy_kwargs = {
@@ -145,17 +132,17 @@ class Brain:
                 n_steps=self.buffer_size,
                 verbose=1,
                 policy_kwargs=policy_kwargs,
-                device=torch.device("cuda", device))
+                device=torch.device("cuda", job.device))
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
 
         # setup tensorboard logger and attach to model
-        tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
+        tb_logger = configure(str(job.paths["logs"]), ["stdout", "csv", "tensorboard"])
         model.set_logger(tb_logger)
         
-        self.logger.info(f"Tensorboard logs saved at {str(paths['logs'])}")
+        self.logger.info(f"Tensorboard logs saved at {str(job.paths['logs'])}")
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             model = self._set_encoder_as_eval(model)
@@ -163,55 +150,46 @@ class Brain:
 
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
-        callback_list = self._initialize_callbacks(paths, save_checkpoints, checkpoint_freq, index=index, estimate_memory=estimate_memory, device=device)
+        callback_list = initialize_callbacks(job)
 
         # train
-        self.logger.info(f"Total number of training steps: {iterations}")
+        self.logger.info(f"Total number of training steps: {job.iterations["train"]}")
         model.learn(
-            total_timesteps=iterations,
+            total_timesteps=job.iterations["train"],
             tb_log_name=self.algorithm.__name__,
             progress_bar=False,
             callback=[callback_list])
         self.logger.info("Training Complete")
 
-        if not estimate_memory:
+        if not job.estimate_memory:
             # save
             ## create save directory
-            paths["model"].mkdir(parents=True, exist_ok=True)
+            job.paths["model"].mkdir(parents=True, exist_ok=True)
             self.save_encoder_policy_network(model.policy, paths["model"])
             print("Saved feature extractor")
             
-            save_path = f"{paths['model'].joinpath('latest_model.zip')}"
+            save_path = f"{job.paths['model'].joinpath('latest_model.zip')}"
             model.save(save_path)
             self.logger.info(f"Saved model at {save_path}")
 
             # plot reward graph
-            self.plot_results(iterations=iterations,
-                            model_log_dir=paths["env_logs"],
-                            plots_dir=paths["plots"],
+            self.plot_results(iterations=job.iterations["train"],
+                            model_log_dir=job.paths["env_logs"],
+                            plots_dir=job.paths["plots"],
                             name="reward_graph")   
 
-    def test(
-        self,
-        env: "gym.Env",
-        iterations: int,
-        model_path: str,
-        rec_path: str, # pylint: disable=unused-argument
-        device: int,
-        index: int):
+    def test(self, env: "gym.Env", job: "Job"):
         """
         Test the brain.
 
         Args:
             env (gym.Env): The environment used for testing.
-            iterations (int): The number of testing iterations.
-            model_path (str): The path to the trained model.
-            rec_path (str): The path to save the test video.
-            device (int): The device index used for training.
-            index (int): The index of the model to test, needed for tracking bar.
+            job (Job): The job object containing the environment, paths, and training parameters.
         """
         # load previously trained model from save_dir, if it exists
-        model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(model_path, device=torch.device('cuda', device))
+        model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
+            job.paths['model'].joinpath('latest_model.zip'), 
+            device=torch.device('cuda', job.device))
 
         # validate environment
         env = self._validate_env(env)
@@ -226,14 +204,15 @@ class Brain:
         ## record - test video
         try:
             # vr = VideoRecorder(env=envs,
-            # path="{}/agent_{}.mp4".format(rec_path, \
+            # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
             
             # for when algorithm is RecurrentPPO
+            iterations: int = job.iterations["test"]
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
-                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     # cell and hidden state of the LSTM 
                     done, lstm_states = False, None
@@ -260,7 +239,7 @@ class Brain:
             else:
             #iterations = 50*20*200 # 50 conditions of 20 steps each
                 self.logger.info(f"Total number of testing steps: {iterations}")
-                t = tqdm(total=iterations, desc=f"Condition {index}", position=index)
+                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
@@ -268,7 +247,7 @@ class Brain:
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-                    # vr.capture_frame()    
+                    # vr.capture_frame()  
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
@@ -473,39 +452,6 @@ class Brain:
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model
-
-    @staticmethod
-    def _initialize_callbacks(paths: dict[str, Path], save_checkpoints: bool, checkpoint_freq: int, index: Optional[int] = None, estimate_memory: bool = False, device: int = 0) -> CallbackList:
-        """
-        Initialize the callbacks for training.
-
-        Args:
-            paths (dict[str, Path]): The paths for saving logs, models, and plots.
-            index (int): The index of the model to test, needed for tracking bar.
-            save_checkpoints (bool): Whether to save checkpoints or not.
-            checkpoint_freq (int): The frequency of saving checkpoints.
-        
-        Returns:
-            CallbackList: The list of callbacks for training.
-        """
-        hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
-
-        # creates the parallel progress bars
-        loading_bar_callback = multiBarCallback(index)
-
-        callback_list = [hparam_callback, loading_bar_callback]
-
-        if estimate_memory:
-            callback_list.append(MemoryCallback(device, save_path=paths["base"]))
-
-        if save_checkpoints:
-            callback_list.append(CheckpointCallback(
-                save_freq=checkpoint_freq, # defaults to 30_000 steps
-                save_path=paths["checkpoints"],
-                save_replay_buffer=True,
-                save_vecnormalize=True))
-
-        return CallbackList(callback_list)
     
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}

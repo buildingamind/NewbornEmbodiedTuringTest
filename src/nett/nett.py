@@ -50,7 +50,6 @@ class NETT:
         self.body = body
         self.environment = environment        
         # for NVIDIA memory management
-        # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInit()
 
     def run(self,
@@ -66,7 +65,7 @@ class NETT:
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
             verbose: int = True,
-            synchronous=False,
+            synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
             base_port: int = 5004) -> list[Future]:
@@ -101,15 +100,25 @@ class NETT:
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         # calculate iterations
+        iterations: dict[str, int] = {}
         if mode in ["train", "full"]:
-            self.train_iterations = steps_per_episode * train_eps
+            iterations["train"] = steps_per_episode * train_eps
         if mode in ["test", "full"]:
-            self.test_iterations = test_eps * self.environment.num_test_conditions
+            iterations["test"] = test_eps * self.environment.num_test_conditions
             if not issubclass(self.brain.algorithm, RecurrentPPO):
-                self.test_iterations *= steps_per_episode
+                iterations["test"] *= steps_per_episode
 
         # initialize job object
-        Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, output_dir, self.brain.reward)
+        Job.initialize(
+            mode=mode, 
+            steps_per_episode=steps_per_episode, 
+            checkpoint_freq=checkpoint_freq,
+            output_dir=output_dir,
+            reward=self.brain.reward,
+            save_checkpoints=save_checkpoints,  
+            batch_mode=batch_mode, 
+            iterations=iterations 
+            )
 
         # validate devices
         devices = self._validate_devices(devices)
@@ -242,7 +251,7 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _execute_job(self, job: Job, estimate_memory: bool = False) -> Future:
+    def _execute_job(self, job: Job) -> Future:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
@@ -250,38 +259,24 @@ class NETT:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                    # train
-                    brain.train(
-                        env=train_environment,
-                        iterations=self.train_iterations,
-                        device=job.device,
-                        index=job.index,
-                        paths=job.paths,
-                        save_checkpoints=job.save_checkpoints,
-                        checkpoint_freq=job.checkpoint_freq,
-                        estimate_memory=estimate_memory)
+                    brain.train(train_environment, job)
             except Exception as e:
-                self.logger.error(f"Error in training: {e}", exc_info=1)
-                exit()    
+                self.logger.exception(f"Error in training: {e}")
+                raise e
 
         # for test
         if job.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
-                    brain.test(
-                        env=test_environment,
-                        iterations=self.test_iterations if not estimate_memory else 1,
-                        model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                        rec_path = str(job.paths["env_recs"]),
-                        device=job.device,
-                        index=job.index)
-                    if estimate_memory:                 
+                    brain.test(test_environment, job)
+
+                    if job.estimate_memory:                 
                         with open(job.paths["logs"] / "mem.txt", "w") as file:
                             file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}", exc_info=1)
-                exit()
+                self.logger.exception(f"Error in testing: {e}")
+                raise e
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -306,7 +301,8 @@ class NETT:
                 condition=self.environment.imprinting_conditions[0], 
                 device=most_free_gpu, 
                 index=0,
-                port=base_port)
+                port=base_port,
+                estimate_memory=True)
 
             job.save_checkpoints = False
 
@@ -322,7 +318,7 @@ class NETT:
             job_sheet: dict[Future, dict[str, Job]] = {}
 
             # run job with estimate_memory set to True
-            job_future = executor.submit(self._execute_job, job, True)
+            job_future = executor.submit(self._execute_job, job)
             job_sheet[job_future] = job
 
             future_wait(job_sheet, return_when=FIRST_COMPLETED)
