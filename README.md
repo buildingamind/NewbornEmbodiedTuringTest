@@ -66,22 +66,31 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 ### Installation
 
-1. **Virtual Environment Setup (Highly Recommended)**
+1. **Virtual Environment Setup**
 
-   Create and activate a virtual environment to avoid dependency conflicts.
+   *(Note: if you are a member of our lab using one of our lab servers, you will need to  initialize Anaconda for your account the first time you use the server for this pipeline: `module load anaconda`)*
+
+   Create a virtual environment to avoid dependency conflicts. You only need to create the virtual environment once (i.e., you do not need to create the virtual environment again for future work with this pipeline as long as you are using the same machine).
    ```bash
    conda create -y -n nett_env python=3.10.12
+   ```
+
+   Activate the virtual environment (you **do** need to activate the virtual environment every time you run through this pipeline.)
+   ```bash
    conda activate nett_env
    ```
+
    See [here](https://uoa-eresearch.github.io/eresearch-cookbook/recipe/2014/11/20/conda "Link for how to set-up a virtual env") for detailed instructions.
 
 2. **Install Prerequistes**
+
+   You will only need to install the prerequisites to your virtual environment the first time you run the pipeline on your machine.
 
    Install the needed versions of `setuptools` and `pip`:
    ```bash
    pip install setuptools==65.5.0 pip==21 wheel==0.38.4
    ```
-   **NOTE:** This is a result of incompatibilities with the subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
+   **NOTE:** We need these specific versions of setuptools and pip because of incompatibilities with the subdependency `gym==0.21`. More information about this issue can be found [here](https://github.com/openai/gym/issues/3176#issuecomment-1560026649)
 
 3. **Toolkit Installation**
 
@@ -94,13 +103,25 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 ### Running a NETT
 
-1. **Download or Create the Unity Executable**
+1. **Download the Unity Executable**
 
-   Download and unzip a pre-made Unity executable from [here](https://origins-of-intelligence.com/environments/). The executable is required to run the virtual environment.
+   You can download and unzip pre-made Unity executables from [here](https://origins-of-intelligence.com/environments/). An executable is required to run the virtual experiments.
+
+   If you are running this pipeline on a server and you need to copy the executable folder from your local machine to the server, use the following:
+
+   ```bash
+   scp -r \local\path\to\executable\folder  \server\parth\to\directory\for\executable\folder\
+   ```
+   *(Note: if you are a member of our lab using one of our lab servers, the server path will be: your_username@server_name.luddy.indiana.edu:/home/your_username)*
 
 2. **Import NETT Components**
 
-   Start by importing the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
+   Open python.
+   ```bash
+   python
+   ```
+
+   Now that python is open, import the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
    ```python
    from nett import Brain, Body, Environment
    from nett import NETT
@@ -114,7 +135,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    brain = Brain(policy="CnnPolicy", algorithm="PPO")
    ```
-   To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively.
+   *(To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively. You will need to nett to run these commands: `import nett`.)*
 
 - **Body** 
 
@@ -126,11 +147,11 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 - **Environment**
 
-   Create the simulation environment using the path to your Unity executable (see Step 1).
+   Create the simulation environment using the path to your Unity executable (see Step 1). The path must be absolute and not relative.
    ```python
-   environment = Environment(config="identityandview", executable_path="path/to/executable.x86_64")
+   environment = Environment(executable_path="path/to/executable.x86_64")
    ```
-   To get a list of all available configurations, run `nett.list_configs()`.
+   *(To get a list of all available configurations, run `nett.list_configs()`. If you have not already imported nett, you will need it to run this command: `import nett`.)*
 
 4. **Run the Benchmarking**
 
