@@ -86,7 +86,20 @@ class multiBarCallback(ProgressBarCallback):
     def _on_training_start(self) -> None:
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=(self.model.n_steps+self.model.total_timesteps), position=self.index)
+        try:
+            self.logger.info(f"total timesteps: {self._total_timesteps}")
+        except Exception:
+            self.logger.info("total timesteps not found")
+        try:
+            self.logger.info(f"num steps at start: {self._num_timesteps_at_start}")
+        except Exception:
+            self.logger.info("num steps at start not found")
+        try:
+            self.logger.info(f"num steps: {self.num_timesteps}")
+        except Exception:
+            self.logger.info("num steps not found")
+
+        self.pbar = tqdm(total=(self.model.n_steps), position=self.index)
         pass
     def _on_training_end(self) -> None:
         self.pbar.close()
