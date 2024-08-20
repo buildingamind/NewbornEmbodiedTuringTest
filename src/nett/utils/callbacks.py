@@ -29,7 +29,7 @@ def initialize_callbacks(job: "Job") -> CallbackList:
     hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
 
     # creates the parallel progress bars
-    loading_bar_callback = multiBarCallback(job.index)
+    loading_bar_callback = multiBarCallback(job.iterations["train"], job.index) # TODO: Add progress bars to test aswell
 
     callback_list = [hparam_callback, loading_bar_callback]
 
@@ -79,27 +79,15 @@ class multiBarCallback(ProgressBarCallback):
     using tqdm and rich packages.
     """
 
-    def __init__(self, index: Optional[int] = None) -> None:
+    def __init__(self, num_steps: int, index: int) -> None:
         super().__init__()
+        self.num_steps = num_steps
         self.index = index
 
     def _on_training_start(self) -> None:
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        try:
-            self.logger.info(f"total timesteps: {self._total_timesteps}")
-        except Exception:
-            self.logger.info("total timesteps not found")
-        try:
-            self.logger.info(f"num steps at start: {self._num_timesteps_at_start}")
-        except Exception:
-            self.logger.info("num steps at start not found")
-        try:
-            self.logger.info(f"num steps: {self.num_timesteps}")
-        except Exception:
-            self.logger.info("num steps not found")
-
-        self.pbar = tqdm(total=(self.model.n_steps), position=self.index)
+        self.pbar = tqdm(total=(self.num_steps + self.model.n_steps), position=self.index)
         pass
     def _on_training_end(self) -> None:
         self.pbar.close()
