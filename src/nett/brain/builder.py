@@ -148,9 +148,6 @@ class Brain:
             model = self._set_encoder_as_eval(model)
             self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
-        if (job.estimate_memory):
-            job.iterations["train"] = 0 # setting to 0 for memory estimation
-
         # initialize callbacks
         self.logger.debug("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
