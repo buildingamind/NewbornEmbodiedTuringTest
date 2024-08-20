@@ -123,7 +123,7 @@ class Brain:
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
             
-        self.logger.info(f'Training with {self.algorithm.__name__}')
+        self.logger.debug(f'Training with {self.algorithm.__name__}')
         try:
             model = self.algorithm(
                 self.policy,
@@ -142,18 +142,18 @@ class Brain:
         tb_logger = configure(str(job.paths["logs"]), ["stdout", "csv", "tensorboard"])
         model.set_logger(tb_logger)
         
-        self.logger.info(f"Tensorboard logs saved at {str(job.paths['logs'])}")
+        self.logger.debug(f"Tensorboard logs saved at {str(job.paths['logs'])}")
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             model = self._set_encoder_as_eval(model)
-            self.logger.info(f"Encoder training is set to {str(self.train_encoder).upper()}")
+            self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # initialize callbacks
-        self.logger.info("Initializing Callbacks")
+        self.logger.debug("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
 
         # train
-        self.logger.info(f"Total number of training steps: {job.iterations['train']}")
+        self.logger.debug(f"Total number of training steps: {job.iterations['train']}")
         model.learn(
             total_timesteps=job.iterations["train"],
             tb_log_name=self.algorithm.__name__,

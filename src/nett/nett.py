@@ -126,10 +126,12 @@ class NETT:
 
         # estimate memory for a single job
         if job_memory == "auto":
-            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))  
+            self.logger.info("Estimating Job Memory...")
+            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))
+            self.logger.info(f"Estimated Job Memory: {job_memory / (1024**3)} GiB")
         else:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
-        self.logger.info(f"Estimated memory for a single job: {job_memory}")
+        
 
         # get task set
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
