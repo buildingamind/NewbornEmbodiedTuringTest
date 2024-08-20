@@ -106,7 +106,7 @@ class Brain:
         envs = make_vec_env(
             env_id=lambda: env, 
             n_envs=1, 
-            seed=self.seed, 
+            # seed=self.seed, # Commented out as seed does not work
             monitor_dir=str(job.paths["env_logs"])) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
 
         # build model
@@ -199,7 +199,11 @@ class Brain:
 
         # initialize environment
         num_envs = 1
-        envs = make_vec_env(env_id=lambda: env, n_envs=num_envs, seed=self.seed)
+        envs = make_vec_env(
+            env_id=lambda: env, 
+            n_envs=num_envs, 
+            # seed=self.seed # Commented out as seed does not work
+            )
         obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
