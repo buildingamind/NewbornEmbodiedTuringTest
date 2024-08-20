@@ -153,7 +153,7 @@ class Brain:
         callback_list = initialize_callbacks(job)
 
         # train
-        self.logger.info(f"Total number of training steps: {job.iterations["train"]}")
+        self.logger.info(f"Total number of training steps: {job.iterations['train']}")
         model.learn(
             total_timesteps=job.iterations["train"],
             tb_log_name=self.algorithm.__name__,
