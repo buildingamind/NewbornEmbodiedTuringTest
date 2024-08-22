@@ -174,7 +174,7 @@ class NETT:
         This method is a static method and does not require an instance of the NETT class to be called.
 
         Args:
-            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", or "viewinvariant".
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", or "statisticallearning".
             run_dir (str | Path): The directory where the run results are stored.
             output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
@@ -394,9 +394,12 @@ class NETT:
             while waitlist:
                 done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
                 for doneFuture in done:
-                    freeDevice: int = job_sheet.pop(doneFuture).device
+                    doneJob: Job = job_sheet.pop(doneFuture)
+                    freeDevice: int = doneJob.device
+                    freePort: int = doneJob.port
                     job = waitlist.pop()
                     job.device = freeDevice
+                    job.port = freePort
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
                     time.sleep(1)
@@ -450,7 +453,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, -1, len(jobs)+i) 
+                    Job(brain_id, condition, -1, len(jobs)+i, -1) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
