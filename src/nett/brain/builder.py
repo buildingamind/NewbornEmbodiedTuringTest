@@ -46,6 +46,7 @@ class Brain:
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
+        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
 
     Example:
 
@@ -154,9 +155,8 @@ class Brain:
         
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(paths["logs"]), ["stdout", "csv", "tensorboard"])
-        model.set_logger(tb_logger)
-        
-        self.logger.info(f"Tensorboard logs saved at {str(paths['logs'])}")
+        self.model.set_logger(tb_logger)
+
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             model = self._set_encoder_as_eval(model)
@@ -373,7 +373,6 @@ class Brain:
             # at this point in the code, it is guaranteed to be in either of the two
             try:
                 algorithm = getattr(stable_baselines3, algorithm)
-                
             except:
                 algorithm = getattr(sb3_contrib, algorithm)
                 
@@ -472,7 +471,6 @@ class Brain:
             OnPolicyAlgorithm | OffPolicyAlgorithm: The model with the encoder set as evaluation mode.
         """
         model.policy.features_extractor.eval()
-        
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model
