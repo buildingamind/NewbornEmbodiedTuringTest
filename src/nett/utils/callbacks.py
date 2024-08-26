@@ -6,6 +6,7 @@ Classes:
 """
 import os
 from pathlib import Path
+import sys
 from typing import Optional
 
 from tqdm import tqdm
@@ -96,7 +97,7 @@ class multiBarCallback(ProgressBarCallback):
     def _on_training_start(self) -> None:
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=(self.num_steps), position=self.index, dynamic_ncols=True, desc=self.label)
+        self.pbar = tqdm(total=(self.num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout)
         pass
 
     def _on_training_end(self) -> None:
