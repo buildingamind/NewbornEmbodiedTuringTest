@@ -33,13 +33,13 @@ def initialize_callbacks(job: "Job") -> CallbackList:
     if job.estimate_memory:
         callback_list.extend([
             # creates the parallel progress bars
-            multiBarCallback(job.index), # TODO: Add progress bars to test aswell
+            multiBarCallback(job.index, "Estimating Memory Usage"), # TODO: Add progress bars to test aswell
             # creates the memory callback for estimation of memory for a single job
             MemoryCallback(job.device, save_path=job.paths["base"])
             ])
     else:
         # creates the parallel progress bars
-        callback_list.append(multiBarCallback(job.index, job.iterations["train"])) # TODO: Add progress bars to test aswell
+        callback_list.append(multiBarCallback(job.index, f"{job.condition}-{job.brain_id}", job.iterations["train"])) # TODO: Add progress bars to test aswell
 
     if job.save_checkpoints:
         callback_list.append(CheckpointCallback(
@@ -84,17 +84,19 @@ class multiBarCallback(ProgressBarCallback):
     using tqdm and rich packages.
     """
 
-    def __init__(self, index: int, num_steps: int = None) -> None:
+    def __init__(self, index: int, label: str, num_steps: int = None) -> None:
         super().__init__()
         # if num_steps is None, this means that memory estimation is being done, so the length of a single rollout will be used
         self.num_steps = num_steps if num_steps is not None else self.model.n_steps
         # where on the screen the progress bar will be displayed
         self.index = index
+        # label to prefix the progress bar
+        self.label = label
 
     def _on_training_start(self) -> None:
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=(self.num_steps), position=self.index)
+        self.pbar = tqdm(total=(self.num_steps), position=self.index, dynamic_ncols=True, desc=self.label)
         pass
 
     def _on_training_end(self) -> None:
