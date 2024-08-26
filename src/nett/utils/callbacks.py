@@ -4,14 +4,17 @@ Callbacks for training the agents.
 Classes:
     HParamCallback(BaseCallback)
 """
-from pathlib import Path
+import os
+from typing import Optional
+
 from tqdm import tqdm
-import numpy as np
-from stable_baselines3.common.results_plotter import load_results, ts2xy
 from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback
 from stable_baselines3.common.logger import HParam
 
-from nett.utils.train import compute_train_performance
+# from nett.utils.train import compute_train_performance
+
+from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
+
 
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
@@ -47,7 +50,7 @@ class multiBarCallback(ProgressBarCallback):
     using tqdm and rich packages.
     """
 
-    def __init__(self, index) -> None: #, num_steps
+    def __init__(self, index: Optional[int] = None) -> None:
         super().__init__()
         self.index = index
 
@@ -55,4 +58,45 @@ class multiBarCallback(ProgressBarCallback):
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
         self.pbar = tqdm(total=self.model.n_steps, position=self.index)
-        # self.pbar = tqdm(total=self.locals["total_timesteps"] - self.model.num_timesteps, position=self.index)
+        pass
+    def _on_training_end(self) -> None:
+        self.pbar.close()
+        pass
+
+class MemoryCallback(BaseCallback):
+    """
+    A custom callback that derives from ``BaseCallback``.
+    """
+    def __init__(self, device: int):
+        super().__init__()
+        self.device = device
+        self.close = False
+        nvmlInit()
+
+    def _on_step(self) -> bool:
+        """
+        This method will be called by the model after each call to `env.step()`.
+
+        For child callback (of an `EventCallback`), this will be called
+        when the event is triggered.
+
+        :return: If the callback returns False, training is aborted early.
+        """
+        if self.close:
+            # Create a temporary directory to store the memory usage
+            # os.makedirs("./.tmp", exist_ok=True)
+            # Grab the memory being used by the GPU
+            used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
+            # Write the used memory to a file
+            with open("./.tmp/memory_use", "w") as f:
+                f.write(str(used_memory))
+            # Close the callback
+            return False
+        return True
+
+    def _on_rollout_end(self) -> None:
+        """
+        This event is triggered before updating the policy.
+        """
+        self.close = True
+        pass
