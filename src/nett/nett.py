@@ -128,7 +128,8 @@ class NETT:
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
-
+    
+    #TODO: move into a separate module
     def launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job] = []) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
@@ -172,6 +173,7 @@ class NETT:
         except Exception as e:
             print(str(e))
 
+    #TODO: move into a separate module
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
@@ -195,6 +197,7 @@ class NETT:
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
+    #TODO: move into a separate module
     @staticmethod
     def analyze(config: str,
                 run_dir: str | Path,
@@ -209,7 +212,7 @@ class NETT:
         This method is a static method and does not require an instance of the NETT class to be called.
 
         Args:
-            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", or "viewinvariant".
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", or "biomotion."
             run_dir (str | Path): The directory where the run results are stored.
             output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
@@ -225,8 +228,6 @@ class NETT:
         Example:
             >>> nett.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
         """
-        # TODO may need to clean up this file structure
-        # set paths
         run_dir = Path(run_dir).resolve()
         analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
         if output_dir is None:
@@ -270,6 +271,8 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
+
+    # TODO: move job scheduling and allocation into separate module
     def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
         # create jobs
         
@@ -402,9 +405,11 @@ class NETT:
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
+    # TODO: move memory estimation into its own file/module 
+    # TODO: re-enable pylint 
     # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
-        # TODO (v0.5) add a dummy job to gauge memory consumption
+        # TODO (v0.5) add a dummy job to gauge memory consumption <-- surely there's a more effecient way to do this than stubbing a dummy job to estimate how memory is consumed?
 
         # # get device with the maxmium memory available
         # max_memory_device = max(device_memory_status,
