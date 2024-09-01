@@ -135,7 +135,7 @@ class NETT:
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
-
+    
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
@@ -159,6 +159,7 @@ class NETT:
     # Discussion v0.3 is print okay or should we have it log using nett's logger?
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
+    #TODO: move into a separate module?
     # TODO: Add option to not have a config here either?
     @staticmethod
     def analyze(config: str,
@@ -174,7 +175,7 @@ class NETT:
         This method is a static method and does not require an instance of the NETT class to be called.
 
         Args:
-            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", or "statisticallearning".
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion" or "statisticallearning".
             run_dir (str | Path): The directory where the run results are stored.
             output_dir (str | Path, optional): The directory where the analysis results will be stored. 
                 If None, the analysis results will be stored in the run directory.
@@ -190,8 +191,6 @@ class NETT:
         Example:
             >>> nett.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
         """
-        # TODO may need to clean up this file structure
-        # set paths
         run_dir = Path(run_dir).resolve()
         if not run_dir.exists():
             raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
@@ -243,6 +242,78 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job, estimate_memory: bool = False) -> Future:
+    # TODO: move job scheduling and allocation into separate module
+
+    def _schedule_jobs(self, conditions: Optional[list[str]] = None) -> tuple[list[Job], list[Job]]:
+        # create jobs
+        
+        # create set of all conditions
+        all_conditions: set[str] = set(self.environment.config.conditions)
+    
+        # check if user-defined their own conditions
+        if (conditions is not None):
+            # create a set of user-defined conditions
+            user_conditions: set[str] = set(conditions)
+
+            if user_conditions.issubset(all_conditions):
+                self.logger.info(f"Using user specified conditions: {conditions}")
+                # create set of all brain-environment combinations for user-defined conditions
+                task_set: set[tuple[str,int]] = set(product(user_conditions, set(range(1, self.num_brains + 1))))
+            else:
+                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {self.environment.config.conditions}")
+        # default to all conditions
+        else:
+            # create set of all brain-environment combinations
+            task_set: set[tuple[str,int]] = set(product(all_conditions, set(range(1, self.num_brains + 1))))
+
+        jobs: list[Job] = []
+        waitlist: list[Job] = []
+
+        # assign devices based on memory availability
+        # get the list of devices
+        free_devices: list[int] | int = self.devices.copy()
+
+        # get the free memory status for each device
+        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status().items()}
+
+        # estimate memory for a single job
+        job_memory: float = self.buffer * self._estimate_job_memory(free_device_memory)
+
+        while task_set:
+            # if there are no free devices, add jobs to the waitlist
+            if not free_devices:
+                waitlist = [
+                    Job(brain_id, condition, -1, self.output_dir, len(jobs)+i) 
+                    for i, (condition, brain_id) in enumerate(task_set)
+                ]
+                self.logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
+                break
+            # remove devices that don't have enough memory
+            elif free_device_memory[free_devices[-1]] < job_memory:
+                free_devices.pop()
+            # assign device to job
+            else:
+                # allocate memory
+                free_device_memory[free_devices[-1]] -= job_memory
+                # create job
+                condition, brain_id = task_set.pop()
+                job = Job(brain_id, condition, free_devices[-1], self.output_dir, len(jobs))
+                jobs.append(job)
+
+        return jobs, waitlist
+
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+        copy_environment = deepcopy(self.environment)
+        copy_environment.initialize(mode=mode, **kwargs)
+        # apply wrappers (body)
+        return self.body(copy_environment)
+
+    def _execute_job(self, job: Job) -> Future:
+
+        # for train
+        if self.mode not in ["train", "test", "full"]:
+            raise ValueError(f"Unknown mode type {self.mode}, should be one of ['train', 'test', 'full']")
+
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
@@ -282,12 +353,17 @@ class NETT:
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
+    # TODO: move memory estimation into its own file/module 
+    # TODO: re-enable pylint 
+    # pylint: disable-next=unused-argument
     def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
-        self.logger.info("Estimating memory for a single job")
-        try:
+       self.logger.info("Estimating memory for a single job")
+       try:
             # create a temporary directory to hold memory estimate during runtime
             tmp_path = Path("./.tmp/").resolve()
             tmp_path.mkdir(parents=True, exist_ok=True)
+    def _estimate_job_memory(self, device_memory_status: dict) -> int: # pylint: disable=unused-argument
+        # TODO (v0.5) add a dummy job to gauge memory consumption <-- surely there's a more effecient way to do this than stubbing a dummy job to estimate how memory is consumed?
 
             # find the GPU with the most free memory
             free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
@@ -345,12 +421,12 @@ class NETT:
             self.logger.exception(f"Error in estimating memory: {e}")
             raise e
         finally:
-            if tmp_path.exists():
+    if tmp_path.exists():
                 shutil.rmtree(tmp_path)
             job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "brain_0"
             if job_path.exists():
                 shutil.rmtree(job_path)
-            # importlib.reload(mlagents_envs)
+            importlib.reload(mlagents_envs)
 
     @staticmethod
     def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
