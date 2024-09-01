@@ -98,7 +98,7 @@ class multiBarCallback(BaseCallback):
 
     def _on_training_start(self) -> None:
         # if num_steps is None, this means that memory estimation is being done, so the length of a single rollout will be used
-        num_steps = num_steps if self.num_steps is not None else self.model.n_steps
+        num_steps = self.num_steps if self.num_steps is not None else self.model.n_steps
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
         self.pbar = tqdm(total=(num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout)
