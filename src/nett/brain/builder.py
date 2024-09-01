@@ -161,22 +161,25 @@ class Brain:
             callback=[callback_list])
         self.logger.info("Training Complete")
 
-        if not job.estimate_memory:
-            # save
-            ## create save directory
-            job.paths["model"].mkdir(parents=True, exist_ok=True)
-            self.save_encoder_policy_network(model.policy, paths["model"])
-            print("Saved feature extractor")
-            
-            save_path = f"{job.paths['model'].joinpath('latest_model.zip')}"
-            model.save(save_path)
-            self.logger.info(f"Saved model at {save_path}")
+        # nothing else is needed for memory estimation
+        if job.estimate_memory:
+            return
 
-            # plot reward graph
-            self.plot_results(iterations=job.iterations["train"],
-                            model_log_dir=job.paths["env_logs"],
-                            plots_dir=job.paths["plots"],
-                            name="reward_graph")   
+        # save
+        ## create save directory
+        job.paths["model"].mkdir(parents=True, exist_ok=True)
+        self.save_encoder_policy_network(model.policy, paths["model"])
+        print("Saved feature extractor")
+        
+        save_path = f"{job.paths['model'].joinpath('latest_model.zip')}"
+        model.save(save_path)
+        self.logger.info(f"Saved model at {save_path}")
+
+        # plot reward graph
+        self.plot_results(iterations=job.iterations["train"],
+                        model_log_dir=job.paths["env_logs"],
+                        plots_dir=job.paths["plots"],
+                        name="reward_graph")   
 
     def test(self, env: "gym.Env", job: "Job"):
         """

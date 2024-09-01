@@ -257,7 +257,7 @@ class NETT:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
-        if job.mode in ["train", "full"]:
+        if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
@@ -273,9 +273,9 @@ class NETT:
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
                     brain.test(test_environment, job)
 
-                    if job.estimate_memory:                 
-                        with open(job.paths["logs"] / "mem.txt", "w") as file:
-                            file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
+                    # if job.estimate_memory:                 
+                    #     with open(job.paths["base"] / "mem.txt", "w") as file:
+                    #         file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
             except Exception as e:
                 self.logger.exception(f"Error in testing: {e}")
                 raise e
