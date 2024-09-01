@@ -93,6 +93,7 @@ class multiBarCallback(BaseCallback):
         self.label = label
         # progress bar object
         self.pbar = None
+        # number of steps to be done
         self.num_steps = num_steps
 
     def _on_training_start(self) -> None:
