@@ -168,7 +168,7 @@ class Brain:
         # save
         ## create save directory
         job.paths["model"].mkdir(parents=True, exist_ok=True)
-        self.save_encoder_policy_network(model.policy, paths["model"])
+        self.save_encoder_policy_network(model.policy, job.paths["model"])
         print("Saved feature extractor")
         
         save_path = f"{job.paths['model'].joinpath('latest_model.zip')}"
