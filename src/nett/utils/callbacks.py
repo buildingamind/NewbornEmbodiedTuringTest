@@ -79,7 +79,7 @@ class HParamCallback(BaseCallback):
     def _on_step(self) -> bool:
         return True
 
-class multiBarCallback(ProgressBarCallback):
+class multiBarCallback(BaseCallback):
     """
     Display a progress bar when training SB3 agent
     using tqdm and rich packages.
@@ -93,6 +93,8 @@ class multiBarCallback(ProgressBarCallback):
         self.index = index
         # label to prefix the progress bar
         self.label = label
+        # progress bar object
+        self.pbar = None
 
     def _on_training_start(self) -> None:
         # Initialize progress bar
@@ -100,7 +102,13 @@ class multiBarCallback(ProgressBarCallback):
         self.pbar = tqdm(total=(self.num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout)
         pass
 
+    def _on_step(self) -> bool:
+        # Update progress bar, we do num_envs steps per call to `env.step()`
+        self.pbar.update(self.training_env.num_envs)
+        return True
+
     def _on_training_end(self) -> None:
+        self.pbar.refresh()
         self.pbar.close()
         pass
 
