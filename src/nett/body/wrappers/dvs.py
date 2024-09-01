@@ -54,8 +54,8 @@ class DVSWrapper(gym.ObservationWrapper):
             self.shape=(3, width, height)
             self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
             logger.info("In dvs wrapper")
-        except Exception as ex:
-            print(str(ex))
+        except Exception as e:
+            raise e
         
         
     def create_grayscale(self, image):
