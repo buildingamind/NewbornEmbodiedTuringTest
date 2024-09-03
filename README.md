@@ -94,13 +94,13 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 ### Running a NETT
 
-1. **Download a Unity Executable**
+1. **Download or Create the Unity Executable**
 
    Download and unzip a pre-made Unity executable from [here](https://origins-of-intelligence.com/environments/). The executable is required to run the virtual environment.
 
 2. **Import NETT Components**
 
-   In Python, start by importing the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
+   Start by importing the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
    ```python
    from nett import Brain, Body, Environment
    from nett import NETT
