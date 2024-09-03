@@ -254,7 +254,7 @@ class Brain:
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-                    # vr.capture_frame()  
+                    # vr.capture_frame()
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e

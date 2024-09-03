@@ -4,13 +4,11 @@ Callbacks for training the agents.
 Classes:
     HParamCallback(BaseCallback)
 """
-import os
 from pathlib import Path
 import sys
-from typing import Optional
 
 from tqdm import tqdm
-from stable_baselines3.common.callbacks import BaseCallback, ProgressBarCallback, CheckpointCallback, CallbackList
+from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
 from stable_baselines3.common.logger import HParam
 
 # from nett.utils.train import compute_train_performance
