@@ -79,8 +79,7 @@ class HParamCallback(BaseCallback):
 
 class multiBarCallback(BaseCallback):
     """
-    Display a progress bar when training SB3 agent
-    using tqdm and rich packages.
+    Display a progress bar when training SB3 agent using tqdm
     """
 
     def __init__(self, index: int, label: str, num_steps: int = None) -> None:

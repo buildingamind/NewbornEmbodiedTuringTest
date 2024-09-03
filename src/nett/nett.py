@@ -110,12 +110,12 @@ class NETT:
 
         # initialize job object
         Job.initialize(
-            mode=mode, 
-            steps_per_episode=steps_per_episode, 
-            checkpoint_freq=checkpoint_freq,
+            mode=mode,
             output_dir=output_dir,
+            save_checkpoints=save_checkpoints, 
+            steps_per_episode=steps_per_episode,
+            checkpoint_freq=checkpoint_freq,
             reward=self.brain.reward,
-            save_checkpoints=save_checkpoints,  
             batch_mode=batch_mode, 
             iterations=iterations 
             )
@@ -438,7 +438,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, -1, len(jobs)+i, -1) 
+                    Job(brain_id, condition, device=-1, index=len(jobs)+i, port=-1) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")

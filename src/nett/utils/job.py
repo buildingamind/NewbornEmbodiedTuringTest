@@ -11,22 +11,24 @@ class Job:
     device (int): device to run the job on
     index (int): index for the job
     port (int): port for the job
+    estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
   """
 
   _MODES: Final = ("train", "test", "full")
 
   @classmethod
-  def initialize(cls, mode: str, steps_per_episode: int, checkpoint_freq: int, output_dir: Path | str, reward: str, save_checkpoints: bool, batch_mode: bool, iterations: dict[str, int]) -> None:
+  def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int]) -> None:
     """Initialize the class
 
     Args:
         mode (str): mode for the job
-        steps_per_episode (int): number of steps per episode
-        save_checkpoints (bool): whether to save checkpoints
-        checkpoint_freq (int): frequency to save checkpoints
-        batch_mode (bool): whether to run in batch mode
         output_dir (Path | str): output directory
+        save_checkpoints (bool): whether to save checkpoints
+        steps_per_episode (int): number of steps per episode
+        checkpoint_freq (int): frequency to save checkpoints
         reward (str): reward type
+        batch_mode (bool): whether to run in batch mode
+        iterations (dict[str, int]): number of iterations for the job with labels "train" and/or "test" to denote the number of iterations for training and testing
     """
     cls.mode = cls._validate_mode(mode)
     cls.steps_per_episode: int = steps_per_episode
