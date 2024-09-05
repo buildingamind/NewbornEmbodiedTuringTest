@@ -50,7 +50,6 @@ class NETT:
         self.body = body
         self.environment = environment        
         # for NVIDIA memory management
-        # flag 1 indicates that it will not throw an error if there is no NVIDIA GPU
         nvmlInit()
 
     def run(self,
@@ -66,7 +65,7 @@ class NETT:
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
             verbose: int = True,
-            synchronous=False,
+            synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
             base_port: int = 5004) -> list[Future]:
@@ -101,15 +100,25 @@ class NETT:
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         # calculate iterations
+        iterations: dict[str, int] = {}
         if mode in ["train", "full"]:
-            self.train_iterations = steps_per_episode * train_eps
+            iterations["train"] = steps_per_episode * train_eps
         if mode in ["test", "full"]:
-            self.test_iterations = test_eps * self.environment.num_test_conditions
+            iterations["test"] = test_eps * self.environment.num_test_conditions
             if not issubclass(self.brain.algorithm, RecurrentPPO):
-                self.test_iterations *= steps_per_episode
+                iterations["test"] *= steps_per_episode
 
         # initialize job object
-        Job.initialize(mode, steps_per_episode, save_checkpoints, checkpoint_freq, batch_mode, output_dir, self.brain.reward)
+        Job.initialize(
+            mode=mode,
+            output_dir=output_dir,
+            save_checkpoints=save_checkpoints, 
+            steps_per_episode=steps_per_episode,
+            checkpoint_freq=checkpoint_freq,
+            reward=self.brain.reward,
+            batch_mode=batch_mode, 
+            iterations=iterations 
+            )
 
         # validate devices
         devices = self._validate_devices(devices)
@@ -117,10 +126,12 @@ class NETT:
 
         # estimate memory for a single job
         if job_memory == "auto":
-            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))  
+            self.logger.info("Estimating Job Memory...")
+            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))
+            self.logger.info(f"Estimated Job Memory: {job_memory / (1024**3)} GiB")
         else:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
-        self.logger.info(f"Estimated memory for a single job: {job_memory}")
+        
 
         # get task set
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
@@ -242,43 +253,32 @@ class NETT:
 
         print(f"Analysis complete. See results at {output_dir}")
 
-    def _execute_job(self, job: Job, estimate_memory: bool = False) -> Future:
+    def _execute_job(self, job: Job) -> Future:
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
-        if job.mode in ["train", "full"]:
+        if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                    # train
-                    brain.train(
-                        env=train_environment,
-                        iterations=self.train_iterations,
-                        device=job.device,
-                        index=job.index,
-                        paths=job.paths,
-                        save_checkpoints=job.save_checkpoints,
-                        checkpoint_freq=job.checkpoint_freq,
-                        estimate_memory=estimate_memory)
+                    brain.train(train_environment, job)
             except Exception as e:
-                self.logger.error(f"Error in training: {e}", exc_info=1)
-                exit()    
+                self.logger.exception(f"Error in training: {e}")
+                raise e
 
         # for test
         if job.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
-                    brain.test(
-                        env=test_environment,
-                        iterations=self.test_iterations,
-                        model_path=str(job.paths['model'].joinpath('latest_model.zip')),
-                        rec_path = str(job.paths["env_recs"]),
-                        device=job.device,
-                        index=job.index)
+                    brain.test(test_environment, job)
+
+                    # if job.estimate_memory:                 
+                    #     with open(job.paths["base"] / "mem.txt", "w") as file:
+                    #         file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
             except Exception as e:
-                self.logger.error(f"Error in testing: {e}", exc_info=1)
-                exit()
+                self.logger.exception(f"Error in testing: {e}")
+                raise e
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -303,7 +303,8 @@ class NETT:
                 condition=self.environment.imprinting_conditions[0], 
                 device=most_free_gpu, 
                 index=0,
-                port=base_port)
+                port=base_port,
+                estimate_memory=True)
 
             job.save_checkpoints = False
 
@@ -313,44 +314,28 @@ class NETT:
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-            # HACK: Fix this later
-            if (job.mode == "test"):
-                test_iterations = self.test_iterations
-                self.test_iterations = 10
-            
-            try:
-                # initializer = mute if not verbose else None
-                # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-                executor = ProcessPoolExecutor(max_workers=1, initializer=None)
-                job_sheet: dict[Future, dict[str, Job]] = {}
+            # initializer = mute if not verbose else None
+            # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
+            executor = ProcessPoolExecutor(max_workers=1, initializer=None)
+            job_sheet: dict[Future, dict[str, Job]] = {}
 
-                job_future = executor.submit(self._execute_job, job, True)
-                job_sheet[job_future] = job
+            # run job with estimate_memory set to True
+            job_future = executor.submit(self._execute_job, job)
+            job_sheet[job_future] = job
 
-                future_wait(job_sheet, return_when=FIRST_COMPLETED)
+            future_wait(job_sheet, return_when=FIRST_COMPLETED)
 
-            except Exception as e:
-                self.logger.exception(f"Error in estimating memory: {e}")
-
-            if job.mode == "test":
-                post_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-                self.test_iterations = test_iterations
-            else:
-                with open(Path("./.tmp/memory_use").resolve(), "r") as file:
-                    post_memory = int(file.readline())
-            # estimate memory allocated
-            return post_memory - pre_memory
-
+            with open(Path.joinpath(job.paths["base"], "mem.txt").resolve(), "r") as file:
+                post_memory = int(file.readline())
         except Exception as e:
             self.logger.exception(f"Error in estimating memory: {e}")
             raise e
         finally:
-            if tmp_path.exists():
-                shutil.rmtree(tmp_path)
-            job_path = Path(job.output_dir).resolve() / self.environment.imprinting_conditions[0] / "brain_0"
-            if job_path.exists():
-                shutil.rmtree(job_path)
-            # importlib.reload(mlagents_envs)
+            if job.paths["base"].exists():
+                shutil.rmtree(job.paths["base"])
+        
+        # estimate memory allocated
+        return post_memory - pre_memory
 
     @staticmethod
     def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
@@ -453,7 +438,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, -1, len(jobs)+i, -1) 
+                    Job(brain_id, condition, device=-1, index=len(jobs)+i, port=-1) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
