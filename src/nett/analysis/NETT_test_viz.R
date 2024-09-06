@@ -81,7 +81,7 @@ if (!is.null(order)) {
 
 
 # Plot aesthetic settings ------------------------------------------------------
-custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056")
+custom_palette <- c("#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98","#CCCCE7", "#08625B", "#D15056", "#F2A541", "#FFC0CB")
 chickred <- "#AF264A"
 
 p <- ggplot() +
