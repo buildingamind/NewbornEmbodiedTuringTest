@@ -1,9 +1,7 @@
 mlagents==0.30.0
 stable-baselines3[extra]
 sb3-contrib
-imageio-ffmpeg
 torchvision
-scipy
 timm
 nvidia-ml-py
 lightning
