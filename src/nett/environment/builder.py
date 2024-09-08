@@ -80,7 +80,6 @@ class Environment(Wrapper):
             mode (str): The mode to set the environment for training or testing or both.
             **kwargs: The arguments to pass to the environment.
         """
-        importlib.reload(mlagents_envs)
 
         args = []
 
