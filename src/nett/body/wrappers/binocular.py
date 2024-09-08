@@ -49,12 +49,8 @@ class Binocular(gym.ObservationWrapper):
         """
         left, right = obs
 
-        # Concatenate the low and high bounds of the two spaces
-        new_low = np.concatenate([left.low, right.low])
-        new_high = np.concatenate([left.high, right.high])
-
-        # Create a new Box space that combines both
-        combined_obs = gym.spaces.Box(low=new_low, high=new_high, dtype=np.uint8)
+        # Combine two observations into a single observation
+        combined_obs = np.concatenate([left, right])
 
         return combined_obs
     
