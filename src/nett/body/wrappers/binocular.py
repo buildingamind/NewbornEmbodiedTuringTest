@@ -30,8 +30,8 @@ class Binocular(gym.ObservationWrapper):
         super().__init__(env)
 
         try:
-            _, _, width, height = self.env.observation_space.shape # stack, channels,
-            self.shape=(6, width, height)
+            channels, width, height = self.env.observation_space[0].shape
+            self.shape=(2*channels, width, height)
             self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
         except Exception as e:
             raise e

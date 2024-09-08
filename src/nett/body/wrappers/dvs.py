@@ -50,8 +50,8 @@ class DVS(gym.ObservationWrapper):
         self.is_color = is_color
         
         try:
-            _, _, width, height = self.env.observation_space.shape # stack, channels,
-            self.shape=(3, width, height)
+            _, channels, width, height = self.env.observation_space.shape # stack,
+            self.shape=(channels, width, height)
             self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
             logger.info("In dvs wrapper")
         except Exception as e:
