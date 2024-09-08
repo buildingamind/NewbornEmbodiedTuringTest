@@ -117,15 +117,11 @@ class Environment(Wrapper):
                           log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
-        self.logger.info(f"Connecting to Unity environment on port {port}")
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
-        self.logger.info("Connected to Unity environment")
         self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True) #TODO: Change this to vary base on Binocular Wrapper
-        self.logger.info("Wrapped Unity environment to Gym environment")
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
-        self.logger.info("Initialized Environment")
 
     def log(self, msg: str) -> None:
         """

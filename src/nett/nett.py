@@ -254,16 +254,13 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job) -> Future:
-        self.logger.info(f"Executing Job for Brain #{job.brain_id} with Condition: {job.condition}")
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
         if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
             try:
-                self.logger.info(f"Training Brain #{job.brain_id} with Condition: {job.condition}")
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                    self.logger.info(f"wrapping done for Brain #{job.brain_id} with Condition: {job.condition}")
                     brain.train(train_environment, job)
             except Exception as e:
                 self.logger.exception(f"Error in training: {e}")
@@ -369,12 +366,11 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         try:
-            self.logger.info("Launching jobs")
             max_workers = 1 if len(jobs) == 1 else None
             initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
-            self.logger.info("Executor initialized")
+
             for job in jobs:
                 job_future = executor.submit(self._execute_job, job)
                 job_sheet[job_future] = job
@@ -495,7 +491,6 @@ class NETT:
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode, port, **kwargs)
-        self.logger.info(f"Environment initialized for {mode} mode")
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    

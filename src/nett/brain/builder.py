@@ -232,17 +232,12 @@ class Brain:
                             state=lstm_states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        self.logger.info(f"{_}: {obs}")
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
                         episode_starts = done
                         episode_length += 1
                         envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                        # vr.capture_frame() 
-                        if episode_length > 10:
-                            exit()
-                    if _ > 10:
-                        exit()
+                        # vr.capture_frame()    
 
                 # vr.close()
                 # vr.enabled = False
@@ -253,15 +248,12 @@ class Brain:
                 self.logger.info(f"Total number of testing steps: {iterations}")
                 t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
-                    self.logger.info(f"{_}: {obs}")
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
                         envs.reset()
                     envs.render(mode="rgb_array")
-                    if _ > 10:
-                        exit()
                     # vr.capture_frame()
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
