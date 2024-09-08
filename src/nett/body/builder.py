@@ -3,7 +3,7 @@ from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
-from nett.body.wrappers.dvs import DVSWrapper
+from nett.body.wrappers.dvs import DVS
 from nett.body import wrappers, wrapper_dict
 # from nett.body import ascii_art
 
@@ -137,7 +137,7 @@ class Body:
         try:
             # apply DVS wrapper
             if self.dvs:
-                env = self._wrap(env, DVSWrapper)
+                env = self._wrap(env, DVS)
             # apply all custom wrappers
             if self.wrappers:
                 for wrapper in self.wrappers:
