@@ -254,6 +254,7 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job) -> Future:
+        self.logger.info(f"Executing Job for Brain #{job.brain_id} with Condition: {job.condition}")
         brain: "nett.Brain" = deepcopy(self.brain)
 
         # for train
@@ -368,11 +369,12 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         try:
+            self.logger.info("Launching jobs")
             max_workers = 1 if len(jobs) == 1 else None
             initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
-
+            self.logger.info("Executor initialized")
             for job in jobs:
                 job_future = executor.submit(self._execute_job, job)
                 job_sheet[job_future] = job
