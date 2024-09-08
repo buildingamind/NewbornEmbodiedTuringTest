@@ -119,7 +119,7 @@ class Environment(Wrapper):
 
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True) #TODO: Change this to vary base on Binocular Wrapper
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
