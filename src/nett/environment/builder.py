@@ -146,7 +146,7 @@ class Environment(Wrapper):
         Returns:
             numpy.ndarray: The rendered frame of the environment.
         """
-        return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
+        return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1]) #TODO: Why?
     
     def reset(self, seed: Optional[int] = None, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
