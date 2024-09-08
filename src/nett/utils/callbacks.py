@@ -132,8 +132,6 @@ class MemoryCallback(BaseCallback):
         :return: If the callback returns False, training is aborted early.
         """
         if self.close:
-            # Create a temporary directory to store the memory usage
-            # os.makedirs("./.tmp", exist_ok=True)
             # Grab the memory being used by the GPU
             used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
             # Write the used memory to a file
