@@ -259,8 +259,10 @@ class NETT:
         # for train
         if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
             try:
+                self.logger.info(f"Training Brain #{job.brain_id} with Condition: {job.condition}")
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
+                    self.logger.info(f"wrapping done for Brain #{job.brain_id} with Condition: {job.condition}")
                     brain.train(train_environment, job)
             except Exception as e:
                 self.logger.exception(f"Error in training: {e}")
@@ -491,6 +493,7 @@ class NETT:
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode, port, **kwargs)
+        self.logger.info(f"Environment initialized for {mode} mode")
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
