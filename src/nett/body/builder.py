@@ -3,7 +3,7 @@ from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
-from nett.body.wrappers.dvs import DVS, Binocular
+from nett.body.wrappers import DVS, Binocular
 # from nett.body import ascii_art
 
 class Body:
