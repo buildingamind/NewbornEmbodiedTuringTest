@@ -3,8 +3,7 @@ from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
-from nett.body.wrappers.dvs import DVS
-from nett.body import wrappers, wrapper_dict
+from nett.body.wrappers.dvs import DVS, Binocular
 # from nett.body import ascii_art
 
 class Body:
@@ -30,7 +29,8 @@ class Body:
 
     def __init__(self, type: str = "basic",
                     wrappers: list[Wrapper] = [],
-                    dvs: bool = False) -> None:
+                    dvs: bool = False,
+                    binocular: bool = True) -> None:
         """
         Constructor method
         """
@@ -39,6 +39,7 @@ class Body:
         self.type = self._validate_agent_type(type)
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
+        self.binocular = self._validate_dvs(binocular)
 
     @staticmethod
     def _validate_agent_type(type: str) -> str:
@@ -77,7 +78,7 @@ class Body:
         return dvs
 
     @staticmethod
-    def _validate_wrappers(wrprs: list[Wrapper]) -> list[Wrapper]:
+    def _validate_wrappers(wrappers: list[Wrapper]) -> list[Wrapper]:
         """
         Validate the wrappers.
 
@@ -90,12 +91,7 @@ class Body:
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        for wrapper in wrprs:
-            if isinstance(wrapper, str):
-                if wrapper not in wrapper_dict.keys():
-                    raise ValueError(f"If a string, should be one of: {wrapper_dict.keys()}")
-                wrapper = getattr(wrappers, wrapper_dict[wrapper])
-
+        for wrapper in wrappers:
             if not issubclass(wrapper, Wrapper):
                 raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
@@ -138,6 +134,8 @@ class Body:
             # apply DVS wrapper
             if self.dvs:
                 env = self._wrap(env, DVS)
+            if self.binocular:
+                env = self._wrap(env, Binocular)
             # apply all custom wrappers
             if self.wrappers:
                 for wrapper in self.wrappers:
