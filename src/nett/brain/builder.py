@@ -130,7 +130,8 @@ class Brain:
                 envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
-                verbose=1,
+                learning_rate=0.0004 #TODO: Incorporate this into options
+                verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=torch.device("cuda", job.device))
             
