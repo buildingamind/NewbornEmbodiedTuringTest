@@ -228,7 +228,6 @@ class Brain:
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
-                    episode_length = 0
                     while not done:
                         action, lstm_states = model.predict(
                             obs,
@@ -238,7 +237,6 @@ class Brain:
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
                         episode_starts = done
-                        episode_length += 1
                         envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                         # vr.capture_frame()    
 
