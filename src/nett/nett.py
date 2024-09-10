@@ -68,6 +68,8 @@ class NETT:
             synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
+            record: Optional[list[str]] = None,
+            recording_eps: int = 10
             base_port: int = 5004) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -86,6 +88,8 @@ class NETT:
             verbose (int, optional): Whether or not to print info statements. Defaults to True.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
+            record (list[str], optional): The list of what record options to use. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
+            recording_eps (int, optional): Number of episodes to record for. Defaults to 10.
             base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
 
         Returns:
@@ -117,7 +121,9 @@ class NETT:
             checkpoint_freq=checkpoint_freq,
             reward=self.brain.reward,
             batch_mode=batch_mode, 
-            iterations=iterations 
+            iterations=iterations,
+            record=record,
+            recording_eps=recording_eps
             )
 
         # validate devices

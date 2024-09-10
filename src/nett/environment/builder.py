@@ -35,9 +35,6 @@ class Environment(Wrapper):
     Args:
         executable_path (str): The path to the Unity executable file.
         display (int, optional): The display number to use for the Unity environment. Defaults to 0.
-        record_chamber (bool, optional): Whether to record the chamber. Defaults to False.
-        record_agent (bool, optional): Whether to record the agent. Defaults to False.
-        recording_frames (int, optional): The number of frames to record. Defaults to 1000.
 
     Example:
 
@@ -46,19 +43,13 @@ class Environment(Wrapper):
     """
     def __init__(self,
                  executable_path: str,
-                 display: int = 0,
-                 record_chamber: bool = False,
-                 record_agent: bool = False,
-                 recording_frames: int = 1000) -> None:
+                 display: int = 0) -> None:
         """Constructor method
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
 
         self.executable_path = self._validate_executable_path(executable_path)
-        self.record_chamber = record_chamber
-        self.record_agent = record_agent
-        self.recording_frames = recording_frames
         self.display = display
         # grab the experiment design from the executable directory
         self.num_test_conditions, self.imprinting_conditions = self._get_experiment_design(self.executable_path)
@@ -83,15 +74,13 @@ class Environment(Wrapper):
 
         args = []
 
-        # from environment arguments
-        if self.recording_frames:
-            args.extend(["--recording-steps", str(self.recording_frames)])
-        if self.record_chamber:
-            args.extend(["--record-chamber", "true"])
-        if self.record_agent:
-            args.extend(["--record-agent", "true"])
-
         # from runtime
+        if kwargs.get("recording-eps", None) is not None:
+            args.extend(["--recording-steps", kwargs["recording-eps"]])
+        if kwargs.get("record-chamber", False):
+            args.extend(["--record-chamber", "true"])
+        if kwargs.get("record-agent", False):
+            args.extend(["--record-agent", "true"])
         args.extend(["--mode", f"{mode}-{kwargs['condition']}"])
         if kwargs.get("rec_path", None):
             args.extend(["--log-dir", f"{kwargs['rec_path']}/"])

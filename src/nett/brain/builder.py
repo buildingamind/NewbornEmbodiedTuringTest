@@ -221,19 +221,29 @@ class Brain:
             iterations: int = job.iterations["test"]
             self.logger.info(f"Total iterations: {iterations}")
             t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
+            record_states: bool = 'state' in job.record
             if issubclass(self.algorithm, RecurrentPPO):
                 for _ in range(iterations):
                     #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
                     # cell and hidden state of the LSTM 
-                    done, lstm_states = False, None
+                    done, states = False, None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
                     while not done:
-                        action, lstm_states = model.predict(
+                        action, states = model.predict(
                             obs,
-                            state=lstm_states,
+                            state=states,
                             episode_start=episode_starts,
                             deterministic=True)
+                        if (record_states):
+                            with open(job.paths['env_logs'] / 'states' / 'obs.txt', 'a') as obs_file:
+                                obs_file.write(f"{obs}\n")
+
+                            with open(job.paths['env_logs'] / 'states' / 'actions.txt', 'a') as actions_file:
+                                actions_file.write(f"{action}\n")
+
+                            with open(job.paths['env_logs'] / 'states' / 'states.txt', 'a') as states_file:
+                                states_file.write(f"{states}\n")
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
                         episode_starts = done
@@ -246,7 +256,16 @@ class Brain:
             # for all other algorithms
             else:
                 for _ in range(iterations):
-                    action, _ = model.predict(obs, deterministic=True) # action, states
+                    action, states = model.predict(obs, deterministic=True) # action, states
+                    if (record_states):
+                            with open(job.paths['env_logs'] / 'states' / 'obs.txt', 'a') as obs_file:
+                                obs_file.write(f"{obs}\n")
+
+                            with open(job.paths['env_logs'] / 'states' / 'actions.txt', 'a') as actions_file:
+                                actions_file.write(f"{action}\n")
+
+                            with open(job.paths['env_logs'] / 'states' / 'states.txt', 'a') as states_file:
+                                states_file.write(f"{states}\n")
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
