@@ -62,6 +62,7 @@ class Brain:
         reward: str = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
+        learning_rate: float = 0.0003,
         train_encoder: bool = True,
         seed: int = 12,
         custom_encoder_args: dict[str, str]= {},
@@ -84,6 +85,7 @@ class Brain:
         self.embedding_dim = embedding_dim
         self.batch_size = batch_size
         self.buffer_size = buffer_size
+        self.learning_rate = learning_rate
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
@@ -130,7 +132,7 @@ class Brain:
                 envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
-                learning_rate=0.0004 #TODO: Incorporate this into options
+                learning_rate=self.learning_rate,
                 verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=torch.device("cuda", job.device))
