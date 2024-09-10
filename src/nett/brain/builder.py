@@ -219,11 +219,11 @@ class Brain:
             
             # for when algorithm is RecurrentPPO
             iterations: int = job.iterations["test"]
+            self.logger.info(f"Total iterations: {iterations}")
+            t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
             if issubclass(self.algorithm, RecurrentPPO):
-                self.logger.info(f"Total number of episodes: {iterations}")
-                #iterations = 20*50 # 20 episodes of 50 conditions  each
-                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
+                    #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
                     # cell and hidden state of the LSTM 
                     done, lstm_states = False, None
                     # episode start signals are used to reset the lstm states
@@ -247,9 +247,6 @@ class Brain:
 
             # for all other algorithms
             else:
-            #iterations = 50*20*200 # 50 conditions of 20 steps each
-                self.logger.info(f"Total number of testing steps: {iterations}")
-                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
