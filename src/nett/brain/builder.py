@@ -224,7 +224,8 @@ class Brain:
             record_states: bool = "state" in job.record
             if record_states:
                 # create folder for recording states
-                Path.joinpath(job.paths['env_recs'], 'states').mkdir(parents=True, exist_ok=True)
+                states_path: Path = Path.joinpath(job.paths['env_recs'], 'states')
+                states_path.mkdir(parents=True, exist_ok=True)
 
                 # # create blank files
                 # with open(Path.joinpath(job.paths['env_recs'], 'states', 'obs.txt'), 'w') as obs_file:
@@ -249,13 +250,13 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         if (record_states):
-                            with open(job.paths['env_recs'] / 'states' / 'obs.txt', 'a') as obs_file:
+                            with open(Path.joinpath(states_path, 'obs.txt'), 'a+') as obs_file:
                                 obs_file.write(f"{obs}\n")
 
-                            with open(job.paths['env_recs'] / 'states' / 'actions.txt', 'a') as actions_file:
+                            with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
                                 actions_file.write(f"{action}\n")
 
-                            with open(job.paths['env_recs'] / 'states' / 'states.txt', 'a') as states_file:
+                            with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
                                 states_file.write(f"{states}\n")
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
