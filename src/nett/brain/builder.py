@@ -241,6 +241,7 @@ class Brain:
                             deterministic=True)
                         if (record_states):
                             np.savetxt(Path.joinpath(states_path, 'obs.txt'), np.ndarray(obs), fmt='%d')
+                            np.save(Path.joinpath(states_path, 'obs.npy'), obs)
                             # with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
                             #     obs_file.write(f"{obs}\n")
                             np.savetxt(Path.joinpath(states_path, 'actions.txt'), action, fmt='%d')
