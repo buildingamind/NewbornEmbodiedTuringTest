@@ -215,7 +215,7 @@ class NETT:
 
         ax = plt.figure().add_subplot(projection='3d')
 
-        ax.plot(np.hstack((pc_obs, pc_actions)))
+        ax.plot(*np.hstack((pc_obs, pc_actions)).T)
 
         ax.set_xlabel('PC Observation 1')
         ax.set_ylabel('PC Observation 2')
