@@ -217,7 +217,7 @@ class Brain:
             # for when algorithm is RecurrentPPO
             iterations: int = job.iterations["test"]
             self.logger.info(f"Total iterations: {iterations}")
-            t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
+            t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index, leave=True)
             record_states: bool = "state" in job.record
             if record_states:
                 # change print option for recording obs

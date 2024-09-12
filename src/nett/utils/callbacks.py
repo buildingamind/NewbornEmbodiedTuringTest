@@ -98,7 +98,7 @@ class multiBarCallback(BaseCallback):
         num_steps = self.num_steps if self.num_steps is not None else self.model.n_steps
         # Initialize progress bar
         # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=(num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout, leave=True)
+        self.pbar = tqdm(total=(num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout, leave=True, mininterval=1.0)
         pass
 
     def _on_step(self) -> bool:
