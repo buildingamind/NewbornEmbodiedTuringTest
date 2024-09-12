@@ -273,7 +273,7 @@ class NETT:
                 raise e
 
         # for test
-        if job.mode in ["test", "full"]:
+        if not job.estimate_memory and job.mode in ["test", "full"]:
             try:
                 # initialize environment with necessary arguments
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
