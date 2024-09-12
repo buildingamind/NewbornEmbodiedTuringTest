@@ -227,15 +227,6 @@ class Brain:
                 states_path: Path = Path.joinpath(job.paths['env_recs'], 'states')
                 states_path.mkdir(parents=True, exist_ok=True)
 
-                # # create blank files
-                # with open(Path.joinpath(job.paths['env_recs'], 'states', 'obs.txt'), 'w') as obs_file:
-                #     obs_file.write("")
-
-                # with open(Path.joinpath(job.paths['env_recs'], 'actions.txt'), 'w') as actions_file:
-                #     pass
-
-                # with open(Path.joinpath(job.paths['env_recs'], 'states.txt'), 'w') as states_file:
-                #     pass
             if issubclass(self.algorithm, RecurrentPPO):
                 for _ in range(iterations):
                     #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
@@ -250,7 +241,7 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         if (record_states):
-                            with open(Path.joinpath(states_path, 'obs.txt'), 'a+') as obs_file:
+                            with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
                                 obs_file.write(f"{obs}\n")
 
                             with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
@@ -272,7 +263,7 @@ class Brain:
                 for _ in range(iterations):
                     action, states = model.predict(obs, deterministic=True) # action, states
                     if (record_states):
-                        with open(Path.joinpath(states_path, 'obs.txt'), 'a+') as obs_file:
+                        with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
                             obs_file.write(f"{obs}\n")
 
                         with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
