@@ -16,6 +16,8 @@ from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 
+from matplotlib import pyplot as plt
+import numpy as np
 import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
@@ -170,6 +172,52 @@ class NETT:
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
+    
+    @staticmethod
+    def dst(run_dir: str | Path,
+            output_dir: Optional[str | Path] = None) -> None:
+        # TODO may need to clean up this file structure
+        # set paths
+        run_dir = Path(run_dir).resolve()
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
+
+        analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
+        if output_dir is None:
+            output_dir = run_dir.joinpath("results")
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        if not run_dir.exists():
+            raise ValueError(f"'{run_dir}' is not a valid run directory.")
+        elif not analysis_dir.exists():
+            raise ValueError(f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package.")
+        
+        rec_path = Path.joinpath(run_dir,"env_recs", "states")
+
+        if not rec_path.exists():
+            raise FileNotFoundError(f"Recording directory {rec_path} does not exist.")
+        
+        obs = np.loadtxt(Path.joinpath(rec_path, "obs.txt"), dtype=int, ndmin=2)
+        actions = np.loadtxt(Path.joinpath(rec_path, "actions.txt"), dtype=int, ndmin=2)
+        if (Path.joinpath(rec_path, "states.txt").exists()):
+            states = np.loadtxt(Path.joinpath(rec_path, "states.txt"), dtype=int, ndmin=2)
+        else:
+            states = None
+        
+        # perform PCA on observations
+        from sklearn.decomposition import PCA
+        pca1 = PCA(n_components=1)
+        pca2 = PCA(n_components=2)
+        pc_obs = pca2.fit_transform(obs)
+        pc_actions = pca1.fit_transform(actions)
+        pc_states = pca2.fit_transform(states) if states is not None else None
+
+        ax = plt.figure().add_subplot(projection='3d')
+
+        ax.plot(np.hstack((pc_obs, pc_actions)))
+        ax.savefig(output_dir.joinpath("trajectories.png"))
+
 
     # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
