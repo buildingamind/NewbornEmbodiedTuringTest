@@ -93,7 +93,7 @@ class Job:
       "device": self.device,
       "episode_steps": self.steps_per_episode,
       "batch_mode": self.batch_mode,
-      "recording-eps": self.recording_eps,
+      "recording-eps": str(self.recording_eps), #TODO: This should be changed in the Unity code to expect an int
       "record-chamber": "chamber" in self.record,
       "record-agent": "agent" in self.record
     }
