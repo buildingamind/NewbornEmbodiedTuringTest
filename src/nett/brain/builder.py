@@ -224,17 +224,17 @@ class Brain:
             record_states: bool = "state" in job.record
             if record_states:
                 # create folder for recording states
-                job.paths['env_recs'].mkdir(parents=True, exist_ok=True)
+                Path.joinpath(job.paths['env_recs'], 'states').mkdir(parents=True, exist_ok=True)
 
-                # create blank files
-                with open(Path.joinpath(job.paths['env_recs'], 'states', 'obs.txt'), 'w') as obs_file:
-                    obs_file.write("")
+                # # create blank files
+                # with open(Path.joinpath(job.paths['env_recs'], 'states', 'obs.txt'), 'w') as obs_file:
+                #     obs_file.write("")
 
-                with open(Path.joinpath(job.paths['env_recs'], 'actions.txt'), 'w') as actions_file:
-                    pass
+                # with open(Path.joinpath(job.paths['env_recs'], 'actions.txt'), 'w') as actions_file:
+                #     pass
 
-                with open(Path.joinpath(job.paths['env_recs'], 'states.txt'), 'w') as states_file:
-                    pass
+                # with open(Path.joinpath(job.paths['env_recs'], 'states.txt'), 'w') as states_file:
+                #     pass
             if issubclass(self.algorithm, RecurrentPPO):
                 for _ in range(iterations):
                     #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
