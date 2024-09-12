@@ -272,14 +272,14 @@ class Brain:
                 for _ in range(iterations):
                     action, states = model.predict(obs, deterministic=True) # action, states
                     if (record_states):
-                            with open(job.paths['env_logs'] / 'states' / 'obs.txt', 'a') as obs_file:
-                                obs_file.write(f"{obs}\n")
+                        with open(Path.joinpath(states_path, 'obs.txt'), 'a+') as obs_file:
+                            obs_file.write(f"{obs}\n")
 
-                            with open(job.paths['env_logs'] / 'states' / 'actions.txt', 'a') as actions_file:
-                                actions_file.write(f"{action}\n")
+                        with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
+                            actions_file.write(f"{action}\n")
 
-                            with open(job.paths['env_logs'] / 'states' / 'states.txt', 'a') as states_file:
-                                states_file.write(f"{states}\n")
+                        with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
+                            states_file.write(f"{states}\n")
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
