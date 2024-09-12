@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import importlib
 import os
 import subprocess
 from typing import Optional, Any
@@ -11,7 +10,6 @@ import numpy as np
 import yaml
 
 from gym import Wrapper
-import mlagents_envs
 from mlagents_envs.environment import UnityEnvironment
 
 # checks to see if ml-agents tmp files have the proper permissions
@@ -80,7 +78,6 @@ class Environment(Wrapper):
             mode (str): The mode to set the environment for training or testing or both.
             **kwargs: The arguments to pass to the environment.
         """
-        importlib.reload(mlagents_envs)
 
         args = []
 
