@@ -220,6 +220,8 @@ class Brain:
             t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
             record_states: bool = "state" in job.record
             if record_states:
+                # change print option for recording obs
+                np.set_printoptions(threshold=np.inf)
                 # create folder for recording states
                 states_path: Path = Path.joinpath(job.paths['env_recs'], 'states')
                 states_path.mkdir(parents=True, exist_ok=True)
@@ -238,14 +240,18 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         if (record_states):
-                            with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
-                                obs_file.write(f"{obs}\n")
+                            np.savetxt(Path.joinpath(states_path, 'obs.txt'), obs, fmt='%d')
+                            # with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
+                            #     obs_file.write(f"{obs}\n")
+                            np.savetxt(Path.joinpath(states_path, 'actions.txt'), action, fmt='%d')
+                            
+                            # with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
+                                # actions_file.write(f"{action}\n")
 
-                            with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
-                                actions_file.write(f"{action}\n")
-
-                            with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
-                                states_file.write(f"{states}\n")
+                            # with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
+                                # states_file.write(f"{states}\n")
+                            np.savetxt(Path.joinpath(states_path, 'states.txt'), states, fmt='%d')
+                            
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
                         episode_starts = done
