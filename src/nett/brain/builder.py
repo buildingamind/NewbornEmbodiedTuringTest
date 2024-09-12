@@ -240,7 +240,7 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         if (record_states):
-                            np.savetxt(Path.joinpath(states_path, 'obs.txt'), obs, fmt='%d')
+                            np.savetxt(Path.joinpath(states_path, 'obs.txt'), np.ndarray(obs), fmt='%d')
                             # with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
                             #     obs_file.write(f"{obs}\n")
                             np.savetxt(Path.joinpath(states_path, 'actions.txt'), action, fmt='%d')
