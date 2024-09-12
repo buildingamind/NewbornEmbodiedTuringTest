@@ -216,6 +216,10 @@ class NETT:
         ax = plt.figure().add_subplot(projection='3d')
 
         ax.plot(np.hstack((pc_obs, pc_actions)))
+
+        ax.set_xlabel('PC Observation 1')
+        ax.set_ylabel('PC Observation 2')
+        ax.set_zlabel('PC Behavior')
         ax.savefig(output_dir.joinpath("trajectories.png"))
 
 
