@@ -240,18 +240,12 @@ class Brain:
                             episode_start=episode_starts,
                             deterministic=True)
                         if (record_states):
-                            np.savetxt(Path.joinpath(states_path, 'obs.txt'), np.ndarray(obs), fmt='%d')
-                            np.save(Path.joinpath(states_path, 'obs.npy'), obs)
-                            # with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
-                            #     obs_file.write(f"{obs}\n")
-                            np.savetxt(Path.joinpath(states_path, 'actions.txt'), action, fmt='%d')
-                            
-                            # with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
-                                # actions_file.write(f"{action}\n")
-
-                            # with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
-                                # states_file.write(f"{states}\n")
-                            np.savetxt(Path.joinpath(states_path, 'states.txt'), states, fmt='%d')
+                            with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
+                                f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
+                            with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
+                                f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
+                            with open(Path.joinpath(states_path, 'states.txt'), 'a') as f:
+                                f.write(f"{' '.join(map(str, np.array(states).flatten()))}\n")
                             
                         obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
                         t.update(1)
@@ -265,16 +259,12 @@ class Brain:
             # for all other algorithms
             else:
                 for _ in range(iterations):
-                    action, states = model.predict(obs, deterministic=True) # action, states
+                    action, _ = model.predict(obs, deterministic=True) # action, states
                     if (record_states):
-                        with open(Path.joinpath(states_path, 'obs.txt'), 'a') as obs_file:
-                            obs_file.write(f"{obs}\n")
-
-                        with open(Path.joinpath(states_path, 'actions.txt'), 'a') as actions_file:
-                            actions_file.write(f"{action}\n")
-
-                        with open(Path.joinpath(states_path, 'states.txt'), 'a') as states_file:
-                            states_file.write(f"{states}\n")
+                        with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
+                            f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
+                        with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
+                            f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                     obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if done:
