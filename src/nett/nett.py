@@ -69,7 +69,7 @@ class NETT:
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
             record: Optional[list[str]] = None,
-            recording_eps: int = 10
+            recording_eps: int = 10,
             base_port: int = 5004) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
