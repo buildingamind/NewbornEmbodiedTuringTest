@@ -226,7 +226,8 @@ class NETT:
         ax.set_xlabel('PC Observation 1')
         ax.set_ylabel('PC Observation 2')
         ax.set_zlabel('PC Behavior')
-        ax.savefig(output_dir.joinpath("trajectories.png"))
+        ax.figure.savefig(output_dir.joinpath("trajectories.png"))
+
 
 
     # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
