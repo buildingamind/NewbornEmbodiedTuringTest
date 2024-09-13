@@ -176,24 +176,16 @@ class NETT:
     
     @staticmethod
     def dst(run_dir: str | Path,
-            output_dir: Optional[str | Path] = None) -> None:
+            output_dir: str | Path) -> None:
         # TODO may need to clean up this file structure
         # set paths
         run_dir = Path(run_dir).resolve()
         if not run_dir.exists():
             raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
 
-        analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
-        if output_dir is None:
-            output_dir = run_dir.joinpath("results")
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        if not run_dir.exists():
-            raise ValueError(f"'{run_dir}' is not a valid run directory.")
-        elif not analysis_dir.exists():
-            raise ValueError(f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package.")
-        
         rec_path = Path.joinpath(run_dir,"env_recs", "states")
 
         if not rec_path.exists():
