@@ -6,22 +6,23 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 
-import importlib
+import os
+import sys
 import time
 import subprocess
 import shutil
 from pathlib import Path
 from typing import Any, Optional
 from copy import deepcopy
-from itertools import product, cycle
+from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
+from PIL import Image, ImageChops
 
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-import mlagents_envs
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -228,7 +229,53 @@ class NETT:
         ax.set_zlabel('PC Behavior')
         ax.figure.savefig(output_dir.joinpath("trajectories.png"))
 
+    @staticmethod
+    def timelapse(data_dir: Path | str, output_dir: Path | str):
+        # Ensure data_dir and output_dir are Path objects
+        data_dir = Path(data_dir)
+        output_dir = Path(output_dir)
 
+        # Create the 'paths' directory inside output_dir
+        paths_dir = output_dir / 'paths'
+        paths_dir.mkdir(parents=True, exist_ok=True)
+
+        # Iterate over directories matching data_dir / (*) / "brain_(*)"
+        for brain_dir in data_dir.glob('*/*'):
+            if brain_dir.is_dir() and brain_dir.name.startswith('brain_'):
+                # Get a list of all PNG images in the directory
+                images = []
+                recording_dir = brain_dir / 'env_recs' / 'ChamberRecorder'
+                if not recording_dir.exists():
+                    print(f"Skipping {brain_dir} as it does not contain a ChamberRecorder directory")
+                    continue
+                for f in os.listdir(recording_dir):
+                    full_path = os.path.join(recording_dir, f)
+                    if os.path.isfile(full_path) and f.lower().endswith('.png'):
+                        images.append(full_path)
+
+                # Check if there are at least two images to blend
+                if len(images) < 2:
+                    print("Not enough images to blend.")
+                    sys.exit(1)
+
+                # Open the first image
+                result_image = Image.open(images[0]).convert('RGBA')
+
+                # Loop through each image and blend it with the accumulated result
+                for img_path in images[1:]:
+                    img = Image.open(img_path).convert('RGBA')
+                    result_image = ImageChops.lighter(result_image, img)
+
+                # Extract the wildcard captures
+                condition = brain_dir.parent.name
+                brain_num = brain_dir.name[len('brain_'):]
+                # Create the filename and the empty file
+                filename = f"{condition}{brain_num}"
+
+                # Save the final blended image to the desired output filename
+                result_image.save(paths_dir / filename+".png")
+
+                print(f"{filename} completed")
 
     # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
