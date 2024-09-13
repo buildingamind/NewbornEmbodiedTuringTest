@@ -227,7 +227,7 @@ class Brain:
                 states_path.mkdir(parents=True, exist_ok=True)
 
             if issubclass(self.algorithm, RecurrentPPO):
-                for _ in range(iterations):
+                for i in range(iterations):
                     #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
                     # cell and hidden state of the LSTM 
                     done, states = False, None
@@ -239,7 +239,7 @@ class Brain:
                             state=states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        if (record_states):
+                        if (record_states and i < job.recording_eps):
                             with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
                                 f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
                             with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
