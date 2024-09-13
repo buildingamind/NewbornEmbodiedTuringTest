@@ -258,9 +258,9 @@ class Brain:
 
             # for all other algorithms
             else:
-                for _ in range(iterations):
+                for i in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
-                    if (record_states):
+                    if (record_states and i < job.recording_eps*job.steps_per_episode):
                         with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
                             f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
                         with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
