@@ -199,11 +199,17 @@ class NETT:
             raise FileNotFoundError(f"Recording directory {rec_path} does not exist.")
         
         obs = np.loadtxt(Path.joinpath(rec_path, "obs.txt"), dtype=int, ndmin=2)
-        actions = np.loadtxt(Path.joinpath(rec_path, "actions.txt"), dtype=int, ndmin=2)
+        actions = np.loadtxt(Path.joinpath(rec_path, "actions.txt"), dtype=float, ndmin=2)
         if (Path.joinpath(rec_path, "states.txt").exists()):
-            states = np.loadtxt(Path.joinpath(rec_path, "states.txt"), dtype=int, ndmin=2)
+            states = np.loadtxt(Path.joinpath(rec_path, "states.txt"), dtype=float, ndmin=2)
         else:
             states = None
+
+        # Normalize data
+        obs = (np.array(obs)-np.min(obs))/(np.max(obs)-np.min(obs))
+        actions = (np.array(actions)-np.min(actions))/(np.max(actions)-np.min(actions))
+        if states is not None:
+            states = (np.array(states)-np.min(states))/(np.max(states)-np.min(states))
         
         # perform PCA on observations
         from sklearn.decomposition import PCA
