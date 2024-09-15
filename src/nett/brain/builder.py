@@ -232,8 +232,8 @@ class Brain:
                     dones, states = [False], None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
-                    obs, info = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
-                    print(f"info: {info}")
+                    obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    # print(f"info: {info}")
 
                     while not dones[0]: #TODO: Change to support multiple envs
                         action, states = model.predict(
@@ -261,8 +261,8 @@ class Brain:
 
             # for all other algorithms
             else:
-                obs, info = envs.reset()
-                print(f"info: {info}")
+                obs = envs.reset()
+                # print(f"info: {info}")
                 for i in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     if (record_states and i < job.recording_eps*job.steps_per_episode):
@@ -274,7 +274,7 @@ class Brain:
                     print(f"info: {info}")
                     t.update(1)
                     if dones[0]:
-                        obs, info = envs.reset()
+                        obs = envs.reset()
                     # envs.render(mode="rgb_array")
                     # vr.capture_frame()
         except Exception as e:
