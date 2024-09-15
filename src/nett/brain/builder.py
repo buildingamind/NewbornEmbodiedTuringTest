@@ -204,7 +204,6 @@ class Brain:
             n_envs=num_envs, 
             # seed=self.seed # Commented out as seed does not work
             )
-        obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
@@ -230,10 +229,13 @@ class Brain:
                 for i in range(iterations):
                     #TODO: Does this ever go back into this outer loop after the initial time? Does it come back here between episodes?
                     # cell and hidden state of the LSTM 
-                    done, states = False, None
+                    dones, states = [False], None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
-                    while not done:
+                    obs, info = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    print(f"info: {info}")
+
+                    while not dones[0]: #TODO: Change to support multiple envs
                         action, states = model.predict(
                             obs,
                             state=states,
@@ -247,10 +249,11 @@ class Brain:
                             with open(Path.joinpath(states_path, 'states.txt'), 'a') as f:
                                 f.write(f"{' '.join(map(str, np.array(states).flatten()))}\n")
                             
-                        obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
+                        obs, _, dones, info = envs.step(action) # obs, rewards, dones, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
+                        print(f"info: {info}")
                         t.update(1)
-                        episode_starts = done
-                        envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                        episode_starts = dones
+                        # envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                         # vr.capture_frame()    
 
                 # vr.close()
@@ -258,6 +261,8 @@ class Brain:
 
             # for all other algorithms
             else:
+                obs, info = envs.reset()
+                print(f"info: {info}")
                 for i in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     if (record_states and i < job.recording_eps*job.steps_per_episode):
@@ -265,11 +270,12 @@ class Brain:
                             f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
                         with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
                             f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
-                    obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                    obs, _, dones, info = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                    print(f"info: {info}")
                     t.update(1)
-                    if done:
-                        envs.reset()
-                    envs.render(mode="rgb_array")
+                    if dones[0]:
+                        obs, info = envs.reset()
+                    # envs.render(mode="rgb_array")
                     # vr.capture_frame()
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
