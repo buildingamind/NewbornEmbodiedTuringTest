@@ -265,6 +265,7 @@ class Brain:
                 obs = envs.reset()
                 # print(f"info: {info}")
                 for i in range(iterations):
+                    # if this fails, 2*5 chamber recordings will be made
                     action, _ = model.predict(obs, deterministic=True) # action, states
                     if (record_states and i < job.recording_eps*job.steps_per_episode):
                         with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
@@ -273,7 +274,7 @@ class Brain:
                             f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                     obs, _, dones, info = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     if i == 55 or i == 56 or i == 111 or i == 112:
-                        print(f"info: {info}")
+                        print(f"info: {info[0]['step']}")
                     t.update(1)
                     if dones[0]:
                         obs = envs.reset()
