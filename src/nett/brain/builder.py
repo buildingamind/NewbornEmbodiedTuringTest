@@ -273,8 +273,7 @@ class Brain:
                         with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
                             f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                     obs, _, dones, info = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                    if i == 55 or i == 56 or i == 111 or i == 112:
-                        print(f"info: {info[0]['step']}")
+                    print(f"dones {i}: {dones}")
                     t.update(1)
                     if dones[0]:
                         print(f"reset: {i}")
