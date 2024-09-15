@@ -233,6 +233,8 @@ class Brain:
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
 
+                    obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
+                    # print(f"info: {info}")  
                     while not dones[0]: #TODO: Change to support multiple envs
                         action, states = model.predict(
                             obs,
@@ -253,14 +255,14 @@ class Brain:
                         episode_starts = dones
                         # envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                         # vr.capture_frame()  
-                    obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
-                    # print(f"info: {info}")  
+
 
                 # vr.close()
                 # vr.enabled = False
 
             # for all other algorithms
             else:
+                obs = envs.reset()
                 # print(f"info: {info}")
                 for i in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
