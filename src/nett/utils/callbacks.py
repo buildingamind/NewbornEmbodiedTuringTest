@@ -132,11 +132,6 @@ class MemoryCallback(BaseCallback):
         :return: If the callback returns False, training is aborted early.
         """
         if self.close:
-            # Grab the memory being used by the GPU
-            used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
-            # Write the used memory to a file
-            with open(Path.joinpath(self.save_path, "mem.txt"), "w") as f:
-                f.write(str(used_memory))
             # Close the callback
             return False
         return True
@@ -146,4 +141,15 @@ class MemoryCallback(BaseCallback):
         This event is triggered before updating the policy.
         """
         self.close = True
+        pass
+
+    def _on_training_end(self) -> None:
+        """
+        This event is triggered before exiting the `learn()` method.
+        """
+        # Grab the memory being used by the GPU
+        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
+        # Write the used memory to a file
+        with open(Path.joinpath(self.save_path, "mem.txt"), "w") as f:
+            f.write(str(used_memory))
         pass
