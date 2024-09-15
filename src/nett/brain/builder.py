@@ -277,6 +277,7 @@ class Brain:
                         print(f"info: {info[0]['step']}")
                     t.update(1)
                     if dones[0]:
+                        print(f"reset: {i}")
                         obs = envs.reset()
                     # envs.render(mode="rgb_array")
                     # vr.capture_frame()
