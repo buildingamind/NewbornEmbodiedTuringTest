@@ -144,6 +144,7 @@ class Body:
             self.logger.exception(f"Failed to apply wrappers to environment")
             raise e
         self.env = env
+        self.env.reward_range = (0.0, 3.0)
         return self.env
     
     def __enter__(self):
