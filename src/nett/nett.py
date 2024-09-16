@@ -224,7 +224,7 @@ class NETT:
             ax.figure.savefig(output_dir.joinpath("trajectories.png"))
 
         except Exception as e:
-            self.logger.exception(f"Error in dst: {e}")
+            raise f"Error in dst: {e}"
 
     @staticmethod
     def timelapse(data_dir: Path | str, output_dir: Path | str):
@@ -272,11 +272,11 @@ class NETT:
                     filename = f"{condition}{brain_num}"
 
                     # Save the final blended image to the desired output filename
-                    result_image.save(paths_dir / filename+".png")
+                    result_image.save(paths_dir / (filename+".png"))
 
                     print(f"{filename} completed")
         except Exception as e:
-            self.logger.exception(f"Error in timelapse: {e}")
+            raise f"Error in timelapse: {e}"
 
     # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
