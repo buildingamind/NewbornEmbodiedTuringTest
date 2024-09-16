@@ -59,6 +59,7 @@ class Brain:
         batch_size: int = 512,
         buffer_size: int = 2048,
         learning_rate: float = 0.0003,
+        ent_coef: float = 0,
         train_encoder: bool = True,
         seed: int = 12,
         custom_encoder_args: dict[str, str]= {},
@@ -82,6 +83,7 @@ class Brain:
         self.batch_size = batch_size
         self.buffer_size = buffer_size
         self.learning_rate = learning_rate
+        self.ent_coef = ent_coef
         self.seed = seed
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
@@ -125,6 +127,7 @@ class Brain:
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 learning_rate=self.learning_rate,
+                ent_coef=self.ent_coef,
                 verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=torch.device("cuda", job.device))
