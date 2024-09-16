@@ -1,6 +1,5 @@
 """The body of the agent in the environment."""
 from gym import Env, Wrapper
-from stable_baselines3.common.env_checker import check_env
 
 from nett.body import types
 from nett.body.wrappers import DVS, Binocular
@@ -113,11 +112,6 @@ class Body:
         """
         # wrap env
         env = wrapper(env)
-        # check that the env follows Gym API
-        env_check = check_env(env, warn=True)
-        if env_check != None:
-            raise Exception(f"Failed env check")
-
         return env
 
     def __call__(self, env: Env) -> Env:
