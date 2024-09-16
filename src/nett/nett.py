@@ -178,97 +178,105 @@ class NETT:
     @staticmethod
     def dst(run_dir: str | Path,
             output_dir: str | Path) -> None:
-        # TODO may need to clean up this file structure
-        # set paths
-        run_dir = Path(run_dir).resolve()
-        if not run_dir.exists():
-            raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
+        try:
+            # TODO may need to clean up this file structure
+            # set paths
+            run_dir = Path(run_dir).resolve()
+            if not run_dir.exists():
+                raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
 
-        output_dir = Path(output_dir).resolve()
-        output_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = Path(output_dir).resolve()
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-        rec_path = Path.joinpath(run_dir,"env_recs", "states")
+            rec_path = Path.joinpath(run_dir,"env_recs", "states")
 
-        if not rec_path.exists():
-            raise FileNotFoundError(f"Recording directory {rec_path} does not exist.")
-        
-        obs = np.loadtxt(Path.joinpath(rec_path, "obs.txt"), dtype=int, ndmin=2)
-        actions = np.loadtxt(Path.joinpath(rec_path, "actions.txt"), dtype=float, ndmin=2)
-        if (Path.joinpath(rec_path, "states.txt").exists()):
-            states = np.loadtxt(Path.joinpath(rec_path, "states.txt"), dtype=float, ndmin=2)
-        else:
-            states = None
+            if not rec_path.exists():
+                raise FileNotFoundError(f"Recording directory {rec_path} does not exist.")
+            
+            obs = np.loadtxt(Path.joinpath(rec_path, "obs.txt"), dtype=int, ndmin=2)
+            actions = np.loadtxt(Path.joinpath(rec_path, "actions.txt"), dtype=float, ndmin=2)
+            if (Path.joinpath(rec_path, "states.txt").exists()):
+                states = np.loadtxt(Path.joinpath(rec_path, "states.txt"), dtype=float, ndmin=2)
+            else:
+                states = None
 
-        # Normalize data
-        obs = (np.array(obs)-np.min(obs))/(np.max(obs)-np.min(obs))
-        actions = (np.array(actions)-np.min(actions))/(np.max(actions)-np.min(actions))
-        if states is not None:
-            states = (np.array(states)-np.min(states))/(np.max(states)-np.min(states))
-        
-        # perform PCA on observations
-        from sklearn.decomposition import PCA
-        pca1 = PCA(n_components=1)
-        pca2 = PCA(n_components=2)
-        pc_obs = pca2.fit_transform(obs)
-        pc_actions = pca1.fit_transform(actions)
-        pc_states = pca2.fit_transform(states) if states is not None else None
+            # Normalize data
+            obs = (np.array(obs)-np.min(obs))/(np.max(obs)-np.min(obs))
+            actions = (np.array(actions)-np.min(actions))/(np.max(actions)-np.min(actions))
+            if states is not None:
+                states = (np.array(states)-np.min(states))/(np.max(states)-np.min(states))
+            
+            # perform PCA on observations
+            from sklearn.decomposition import PCA
+            pca1 = PCA(n_components=1)
+            pca2 = PCA(n_components=2)
+            pc_obs = pca2.fit_transform(obs)
+            pc_actions = pca1.fit_transform(actions)
+            pc_states = pca2.fit_transform(states) if states is not None else None
 
-        ax = plt.figure().add_subplot(projection='3d')
+            ax = plt.figure().add_subplot(projection='3d')
 
-        ax.plot(*np.hstack((pc_obs, pc_actions)).T)
+            ax.plot(*np.hstack((pc_obs, pc_actions)).T)
 
-        ax.set_xlabel('PC Observation 1')
-        ax.set_ylabel('PC Observation 2')
-        ax.set_zlabel('PC Behavior')
-        ax.figure.savefig(output_dir.joinpath("trajectories.png"))
+            ax.set_xlabel('PC Observation 1')
+            ax.set_ylabel('PC Observation 2')
+            ax.set_zlabel('PC Behavior')
+            ax.figure.savefig(output_dir.joinpath("trajectories.png"))
+
+        except Exception as e:
+            self.logger.exception(f"Error in dst: {e}")
 
     @staticmethod
     def timelapse(data_dir: Path | str, output_dir: Path | str):
-        # Ensure data_dir and output_dir are Path objects
-        data_dir = Path(data_dir)
-        output_dir = Path(output_dir)
 
-        # Create the 'paths' directory inside output_dir
-        paths_dir = output_dir / 'paths'
-        paths_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            # Ensure data_dir and output_dir are Path objects
+            data_dir = Path(data_dir)
+            output_dir = Path(output_dir)
 
-        # Iterate over directories matching data_dir / (*) / "brain_(*)"
-        for brain_dir in data_dir.glob('*/*'):
-            if brain_dir.is_dir() and brain_dir.name.startswith('brain_'):
-                # Get a list of all PNG images in the directory
-                images = []
-                recording_dir = brain_dir / 'env_recs' / 'ChamberRecorder'
-                if not recording_dir.exists():
-                    print(f"Skipping {brain_dir} as it does not contain a ChamberRecorder directory")
-                    continue
-                for f in os.listdir(recording_dir):
-                    full_path = os.path.join(recording_dir, f)
-                    if os.path.isfile(full_path) and f.lower().endswith('.png'):
-                        images.append(full_path)
+            # Create the 'paths' directory inside output_dir
+            paths_dir = output_dir / 'paths'
+            paths_dir.mkdir(parents=True, exist_ok=True)
 
-                # Check if there are at least two images to blend
-                if len(images) < 2:
-                    print("Not enough images to blend.")
-                    sys.exit(1)
+            # Iterate over directories matching data_dir / (*) / "brain_(*)"
+            for brain_dir in data_dir.glob('*/*'):
+                if brain_dir.is_dir() and brain_dir.name.startswith('brain_'):
+                    # Get a list of all PNG images in the directory
+                    images = []
+                    recording_dir = brain_dir / 'env_recs' / 'ChamberRecorder'
+                    if not recording_dir.exists():
+                        print(f"Skipping {brain_dir} as it does not contain a ChamberRecorder directory")
+                        continue
+                    for f in os.listdir(recording_dir):
+                        full_path = os.path.join(recording_dir, f)
+                        if os.path.isfile(full_path) and f.lower().endswith('.png'):
+                            images.append(full_path)
 
-                # Open the first image
-                result_image = Image.open(images[0]).convert('RGBA')
+                    # Check if there are at least two images to blend
+                    if len(images) < 2:
+                        print("Not enough images to blend.")
+                        sys.exit(1)
 
-                # Loop through each image and blend it with the accumulated result
-                for img_path in images[1:]:
-                    img = Image.open(img_path).convert('RGBA')
-                    result_image = ImageChops.lighter(result_image, img)
+                    # Open the first image
+                    result_image = Image.open(images[0]).convert('RGBA')
 
-                # Extract the wildcard captures
-                condition = brain_dir.parent.name
-                brain_num = brain_dir.name[len('brain_'):]
-                # Create the filename and the empty file
-                filename = f"{condition}{brain_num}"
+                    # Loop through each image and blend it with the accumulated result
+                    for img_path in images[1:]:
+                        img = Image.open(img_path).convert('RGBA')
+                        result_image = ImageChops.lighter(result_image, img)
 
-                # Save the final blended image to the desired output filename
-                result_image.save(paths_dir / filename+".png")
+                    # Extract the wildcard captures
+                    condition = brain_dir.parent.name
+                    brain_num = brain_dir.name[len('brain_'):]
+                    # Create the filename and the empty file
+                    filename = f"{condition}{brain_num}"
 
-                print(f"{filename} completed")
+                    # Save the final blended image to the desired output filename
+                    result_image.save(paths_dir / filename+".png")
+
+                    print(f"{filename} completed")
+        except Exception as e:
+            self.logger.exception(f"Error in timelapse: {e}")
 
     # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call
     # TODO v0.3. add support for user specified output_dir
