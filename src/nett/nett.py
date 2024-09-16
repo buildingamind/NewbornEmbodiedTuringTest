@@ -23,6 +23,7 @@ import numpy as np
 import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+from stable_baselines3.common.env_checker import check_env
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -108,7 +109,7 @@ class NETT:
 
         # calculate iterations
         iterations: dict[str, int] = {
-            "train": steps_per_episode * train_eps,
+            "train": steps_per_episode * train_eps, #10*5 = 50
             "test": test_eps * self.environment.num_test_conditions
         }
 
@@ -363,6 +364,7 @@ class NETT:
         # for train
         if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
             try:
+                self._validate_env("train", job)
                 # initialize environment with necessary arguments
                 with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
                     brain.train(train_environment, job)
@@ -373,6 +375,7 @@ class NETT:
         # for test
         if not job.estimate_memory and job.mode in ["test", "full"]:
             try:
+                self._validate_env("test", job)
                 # initialize environment with necessary arguments
                 with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
                     brain.test(test_environment, job)
@@ -587,6 +590,13 @@ class NETT:
             raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
 
         return devices
+    
+    def _validate_env(self, mode: str, job: Job) -> None:
+        try:
+            with self._wrap_env(mode, job.port, job.test_kwargs()) as train_environment:
+                check_env(train_environment)
+        except Exception as ex:
+            raise ValueError(f"Failed training env check with {str(ex)}")
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)

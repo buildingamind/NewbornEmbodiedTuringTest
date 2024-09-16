@@ -97,6 +97,15 @@ class Job:
       "record-chamber": "chamber" in self.record,
       "record-agent": "agent" in self.record
     }
+  
+  def test_kwargs(self) -> dict[str, Any]:
+    """Get the environment kwargs for validation
+    """
+    kwargs = self.env_kwargs()
+    kwargs["validation-mode"] = True
+    kwargs["record-chamber"] = False
+    kwargs["record-agent"] = False
+    return kwargs
 
   @staticmethod
   def _validate_mode(mode: str) -> str:

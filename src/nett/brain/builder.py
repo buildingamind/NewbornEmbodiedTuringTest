@@ -16,7 +16,6 @@ from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
@@ -97,10 +96,6 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        # importlib.reload(stable_baselines3)
-        # validate environment
-        env = self._validate_env(env)
-
         # initialize environment
         envs = make_vec_env(
             env_id=lambda: env, 
@@ -194,9 +189,6 @@ class Brain:
             job.paths['model'].joinpath('latest_model.zip'), 
             device=torch.device('cuda', job.device))
 
-        # validate environment
-        env = self._validate_env(env)
-
         # initialize environment
         num_envs = 1
         envs = make_vec_env(
@@ -273,7 +265,6 @@ class Brain:
                         with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
                             f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                     obs, _, dones, info = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
-                    print(f"dones {i}: {dones}")
                     t.update(1)
                     if dones[0]:
                         print(f"reset: {i}")
@@ -448,25 +439,6 @@ class Brain:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
-    @staticmethod
-    def _validate_env(env: "gym.Env") -> "gym.Env":
-        """
-        Validate the environment.
-
-        Args:
-            env (gym.Env): The environment to validate.
-
-        Returns:
-            gym.Env: The validated environment.
-
-        Raises:
-            ValueError: If the environment fails the validation check.
-        """
-        try:
-            check_env(env)
-        except Exception as ex:
-            raise ValueError(f"Failed training env check with {str(ex)}")
-        return env
 
     @staticmethod
     def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
