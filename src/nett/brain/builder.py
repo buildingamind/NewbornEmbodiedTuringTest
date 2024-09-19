@@ -41,7 +41,7 @@ class Brain:
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
-        custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Defaults to None.
+        custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. Defaults to None.
 
     Example:
 
@@ -62,7 +62,7 @@ class Brain:
         ent_coef: float = 0,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
+        custom_policy_arch: Optional[list[int]] = None
     ) -> None:
         """Constructor method
         """
