@@ -41,7 +41,7 @@ class Brain:
         buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
-        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
+        custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Defaults to None.
 
     Example:
 
@@ -62,7 +62,6 @@ class Brain:
         ent_coef: float = 0,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_encoder_args: dict[str, str]= {},
         custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
     ) -> None:
         """Constructor method
@@ -85,7 +84,6 @@ class Brain:
         self.learning_rate = learning_rate
         self.ent_coef = ent_coef
         self.seed = seed
-        self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
 
     def train(self, env: "gym.Env", job: "Job"):
@@ -112,9 +110,6 @@ class Brain:
                 "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
             }
         } if self.encoder is not None else {}
-
-        if len(self.custom_encoder_args) > 0:
-            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
         
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
