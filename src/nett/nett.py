@@ -24,10 +24,15 @@ import pandas as pd
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 from stable_baselines3.common.env_checker import check_env
+import yaml
 
 from nett.utils.io import mute
 from nett.utils.job import Job
 from nett.utils.environment import port_in_use
+
+from nett.brain.builder import Brain
+from nett.body.builder import Body
+from nett.environment.builder import Environment
 
 class NETT:
     """
@@ -44,17 +49,37 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
+    def __init__(self, brain: "nett.Brain" = None, body: "nett.Body" = None, environment: "nett.Environment" = None, config: Path | str | list[Path | str] = None) -> None:
         """
         Initialize the NETT class.
         """
+        # initialize logger
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-        self.brain = brain
-        self.body = body
-        self.environment = environment        
+
         # for NVIDIA memory management
         nvmlInit()
+
+        if config is not None:
+            try:
+                if isinstance(config, list):
+                    raise NotImplementedError("Multiple config files are not supported yet.")
+                else:
+                    with open(config, "r") as file:
+                        config_text = yaml.safe_load(file)
+                    self.brain = Brain(**config["Brain"])
+                    self.body = Body(**config["Body"])
+                    self.environment = Environment(**config["Environment"])
+                    if "Run" in config_text:
+                        self.run(**config["Run"])
+            except Exception as e:
+                self.logger.exception("Error in loading config")
+                raise e
+        else:
+            self.brain = brain
+            self.body = body
+            self.environment = environment        
+
 
     def run(self,
             output_dir: Path | str,
