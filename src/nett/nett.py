@@ -67,11 +67,11 @@ class NETT:
                 else:
                     with open(config, "r") as file:
                         config_text = yaml.safe_load(file)
-                    self.brain = Brain(**config["Brain"])
-                    self.body = Body(**config["Body"])
-                    self.environment = Environment(**config["Environment"])
+                    self.brain = Brain(**config_text["Brain"])
+                    self.body = Body(**config_text["Body"])
+                    self.environment = Environment(**config_text["Environment"])
                     if "Run" in config_text:
-                        self.run(**config["Run"])
+                        self.run(**config_text["Run"])
             except Exception as e:
                 self.logger.exception("Error in loading config")
                 raise e
