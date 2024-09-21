@@ -98,7 +98,7 @@ class NETT:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
-
+        
         # calculate iterations
         iterations: dict[str, int] = {}
         if mode in ["train", "full"]:
