@@ -6,7 +6,8 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 
-import importlib
+import sys
+import os
 import time
 import subprocess
 import shutil
@@ -18,10 +19,8 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 
 import pandas as pd
 from sb3_contrib import RecurrentPPO
-from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-import mlagents_envs
+from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo # TODO: (for jake) research pynvml
 
-from nett.utils.io import mute
 from nett.utils.job import Job
 from nett.utils.environment import port_in_use
 
@@ -104,6 +103,7 @@ class NETT:
         # if troubleshooting w/r/t calculating iterations from <experiment>_design_sheet.csv files
         # comes up, we always know where to start checking 
         # calculate iterations 
+        def iterate_me([list])
         iterations: dict[str, int] = {}
         if mode in ["train", "full"]:
             iterations["train"] = steps_per_episode * train_eps
@@ -386,7 +386,7 @@ class NETT:
         """
         try:
             max_workers = 1 if len(jobs) == 1 else None
-            initializer = mute if not verbose else None
+            initializer = lambda: sys.stdout = open(os.devnull, "w") if verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
 
