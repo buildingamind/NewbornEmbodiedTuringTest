@@ -373,7 +373,12 @@ class NETT:
         }
         return memory_status
     
-    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
+    def mute(verbose: bool):
+        lambda _: sys.stdout = open(os.devnull, "w") if verbose else None 
+        return 
+         
+
+    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job],) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -386,7 +391,7 @@ class NETT:
         """
         try:
             max_workers = 1 if len(jobs) == 1 else None
-            initializer = lambda: sys.stdout = open(os.devnull, "w") if verbose else None
+            initializer = mute(job.verbose)
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
 
