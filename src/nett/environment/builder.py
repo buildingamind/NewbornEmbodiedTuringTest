@@ -14,13 +14,13 @@ from gym import Wrapper
 import mlagents_envs
 from mlagents_envs.environment import UnityEnvironment
 
-# checks to see if ml-agents tmp files have the proper permissions
 try :
     from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
 from nett.utils.environment import Logger
+from nett import logger
 
 class Environment(Wrapper):
     """
@@ -44,17 +44,19 @@ class Environment(Wrapper):
         >>> from nett import Environment
         >>> env = Environment(executable_path="path/to/executable")
     """
-    def __init__(self,
-                 executable_path: str,
-                 display: int = 0,
-                 record_chamber: bool = False,
-                 record_agent: bool = False,
-                 recording_frames: int = 1000) -> None:
+    def __init__(
+            self,
+            executable_path: str,
+            display: int = 0 | int,
+            record_chamber: bool = False | bool,
+            record_agent: bool = False | bool,
+            recording_frames: int = 1000 | int
+        ) -> None:
         """Constructor method
         """
-        from nett import logger
         self.logger = logger.getChild(__class__.__name__)
 
+        # does this actually do anything
         self.executable_path = self._validate_executable_path(executable_path)
         self.record_chamber = record_chamber
         self.record_agent = record_agent
@@ -68,9 +70,12 @@ class Environment(Wrapper):
         # set the display for Unity environment
         self._set_display()
 
+    def __dir__(self):
+        return ['']
     # copied from __init__() of chickai_env_wrapper.py (legacy)
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
+    
     # TODO (v0.4) fix random_pos logic inside of Unity code
     def initialize(self, mode: str, port: int, **kwargs) -> None:
         """
