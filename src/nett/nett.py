@@ -99,7 +99,11 @@ class NETT:
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
-        # calculate iterations
+        # This is a great candidate for segmentation into a function that lives in a service file:
+        # In addition to running more quickly/effeciently, it becomes unit testable independently;
+        # if troubleshooting w/r/t calculating iterations from <experiment>_design_sheet.csv files
+        # comes up, we always know where to start checking 
+        # calculate iterations 
         iterations: dict[str, int] = {}
         if mode in ["train", "full"]:
             iterations["train"] = steps_per_episode * train_eps
@@ -120,10 +124,17 @@ class NETT:
             iterations=iterations 
             )
 
+        # All validations can be moved into there own module + files
+        # doing so will make it easier to generalize validation functions for more cases
+        # reducing the total number of validations w/o losing any functionality & reducing opportunities for new bugs
+        # additionally, doing so would help ensure a DRY codebase 
         # validate devices
         devices = self._validate_devices(devices)
         self.logger.info(f"Devices that will be used: {devices}")
 
+        # Memory checks absolutely need to live in their own module (not sure if services or jobs or something else entirely would be most appropriate)
+        # in additon to the reasons in the validation comment above, 
+        # the memory checks/estimations are doing something that's quite different than constructing & running a NETT object 
         # estimate memory for a single job
         if job_memory == "auto":
             self.logger.info("Estimating Job Memory...")
@@ -147,6 +158,7 @@ class NETT:
         # return control back to the user after launching jobs, do not block
         return job_sheet
 
+    # probably a good place for this to live for now
     def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
         """
         Get the status of the jobs in the job sheet.
@@ -171,6 +183,13 @@ class NETT:
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
     # TODO: Add option to not have a config here either?
+
+    # All of the @staticmethod functions (and non-@staticmethods after this line) 
+    # could be re-written as services and/or jobs. The forum discussion link has a very practical
+    # && no-nonsense description of function decorators -- its possible they're simply not necessary
+    # in python 3.10+. It's quite possible that many @staticmethods throughout the codebase are repeating work 
+    # forum discussion: https://discuss.python.org/t/staticmethod-called-outside-class-scope/15007
+    # python@3.10.15 docs: https://docs.python.org/3.10/library/functions.html#staticmethod
     @staticmethod
     def analyze(config: str,
                 run_dir: str | Path,
@@ -488,6 +507,7 @@ class NETT:
 
         return devices
 
+    # is this part of why things run multiple times?
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
         copy_environment.initialize(mode, port, **kwargs)

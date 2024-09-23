@@ -1,3 +1,11 @@
+# The builder.py file pattern is a case that maybe defies some of my other notes
+# because of the architectural clarity & place w/in the overall app structure 
+# i.e., 
+# nett = NETT(
+#       brain = Brain({...params...}),                 
+#       body = Body({...params...}),
+#       environment = Environment({...params...})
+# )
 """Module for the Environment class."""
 
 from __future__ import annotations
@@ -124,6 +132,7 @@ class Environment(Wrapper):
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
 
+    # logging functions should live together in a module
     def log(self, msg: str) -> None:
         """
         Logs a message to the environment.
@@ -189,6 +198,7 @@ class Environment(Wrapper):
         os.environ["DISPLAY"] = str(f":{self.display}")
         self.logger.info("Display is set")
 
+    # this is a job function
     @staticmethod
     def _get_experiment_design(executable_path: str) -> tuple[int, list[str]]:
         """

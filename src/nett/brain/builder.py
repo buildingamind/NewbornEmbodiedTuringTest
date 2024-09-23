@@ -423,6 +423,7 @@ class Brain:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
+    # why in Brain()?
     @staticmethod
     def _validate_env(env: "gym.Env") -> "gym.Env":
         """
