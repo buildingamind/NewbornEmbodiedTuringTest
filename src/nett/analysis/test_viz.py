@@ -14,9 +14,7 @@ import seaborn as sns
 from scipy import stats
 
 # Bar Chart Function -----------------------------------------------------------
-def make_bar_charts(data, dots, aes_y, error_min, error_max, img_name):
-  global chick_data
-  global color_bars
+def make_bar_charts(data, dots, aes_y, error_min, error_max, img_name, chick_data, color_bars):
   custom_palette = ["#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98", "#CCCCE7", "#08625B", "#D15056", "#F2A541", "#FFC0CB"]
   chickred = "#AF264A"
   
@@ -139,8 +137,10 @@ def test_viz(data_loc: Path | str,
       results_wd = Path(results_wd)
   if not data_loc.exists():
       print(f"Data file not found at: {data_loc}")
+      return
   if not chick_file.exists():
       print(f"Chick data file not found at: {chick_file}")
+      return
   if not results_wd.exists():
       results_wd.mkdir(parents=True, exist_ok=True)
 
@@ -199,21 +199,23 @@ def test_viz(data_loc: Path | str,
 
   grouped = test_data.groupby(['imprint.cond', 'agent', 'test.cond'])
   by_test_cond = grouped.apply(compute_stats).reset_index()
-  by_test_cond['imp_agent'] = by_test_cond['imprint.cond'] + '_' + by_test_cond['agent']
+  by_test_cond['imp_agent'] = by_test_cond['imprint.cond'] + '_' + by_test_cond['agent'].astype(str)
 
-  by_test_cond.to_csv("stats_by_agent.csv", index=False)
+  by_test_cond.to_csv(results_wd / "stats_by_agent.csv", index=False)
 
   for i in by_test_cond['imp_agent'].unique():
       bar_data = by_test_cond[by_test_cond['imp_agent'] == i]
       bar_data['error_min'] = bar_data['avgs'] - bar_data['se']
       bar_data['error_max'] = bar_data['avgs'] + bar_data['se']
-      img_name = f"{i}_test.png"
+      img_name = results_wd / f"{i}_test.png"
       make_bar_charts(data=bar_data,
                       dots=None,
                       aes_y='avgs',
                       error_min='error_min',
                       error_max='error_max',
-                      img_name=img_name)
+                      img_name=img_name,
+                      chick_data=chick_data,
+                      color_bars=color_bars)
 
   # Plot by imprinting condition -------------------------------------------------
   ## Remove rest data once we start to group agents (for ease of presentation)
@@ -222,20 +224,22 @@ def test_viz(data_loc: Path | str,
   grouped_imp = by_test_cond.groupby(['imprint.cond', 'test.cond'])
   by_imp_cond = grouped_imp.apply(compute_stats_by_imp).reset_index()
 
-  by_imp_cond.to_csv("stats_by_imp_cond.csv", index=False)
+  by_imp_cond.to_csv(results_wd / "stats_by_imp_cond.csv", index=False)
 
   for i in by_imp_cond['imprint.cond'].unique():
       bar_data = by_imp_cond[(by_imp_cond['imprint.cond'] == i) & (by_imp_cond['test.cond'] != "Rest")]
       dot_data = by_test_cond[(by_test_cond['imprint.cond'] == i) & (by_test_cond['test.cond'] != "Rest")]
       bar_data['error_min'] = bar_data['avgs_by_imp'] - bar_data['se']
       bar_data['error_max'] = bar_data['avgs_by_imp'] + bar_data['se']
-      img_name = f"{i}_test.png"
+      img_name = results_wd / f"{i}_test.png"
       make_bar_charts(data=bar_data,
                       dots=dot_data,
                       aes_y='avgs_by_imp',
                       error_min='error_min',
                       error_max='error_max',
-                      img_name=img_name)
+                      img_name=img_name,
+                      chick_data=chick_data,
+                      color_bars=color_bars)
 
   # Plot across all imprinting conditions ----------------------------------------
   print("Creating bar chart for all imprinting conditions...")
@@ -244,7 +248,7 @@ def test_viz(data_loc: Path | str,
   across_imp_cond['error_min'] = across_imp_cond['all_avgs'] - across_imp_cond['se']
   across_imp_cond['error_max'] = across_imp_cond['all_avgs'] + across_imp_cond['se']
 
-  across_imp_cond.to_csv("stats_across_all_agents.csv", index=False)
+  across_imp_cond.to_csv(results_wd / "stats_across_all_agents.csv", index=False)
 
   dot_data = by_test_cond[by_test_cond['test.cond'] != "Rest"]
 
@@ -253,4 +257,6 @@ def test_viz(data_loc: Path | str,
                   aes_y='all_avgs',
                   error_min='error_min',
                   error_max='error_max',
-                  img_name='all_imprinting_conds_test.png')
+                  img_name=results_wd / 'all_imprinting_conds_test.png',
+                  chick_data=chick_data,
+                  color_bars=color_bars)

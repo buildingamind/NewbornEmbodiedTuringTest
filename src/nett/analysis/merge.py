@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 def read_data(filename: Path, bounds: list[int]):
-  data = pd.read_csv(filename, skipinitialspace=True)
+  data = pd.read_csv(filename, skipinitialspace=True).fillna("NA")
 
   data['left'] = (data['agent.x'] < bounds[0]).astype(int)
   data['right'] = (data['agent.x'] > bounds[1]).astype(int)
@@ -21,20 +21,15 @@ def read_data(filename: Path, bounds: list[int]):
   ]
 
   # sum the steps for each condition
-  data = (
-      data.groupby(group_cols)
-          .agg({
-              'left': 'sum',
-              'right': 'sum',
-              'middle': 'sum'
-          })
-          .rename(columns={
-              'left': 'left_steps',
-              'right': 'right_steps',
-              'middle': 'middle_steps'
-          })
-          .reset_index()
-  )
+  data = data.groupby(group_cols).agg({
+      'left': 'sum',
+      'right': 'sum',
+      'middle': 'sum'
+    }).rename(columns={
+      'left': 'left_steps',
+      'right': 'right_steps',
+      'middle': 'middle_steps'
+    }).reset_index()
 
   # Convert 'Episode' column to numeric
   data['Episode'] = pd.to_numeric(data['Episode'], errors='coerce')
@@ -53,7 +48,7 @@ def merge(
     logs_dir: Path | str, 
     results_dir: Path | str,
     csv_train_name: str = "train_results.csv",
-    csv_test_name: str = "train_results.csv") -> None:
+    csv_test_name: str = "test_results.csv") -> None:
   x_limits = [-10, 10]
   one_third = (x_limits[1] - x_limits[0]) / 3
   bounds = [
