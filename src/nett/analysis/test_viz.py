@@ -145,10 +145,10 @@ def test_viz(data_loc: Path | str,
       results_wd.mkdir(parents=True, exist_ok=True)
 
   # Load the chick data
-  chick_data = pd.read_csv(chick_file)
+  chick_data = pd.read_csv(chick_file, skipinitialspace=True)
 
   # Load test data
-  test_data = pd.read_csv(data_loc / "test_results.csv")
+  test_data = pd.read_csv(data_loc / "test_results.csv", skipinitialspace=True)
 
   print("Collating data for test trials...")
   # Code each episode correct/incorrect

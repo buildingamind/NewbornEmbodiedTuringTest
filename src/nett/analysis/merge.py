@@ -6,7 +6,7 @@ import numpy as np
 import os
 
 def read_data(filename: Path, bounds: list[int]):
-  data = pd.read_csv(filename)
+  data = pd.read_csv(filename, skipinitialspace=True)
 
   data['left'] = (data['agent.x'] < bounds[0]).astype(int)
   data['right'] = (data['agent.x'] > bounds[1]).astype(int)

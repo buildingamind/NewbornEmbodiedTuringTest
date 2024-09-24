@@ -16,7 +16,7 @@ def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
     """
 
     # Load data
-    result = pd.read_csv(data_loc)
+    result = pd.read_csv(data_loc, skipinitialspace=True)
     train_data = result['train_data']
 
     # Remove test_data if present
