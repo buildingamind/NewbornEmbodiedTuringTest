@@ -1,74 +1,56 @@
-import pandas as pd
-import numpy as np
 import os
+import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
 def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
     """
-    A function to analyze and visualize training data from the Newborn Embodied Turing Tests.
+    Analyze and visualize training data from the Newborn Embodied Turing Tests.
 
     Parameters:
-    - data_loc (str): Full filename (including working directory) of the merged R data.
-    - results_wd (str): Directory to save the resulting visualizations.
-    - ep_bucket_size (int): How many episodes to group the x-axis by.
-    - num_episodes (int): How many episodes should be included.
+        data_loc (str): Path to the merged R data CSV file.
+        results_wd (str): Directory to save the resulting visualizations.
+        ep_bucket_size (int): Number of episodes per x-axis group.
+        num_episodes (int): Total number of episodes to include.
     """
 
-    # Load data
+    # Load data and filter episodes
     train_data = pd.read_csv(data_loc, skipinitialspace=True)
-
     print(f"Collating data for {num_episodes} training episodes...")
-    train_data_fixed = train_data.copy()
-    train_data_fixed = train_data_fixed[train_data_fixed['Episode'] < num_episodes]
+    train_data = train_data[train_data['Episode'] < num_episodes]
 
-    # Create variables for correct/incorrect calculations
-    train_data_fixed['correct_steps'] = np.where(
-        train_data_fixed['correct.monitor'] == " left",
-        train_data_fixed['left_steps'],
-        train_data_fixed['right_steps']
-    )
-    train_data_fixed['incorrect_steps'] = np.where(
-        train_data_fixed['correct.monitor'] == " left",
-        train_data_fixed['right_steps'],
-        train_data_fixed['left_steps']
-    )
-    train_data_fixed['percent_correct'] = train_data_fixed['correct_steps'] / (
-        train_data_fixed['correct_steps'] + train_data_fixed['incorrect_steps']
-    )
+    # Clean 'correct.monitor' and compute correct/incorrect steps
+    train_data['correct.monitor'] = train_data['correct.monitor'].str.strip()
+    condition = train_data['correct.monitor'] == 'left'
+    train_data['correct_steps'] = np.where(condition, train_data['left_steps'], train_data['right_steps'])
+    train_data['incorrect_steps'] = np.where(condition, train_data['right_steps'], train_data['left_steps'])
+    train_data['percent_correct'] = train_data['correct_steps'] / (train_data['correct_steps'] + train_data['incorrect_steps'])
 
-    # Summarize data by condition, agent, and episode bucket for graphing
-    train_data_fixed['episode_block'] = (train_data_fixed['Episode'] // ep_bucket_size) + 1
-    grouped = train_data_fixed.groupby(['imprint.cond', 'agent', 'episode_block'])
+    # Create episode blocks
+    train_data['episode_block'] = (train_data['Episode'] // ep_bucket_size) + 1
 
-    summary = grouped['percent_correct'].agg(['mean', 'std', 'size']).reset_index()
-    summary.rename(columns={'mean': 'avgs', 'std': 'sd', 'size': 'count'}, inplace=True)
+    # Group data and calculate summary statistics
+    summary = train_data.groupby(['imprint.cond', 'agent', 'episode_block'])['percent_correct'].agg(
+        avgs='mean', sd='std', count='size').reset_index()
     summary['se'] = summary['sd'] / np.sqrt(summary['count'])
 
-    # Convert numerical variables into correct type
-    summary['episode_block'] = summary['episode_block'].astype(float)
-    summary['agent'] = summary['agent'].astype(float)
-
-    # Plot line graphs by imprinting condition
+    # Plotting
     print("Plotting training data...")
     for cond in summary['imprint.cond'].unique():
         data = summary[summary['imprint.cond'] == cond]
-
         plt.figure(figsize=(10, 6))
-        sns.lineplot(data=data, x='episode_block', y='avgs', hue='agent', legend=False)
+        sns.lineplot(data=data, x='episode_block', y='avgs', hue='agent')
         plt.axhline(y=0.5, linestyle='--', color='gray')
         plt.xlabel(f"Groups of {ep_bucket_size} Episodes")
         plt.ylabel("Average Time with Imprinted Object")
         plt.ylim(0, 1)
-        plt.yticks(
-            np.arange(0, 1.1, 0.1),
-            ['{:.0%}'.format(x) for x in np.arange(0, 1.1, 0.1)]
-        )
-        plt.xlim(0, num_episodes / ep_bucket_size)
-        plt.xticks(np.arange(0, (num_episodes / ep_bucket_size) + 1, 1))
+        plt.yticks(np.arange(0, 1.1, 0.1), ['{:.0%}'.format(x) for x in np.arange(0, 1.1, 0.1)])
+        max_block = data['episode_block'].max()
+        plt.xlim(1, max_block)
+        plt.xticks(np.arange(1, max_block + 1, 1))
         plt.title(cond)
         plt.tight_layout()
-
         img_name = os.path.join(results_wd, f"{cond}_train.png")
         plt.savefig(img_name)
         plt.close()

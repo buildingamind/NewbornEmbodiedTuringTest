@@ -30,9 +30,9 @@ def make_bar_charts(data, dots, aes_y, error_min, error_max, img_name, chick_dat
   
   # Determine order of categories
   if hasattr(data['test.cond'], 'cat'):
-      x_categories = data['test.cond'].cat.categories
+      x_categories = data['test.cond'].cat.categories.astype("category")
   else:
-      x_categories = data['test.cond'].unique()
+      x_categories = data['test.cond'].unique().astype("category")
       data['test.cond'] = pd.Categorical(data['test.cond'], categories=x_categories, ordered=True)
   
   # Map 'test.cond' to colors
@@ -202,6 +202,8 @@ def test_viz(data_loc: Path | str,
   by_test_cond['imp_agent'] = by_test_cond['imprint.cond'] + '_' + by_test_cond['agent'].astype(str)
 
   by_test_cond.to_csv(results_wd / "stats_by_agent.csv", index=False)
+
+  pd.options.mode.chained_assignment = None  # default='warn'
 
   for i in by_test_cond['imp_agent'].unique():
       bar_data = by_test_cond[by_test_cond['imp_agent'] == i]
