@@ -366,17 +366,29 @@ class NETT:
 
         # merge
         print("Running merge")
-        from nett.analysis.merge import merge
-        merge(run_dir, output_dir)
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_merge_csvs.R")),
+                        "--logs-dir", str(run_dir),
+                        "--results-dir", str(output_dir),
+                        "--results-name", "analysis_data",
+                        "--csv-train", "train_results.csv",
+                        "--csv-test", "test_results.csv"], check=True)
 
+        # train
         print("Running analysis for [train]")
-        from nett.analysis.train_viz import train_viz
-        train_viz(output_dir.joinpath("analysis_data"), output_dir, ep_bucket, num_episodes)
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_train_viz.R")),
+                        "--data-loc", str(output_dir.joinpath("analysis_data")),
+                        "--results-wd", str(output_dir),
+                        "--ep-bucket", str(ep_bucket),
+                        "--num-episodes", str(num_episodes)], check=True)
 
         # test
         print("Running analysis for [test]")
-        from nett.analysis.test_viz import test_viz
-        test_viz(analysis_dir.joinpath("NETT_test_viz.R"), chick_data_dir, output_dir.joinpath("analysis_data"), output_dir, bar_order_str, color_bars)
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_test_viz.R")),
+                        "--data-loc", str(output_dir.joinpath("analysis_data")),
+                        "--results-wd", str(output_dir),
+                        "--bar-order", bar_order_str,
+                        "--color-bars", str(color_bars),
+                        "--chick-file", str(chick_data_dir)], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 
