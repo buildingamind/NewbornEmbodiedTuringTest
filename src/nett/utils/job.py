@@ -98,7 +98,7 @@ class Job:
       "record-agent": "agent" in self.record
     }
   
-  def test_kwargs(self) -> dict[str, Any]:
+  def validation_kwargs(self) -> dict[str, Any]:
     """Get the environment kwargs for validation
     """
     kwargs = self.env_kwargs()

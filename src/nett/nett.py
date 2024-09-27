@@ -614,8 +614,8 @@ class NETT:
     
     def _validate_env(self, mode: str, job: Job) -> None:
         try:
-            with self._wrap_env(mode, job.port, job.test_kwargs()) as train_environment:
-                check_env(train_environment)
+            with self._wrap_env(mode, job.port, job.validation_kwargs()) as environment:
+                check_env(environment)
         except Exception as ex:
             raise ValueError(f"Failed training env check with {str(ex)}")
 
