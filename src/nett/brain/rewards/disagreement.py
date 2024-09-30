@@ -31,8 +31,8 @@ import torch.nn.functional as F
 from stable_baselines3.common.vec_env import VecEnv as VectorEnv
 from torch.utils.data import DataLoader, TensorDataset
 
-from nett.brain.networks.prototype import BaseReward
-from nett.brain.networks.model import ForwardDynamicsModel, ObservationEncoder
+from nett.brain.rewards.networks.prototype import BaseReward
+from nett.brain.rewards.networks.model import ForwardDynamicsModel, ObservationEncoder
 
 
 class Disagreement(BaseReward):

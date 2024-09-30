@@ -32,8 +32,8 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from nett.brain.networks.prototype import BaseReward
-from nett.brain.networks.model import ForwardDynamicsModel, InverseDynamicsModel, ObservationEncoder
+from nett.brain.rewards.networks.prototype import BaseReward
+from nett.brain.rewards.networks.model import ForwardDynamicsModel, InverseDynamicsModel, ObservationEncoder
 
 
 class ICM(BaseReward):
