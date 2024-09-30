@@ -23,6 +23,8 @@ from nett.brain import encoders
 from nett.utils.callbacks import initialize_callbacks
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
+from .rewards import ICM, RND, Disagreement
+
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
 
@@ -76,7 +78,7 @@ class Brain:
         self.policy = self._validate_policy(policy)
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder) if encoder else None
-        self.reward = self._validate_reward(reward) if reward else None
+        self.reward = self._validate_reward(reward.lower()) if reward else None
 
         self.embedding_dim = embedding_dim
         self.batch_size = batch_size
@@ -141,6 +143,16 @@ class Brain:
             model = self._set_encoder_as_eval(model)
             self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
+        # create reward function
+        if job.reward not in ["supervised", "unsupervised"]:
+            if job.reward.lower() == "rnd":
+                job.reward_func = RND(envs[0], envs.observation_space[0], envs.action_space[0], job.device)
+            elif job.reward.lower() == "icm":
+                job.reward_func = ICM(envs[0], envs.observation_space[0], envs.action_space[0], job.device)
+            elif job.reward.lower() == "disagreement":
+                job.reward_func = Disagreement(envs, job.device)
+            else:
+                raise ValueError(f"Reward type {job.reward} not recognized")
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
@@ -433,7 +445,7 @@ class Brain:
             ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
-        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
+        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised', 'icm', 'rnd', 'disagreement']:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
 
