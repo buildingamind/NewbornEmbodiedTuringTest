@@ -10,7 +10,7 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
 
-from networks.target_predict_networks import RNDEncoder
+from .networks.target_predict_networks import RNDEncoder
 
 
 class RND(object):

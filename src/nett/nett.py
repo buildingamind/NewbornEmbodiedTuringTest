@@ -611,7 +611,7 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback: function):
+    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback):
         # run environment
         # can be train or test mode and can be for validation or actual run
         while True:

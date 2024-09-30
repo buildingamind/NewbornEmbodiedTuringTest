@@ -125,7 +125,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
-                verbose=0, #TODO: Incorporate this into options
+                verbose=1, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=torch.device("cuda", job.device))
             
