@@ -71,12 +71,8 @@ class BaseReward(ABC):
         obs_norm_type: str = "rms",
     ) -> None:
         # get environment information
-        if isinstance(envs, VectorEnv):
-            self.observation_space = envs.observation_space[0]
-            self.action_space = envs.action_space[0]
-        else:
-            self.observation_space = envs.observation_space
-            self.action_space = envs.action_space
+        self.observation_space = envs.observation_space
+        self.action_space = envs.action_space
         self.n_envs = envs.num_envs
         ## process the observation and action space
         self.obs_shape: Tuple = process_observation_space(self.observation_space)  # type: ignore

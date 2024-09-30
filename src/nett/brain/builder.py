@@ -23,7 +23,7 @@ from nett.brain import encoders
 from nett.utils.callbacks import initialize_callbacks
 from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
-from .rewards import ICM, RND, Disagreement
+from nett.brain.rewards import ICM, RND, Disagreement
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
