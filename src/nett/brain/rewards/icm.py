@@ -32,7 +32,7 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from rllte.common.prototype import BaseReward
+from nett.brain.networks.prototype import BaseReward
 from nett.brain.networks.model import ForwardDynamicsModel, InverseDynamicsModel, ObservationEncoder
 
 

@@ -30,7 +30,7 @@ import torch as th
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, TensorDataset
 
-from rllte.common.prototype import BaseReward
+from nett.brain.networks.prototype import BaseReward
 from nett.brain.networks.model import ObservationEncoder
 
 
