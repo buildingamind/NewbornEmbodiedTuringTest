@@ -125,7 +125,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
-                verbose=1, #TODO: Incorporate this into options
+                verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=torch.device("cuda", job.device))
             
@@ -146,9 +146,9 @@ class Brain:
         # create reward function
         if job.reward not in ["supervised", "unsupervised"]:
             if job.reward.lower() == "rnd":
-                job.reward_func = RND(envs[0], envs.observation_space[0], envs.action_space[0], job.device)
+                job.reward_func = RND(envs, job.device)
             elif job.reward.lower() == "icm":
-                job.reward_func = ICM(envs[0], envs.observation_space[0], envs.action_space[0], job.device)
+                job.reward_func = ICM(envs, job.device)
             elif job.reward.lower() == "disagreement":
                 job.reward_func = Disagreement(envs, job.device)
             else:

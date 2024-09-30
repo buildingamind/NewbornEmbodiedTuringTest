@@ -162,7 +162,7 @@ class MemoryCallback(BaseCallback):
         pass
 
 class IntrinsicRewardCallback(BaseCallback):
-    def __init__(self, irs, verbose = 1):
+    def __init__(self, irs, verbose = 0):
         """_summary_
 
         Args:
