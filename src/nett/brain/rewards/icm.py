@@ -221,9 +221,10 @@ class ICM(BaseReward):
             # use a random mask to select a subset of the training data
             mask = th.rand(len(im_loss), device=self.device)
             mask = (mask < self.update_proportion).type(th.FloatTensor).to(self.device)
+            mask2 = mask.unsqueeze(1).repeat(1, 3)
             # get the masked losses
-            im_loss = (im_loss * mask).sum() / th.max(
-                mask.sum(), th.tensor([1], device=self.device, dtype=th.float32)
+            im_loss = (im_loss * mask2).sum() / th.max(
+                mask2.sum(), th.tensor([1], device=self.device, dtype=th.float32)
             )
             fm_loss = (fm_loss * mask).sum() / th.max(
                 mask.sum(), th.tensor([1], device=self.device, dtype=th.float32)

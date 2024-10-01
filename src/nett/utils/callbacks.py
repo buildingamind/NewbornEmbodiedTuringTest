@@ -206,7 +206,7 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
         dones = th.as_tensor(self.buffer.episode_starts)
         print(obs.shape, actions.shape, rewards.shape, dones.shape, obs.shape)
         # compute the intrinsic rewards
-        intrinsic_rewards = irs.compute(
+        intrinsic_rewards = self.irs.compute(
             samples=dict(observations=obs, actions=actions, 
                          rewards=rewards, terminateds=dones, 
                          truncateds=dones, next_observations=new_obs),
@@ -248,7 +248,7 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
         # ===================== watch the interaction ===================== #
         
         # ===================== compute the intrinsic rewards ===================== #
-        intrinsic_rewards = irs.compute(samples={'observations':obs.unsqueeze(0), 
+        intrinsic_rewards = self.irs.compute(samples={'observations':obs.unsqueeze(0), 
                                             'actions':actions.unsqueeze(0), 
                                             'rewards':rewards.unsqueeze(0),
                                             'terminateds':dones.unsqueeze(0),

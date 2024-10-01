@@ -277,7 +277,7 @@ class Brain:
                     obs, _, dones, info = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
                     t.update(1)
                     if dones[0]:
-                        print(f"reset: {i}")
+                        # print(f"reset: {i}")
                         obs = envs.reset()
                     # envs.render(mode="rgb_array")
                     # vr.capture_frame()
