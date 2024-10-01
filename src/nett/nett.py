@@ -98,7 +98,7 @@ class NETT:
             synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
-            record: Optional[list[str]] = None,
+            record: Optional[list[str]] = [],
             recording_eps: int = 10,
             base_port: int = 5004) -> list[Future]:
         """
