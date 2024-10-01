@@ -310,8 +310,9 @@ class NETT:
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
     # TODO: Add option to not have a config here either?
+
     @staticmethod
-    def analyze(config: str,
+    def analyzePython(config: str,
                 run_dir: str | Path,
                 output_dir: Optional[str | Path] = None,
                 ep_bucket: int = 100,
@@ -377,6 +378,88 @@ class NETT:
         print("Running analysis for [test]")
         from nett.analysis.test_viz import test_viz
         test_viz(analysis_dir.joinpath("NETT_test_viz.R"), chick_data_dir, output_dir.joinpath("analysis_data"), output_dir, bar_order_str, color_bars)
+
+        print(f"Analysis complete. See results at {output_dir}")
+
+    @staticmethod
+    def analyze(config: str,
+                run_dir: str | Path,
+                output_dir: Optional[str | Path] = None,
+                ep_bucket: int = 100,
+                num_episodes: int = 1000,
+                bar_order: str | list[int] = "default",
+                color_bars: bool = True) -> None:
+        """
+        Analyze the results of a run.
+
+        This method is a static method and does not require an instance of the NETT class to be called.
+
+        Args:
+            config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
+            run_dir (str | Path): The directory where the run results are stored.
+            output_dir (str | Path, optional): The directory where the analysis results will be stored. 
+                If None, the analysis results will be stored in the run directory.
+            ep_bucket (int, optional): The number of episodes to be grouped together for analysis.
+            num_episodes (int, optional): The number of episodes to be analyzed.
+            bar_order (str | list[int], optional): The order in which the bars are to be displayed in the analysis plots. 
+                Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
+            color_bars (bool, optional): Whether to color the bars in the analysis plots by condition. Default is True.
+
+        Returns:
+            None
+
+        Example:
+            >>> nett.analyze(run_dir="./test_run", output_dir="./results") # benchmarks is an instance of NETT
+        """
+        # TODO may need to clean up this file structure
+        # set paths
+        run_dir = Path(run_dir).resolve()
+        if not run_dir.exists():
+            raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
+
+        analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
+        if output_dir is None:
+            output_dir = run_dir.joinpath("results")
+        output_dir = Path(output_dir).resolve()
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}.csv")
+
+        if not chick_data_dir.exists():
+            raise ValueError(f"'{config}' is not a valid config.")
+        elif not run_dir.exists():
+            raise ValueError(f"'{run_dir}' is not a valid run directory.")
+        elif not analysis_dir.exists():
+            raise ValueError(f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package.")
+
+        # translate bar_order for R to read
+        bar_order_str = str(bar_order).translate({ord(i): None for i in ' []'}) # remove spaces and brackets from bar_order
+
+        # merge
+        print("Running merge")
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_merge_csvs.R")),
+                        "--logs-dir", str(run_dir),
+                        "--results-dir", str(output_dir),
+                        "--results-name", "analysis_data",
+                        "--csv-train", "train_results.csv",
+                        "--csv-test", "test_results.csv"], check=True)
+
+        # train
+        print("Running analysis for [train]")
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_train_viz.R")),
+                        "--data-loc", str(output_dir.joinpath("analysis_data")),
+                        "--results-wd", str(output_dir),
+                        "--ep-bucket", str(ep_bucket),
+                        "--num-episodes", str(num_episodes)], check=True)
+
+        # test
+        print("Running analysis for [test]")
+        subprocess.run(["Rscript", str(analysis_dir.joinpath("NETT_test_viz.R")),
+                        "--data-loc", str(output_dir.joinpath("analysis_data")),
+                        "--results-wd", str(output_dir),
+                        "--bar-order", bar_order_str,
+                        "--color-bars", str(color_bars),
+                        "--chick-file", str(chick_data_dir)], check=True)
 
         print(f"Analysis complete. See results at {output_dir}")
 
