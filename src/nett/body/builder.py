@@ -1,5 +1,6 @@
 """The body of the agent in the environment."""
 from gym import Env, Wrapper
+from pathlib import Path
 
 from nett.body import types
 from nett.body.wrappers import DVS, Binocular, TraceRecordingWrapper
@@ -30,7 +31,7 @@ class Body:
                     wrappers: list[Wrapper] = [],
                     dvs: bool = False,
                     binocular: bool = True,
-                    trace: bool = False) -> None:
+                    trace: Path | str = None) -> None:
         """
         Constructor method
         """
@@ -40,7 +41,12 @@ class Body:
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
         self.binocular = self._validate_dvs(binocular)
-        self.trace = self._validate_dvs(trace)
+        
+        if trace is not None:
+            self.trace = Path(trace)
+            self.trace.mkdir(parents=True, exist_ok=True)
+        else:
+            self.trace = None
 
     @staticmethod
     def _validate_agent_type(type: str) -> str:
@@ -135,8 +141,8 @@ class Body:
                 env = self._wrap(env, DVS)
             if self.binocular:
                 env = self._wrap(env, Binocular)
-            if self.trace:
-                env = self._wrap(env, TraceRecordingWrapper)
+            if self.trace is not None:
+                env = self._wrap(env, TraceRecordingWrapper, self.trace)
             # apply all custom wrappers
             if self.wrappers:
                 for wrapper in self.wrappers:
