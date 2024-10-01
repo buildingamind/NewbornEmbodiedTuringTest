@@ -61,7 +61,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, port: int, **kwargs) -> None:
+    def initialize(self, mode: str, port: int, allow_multi_obs=True, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -108,7 +108,7 @@ class Environment(Wrapper):
 
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True) #TODO: Change this to vary base on Binocular Wrapper
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs) #TODO: Change this to vary base on Binocular Wrapper
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)

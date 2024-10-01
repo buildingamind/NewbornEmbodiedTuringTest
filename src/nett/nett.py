@@ -717,7 +717,7 @@ class NETT:
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, port, **kwargs)
+        copy_environment.initialize(mode, port, allow_multi_obs=self.body.binocular, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
