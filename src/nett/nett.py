@@ -372,12 +372,12 @@ class NETT:
 
         print("Running analysis for [train]")
         from nett.analysis.train_viz import train_viz
-        train_viz(output_dir.joinpath("analysis_data"), output_dir, ep_bucket, num_episodes)
+        train_viz(output_dir, output_dir, ep_bucket, num_episodes)
 
         # test
         print("Running analysis for [test]")
         from nett.analysis.test_viz import test_viz
-        test_viz(analysis_dir.joinpath("NETT_test_viz.R"), chick_data_dir, output_dir.joinpath("analysis_data"), output_dir, bar_order_str, color_bars)
+        test_viz(analysis_dir.joinpath("NETT_test_viz.R"), chick_data_dir, output_dir, output_dir, bar_order_str, color_bars)
 
         print(f"Analysis complete. See results at {output_dir}")
 
@@ -712,8 +712,6 @@ class NETT:
                 self.logger.exception(f"{mode} env validation failed: {str(ex)}" if kwargs["validation-mode"] \
                                       else f"{mode} env failed: {str(ex)}")  
                 raise ex
-        
-
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
