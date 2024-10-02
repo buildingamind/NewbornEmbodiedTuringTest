@@ -377,7 +377,7 @@ class NETT:
         # test
         print("Running analysis for [test]")
         from nett.analysis.test_viz import test_viz
-        test_viz(analysis_dir.joinpath("NETT_test_viz.R"), chick_data_dir, output_dir, output_dir, bar_order_str, color_bars)
+        test_viz(output_dir, chick_data_dir, output_dir, bar_order_str, color_bars)
 
         print(f"Analysis complete. See results at {output_dir}")
 
