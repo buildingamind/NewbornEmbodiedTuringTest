@@ -16,7 +16,7 @@ def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
     """
 
     # Load data and filter episodes
-    train_data = pd.read_csv(data_loc, skipinitialspace=True)
+    train_data = pd.read_csv(data_loc / "train_results.csv", skipinitialspace=True)
     print(f"Collating data for {num_episodes} training episodes...")
     train_data = train_data[train_data['Episode'] < num_episodes]
 
