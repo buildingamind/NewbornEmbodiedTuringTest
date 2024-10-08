@@ -151,7 +151,6 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    environment = Environment(executable_path="path/to/executable.x86_64")
    ```
-   *(To get a list of all available configurations, run `nett.list_configs()`. If you have not already imported nett, you will need it to run this command: `import nett`.)*
 
 4. **Run the Benchmarking**
 
