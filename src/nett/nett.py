@@ -11,7 +11,7 @@ import time
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
@@ -489,7 +489,7 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback: function):
+    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback: Callable[...,None]):
         # run environment
         # can be train or test mode and can be for validation or actual run
         while True:
