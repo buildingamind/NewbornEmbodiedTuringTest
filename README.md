@@ -120,6 +120,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```bash
    python
    ```
+   From here, everything will be done in Python. Either open the interpreter in interactive mode by running `python` or write the code into a python file, which can be run with `python <FILE>.py`
 
    Now that python is open, import the NETT framework components - `Brain`, `Body`, and `Environment`, alongside the main `NETT` class.
    ```python
@@ -147,7 +148,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
 - **Environment**
 
-   Create the simulation environment using the path to your Unity executable (see Step 1). The path must be absolute and not relative.
+   Create the simulation environment using the path to your Unity executable (see Step 1).
    ```python
    environment = Environment(executable_path="path/to/executable.x86_64")
    ```
