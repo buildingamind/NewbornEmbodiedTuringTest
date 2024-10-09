@@ -11,12 +11,13 @@ import time
 import subprocess
 import shutil
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 
 import pandas as pd
+from mlagents_envs.exception import UnityWorkerInUseException
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 import mlagents_envs
@@ -255,30 +256,30 @@ class NETT:
 
     def _execute_job(self, job: Job) -> Future:
         brain: "nett.Brain" = deepcopy(self.brain)
+        
+        if job.estimate_memory: # estimate memory uses train env for estimation
+            modes = ["train"]
+        elif job.mode == "full":
+            modes = ["train", "test"]
+        else: # test or train
+            modes = [job.mode]
 
-        # for train
-        if job.estimate_memory or job.mode in ["train", "full"]: # TODO: Create a memory estimate method for test
-            try:
-                # initialize environment with necessary arguments
-                with self._wrap_env("train", job.port, job.env_kwargs()) as train_environment:
-                    brain.train(train_environment, job)
-            except Exception as e:
-                self.logger.exception(f"Error in training: {e}")
-                raise e
-
-        # for test
-        if not job.estimate_memory and job.mode in ["test", "full"]:
-            try:
-                # initialize environment with necessary arguments
-                with self._wrap_env("test", job.port, job.env_kwargs()) as test_environment:
-                    brain.test(test_environment, job)
-
-                    # if job.estimate_memory:                 
-                    #     with open(job.paths["base"] / "mem.txt", "w") as file:
-                    #         file.write(str(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used))
-            except Exception as e:
-                self.logger.exception(f"Error in testing: {e}")
-                raise e
+        # loop over modes to validate then run the environment
+        for mode in modes:
+            # validation run
+            self._run_env(
+                mode=mode, 
+                port=job.port, 
+                kwargs = job.validation_kwargs(), 
+                callback = check_env
+            )   
+            # actual run
+            self._run_env(
+                mode=mode, 
+                port=job.port, 
+                kwargs = job.env_kwargs(), 
+                callback = lambda env: getattr(brain, mode)(env, job) # grabs brain.train or brain.test based on mode
+            )
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -483,6 +484,27 @@ class NETT:
             raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
 
         return devices
+
+    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback: Callable[...,None]):
+        # run environment
+        # can be train or test mode and can be for validation or actual run
+        while True:
+            try:
+                # wrap environment
+                with self._wrap_env(mode, port, kwargs) as environment:
+                    # run the callback. This can be check_env or brain.train or brain.test
+                    callback(environment)
+                break
+            # when running multiple runs in parallel, the port may be in use, so try the next port
+            except UnityWorkerInUseException as _:
+                self.logger.warning(f"Worker {port} is in use. Trying next port...")
+                port += 1
+            except Exception as ex:
+                self.logger.exception(f"{mode} env validation failed: {str(ex)}" if kwargs["validation-mode"] \
+                                      else f"{mode} env failed: {str(ex)}")  
+                raise ex
+        
+
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)

@@ -1,0 +1,14 @@
+mlagents==0.30.0
+stable-baselines3[extra]
+sb3-contrib
+torchvision
+timm
+nvidia-ml-py
+lightning
+lightning-bolts
+scikit-learn
+sphinx
+protobuf==3.20
+mkdocs
+sphinx-rtd-theme
+myst-parser
