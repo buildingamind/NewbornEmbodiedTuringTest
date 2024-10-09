@@ -4,16 +4,17 @@ Body module for nett
 .. module:: nett.body
   :synopsis: Body module for nett
 """
+import ast
+from pathlib import Path
+
+from nett.body import wrappers
+
 
 # all available body types
 types = ["basic", "two-eyed", "ragdoll"]
 
 # ASCII art
 ascii_basic = """
-          ---------------::::::::::::::::::::::::::::::::::::::::::::::::::---------------
-          ----------------::::::::::::::::::::::::::::::::::::::::::::::::----------------
-          ------------------::::::::::::::::..::::::::::...::::::::::::::-----------------
-          --------------------::::::::.:::::---------------::::.:::::::-------------------
           ----------------------:::::-------------:--------------::::---------------------
           ----------------------.------=====---:.  ..---========-----.--------------------
           --------------------:--====+++++======----======++****+====--.------------------
@@ -71,3 +72,43 @@ ascii_basic = """
           ----%%-----------------===%@------=*******----%%-------------------@%%----------
 """
 ascii_art = {'basic': ascii_basic}
+
+
+def list_wrappers() -> list[str]:
+    """
+    Returns a list of all available wrappers.
+
+    Returns:
+        list[str]: List of wrappers.
+    """
+    wrappers_dir = Path.joinpath(Path(__file__).resolve().parent, 'wrappers')
+    wrappers = [wrapper.stem for wrapper in list(wrappers_dir.iterdir()) if "__" not in str(wrapper)]
+    return wrappers
+
+# return encoder string to encoder class mapping
+# TODO (< v1.0.0) optimized way to calculate and pass this dict around
+def get_wrapper_dict() -> dict[str, str]:
+    """
+    Returns a dictionary mapping wrapper names to wrapper class names.
+
+    Returns:
+        dict[str, str]: Dictionary mapping wrapper names to wrapper class names.
+    """
+    wrapper_dict: dict[str, str] = {}
+    wrapper_dir = Path.joinpath(Path(__file__).resolve().parent, 'wrappers')
+    # iterate through all files in the directory
+    for wrapper_path in wrapper_dir.iterdir():
+        if wrapper_path.suffix == '.py' and "__" not in str(wrapper_path):
+            module_name = wrapper_path.stem
+            # read the source
+            with open(wrapper_path) as f:
+                source = f.read()
+            # parse it
+            module = ast.parse(source)
+            # get the first class definition
+            wrapper_class = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)][0]
+            # add to the dictionary
+            wrapper_dict[module_name] = wrapper_class.name
+    return wrapper_dict
+
+wrapper_dict = get_wrapper_dict()
