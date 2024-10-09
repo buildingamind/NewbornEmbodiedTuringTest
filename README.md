@@ -112,7 +112,6 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```bash
    scp -r \local\path\to\executable\folder  \server\parth\to\directory\for\executable\folder\
    ```
-   *(Note: if you are a member of our lab using one of our lab servers, the server path will be: your_username@server_name.luddy.indiana.edu:/home/your_username)*
 
 2. **Import NETT Components**
 
