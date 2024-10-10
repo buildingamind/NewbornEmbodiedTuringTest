@@ -9,9 +9,10 @@ Newborn Embodied Turing Test (NETT)
 
 .. toctree::
    :titlesonly:
-   :glob:
 
-   */index
+   gettingstarted/index
+   documentation/index
+   papers/index
 
 Indices and tables
 ==================
