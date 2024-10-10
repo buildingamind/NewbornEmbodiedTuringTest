@@ -1,6 +1,5 @@
 """Module for the Brain class."""
 
-import importlib
 import os
 from typing import Any, Optional
 from pathlib import Path
@@ -11,7 +10,6 @@ import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
 from tqdm import tqdm
-from stable_baselines3.common.callbacks import CallbackList, CheckpointCallback
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
@@ -19,7 +17,6 @@ from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
-from stable_baselines3.common.monitor import Monitor
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict

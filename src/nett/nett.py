@@ -101,13 +101,13 @@ class NETT:
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         # calculate iterations
-        iterations: dict[str, int] = {}
-        if mode in ["train", "full"]:
-            iterations["train"] = steps_per_episode * train_eps
-        if mode in ["test", "full"]:
-            iterations["test"] = test_eps * self.environment.num_test_conditions
-            if not issubclass(self.brain.algorithm, RecurrentPPO):
-                iterations["test"] *= steps_per_episode
+        iterations: dict[str, int] = {
+            "train": steps_per_episode * train_eps,
+            "test": test_eps * self.environment.num_test_conditions
+        }
+
+        if not issubclass(self.brain.algorithm, RecurrentPPO):
+            iterations["test"] *= steps_per_episode
 
         # initialize job object
         Job.initialize(
@@ -286,10 +286,6 @@ class NETT:
     def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
         self.logger.info("Estimating memory for a single job")
         try:
-            # create a temporary directory to hold memory estimate during runtime
-            tmp_path = Path("./.tmp/").resolve()
-            tmp_path.mkdir(parents=True, exist_ok=True)
-
             # find the GPU with the most free memory
             free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
             most_free_gpu = free_memory.index(max(free_memory))
