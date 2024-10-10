@@ -116,6 +116,7 @@ class NETT:
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbose (int, optional): Whether or not to print info statements. Defaults to True.
+            synchronous (bool, optional): Whether to wait for all jobs to end rather than return a Promise. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
             record (list[str], optional): The list of what record options to use. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
