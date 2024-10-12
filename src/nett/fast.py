@@ -27,6 +27,7 @@ from nett.brain.rewards.disagreement import Disagreement
 from nett.brain.rewards.icm import ICM
 from nett.brain.rewards.rnd import RND
 from nett.utils.callbacks import IntrinsicRewardWithOnPolicyRL
+from nett.utils.environment import Logger
 
 def fast(config):
 	with open(config, "r") as file:
@@ -53,6 +54,26 @@ def fast(config):
 	output_dir = Path(config_text["Run"]["output_dir"])
 	output_dir.mkdir(parents=True, exist_ok=True)
 
+	port=config_text["Run"]["base_port"]
+	condition = config_text["Run"]["conditions"][0]
+	brain_id = 1
+	base_path = Path(config_text["Run"]["output_dir"]) / condition /f"brain_{brain_id}"
+	reward = config_text["Brain"]["reward"]
+	steps_per_episode = config_text["Run"]["steps_per_episode"]
+
+	algorithm = getattr(stable_baselines3, config_text["Brain"]["algorithm"], None) or getattr(sb3_contrib, config_text["Brain"]["algorithm"])
+
+	device = config_text["Run"]["devices"][0]
+
+	# calculate iterations
+	iterations: dict[str, int] = {
+		"train": config_text["Run"]["train_eps"] * steps_per_episode,
+		"test": config_text["Run"]["test_eps"] * num_test_conditions
+	}
+
+	if not issubclass(algorithm, RecurrentPPO):
+		iterations["test"] *= steps_per_episode
+
 	if config_text["Run"]["mode"] == "full":
 			modes = ["train", "test"]
 	else: # test or train
@@ -60,31 +81,10 @@ def fast(config):
 	
 	for mode in modes:
 		# actual run
-
-		port=config_text["Run"]["base_port"]
-		condition = config_text["Run"]["conditions"][0]
-		brain_id = 1
-		base_path = Path.joinpath(config_text["Run"]["output_dir"], condition, f"brain_{brain_id}")
-		reward = config_text["Brain"]["reward"]
-		steps_per_episode = config_text["Run"]["steps_per_episode"]
-
-		# calculate iterations
-		iterations: dict[str, int] = {
-			"train": config_text["Run"]["train_eps"] * steps_per_episode,
-			"test": config_text["Run"]["test_eps"] * num_test_conditions
-		}
-
-		if not issubclass(algorithm, RecurrentPPO):
-			iterations["test"] *= steps_per_episode
-
 		# run environment
 		# can be train or test mode and can be for validation or actual run
 		while True:
 			try:
-				device = config_text["Run"]["devices"][0]
-
-				algorithm = getattr(stable_baselines3, config_text["Brain"]["algorithm"], None) or getattr(sb3_contrib, config_text["Brain"]["algorithm"])
-
 				env = Environment(mode, port, executable_path, reward, base_path, condition, steps_per_episode)
 				# wrap the body with the environment
 
@@ -111,7 +111,7 @@ def fast(config):
 
 def train(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iterations: dict[str, int], device: int, reward: str, config_text: dict[str, Any]):
 	# get callbacks
-	callback_list = get_callbacks(reward, envs, device)
+	callback_list = get_callbacks(envs, reward, device)
 
 	# create model
 	model = algorithm(
@@ -127,7 +127,7 @@ def train(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iterati
 
 	# train
 	model.learn(
-		total_timesteps=iterations["train"],
+		total_timesteps=iterations,
 		tb_log_name=algorithm.__name__,
 		progress_bar=False,
 		callback=callback_list
@@ -145,8 +145,6 @@ def test(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iteratio
 		base_path / 'model' / 'latest_model.zip', 
 		device=torch.device('cuda', device)
 	)
-
-	iterations: int = iterations["test"]
 
 	# for when algorithm is RecurrentPPO
 	if issubclass(algorithm, RecurrentPPO):
@@ -225,6 +223,7 @@ def plot_reward_graph(base_path: Path, iterations: dict[str, int]):
 	
 class Environment(Wrapper):
 	def __init__(self, mode: str, port: int, executable_path: Path, reward: str, base_path: Path, condition: str, steps_per_episode: int):
+
 		# create environment and connect it to logger
 		self.env = UnityToGymWrapper(
 			UnityEnvironment(
@@ -234,9 +233,10 @@ class Environment(Wrapper):
 					"--episode-steps", str(steps_per_episode),
 					"--mode", f"{mode}-{condition}",
 					"--log-dir", str(base_path / "env_recs") + "/",
-					"--rewarded", reward == "supervised",
+					"--rewarded", str(reward == "supervised").lower(),
 					"--random-pos", str(mode == "train").lower()
 				], 
+				side_channels=[Logger(f"{condition.replace('-', '_')}{1}-{mode}", log_dir=f"{base_path / "env_logs"}/")],
 				base_port=port
 			), 
 			uint8_visual=True
