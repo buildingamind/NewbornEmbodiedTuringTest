@@ -35,7 +35,7 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 
-from nett.fast import fast
+from nett.fast import fast as fastrun
 
 class NETT:
     """
@@ -57,13 +57,6 @@ class NETT:
         Initialize the NETT class.
         """
 
-        if fast and config is not None:
-            fast()
-            self.brain = Brain(**config_text["Brain"])
-            self.body = Body(**config_text["Body"])
-            self.environment = Environment(**config_text["Environment"])
-            if "Run" in config_text:
-                self.run(**config_text["Run"])
         
         # initialize logger
         from nett import logger
@@ -71,6 +64,11 @@ class NETT:
 
         # for NVIDIA memory management
         nvmlInit()
+
+        if fast and config is not None:
+            with open(config, "r") as file:
+                config_text = yaml.safe_load(file)
+            fastrun(config_text)
 
         if config is not None:
             try:
