@@ -35,6 +35,8 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 
+from nett.fast import fast
+
 class NETT:
     """
     The NETT class is the main class for training, testing, and analyzing brains in environments.
@@ -50,10 +52,19 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain" = None, body: "nett.Body" = None, environment: "nett.Environment" = None, config: Path | str | list[Path | str] = None) -> None:
+    def __init__(self, brain: "nett.Brain" = None, body: "nett.Body" = None, environment: "nett.Environment" = None, config: Path | str | list[Path | str] = None, fast: bool = False) -> None:
         """
         Initialize the NETT class.
         """
+
+        if fast and config is not None:
+            fast()
+            self.brain = Brain(**config_text["Brain"])
+            self.body = Body(**config_text["Body"])
+            self.environment = Environment(**config_text["Environment"])
+            if "Run" in config_text:
+                self.run(**config_text["Run"])
+        
         # initialize logger
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
