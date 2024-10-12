@@ -57,18 +57,15 @@ class NETT:
         Initialize the NETT class.
         """
 
-        
-        # initialize logger
-        from nett import logger
-        self.logger = logger.getChild(__class__.__name__)
-
         # for NVIDIA memory management
         nvmlInit()
 
         if fast and config is not None:
-            with open(config, "r") as file:
-                config_text = yaml.safe_load(file)
-            fastrun(config_text)
+            fastrun(config)
+
+        # initialize logger
+        from nett import logger
+        self.logger = logger.getChild(__class__.__name__)
 
         if config is not None:
             try:
