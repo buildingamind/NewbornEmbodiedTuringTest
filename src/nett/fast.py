@@ -61,7 +61,7 @@ def fast(config):
 	for mode in modes:
 		# actual run
 
-		port=config_text["Run"]["port"]
+		port=config_text["Run"]["base_port"]
 		condition = config_text["Run"]["conditions"][0]
 		brain_id = 1
 		base_path = Path.joinpath(config_text["Run"]["output_dir"], condition, f"brain_{brain_id}")
