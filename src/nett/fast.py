@@ -139,7 +139,7 @@ def train(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iterati
 	# plot reward graph
 	plot_reward_graph(base_path, iterations)
 
-def test(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iterations: dict[str, int], device: int):
+def test(envs: VecEnv, algorithm: Type[BaseAlgorithm], base_path: Path, iterations: int, device: int):
 	# load previously trained model from save_dir, if it exists
 	model: BaseAlgorithm = algorithm.load(
 		base_path / 'model' / 'latest_model.zip', 
@@ -209,10 +209,10 @@ def save(model, base_path: Path):
 	## save model
 	model.save(str(model_path / "latest_model.zip"))
 
-def plot_reward_graph(base_path: Path, iterations: dict[str, int]):
+def plot_reward_graph(base_path: Path, iterations: int):
 	# plot reward graph
 	results_plotter.plot_results([str(base_path / "env_logs")],
-		iterations["train"],
+		iterations,
 		results_plotter.X_TIMESTEPS,
 		"reward_graph"
 	)
@@ -236,7 +236,7 @@ class Environment(Wrapper):
 					"--rewarded", str(reward == "supervised").lower(),
 					"--random-pos", str(mode == "train").lower()
 				], 
-				side_channels=[Logger(f"{condition.replace('-', '_')}{1}-{mode}", log_dir=f"{base_path / "env_logs"}/")],
+				side_channels=[Logger(f"{condition.replace('-', '_')}{1}-{mode}", log_dir=f"{base_path / 'env_logs'}/")],
 				base_port=port
 			), 
 			uint8_visual=True
