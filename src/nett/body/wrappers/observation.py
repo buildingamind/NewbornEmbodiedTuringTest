@@ -14,3 +14,9 @@ class ObservationWrapper(gym.ObservationWrapper):
         assert len(env.observation_space.shape) == 3
 
         self.observation_space = gym.spaces.Box(low=0.0, high=255, shape=env.observation_space.shape, dtype=np.uint8)
+
+    def observation(self, obs):
+        return obs
+    
+    def reset(self, **kwargs):
+        return self.observation(self.env.reset(**kwargs))
