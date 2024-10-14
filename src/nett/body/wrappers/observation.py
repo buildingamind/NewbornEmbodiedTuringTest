@@ -13,9 +13,4 @@ class ObservationWrapper(gym.ObservationWrapper):
         assert isinstance(env.observation_space, gym.spaces.Box)
         assert len(env.observation_space.shape) == 3
 
-        #h, w, c = env.observation_space.shape
-        #self.observation_space = gym.spaces.Box(0, 1, dtype=np.float32, shape=(c, h, w))
-        
-        width, height, channels = env.observation_space.shape
-        new_shape = (channels, width, height)
-        self.observation_space = gym.spaces.Box(low=0.0, high=255, shape=new_shape, dtype=np.uint8)
+        self.observation_space = gym.spaces.Box(low=0.0, high=255, shape=env.observation_space.shape, dtype=np.uint8)
