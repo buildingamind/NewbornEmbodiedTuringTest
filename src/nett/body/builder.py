@@ -3,7 +3,7 @@ from gym import Env, Wrapper
 from pathlib import Path
 
 from nett.body import types
-from nett.body.wrappers import DVS, Binocular, TraceRecordingWrapper
+from nett.body.wrappers import DVS, Binocular, TraceRecordingWrapper, ObservationWrapper
 # from nett.body import ascii_art
 
 class Body:
@@ -141,6 +141,8 @@ class Body:
                 env = self._wrap(env, DVS)
             if self.binocular:
                 env = self._wrap(env, Binocular)
+            else:
+                env = self._wrap(env, ObservationWrapper)
             if self.trace is not None:
                 env = self._wrap(env, TraceRecordingWrapper, self.trace)
             # apply all custom wrappers
