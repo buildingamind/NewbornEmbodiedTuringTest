@@ -19,6 +19,3 @@ class ObservationWrapper(gym.ObservationWrapper):
         width, height, channels = env.observation_space.shape
         new_shape = (channels, width, height)
         self.observation_space = gym.spaces.Box(low=0.0, high=255, shape=new_shape, dtype=np.uint8)
-
-    def observation(self, observation):
-        return np.swapaxes(observation, 2, 0)
