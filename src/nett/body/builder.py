@@ -31,6 +31,7 @@ class Body:
                     wrappers: list[Wrapper] = [],
                     dvs: bool = False,
                     binocular: bool = True,
+                    wrap: bool = False,
                     trace: Path | str = None) -> None:
         """
         Constructor method
@@ -41,6 +42,7 @@ class Body:
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
         self.binocular = self._validate_dvs(binocular)
+        self.wrap = wrap
         
         if trace is not None:
             self.trace = Path(trace)
@@ -141,7 +143,7 @@ class Body:
                 env = self._wrap(env, DVS)
             if self.binocular:
                 env = self._wrap(env, Binocular)
-            else:
+            elif self.wrap:
                 env = self._wrap(env, ObservationWrapper)
             if self.trace is not None:
                 env = self._wrap(env, TraceRecordingWrapper, self.trace)
