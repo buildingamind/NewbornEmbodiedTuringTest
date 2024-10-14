@@ -35,7 +35,7 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 
-from nett.fast import fast as fastrun
+from nett.fast2 import fast as fastrun
 
 class NETT:
     """
