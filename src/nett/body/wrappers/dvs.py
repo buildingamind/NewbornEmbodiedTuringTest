@@ -11,7 +11,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-class DVS(gym.ObservationWrapper):
+class DVSWrapper(gym.ObservationWrapper):
     """
     A gym observation wrapper that performs Dynamic Vision Sensor (DVS) transformation on the environment observations.
 
