@@ -129,7 +129,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 verbose=1,
                 policy_kwargs=policy_kwargs,
-                device=f"cuda:{job.device}"))
+                device=f"cuda:{job.device}")
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
