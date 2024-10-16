@@ -52,7 +52,12 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(self, brain: "nett.Brain" = None, body: "nett.Body" = None, environment: "nett.Environment" = None, config: Path | str | list[Path | str] = None, fast: bool = False) -> None:
+    def __init__(self, 
+                 brain: "nett.Brain" = None, 
+                 body: "nett.Body" = None, 
+                 environment: "nett.Environment" = None, 
+                 config: Path | str | list[Path | str] = None, 
+                 fast: bool = False) -> None:
         """
         Initialize the NETT class.
         """
