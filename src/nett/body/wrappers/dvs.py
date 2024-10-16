@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+"""
+Dynamic Vision Sensor (DVS) transformation for gym environments.
+"""
 
 import collections
 import gym
@@ -18,6 +20,7 @@ class DVS(gym.ObservationWrapper):
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
         kernel_size (tuple): The size of the Gaussian kernel used for blurring.
         sigma (float): The standard deviation of the Gaussian kernel.
+        is_color (bool): Whether the observation is in color or grayscale.
 
     Attributes:
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
@@ -155,5 +158,14 @@ class DVS(gym.ObservationWrapper):
         return ret_frame
     
     def reset(self, **kwargs):
+        """
+        Resets the environment and returns the initial observation.
+        
+        Args:
+            **kwargs: Additional arguments for the reset method.
+            
+        Returns:
+            numpy.ndarray: The initial observation.
+        """
         initial_obs = self.env.reset(**kwargs)
         return self.observation(initial_obs)
