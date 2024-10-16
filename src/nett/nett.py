@@ -5,26 +5,27 @@ This module contains the NETT class, which is the main class for training, testi
    :synopsis: Main class for training, testing and analyzing brains in environments.
 
 """
-
-import importlib
+import os
+import mlagents_envs
 import time
 import subprocess
 import shutil
+import pandas as pd
+
 from pathlib import Path
 from typing import Any, Callable, Optional
 from copy import deepcopy
 from itertools import product, cycle
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
-
-import pandas as pd
 from mlagents_envs.exception import UnityWorkerInUseException
 from sb3_contrib import RecurrentPPO
+from stable_baselines3.common.env_checker import check_env
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-import mlagents_envs
 
 from nett.utils.io import mute
 from nett.utils.job import Job
 from nett.utils.environment import port_in_use
+
 
 class NETT:
     """
@@ -66,7 +67,6 @@ class NETT:
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
             verbose: int = True,
-            synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
             base_port: int = 5004) -> list[Future]:
@@ -101,13 +101,13 @@ class NETT:
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
         # calculate iterations
-        iterations: dict[str, int] = {
-            "train": steps_per_episode * train_eps,
-            "test": test_eps * self.environment.num_test_conditions
-        }
-
-        if not issubclass(self.brain.algorithm, RecurrentPPO):
-            iterations["test"] *= steps_per_episode
+        iterations: dict[str, int] = {}
+        if mode in ["train", "full"]:
+            iterations["train"] = steps_per_episode * train_eps
+        if mode in ["test", "full"]:
+            iterations["test"] = test_eps * self.environment.num_test_conditions
+            if not issubclass(self.brain.algorithm, RecurrentPPO):
+                iterations["test"] *= steps_per_episode
 
         # initialize job object
         Job.initialize(
@@ -143,7 +143,7 @@ class NETT:
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self._launch_jobs(jobs, synchronous, waitlist, verbose)
+        job_sheet = self._launch_jobs(jobs, waitlist, verbose)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
@@ -162,6 +162,8 @@ class NETT:
             >>> status = benchmarks.status(job_sheet)
             >>> # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
+        if not job_sheet or not isinstance(job_sheet, dict):
+            raise ValueError(f"job_sheet must be a dict with signature: dict[Future, Job]")
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
@@ -273,6 +275,7 @@ class NETT:
                 kwargs = job.validation_kwargs(), 
                 callback = check_env
             )   
+
             # actual run
             self._run_env(
                 mode=mode, 
@@ -286,6 +289,10 @@ class NETT:
     def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
         self.logger.info("Estimating memory for a single job")
         try:
+            # create a temporary directory to hold memory estimate during runtime
+            tmp_path = Path("./.tmp/").resolve()
+            tmp_path.mkdir(parents=True, exist_ok=True)
+
             # find the GPU with the most free memory
             free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
             most_free_gpu = free_memory.index(max(free_memory))
@@ -351,7 +358,7 @@ class NETT:
         }
         return memory_status
     
-    def _launch_jobs(self, jobs: list[Job], wait: bool, waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
+    def _launch_jobs(self, jobs: list[Job], waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -363,7 +370,7 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         try:
-            max_workers = 1 if len(jobs) == 1 else None
+            max_workers = 1 if len(jobs) == 1 else os.cpu_count()
             initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
@@ -375,25 +382,22 @@ class NETT:
 
             while waitlist:
                 done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                for doneFuture in done:
-                    doneJob: Job = job_sheet.pop(doneFuture)
-                    freeDevice: int = doneJob.device
-                    freePort: int = doneJob.port
+                for done_future in done:
+                    done_job: Job = job_sheet.pop(done_future)
+                    free_device: int = done_job.device
+                    free_port: int = done_job.port
                     job = waitlist.pop()
-                    job.device = freeDevice
-                    job.port = freePort
+                    job.device = free_device
+                    job.port = free_port
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
                     time.sleep(1)
-
-            if wait:
-                while job_sheet:
-                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                    for doneFuture in done:
-                        job_sheet.pop(doneFuture)
-                    time.sleep(1)
+            
+            # close processes and free up resources on completion
+            executor.shutdown()
 
             return job_sheet
+
         except Exception as e:
             print(str(e))
 
@@ -470,7 +474,7 @@ class NETT:
                 free_device_memory[free_devices[-1]] -= job_memory
                 # rotate devices
                 free_devices = [free_devices[-1]] + free_devices[:-1]
-
+        
         return jobs, waitlist
 
     @staticmethod
@@ -499,10 +503,10 @@ class NETT:
             except UnityWorkerInUseException as _:
                 self.logger.warning(f"Worker {port} is in use. Trying next port...")
                 port += 1
-            except Exception as ex:
-                self.logger.exception(f"{mode} env validation failed: {str(ex)}" if kwargs["validation-mode"] \
-                                      else f"{mode} env failed: {str(ex)}")  
-                raise ex
+            except Exception as e:
+                self.logger.exception(f"{mode} env validation failed: {str(e)}" if kwargs["validation-mode"] \
+                                      else f"{mode} env failed: {str(e)}")  
+                raise e
         
 
 
