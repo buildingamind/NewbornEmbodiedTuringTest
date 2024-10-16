@@ -75,6 +75,15 @@ class Job:
       paths[subdir] = Path.joinpath(paths["base"], subdir)
 
     return paths
+  
+  def validation_kwargs(self) -> dict[str, Any]:
+    """Get the environment kwargs for validation
+    """
+    kwargs = self.env_kwargs()
+    kwargs["validation-mode"] = True
+    kwargs["record-chamber"] = False
+    kwargs["record-agent"] = False
+    return kwargs
 
   def env_kwargs(self) -> dict[str, Any]:
     """Get the environment kwargs
