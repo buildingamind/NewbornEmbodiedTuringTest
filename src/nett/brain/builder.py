@@ -163,7 +163,7 @@ class Brain:
             total_timesteps=job.iterations["train"],
             tb_log_name=self.algorithm.__name__,
             progress_bar=False,
-            callback=[callback_list])
+            callback=callback_list)
         self.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
@@ -172,7 +172,6 @@ class Brain:
 
         # save
         ## create save directory
-        job.paths["model"].mkdir(parents=True, exist_ok=True)
         self.save_encoder_policy_network(model.policy, job.paths["model"])
         print("Saved feature extractor")
         
