@@ -584,7 +584,7 @@ class NETT:
             dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
         """
         try:
-            max_workers = 1 if len(jobs) == 1 else None
+            max_workers = 1 if len(jobs) == 1 else os.cpu_count()
             initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
@@ -613,6 +613,9 @@ class NETT:
                     for doneFuture in done:
                         job_sheet.pop(doneFuture)
                     time.sleep(1)
+
+            # close processes and free up resources on completion
+            executor.shutdown()
 
             return job_sheet
         except Exception as e:
