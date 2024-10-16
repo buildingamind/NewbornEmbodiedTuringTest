@@ -16,7 +16,7 @@ from mlagents_envs.environment import UnityEnvironment
 try :
     from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
 except PermissionError as _:
-     raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
+    raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
 from nett.utils.environment import Logger
 
@@ -103,8 +103,7 @@ class Environment(Wrapper):
             args.extend(["-gpu", str(kwargs["device"])])
 
         # create logger
-        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}",
-                          log_dir=f"{kwargs['log_path']}/")
+        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}", log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
