@@ -129,7 +129,7 @@ class Brain:
                 n_steps=self.buffer_size,
                 verbose=1,
                 policy_kwargs=policy_kwargs,
-                device=torch.device("cuda", job.device))
+                device=f"cuda:{job.device}")
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
@@ -189,7 +189,7 @@ class Brain:
         # load previously trained model from save_dir, if it exists
         model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
             job.paths['model'].joinpath('latest_model.zip'), 
-            device=torch.device('cuda', job.device))
+            device=f"cuda:{job.device}")
 
         # validate environment
         env = self._validate_env(env)
@@ -464,3 +464,4 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
+
