@@ -10,36 +10,8 @@ from torch import nn
 # Pytorch-Lightning
 import pytorch_lightning as pl
 from vit_pytorch import ViT
-from transformers import ViTConfig
 
 import math
-
-# enter the configuration details for the model
-class ViTConfigExtended(ViTConfig):
-    def __init__(self, hidden_size=768, # original 768
-        num_hidden_layers=1, # original 12
-        num_attention_heads=1, # original 12
-        intermediate_size=3072, # original 3072
-        # hidden_act="gelu",
-        # hidden_dropout_prob=0.0,
-        # attention_probs_dropout_prob=0.0,
-        # initializer_range=0.02,
-        # layer_norm_eps=1e-12,
-        image_size=224, # original 224
-        patch_size=16, # original 16
-        num_channels=3,
-        num_classes: int = 512): # original 1000
-        super().__init__()
-        self.num_classes = num_classes
-        self.hidden_size = hidden_size
-        self.intermediate_size = intermediate_size
-        self.num_hidden_layers = num_hidden_layers
-        self.num_attention_heads = num_attention_heads
-        self.patch_size = patch_size
-        self.image_size = image_size
-        self.num_channels = num_channels
-        #print("Number of Hidden Layers: ", self.num_hidden_layers)
-        #print("Number of Attention Heads: ", self.num_attention_heads)
 
 class VisionTransformer(nn.Module):
     def __init__(self, config):
@@ -52,10 +24,13 @@ class VisionTransformer(nn.Module):
             depth = config.num_hidden_layers,
             heads = config.num_attention_heads,
             mlp_dim = config.intermediate_size,
+            pool='cls',
+            channels=config.channels,
+            dim_head=64,
             dropout = config.hidden_dropout_prob,
             emb_dropout = config.attention_probs_dropout_prob
         )
-    
+
     @torch.no_grad()
     def init_weights(self):
         def _init(m):
@@ -70,16 +45,6 @@ class VisionTransformer(nn.Module):
     
     def forward(self, x):
         return self.model(x)
-
-class Backbone(torch.nn.Module):
-    def __init__(self, model_type, config): # configuration object is the same as config.
-        super().__init__()
-        if model_type == 'vit':
-            self.model = VisionTransformer(config)
-        
-    def forward(self, x):
-        return self.model(x)
-
 
 class Projection(nn.Module):
 
@@ -115,7 +80,7 @@ class LitClassifier(pl.LightningModule):
         self,
         backbone,
         temporal_mode: str = None,
-        learning_rate = 1e-3,
+        learning_rate: float = 1e-3,
         hidden_mlp = 512,
         feat_dim = 128,
         hidden_depth = 1,
@@ -125,6 +90,7 @@ class LitClassifier(pl.LightningModule):
         self.hidden_mlp = hidden_mlp
         self.feat_dim = feat_dim
         self.hidden_depth = hidden_depth
+        self.learning_rate = learning_rate
         
         self.backbone = backbone   # ViT encoder
         self.temporal_mode = temporal_mode # type of temporal window
@@ -135,16 +101,14 @@ class LitClassifier(pl.LightningModule):
             output_dim=self.feat_dim, # 128
             depth=self.hidden_depth, #1
         )
-        
-        # self.val_acc = Accuracy(compute_on_step=False)
+
         self.temperature = 0.5  # default from SimCLR contrastive model
         
     def forward(self, x):
         # SimCLR proposes to take the embeddings from the learned encoder
         feats = self.backbone(x)
         return feats
-    
-    
+
     def shared_step(self, batch):
         # push two images together in a temporal window - 
 
@@ -245,8 +209,6 @@ class LitClassifier(pl.LightningModule):
 
         return loss
 
-
-
     def training_step(self, batch, batch_idx):
         #loss = self.step(batch, batch_idx)
         loss = self.shared_step(batch)
@@ -263,21 +225,21 @@ class LitClassifier(pl.LightningModule):
 
     def configure_optimizers(self):
         # self.hparams available because we called self.save_hyperparameters()
-        return torch.optim.Adam(self.parameters(), lr=1e-4)
+        return torch.optim.Adam(self.parameters(), lr=self.learning_rate)
 
-    @staticmethod
-    def add_model_specific_args(parent_parser):
-        parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        parser.add_argument('--learning_rate', type=float, default=0.0001)
-        # transform params
-        parser.add_argument("--gaussian_blur", action="store_true", help="add gaussian blur")
-        parser.add_argument("--jitter_strength", type=float, default=0.5, help="jitter strength")
-        parser.add_argument("--weight_decay", default=1e-6, type=float, help="weight decay")
-        parser.add_argument("--start_lr", default=0, type=float, help="initial warmup learning rate")
-        parser.add_argument("--final_lr", type=float, default=1e-6, help="final learning rate")
-        parser.add_argument("--temperature", default=0.5, type=float, help="temperature parameter in training loss")
-        parser.add_argument("--lars_wrapper", action='store_true', help="apple lars wrapper over optimizer used")
-        parser.add_argument('--exclude_bn_bias', action='store_true', help="exclude bn/bias from weight decay")
-        parser.add_argument("--warmup_epochs", default=5, type=int, help="number of warmup epochs")
+    # @staticmethod
+    # def add_model_specific_args(parent_parser):
+    #     parser = ArgumentParser(parents=[parent_parser], add_help=False)
+    #     parser.add_argument('--learning_rate', type=float, default=0.0001)
+    #     # transform params
+    #     parser.add_argument("--gaussian_blur", action="store_true", help="add gaussian blur")
+    #     parser.add_argument("--jitter_strength", type=float, default=0.5, help="jitter strength")
+    #     parser.add_argument("--weight_decay", default=1e-6, type=float, help="weight decay")
+    #     parser.add_argument("--start_lr", default=0, type=float, help="initial warmup learning rate")
+    #     parser.add_argument("--final_lr", type=float, default=1e-6, help="final learning rate")
+    #     parser.add_argument("--temperature", default=0.5, type=float, help="temperature parameter in training loss")
+    #     parser.add_argument("--lars_wrapper", action='store_true', help="apple lars wrapper over optimizer used")
+    #     parser.add_argument('--exclude_bn_bias', action='store_true', help="exclude bn/bias from weight decay")
+    #     parser.add_argument("--warmup_epochs", default=5, type=int, help="number of warmup epochs")
 
-        return parser
+    #     return parser
