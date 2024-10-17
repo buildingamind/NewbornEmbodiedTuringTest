@@ -27,7 +27,9 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 from stable_baselines3.common.env_checker import check_env
 import yaml
 
-from stable_baselines3.common.vec_env import SubprocVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.monitor import Monitor
 
 from nett.utils.io import mute
 from nett.utils.job import Job
@@ -720,7 +722,7 @@ class NETT:
                 # wrap environment
                 # with self._wrap_env(mode, port, kwargs) as environment:
                 # run the callback. This can be check_env or brain.train or brain.test
-                if mode == "test":
+                if mode == "test" and "validation-mode" not in kwargs:
                     def make_env(rank, seed=0):
                         def _init():
                             kwargs_copy = deepcopy(kwargs)
@@ -739,7 +741,25 @@ class NETT:
                     envs.close()
                 else:
                     with self._wrap_env(mode, port, kwargs) as environment:
-                        callback(environment)
+
+                        def make_env():
+                            def _init():
+                                environment.seed(self.seed)
+                                environment.action_space.seed(self.seed)
+                                # Wrap the env in a Monitor wrapper
+                                # to have additional training information
+                                
+                                monitor_path: Path = Path(kwargs["log_path"])
+                                # Create the monitor folder if needed
+                                monitor_path.mkdir(exist_ok=True, parents=True)
+
+                                return Monitor(environment, filename=monitor_path)
+
+                            return _init
+
+
+                        envs = DummyVecEnv([make_env()])
+                        callback(envs)
                 break
             # when running multiple runs in parallel, the port may be in use, so try the next port
             except UnityWorkerInUseException as _:
@@ -747,8 +767,11 @@ class NETT:
                 port += 1
             except Exception as ex:
                 self.logger.exception(f"{mode} env validation failed: {str(ex)}" if kwargs["validation-mode"] \
-                                      else f"{mode} env failed: {str(ex)}")  
+                    else f"{mode} env failed: {str(ex)}")  
                 raise ex
+            finally:
+                if envs:
+                    envs.close()
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
