@@ -18,7 +18,7 @@ class Job:
   _RECORD: Final = ("agent", "chamber", "state")
 
   @classmethod
-  def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int], record: list[str], recording_eps: int) -> None:
+  def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int], record: list[str], recording_eps: int, test_eps:int) -> None:
     """Initialize the class
 
     Args:
@@ -43,6 +43,7 @@ class Job:
     cls.iterations: dict[str, int] = iterations
     cls.record: list[str] = cls._validate_record(record)
     cls.recording_eps: int = recording_eps
+    cls.test_eps: int = test_eps
 
   def __init__(self, brain_id: int, condition: str, device: int, index: int, port: int, estimate_memory: bool = False) -> None:
     """initialize job"""

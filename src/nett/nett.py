@@ -148,7 +148,7 @@ class NETT:
         # calculate iterations
         iterations: dict[str, int] = {
             "train": steps_per_episode * train_eps, #10*5 = 50
-            "test": test_eps * self.environment.num_test_conditions
+            "test": self.environment.num_test_conditions
         }
 
         if not issubclass(self.brain.algorithm, RecurrentPPO):
@@ -165,7 +165,8 @@ class NETT:
             batch_mode=batch_mode, 
             iterations=iterations,
             record=record,
-            recording_eps=recording_eps
+            recording_eps=recording_eps,
+            test_eps=test_eps
             )
 
         # validate devices

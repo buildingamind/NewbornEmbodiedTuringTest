@@ -1,9 +1,11 @@
 """Module for the Brain class."""
 
+from copy import deepcopy
 import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
+import gym
 import torch
 import stable_baselines3
 import sb3_contrib
@@ -16,6 +18,7 @@ from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
@@ -197,14 +200,29 @@ class Brain:
         model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
             job.paths['model'].joinpath('latest_model.zip'), 
             device=f"cuda:{job.device}")
+        
+
+        def make_env(env, rank, seed=0):
+            def _init():
+                env_copy = deepcopy(env)
+                # use a seed for reproducibility
+                # Important: use a different seed for each environment
+                # otherwise they would generate the same experiences
+                env_copy.reset(seed=seed + rank) # likely the cause of the second init line in the logs
+                return env_copy
+
+            return _init
 
         # initialize environment
-        num_envs = 1
-        envs = make_vec_env(
-            env_id=lambda: env, 
-            n_envs=num_envs, 
-            # seed=self.seed # Commented out as seed does not work
-            )
+        num_envs = job.test_eps
+        # envs = make_vec_env(
+        #     env_id=lambda: env, 
+        #     n_envs=num_envs, 
+        #     # seed=self.seed # Commented out as seed does not work
+        #     )
+        
+        envs = SubprocVecEnv([make_env(env, i) for i in range(num_envs)])
+
 
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
