@@ -76,6 +76,8 @@ class NETT:
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
 
+        self.rng = np.random.default_rng()
+
         if config is not None:
             try:
                 if isinstance(config, list):
@@ -517,7 +519,7 @@ class NETT:
 
             # find unused port
             while port_in_use(base_port):
-                base_port += 1
+                base_port = self._rand_port()
 
             # create a test job to estimate memory
             job = Job(
@@ -643,6 +645,9 @@ class NETT:
 
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
+    
+    def _rand_port(self):
+        return self.rng.choice(np.arange(1024, 49151), replace=False, shuffle=False)
 
     def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
         # create jobs
@@ -681,7 +686,7 @@ class NETT:
 
                 # find unused port
                 while port_in_use(port):
-                    port += 1
+                    port = self._rand_port()
 
                 job = Job(
                     brain_id=brain_id, 
@@ -726,7 +731,10 @@ class NETT:
                         def _init():
                             kwargs_copy = deepcopy(kwargs)
                             kwargs_copy["rank"] = rank
-                            env_copy = self._wrap_env(mode, port+rank, kwargs_copy)
+                            port_copy = port + rank
+                            while port_in_use(port_copy):
+                                port_copy = self._rand_port()
+                            env_copy = self._wrap_env(mode, port_copy, kwargs_copy)
                             env_copy.reset(seed=seed + rank)
                             return env_copy
 
