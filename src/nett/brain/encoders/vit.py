@@ -5,7 +5,7 @@ from torch import nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from .disembodied_models.vit_contrastive import LitClassifier, ViTConfigExtended, VisionTransformer
+from .disembodied_models.vit_contrastive import LitClassifier, VisionTransformer
 
 class ViT(BaseFeaturesExtractor):
     """
