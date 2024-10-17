@@ -27,6 +27,8 @@ from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvm
 from stable_baselines3.common.env_checker import check_env
 import yaml
 
+from stable_baselines3.common.vec_env import SubprocVecEnv
+
 from nett.utils.io import mute
 from nett.utils.job import Job
 from nett.utils.environment import port_in_use
@@ -716,9 +718,28 @@ class NETT:
         while True:
             try:
                 # wrap environment
-                with self._wrap_env(mode, port, kwargs) as environment:
-                    # run the callback. This can be check_env or brain.train or brain.test
-                    callback(environment)
+                # with self._wrap_env(mode, port, kwargs) as environment:
+                # run the callback. This can be check_env or brain.train or brain.test
+                if mode == "test":
+                    def make_env(rank, seed=0):
+                        def _init():
+                            kwargs_copy = deepcopy(kwargs)
+                            kwargs_copy["brain_id"] = f"{kwargs_copy["brain_id"]}-{rank}"
+                            env_copy = self._wrap_env(mode, port+rank, kwargs_copy)
+                            env_copy.reset(seed=seed + rank)
+                            return env_copy
+
+                        return _init
+
+                    # initialize environment
+                    num_envs = Job.test_eps
+                    
+                    envs = SubprocVecEnv([make_env(i) for i in range(num_envs)])
+                    callback(envs)
+                    envs.close()
+                else:
+                    with self._wrap_env(mode, port, kwargs) as environment:
+                        callback(environment)
                 break
             # when running multiple runs in parallel, the port may be in use, so try the next port
             except UnityWorkerInUseException as _:
