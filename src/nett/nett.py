@@ -491,12 +491,12 @@ class NETT:
         # loop over modes to validate then run the environment
         for mode in modes:
             # validation run
-            self._run_env(
-                mode=mode, 
-                port=job.port, 
-                kwargs = job.validation_kwargs(), 
-                callback = check_env
-            )   
+            # self._run_env(
+            #     mode=mode, 
+            #     port=job.port, 
+            #     kwargs = job.validation_kwargs(), 
+            #     callback = check_env
+            # )   
             # actual run
             self._run_env(
                 mode=mode, 
