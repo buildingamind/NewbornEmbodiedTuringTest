@@ -288,7 +288,7 @@ class Brain:
             # vr.enabled = False
         
         t.close()
-    
+
     @staticmethod
     def save_encoder_policy_network(policy, path: Path):
         """
@@ -381,11 +381,8 @@ class Brain:
                 raise ValueError(f"If a string, should be one of: {algorithms}")
             # check for the passed policy in stable_baselines3 as well as sb3-contrib
             # at this point in the code, it is guaranteed to be in either of the two
-            try:
-                algorithm = getattr(stable_baselines3, algorithm)
-                
-            except:
-                algorithm = getattr(sb3_contrib, algorithm)
+
+            algorithm = getattr(stable_baselines3, algorithm, None) or getattr(sb3_contrib, algorithm)
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
