@@ -91,7 +91,7 @@ class Brain:
         self.seed = seed
         self.custom_policy_arch = custom_policy_arch
 
-    def train(self, env: "gym.Env", job: "Job"):
+    def train(self, envs, job: "Job"):
         """
         Train the brain.
 
@@ -101,13 +101,6 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        # initialize environment
-        envs = make_vec_env(
-            env_id=lambda: env, 
-            n_envs=1, 
-            # seed=self.seed, # Commented out as seed does not work
-            monitor_dir=str(job.paths["env_logs"])) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
-
         # build model
         policy_kwargs = {
             "features_extractor_class": self.encoder,

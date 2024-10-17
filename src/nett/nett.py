@@ -152,7 +152,7 @@ class NETT:
         # calculate iterations
         iterations: dict[str, int] = {
             "train": steps_per_episode * train_eps, #10*5 = 50
-            "test": self.environment.num_test_conditions
+            "test": self.environment.num_test_conditions * test_eps
         }
 
         if not issubclass(self.brain.algorithm, RecurrentPPO):
@@ -169,8 +169,7 @@ class NETT:
             batch_mode=batch_mode, 
             iterations=iterations,
             record=record,
-            recording_eps=recording_eps,
-            test_eps=test_eps
+            recording_eps=recording_eps
             )
 
         # validate devices
@@ -493,12 +492,12 @@ class NETT:
         # loop over modes to validate then run the environment
         for mode in modes:
             # validation run
-            # self._run_env(
-            #     mode=mode, 
-            #     port=job.port, 
-            #     kwargs = job.validation_kwargs(), 
-            #     callback = check_env
-            # )   
+            self._run_env(
+                mode=mode, 
+                port=job.port, 
+                kwargs = job.validation_kwargs(), 
+                callback = check_env
+            )   
             # actual run
             self._run_env(
                 mode=mode, 
@@ -734,7 +733,7 @@ class NETT:
                         return _init
 
                     # initialize environment
-                    num_envs = Job.test_eps
+                    num_envs = Job.iterations["test"]
                     
                     envs = SubprocVecEnv([make_env(i) for i in range(num_envs)])
                     callback(envs)
@@ -756,7 +755,6 @@ class NETT:
                                 return Monitor(environment, filename=monitor_path)
 
                             return _init
-
 
                         envs = DummyVecEnv([make_env()])
                         callback(envs)
