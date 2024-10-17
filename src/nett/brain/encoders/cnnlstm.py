@@ -19,7 +19,7 @@ class CNNLSTM(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
         """Constructor method
         """
-        super(CNNLSTM, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
 
         n_input_channels = observation_space.shape[0]
         self.cnn = nn.Sequential(
@@ -84,7 +84,7 @@ class Identity(nn.Module):
     """
     def __init__(self) -> None:
         """Constructor method"""
-        super(Identity, self).__init__()
+        super().__init__()
 
     def forward(self, x: th.Tensor) -> th.Tensor:
         """Forward pass"""

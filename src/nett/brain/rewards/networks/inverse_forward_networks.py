@@ -103,7 +103,7 @@ class InverseDynamicsModel(nn.Module):
     """
     
     def __init__(self, latent_dim, action_dim, encoder_model="mnih", weight_init="default") -> None:
-        super(InverseDynamicsModel, self).__init__()
+        super().__init__()
         #obs_shape: Tuple, action_dim: int, latent_dim: int,
         self.trunk = Encoder(obs_shape=(latent_dim * 2,), 
                              latent_dim=action_dim, 
@@ -139,7 +139,7 @@ class ForwardDynamicsModel(nn.Module):
     """
     
     def __init__(self, latent_dim, action_dim, encoder_model="mnih", weight_init="default") -> None:
-        super(ForwardDynamicsModel, self).__init__()
+        super().__init__()
         self.action_dim = action_dim
         
         self.trunk = Encoder(obs_shape=(latent_dim + action_dim,), 

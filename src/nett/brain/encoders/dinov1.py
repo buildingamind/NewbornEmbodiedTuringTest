@@ -17,7 +17,7 @@ class DinoV1(BaseFeaturesExtractor):
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
         """Constructor method
         """
-        super(DinoV1, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
         self.transforms = Compose([Resize(size=248,
                                           interpolation=InterpolationMode.BICUBIC,

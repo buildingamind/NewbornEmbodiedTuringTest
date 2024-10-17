@@ -24,7 +24,7 @@ class Resnet10CNN(BaseFeaturesExtractor):
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256):
-        super(Resnet10CNN, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
 
@@ -118,7 +118,7 @@ class BasicBlock(nn.Module):
     def __init__(
         self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None
     ):
-        super(BasicBlock, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         if groups != 1 or base_width != 64:
@@ -199,7 +199,7 @@ class ResNet(nn.Module):
         first_conv=True, # pre-processing layers which makes the image size half [64->32]
         maxpool1=True # used in pre-processing
     ):
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer

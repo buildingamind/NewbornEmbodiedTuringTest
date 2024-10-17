@@ -50,7 +50,7 @@ class TraceRecordingWrapper(gym.Wrapper):
         """
         Create a TraceRecordingWrapper around env, writing into directory
         """
-        super(TraceRecordingWrapper, self).__init__(env)
+        super().__init__(env)
         self.recording = None
         trace_record_closer.register(self)
 

@@ -167,7 +167,7 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
     A custom callback for combining RLeXplore and on-policy algorithms from SB3.
     """
     def __init__(self, irs, verbose=0):
-        super(IntrinsicRewardWithOnPolicyRL, self).__init__(verbose)
+        super().__init__(verbose)
         self.irs = irs
         self.buffer = None
 
@@ -221,7 +221,7 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
     A custom callback for combining RLeXplore and off-policy algorithms from SB3. 
     """
     def __init__(self, irs, verbose=0):
-        super(IntrinsicRewardWithOffPolicyRL, self).__init__(verbose)
+        super().__init__(verbose)
         self.irs = irs
         self.buffer = None
 

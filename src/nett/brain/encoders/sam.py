@@ -22,7 +22,7 @@ class SegmentAnything(BaseFeaturesExtractor):
     """
 
     def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
-        super(SegmentAnything, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
         self.transforms = Compose([Resize(size=256,
                                           interpolation=InterpolationMode.BICUBIC,

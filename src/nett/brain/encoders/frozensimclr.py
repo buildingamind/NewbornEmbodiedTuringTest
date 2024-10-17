@@ -23,7 +23,7 @@ class FrozenSimCLR(BaseFeaturesExtractor):
     """
 
     def __init__(self, observation_space: "gym.spaces.Box", features_dim: int = 512, checkpoint_path: str = "simclr") -> None:
-        super(FrozenSimCLR, self).__init__(observation_space, features_dim)
+        super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
         logger.info("FrozenSimCLR Encoder: ")
         logger.info(checkpoint_path)
