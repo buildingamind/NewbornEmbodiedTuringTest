@@ -7,13 +7,16 @@ Output from the third block now gives 512 channels instead of 256
 import torch
 from torch import nn as nn
 
+from ..components.layers import conv1x1
+from ..components.blocks import BasicBlock, Bottleneck
+
 from pl_bolts.utils import _TORCHVISION_AVAILABLE
 from pl_bolts.utils.warnings import warn_missing_pkg
 
-# if _TORCHVISION_AVAILABLE:
-#     from torchvision.models.utils import load_state_dict_from_url
-# else:  # pragma: no cover
-#     warn_missing_pkg('torchvision')
+if _TORCHVISION_AVAILABLE:
+    from torch.hub import load_state_dict_from_url
+else:  # pragma: no cover
+    warn_missing_pkg('torchvision')
 
 __all__ = [
     'ResNet',
@@ -39,115 +42,6 @@ MODEL_URLS = {
     'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
-
-
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> nn.Conv2d:
-    """
-    3x3 convolution with padding
-
-    Args:
-        in_planes (int): number of input planes
-        out_planes (int): number of output planes
-        stride (int, optional): stride. Defaults to 1.
-        groups (int, optional): number of groups. Defaults to 1.
-        dilation (int, optional): dilation. Defaults to 1.
-
-    Returns:
-        nn.Conv2d: convolution layer
-    """
-    return nn.Conv2d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=stride,
-        padding=dilation,
-        groups=groups,
-        bias=False,
-        dilation=dilation
-    )
-
-
-def conv1x1(in_planes, out_planes, stride=1) -> nn.Conv2d:
-    """
-    1x1 convolution
-    
-    Args:
-        in_planes (int): number of input planes
-        out_planes (int): number of output planes
-        stride (int, optional): stride. Defaults to 1.
-    
-    Returns:
-        nn.Conv2d: convolution layer
-    """
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
-
-
-class BasicBlock(nn.Module):
-    """
-    Basic block for ResNet
-
-    Args:
-        inplanes (int): number of input planes
-        planes (int): number of planes
-        stride (int, optional): stride. Defaults to 1.
-        downsample (nn.Module, optional): downsample. Defaults to None.
-        groups (int, optional): number of groups. Defaults to 1.
-        base_width (int, optional): base width. Defaults to 64.
-        dilation (int, optional): dilation. Defaults to 1.
-        norm_layer (nn.Module, optional): normalization layer. Defaults to None.
-    """
-    expansion = 1
-
-    def __init__(
-        self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None
-    ):
-        super().__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-        
-        # layers inside each basic block of a residual block
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
-        # last two are operations and not layers
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x) -> torch.Tensor:
-        """
-        Forward pass in the network
-        
-        Args:
-            x (torch.Tensor): input tensor
-        
-        Returns:
-            torch.Tensor: output tensor
-        """
-        # saving x to pass over the bridge connection
-        identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
-
 
 class ResNet(nn.Module):
     """

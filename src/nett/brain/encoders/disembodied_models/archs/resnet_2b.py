@@ -7,14 +7,17 @@ Output from the second block now gives 512 channels instead of 128
 import torch
 from torch import nn as nn
 
+from ..components.layers import conv1x1
+from ..components.blocks import BasicBlock, Bottleneck
+
 from pl_bolts.utils import _TORCHVISION_AVAILABLE
 from pl_bolts.utils.warnings import warn_missing_pkg
 
-# if _TORCHVISION_AVAILABLE:
-#     #from torchvision.models.utils import load_state_dict_from_url
-#     from torch.hub import load_state_dict_from_url
-# else:  # pragma: no cover
-#     warn_missing_pkg('torchvision')
+if _TORCHVISION_AVAILABLE:
+    # from torchvision.models.utils import load_state_dict_from_url
+    from torch.hub import load_state_dict_from_url
+else:  # pragma: no cover
+    warn_missing_pkg('torchvision')
 
 __all__ = [
     'ResNet',
@@ -41,130 +44,22 @@ MODEL_URLS = {
     'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
 }
 
-
-def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> nn.Conv2d:
-    """
-    3x3 convolution with padding
-
-    Args:
-        in_planes (int): Number of input channels
-        out_planes (int): Number of output channels
-        stride (int): Stride
-        groups (int): Number of groups
-        dilation (int): Dilation
-
-    Returns:
-        nn.Conv2d: Convolution layer
-    """
-    return nn.Conv2d(
-        in_planes,
-        out_planes,
-        kernel_size=3,
-        stride=stride,
-        padding=dilation,
-        groups=groups,
-        bias=False,
-        dilation=dilation
-    )
-
-
-def conv1x1(in_planes, out_planes, stride=1) -> nn.Conv2d:
-    """
-    1x1 convolution
-
-    Args:
-        in_planes (int): Number of input channels
-        out_planes (int): Number of output channels
-        stride (int): Stride
-
-    Returns:
-        nn.Conv2d: Convolution layer"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
-
-
-class BasicBlock(nn.Module):
-    """
-    BasicBlock for ResNet
-
-    Args:
-        inplanes (int): Number of input channels
-        planes (int): Number of output channels
-        stride (int): Stride
-        downsample (nn.Module): Downsample layer
-        groups (int): Number of groups
-        base_width (int): Base width
-        dilation (int): Dilation
-        norm_layer (nn.Module): Normalization layer
-    """
-    expansion = 1
-
-    def __init__(
-        self, inplanes, planes, stride=1, downsample=None, groups=1, base_width=64, dilation=1, norm_layer=None
-    ):
-        super().__init__()
-        if norm_layer is None:
-            norm_layer = nn.BatchNorm2d
-        if groups != 1 or base_width != 64:
-            raise ValueError('BasicBlock only supports groups=1 and base_width=64')
-        if dilation > 1:
-            raise NotImplementedError("Dilation > 1 not supported in BasicBlock")
-        # Both self.conv1 and self.downsample layers downsample the input when stride != 1
-       
-        # layers inside each basic block of a residual block
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.bn1 = norm_layer(planes)
-        self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.bn2 = norm_layer(planes)
-        # last two are operations and not layers
-        self.downsample = downsample
-        self.stride = stride
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass in the network
-
-        Args:
-            x (torch.Tensor): input tensor
-
-        Returns:
-            torch.Tensor: output tensor
-        """
-        # saving x to pass over the bridge connection
-        identity = x
-
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-
-        out = self.conv2(out)
-        out = self.bn2(out)
-
-        if self.downsample is not None:
-            identity = self.downsample(x)
-
-        out += identity
-        out = self.relu(out)
-
-        return out
-
-
 class ResNet(nn.Module):
     """
     ResNet model
 
     Args:
-        block (nn.Module): ResNet block
-        layers (list): List of layers
-        num_classes (int): Number of classes
-        zero_init_residual (bool): If True, zero-initialize the last BN in each residual branch
-        groups (int): Number of groups
-        width_per_group (int): Width per group
-        replace_stride_with_dilation (tuple): Replace stride with dilation
-        norm_layer (nn.Module): Normalization layer
-        return_all_feature_maps (bool): If True, returns all feature maps
-        first_conv (bool): If True, uses first conv layer
-        maxpool1 (bool): If True, uses maxpool1 layer
+        block (nn.Module): block type
+        layers (list): list of layers
+        num_classes (int, optional): number of classes. Defaults to 1000.
+        zero_init_residual (bool, optional): If True, zero-initialize the last BN in each residual branch. Defaults to False.
+        groups (int, optional): number of groups. Defaults to 1.
+        width_per_group (int, optional): width per group. Defaults to 64.
+        replace_stride_with_dilation (tuple, optional): replace stride with dilation. Defaults to None.
+        norm_layer (nn.Module, optional): normalization layer. Defaults to None.
+        return_all_feature_maps (bool, optional): If True, returns all feature maps. Defaults to False.
+        first_conv (bool, optional): If True, uses a 7x7 kernel for the first convolution. Defaults to True.
+        maxpool1 (bool, optional): If True, uses a maxpool layer after the first convolution. Defaults to True.
     """
 
     def __init__(
