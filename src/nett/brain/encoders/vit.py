@@ -5,7 +5,7 @@ from torch import nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from nett.brain.encoders.disembodied_models.vit_contrastive import LitClassifier, ViTConfigExtended, Backbone
+from .disembodied_models.vit_contrastive import LitClassifier, ViTConfigExtended, Backbone
 
 class ViT(BaseFeaturesExtractor):
     """
@@ -14,17 +14,20 @@ class ViT(BaseFeaturesExtractor):
         This corresponds to the number of unit for the last layer.
     """
 
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
-        super(ViT, self).__init__(observation_space, features_dim)
+    def __init__(self, 
+                 observation_space: gym.spaces.Box,
+                 features_dim: int = 512) -> None:
+        #TODO: Line up this with num_classes
+        super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
 
         #self.model = LitClassifier.load_from_checkpoint(p)
         #self.model.fc = nn.Identity()
         configuration = ViTConfigExtended()
-        configuration.image_size = 64
-        configuration.patch_size = 8
-        configuration.num_hidden_layers = 3
-        configuration.num_attention_heads = 3
+        configuration.image_size = 64 # 64x64 image #change for binocular
+        configuration.patch_size = 8 # default to 8, but allow to change
+        configuration.num_hidden_layers = 3 # default
+        configuration.num_attention_heads = 3 # default
         # print configuration parameters of ViT
         print('image_size - ', configuration.image_size)
         print('patch_size - ', configuration.patch_size)
