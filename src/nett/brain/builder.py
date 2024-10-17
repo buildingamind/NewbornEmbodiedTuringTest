@@ -127,7 +127,7 @@ class Brain:
                 ent_coef=self.ent_coef,
                 verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
-                device=torch.device("cuda", job.device))
+                device=f"cuda:{job.device}")
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
@@ -196,7 +196,7 @@ class Brain:
         # load previously trained model from save_dir, if it exists
         model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
             job.paths['model'].joinpath('latest_model.zip'), 
-            device=torch.device('cuda', job.device))
+            device=f"cuda:{job.device}")
 
         # initialize environment
         num_envs = 1
