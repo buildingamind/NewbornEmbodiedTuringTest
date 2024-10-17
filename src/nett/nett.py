@@ -724,7 +724,7 @@ class NETT:
                     def make_env(rank, seed=0):
                         def _init():
                             kwargs_copy = deepcopy(kwargs)
-                            kwargs_copy["brain_id"] = f"{kwargs_copy['brain_id']}-{rank}"
+                            kwargs_copy["rank"] = rank
                             env_copy = self._wrap_env(mode, port+rank, kwargs_copy)
                             env_copy.reset(seed=seed + rank)
                             return env_copy

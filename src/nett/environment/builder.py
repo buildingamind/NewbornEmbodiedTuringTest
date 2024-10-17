@@ -96,14 +96,19 @@ class Environment(Wrapper):
         if kwargs["batch_mode"]:
             args.append("-batchmode")
         
-        
         # TODO: Figure out a way to run on multiple GPUs
         if ("device" in kwargs):
             args.extend(["-force-device-index", str(kwargs["device"])])
             args.extend(["-gpu", str(kwargs["device"])])
 
+        if "rank" in kwargs:
+            args.extend(["--start-episode", str(kwargs["rank"])])
+            brain = f"{kwargs['brain_id']}-{kwargs['rank']}"
+        else:
+            brain = f"{kwargs['brain_id']}"
+
         # create logger
-        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}", log_dir=f"{kwargs['log_path']}/")
+        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
         self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
