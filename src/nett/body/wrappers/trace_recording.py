@@ -220,12 +220,3 @@ class TraceRecording(object):
         if type(x[0]) == np.ndarray and len(x[0].shape) == 1:
             return np.array(x)
         return x
-
-    def seed(self, seed: int) -> None:
-        """
-        Seed the environment.
-
-        Args:
-            seed (int): The seed value.
-        """
-        self.env.seed(seed)

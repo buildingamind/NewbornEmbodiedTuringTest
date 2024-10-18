@@ -736,7 +736,7 @@ class NETT:
                             while port_in_use(port_copy):
                                 port_copy = self._rand_port()
                             env_copy = self._wrap_env(mode, port_copy, kwargs_copy)
-                            env_copy.reset(seed=seed + rank)
+                            env_copy.reset()
                             return env_copy
 
                         return _init
@@ -752,7 +752,7 @@ class NETT:
 
                         def make_env():
                             def _init():
-                                environment.seed(self.seed)
+                                environment.reset()
                                 environment.action_space.seed(self.seed)
                                 # Wrap the env in a Monitor wrapper
                                 # to have additional training information

@@ -57,12 +57,3 @@ class Binocular(gym.ObservationWrapper):
     def reset(self, **kwargs):
         initial_obs = self.env.reset(**kwargs)
         return self.observation(initial_obs)
-    
-    def seed(self, seed: int) -> None:
-        """
-        Seed the environment.
-
-        Args:
-            seed (int): The seed value.
-        """
-        self.env.seed(seed)

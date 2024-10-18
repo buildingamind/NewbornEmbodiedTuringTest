@@ -107,7 +107,7 @@ class Environment(Wrapper):
             seed = kwargs["rank"]
         else:
             brain = f"{kwargs['brain_id']}"
-            seed = kwargs["brain_id"]
+            seed = 0
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=f"{kwargs['log_path']}/")
@@ -131,14 +131,6 @@ class Environment(Wrapper):
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
     # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
-    def seed(self, seed: int) -> None:
-        """
-        Seeds the environment with the given seed.
-
-        Args:
-            seed (int): The seed value.
-        """
-        self.env.seed(seed)
     def render(self, mode="rgb_array") -> np.ndarray: # pylint: disable=unused-argument
         """
         Renders the current frame of the environment.
@@ -151,7 +143,7 @@ class Environment(Wrapper):
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1]) #TODO: Why?
     
-    def reset(self, seed: Optional[int] = None, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
+    def reset(self, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
         """
         Resets the environment with the given seed and arguments.
@@ -163,7 +155,7 @@ class Environment(Wrapper):
         Returns:
             numpy.ndarray: The initial state of the environment.
         """
-        return self.env.reset(seed, **kwargs)
+        return self.env.reset(**kwargs)
 
     def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
         """

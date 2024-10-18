@@ -49,15 +49,6 @@ class Body:
             self.trace.mkdir(parents=True, exist_ok=True)
         else:
             self.trace = None
-    
-    def seed(self, seed: int) -> None:
-        """
-        Seed the environment.
-
-        Args:
-            seed (int): The seed value.
-        """
-        self.env.seed(seed)
 
     @staticmethod
     def _validate_agent_type(type: str) -> str:
