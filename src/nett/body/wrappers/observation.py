@@ -20,3 +20,12 @@ class ObservationWrapper(gym.ObservationWrapper):
     
     def reset(self, **kwargs):
         return self.observation(self.env.reset(**kwargs))
+
+    def seed(self, seed: int) -> None:
+        """
+        Seed the environment.
+
+        Args:
+            seed (int): The seed value.
+        """
+        self.env.seed(seed)

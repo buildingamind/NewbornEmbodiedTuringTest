@@ -752,7 +752,7 @@ class NETT:
 
                         def make_env():
                             def _init():
-                                environment.reset(self.seed)
+                                environment.seed(self.seed)
                                 environment.action_space.seed(self.seed)
                                 # Wrap the env in a Monitor wrapper
                                 # to have additional training information
