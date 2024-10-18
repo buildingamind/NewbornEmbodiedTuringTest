@@ -123,7 +123,8 @@ class Brain:
                 ent_coef=self.ent_coef,
                 verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
-                device=f"cuda:{job.device}")
+                device=f"cuda:{job.device}",
+                seed=self.seed)
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")

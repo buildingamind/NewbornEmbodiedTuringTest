@@ -104,15 +104,17 @@ class Environment(Wrapper):
         if "rank" in kwargs:
             args.extend(["--start-episode", str(kwargs["rank"])])
             brain = f"{kwargs['brain_id']}-{kwargs['rank']}"
+            seed = kwargs["rank"]
         else:
             brain = f"{kwargs['brain_id']}"
+            seed = kwargs["brain_id"]
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=f"{kwargs['log_path']}/")
 
         # create environment and connect it to logger
-        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs) #TODO: Change this to vary base on Binocular Wrapper
+        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port, seed=seed)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed) #TODO: Change this to vary base on Binocular Wrapper
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)

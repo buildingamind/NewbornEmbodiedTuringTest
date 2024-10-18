@@ -483,6 +483,7 @@ class NETT:
 
     def _execute_job(self, job: Job) -> Future:
         brain: "nett.Brain" = deepcopy(self.brain)
+        brain.seed = job.brain_id
         
         if job.estimate_memory: # estimate memory uses train env for estimation
             modes = ["train"]
