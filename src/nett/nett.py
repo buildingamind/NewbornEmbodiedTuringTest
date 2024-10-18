@@ -777,7 +777,7 @@ class NETT:
                     else f"{mode} env failed: {str(ex)}")  
                 raise ex
             finally:
-                if envs:
+                if 'envs' in locals():
                     envs.close()
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":

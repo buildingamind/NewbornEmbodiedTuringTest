@@ -200,7 +200,7 @@ class Brain:
 
             self.logger.info(f'Testing with {self.algorithm.__name__}')
             
-            num_envs = job.test_eps
+            num_envs = envs.num_envs
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
