@@ -4,9 +4,7 @@ from pathlib import Path
 
 import stable_baselines3
 import sb3_contrib
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from nett.brain import encoders
 
 def list_encoders() -> list[str]:
     """
@@ -72,6 +70,12 @@ def get_encoder_dict() -> dict[str, str]:
             encoder_class = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)][0]
             # add to the dictionary
             encoders_dict[module_name] = encoder_class.name
+
+    # add small, medium and large encoders too
+    encoders_dict['small'] = 'defualt'
+    encoders_dict['medium'] = encoders_dict['resnet10']
+    encoders_dict['large'] = encoders_dict['resnet18']
+
     return encoders_dict
 
-encoder_dict = get_encoder_dict()
+encoders_dict = get_encoder_dict()
