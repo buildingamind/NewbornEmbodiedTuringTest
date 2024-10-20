@@ -6,6 +6,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 
+import math
 import os
 import sys
 import time
@@ -33,7 +34,6 @@ from stable_baselines3.common.monitor import Monitor
 
 from nett.utils.io import mute
 from nett.utils.job import Job
-from nett.utils.environment import port_in_use
 
 from nett.brain.builder import Brain
 from nett.body.builder import Body
@@ -75,8 +75,6 @@ class NETT:
         # initialize logger
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
-
-        self.rng = np.random.default_rng()
 
         if config is not None:
             try:
@@ -154,11 +152,27 @@ class NETT:
         # calculate iterations
         iterations: dict[str, int] = {
             "train": steps_per_episode * train_eps, #10*5 = 50
-            "test": self.environment.num_test_conditions * test_eps
+            "test": self.environment.num_test_conditions # * test_eps
         }
 
         if not issubclass(self.brain.algorithm, RecurrentPPO):
             iterations["test"] *= steps_per_episode
+
+        # get task set
+        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
+        self.n_tasks = len(task_set)
+
+        if mode == "test":
+            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
+            max_envs = os.cpu_count() / (2*self.n_tasks)
+            if (max_envs < 1):
+                self.num_envs = 1
+            elif test_eps <= max_envs:
+                self.num_envs = test_eps # reduced to just the number of test_eps for this for now #TODO: Prevent this from crashing from too many episodes, might make sense to wrap subprocvecenv and callback and close in a while loop and create a new subprocvecenv from the each subset of all num_envs over a limit of 50? workers
+            else:
+                eps_per_env = math.ceil(test_eps / max_envs)
+                iterations["test"] *= eps_per_env # this will do a little more than what is defined in the config file, but it effectively comes for free #TODO: Add either a way of defining different number of iterations between jobs OR notify user that this is happening
+                self.num_envs = math.ceil(test_eps / eps_per_env)
 
         # initialize job object
         Job.initialize(
@@ -181,17 +195,13 @@ class NETT:
         # estimate memory for a single job
         if job_memory == "auto":
             self.logger.info("Estimating Job Memory...")
-            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))
+            job_memory = int(buffer * self._estimate_job_memory(devices))
             self.logger.info(f"Estimated Job Memory: {job_memory / (1024**3)} GiB")
         else:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
         
-
-        # get task set
-        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
-        
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, base_port, self.logger)
+        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, self.logger)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -497,30 +507,24 @@ class NETT:
             # validation run
             self._run_env(
                 mode=mode, 
-                port=job.port, 
                 kwargs = job.validation_kwargs(), 
-                callback = check_env
+                callback = lambda envs: check_env(envs.envs[0])
             )   
             # actual run
             self._run_env(
                 mode=mode, 
-                port=job.port, 
                 kwargs = job.env_kwargs(), 
-                callback = lambda env: getattr(brain, mode)(env, job) # grabs brain.train or brain.test based on mode
+                callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
             )
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
-    def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
+    def _estimate_job_memory(self, devices: list[int]) -> int:
         self.logger.info("Estimating memory for a single job")
         try:
             # find the GPU with the most free memory
             free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
             most_free_gpu = free_memory.index(max(free_memory))
-
-            # find unused port
-            while port_in_use(base_port):
-                base_port = self._rand_port()
 
             # create a test job to estimate memory
             job = Job(
@@ -528,13 +532,9 @@ class NETT:
                 condition=self.environment.imprinting_conditions[0], 
                 device=most_free_gpu, 
                 index=0,
-                port=base_port,
                 estimate_memory=True)
 
             job.save_checkpoints = False
-
-            # change initial port for next job
-            base_port += 1
 
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
@@ -606,10 +606,8 @@ class NETT:
                 for doneFuture in done:
                     doneJob: Job = job_sheet.pop(doneFuture)
                     freeDevice: int = doneJob.device
-                    freePort: int = doneJob.port
                     job = waitlist.pop()
                     job.device = freeDevice
-                    job.port = freePort
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
                     time.sleep(1)
@@ -646,11 +644,8 @@ class NETT:
 
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
-    
-    def _rand_port(self):
-        return self.rng.choice(np.arange(1024, 49151), replace=False, shuffle=False)
 
-    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
         # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
@@ -669,7 +664,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, device=-1, index=len(jobs)+i, port=-1) 
+                    Job(brain_id, condition, device=-1, index=len(jobs)+i) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
@@ -685,20 +680,12 @@ class NETT:
                 # create job
                 condition, brain_id = task_set.pop()
 
-                # find unused port
-                while port_in_use(port):
-                    port = self._rand_port()
-
                 job = Job(
                     brain_id=brain_id, 
                     condition=condition, 
                     device=free_devices[-1], 
-                    index=len(jobs),
-                    port=port)
+                    index=len(jobs))
                 jobs.append(job)
-
-                # change initial port for next job
-                port += 1
 
                 # allocate memory
                 free_device_memory[free_devices[-1]] -= job_memory
@@ -719,70 +706,71 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback):
+    def _run_env(self, mode: str, kwargs: dict[str,Any], callback):
         # run environment
         # can be train or test mode and can be for validation or actual run
-        while True:
-            try:
-                # wrap environment
-                # with self._wrap_env(mode, port, kwargs) as environment:
-                # run the callback. This can be check_env or brain.train or brain.test
-                if mode == "test" and "validation-mode" not in kwargs:
-                    def make_env(rank, seed=0):
-                        def _init():
-                            kwargs_copy = deepcopy(kwargs)
-                            kwargs_copy["rank"] = rank
-                            port_copy = port + rank
-                            while port_in_use(port_copy):
-                                port_copy = self._rand_port()
-                            env_copy = self._wrap_env(mode, port_copy, kwargs_copy)
-                            env_copy.reset()
-                            return env_copy
+        try:
+            # wrap environment
+            # with self._wrap_env(mode, kwargs) as environment:
+            # run the callback. This can be check_env or brain.train or brain.test
+            if mode == "test" and "validation-mode" not in kwargs:
+                def make_env(rank, seed=0):
+                    def _init():
+                        kwargs_copy = deepcopy(kwargs)
+                        kwargs_copy["rank"] = rank
+                        env_copy = self._wrap_env(mode, kwargs_copy)
+                        #env_copy.reset()
+                        return env_copy
 
-                        return _init
+                    return _init
 
-                    # initialize environment
-                    num_envs = Job.iterations["test"]
-                    
-                    envs = SubprocVecEnv([make_env(i) for i in range(num_envs)])
-                    callback(envs)
-                    envs.close()
+                # initialize environment
+                envs = SubprocVecEnv([make_env(i) for i in range(self.num_envs)])
+                callback(envs)
+            else:
+                def make_env():
+                    def _init():
+                        environment = self._wrap_env(mode, kwargs)
+                        environment.action_space.seed(kwargs["brain_id"])
+                        # Wrap the env in a Monitor wrapper
+                        # to have additional training information
+                        
+                        monitor_path: Path = Path(kwargs["log_path"])
+                        # Create the monitor folder if needed
+                        monitor_path.mkdir(exist_ok=True, parents=True)
+
+                        return Monitor(environment, filename=str(monitor_path))
+
+                    return _init
+
+                if "validation-mode" in kwargs:
+                    environment = self._wrap_env(mode, kwargs)
+                    check_env(environment)
                 else:
-                    with self._wrap_env(mode, port, kwargs) as environment:
+                    envs = DummyVecEnv([make_env()])
+                    callback(envs)
+            self.logger.info("Callback done")
+        except Exception as ex:
+            if kwargs["validation-mode"]:
+                self.logger.exception(f"{mode} env validation failed: {str(ex)}")
+            else:
+                self.logger.exception(f"{mode} env failed: {str(ex)}")  
+            raise ex
+        finally:
+            self.logger.info("Finally")
+            if 'envs' in locals():
+                self.logger.info("Closing Envs")
+                envs.close()                
+            if 'environment' in locals():
+                self.logger.info("Closing Environment")
+                environment.close()
+            self.logger.info("Envs Closed")
 
-                        def make_env():
-                            def _init():
-                                environment.reset()
-                                environment.action_space.seed(self.seed)
-                                # Wrap the env in a Monitor wrapper
-                                # to have additional training information
-                                
-                                monitor_path: Path = Path(kwargs["log_path"])
-                                # Create the monitor folder if needed
-                                monitor_path.mkdir(exist_ok=True, parents=True)
-
-                                return Monitor(environment, filename=monitor_path)
-
-                            return _init
-
-                        envs = DummyVecEnv([make_env()])
-                        callback(envs)
-                break
-            # when running multiple runs in parallel, the port may be in use, so try the next port
-            except UnityWorkerInUseException as _:
-                self.logger.warning(f"Worker {port} is in use. Trying next port...")
-                port += 1
-            except Exception as ex:
-                self.logger.exception(f"{mode} env validation failed: {str(ex)}" if kwargs["validation-mode"] \
-                    else f"{mode} env failed: {str(ex)}")  
-                raise ex
-            finally:
-                if 'envs' in locals():
-                    envs.close()
-
-    def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+        if "rank" in kwargs:
+            time.sleep(kwargs["rank"])
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, port, allow_multi_obs=self.body.binocular, **kwargs)
+        copy_environment.initialize(mode, allow_multi_obs=self.body.binocular, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
