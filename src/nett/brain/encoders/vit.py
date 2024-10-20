@@ -5,7 +5,7 @@ from torch import nn
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
-from .disembodied_models.vit_contrastive import LitClassifier, VisionTransformer
+from .disembodied_models.vit_contrastive import LitClassifier
 
 class ViT(BaseFeaturesExtractor):
     """
@@ -42,10 +42,8 @@ class ViT(BaseFeaturesExtractor):
             dropout = hidden_dropout_prob,
             emb_dropout = attention_probs_dropout_prob
         )
-
-        backbone = VisionTransformer(configuration)
         
-        self.model = LitClassifier(backbone, learning_rate=learning_rate).backbone
+        self.model = LitClassifier(configuration, learning_rate=learning_rate)
         self.model.fc = nn.Identity()
 
     def forward(self, observations: th.Tensor) -> th.Tensor:

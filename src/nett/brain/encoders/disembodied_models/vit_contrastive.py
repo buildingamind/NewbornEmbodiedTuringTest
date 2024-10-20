@@ -69,7 +69,7 @@ class Projection(nn.Module):
 class LitClassifier(pl.LightningModule):
     def __init__(
         self,
-        backbone,
+        backbone_config: dict,
         temporal_mode: str = None,
         learning_rate: float = 1e-3,
         hidden_mlp = 512,
@@ -83,7 +83,7 @@ class LitClassifier(pl.LightningModule):
         self.hidden_depth = hidden_depth
         self.learning_rate = learning_rate
         
-        self.backbone = backbone   # ViT encoder
+        self.backbone = VisionTransformer(backbone_config)   # ViT encoder
         self.temporal_mode = temporal_mode # type of temporal window
         
         self.projection = Projection(    # SimCLR projection head
@@ -123,45 +123,20 @@ class LitClassifier(pl.LightningModule):
         
         # push 2+ images in a temporal window - 
         else:
-            #print(type(batch)) #<class 'list'>
-            #print(len(batch)) #len = 4 for window_size = 3 because 3 images, and 1 index value
-            # window_size = 3
-            if len(batch) == 4:
-                flag = 0
-                img1, img2, img3, _ = batch # (img1, img2, img3, index)
-                
-            # window_size = 4
-            else:
-                flag = 1
-                img1, img2, img3, img4, _ = batch # (img1, img2, img3, img4, index)
-                
-            # get h representations, bolts resnet returns a list
-            h1 = self.backbone(img1)
-            h2 = self.backbone(img2)
-            h3 = self.backbone(img3)
-                
-            if flag == 1:
-                h4 = self.backbone(img4)
-                z4 = self.projection(h4)
-                    
+            z_list = [] # list of z representations
+            # len = 4 for window_size = 3 because 3 images, and 1 index value
+            for i in range(len(batch)-1): # last element is index
+                # get h representation, bolts resnet returns a list
+                h = self.backbone(batch[i])
+                # get z representation
+                z = self.projection(h)
+                z_list.append(z)
 
-            # get z representations
-            z1 = self.projection(h1)
-            z2 = self.projection(h2)
-            z3 = self.projection(h3)
-
+            # get loss
+            loss = 0
             # loss between z1 and other neighboring samples
-            l1 = self.nt_xent_loss(z1,z2, self.temperature)
-            l2 = self.nt_xent_loss(z1,z3, self.temperature)
-            if flag == 1:
-                l3 = self.nt_xent_loss(z1,z4, self.temperature)
-                    
-                # gather losses - 
-                loss = (l1+l2+l3)
-            else:
-                # gather losses - 
-                loss = (l1+l2)
-
+            for i in range(1, len(z_list)):
+                loss += self.nt_xent_loss(z_list[0], z_list[i], self.temperature)
         return loss
     
     def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6):
