@@ -156,11 +156,18 @@ class Brain:
 
         # train
         self.logger.info(f"Total number of training steps: {job.iterations['train']}")
-        model.learn(
-            total_timesteps=job.iterations["train"],
-            tb_log_name=self.algorithm.__name__,
-            progress_bar=False,
-            callback=callback_list)
+        try:
+            model.learn(
+                total_timesteps=job.iterations["train"],
+                tb_log_name=self.algorithm.__name__,
+                progress_bar=False,
+                callback=callback_list)
+        except Exception as e:
+            if "CUDA out of memory" in str(e):
+                self.logger.error("CUDA out of memory. Try reducing batch size.")
+            else:
+                self.logger.exception(f"Failed to train model with error: {str(e)}")
+                raise e
         self.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
