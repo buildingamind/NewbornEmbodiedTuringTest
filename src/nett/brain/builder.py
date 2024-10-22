@@ -145,7 +145,7 @@ class Brain:
             if job.reward.lower() == "rnd":
                 job.reward_func = RND(envs, job.device)
             elif job.reward.lower() == "icm":
-                job.reward_func = ICM(envs, job.device)
+                job.reward_func = ICM(envs, job.device, batch_size=self.batch_size)
             elif job.reward.lower() == "disagreement":
                 job.reward_func = Disagreement(envs, job.device)
             else:

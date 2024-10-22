@@ -43,6 +43,17 @@ def default_layer_init(layer):
         layer.bias.data.uniform_(-stdv, stdv)
     return layer
 
+def kaiming_he_init(layer):
+    """
+    Initialize the weights and biases of a given layer with Kaiming He normalization.
+    Args:
+        layer (torch.nn.Module): A PyTorch layer (e.g., Linear, Conv2d).
+    """
+    if isinstance(layer, (nn.Linear, nn.Conv2d)):
+        nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
+        if layer.bias is not None:
+            nn.init.zeros_(layer.bias)
+
 class ObservationEncoder(nn.Module):
     """Encoder for encoding observations.
 
@@ -57,7 +68,9 @@ class ObservationEncoder(nn.Module):
     def __init__(self, obs_shape: Tuple, latent_dim: int, encoder_model:str = "mnih", weight_init="default") -> None:
         super().__init__()
 
-        if weight_init == "orthogonal":
+        if weight_init == "Kaiming He":
+            init_ = kaiming_he_init
+        elif weight_init == "orthogonal":
             init_ = orthogonal_layer_init
         elif weight_init == "default":
             init_ = default_layer_init

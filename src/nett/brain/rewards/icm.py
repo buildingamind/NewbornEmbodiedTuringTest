@@ -64,9 +64,9 @@ class ICM(BaseReward):
         self,
         envs,
         device: int,
-        beta: float = 1.0,
+        beta: float = 0.2, #1.0,
         kappa: float = 0.0,
-        gamma: Optional[float] = None,
+        gamma: float = 0.99, #Optional[float] = None,
         rwd_norm_type: str = "rms",
         obs_norm_type: str = "none",
         latent_dim: int = 128,
@@ -74,7 +74,7 @@ class ICM(BaseReward):
         batch_size: int = 256,
         update_proportion: float = 1.0,
         encoder_model: str = "mnih",
-        weight_init: str = "orthogonal",
+        weight_init: str = "Kaiming He", #"orthogonal",
     ) -> None:
         super().__init__(envs, device, beta, kappa, gamma, rwd_norm_type, obs_norm_type)
 
