@@ -620,11 +620,13 @@ class NETT:
                     time.sleep(1)
 
             # close processes and free up resources on completion
+            self.logger.info("Shutting down executor")
             executor.shutdown()
 
             return job_sheet
         except Exception as e:
-            print(str(e))
+            self.logger.exception(f"Error in launching jobs: {e}")
+            raise e
 
     @staticmethod
     def _get_task_set(num_brains: int, all_conditions: list[str], conditions: Optional[list[str]]) -> set[tuple[str,int]]: #TODO: Create a better name for this method
@@ -749,7 +751,6 @@ class NETT:
                 else:
                     envs = DummyVecEnv([make_env()])
                     callback(envs)
-            self.logger.info("Callback done")
         except Exception as ex:
             if kwargs["validation-mode"]:
                 self.logger.exception(f"{mode} env validation failed: {str(ex)}")
@@ -757,14 +758,12 @@ class NETT:
                 self.logger.exception(f"{mode} env failed: {str(ex)}")  
             raise ex
         finally:
-            self.logger.info("Finally")
+            self.logger.info("Closing Environments...")
             if 'envs' in locals():
-                self.logger.info("Closing Envs")
                 envs.close()                
             if 'environment' in locals():
-                self.logger.info("Closing Environment")
                 environment.close()
-            self.logger.info("Envs Closed")
+            self.logger.info("Environments Closed")
 
     def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         if "rank" in kwargs:
