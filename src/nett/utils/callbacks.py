@@ -127,7 +127,7 @@ class MemoryCallback(BaseCallback):
         super().__init__()
         self.device = device
         self.save_path = save_path
-        self.close = False
+        self.closeEnv = False
         nvmlInit()
 
     def _on_step(self) -> bool:
@@ -139,7 +139,7 @@ class MemoryCallback(BaseCallback):
 
         :return: If the callback returns False, training is aborted early.
         """
-        if self.close:
+        if self.closeEnv:
             # Close the callback
             return False
         return True
@@ -148,7 +148,7 @@ class MemoryCallback(BaseCallback):
         """
         This event is triggered before updating the policy.
         """
-        self.close = True
+        self.closeEnv = True
         pass
 
     def _on_training_end(self) -> None:
