@@ -728,7 +728,7 @@ class NETT:
                     return _init
 
                 # initialize environment
-                envs = SubprocVecEnv([make_env(i) for i in range(self.num_envs)])
+                envs = SubprocVecEnv([make_env(i) for i in range(self.num_parallel_envs)])
                 callback(envs)
             else:
                 def make_env():
