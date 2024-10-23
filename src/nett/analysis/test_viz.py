@@ -84,7 +84,7 @@ def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
             dots['test.cond'], categories=x_categories, ordered=True)
         dot_x_pos = dots['test.cond'].cat.codes
         sns.stripplot(x=dot_x_pos, y=dots['avgs'], ax=ax, color='black',
-                      jitter=0.3, size=3)
+                      jitter=0.3, size=7)
 
     ax.axhline(0.5, linestyle='--', color='grey')
     ax.set_xlabel("Test Condition", fontweight='bold', fontsize=14)
@@ -191,7 +191,7 @@ def test_viz(data_loc, chick_file, results_wd,
         by_test_cond['test.cond'] != "Rest"
     ].groupby('test.cond').apply(
         lambda g: compute_stats(g, column='avgs')
-    ).reset_index()
+    ).drop('Rest').reset_index()
     across_imp_cond.to_csv(
         results_wd / "stats_across_all_agents.csv", index=False
     )
