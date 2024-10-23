@@ -44,15 +44,10 @@ def default_layer_init(layer):
     return layer
 
 def kaiming_he_init(layer):
-    """
-    Initialize the weights and biases of a given layer with Kaiming He normalization.
-    Args:
-        layer (torch.nn.Module): A PyTorch layer (e.g., Linear, Conv2d).
-    """
-    if isinstance(layer, (nn.Linear, nn.Conv2d)):
-        nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
-        if layer.bias is not None:
-            nn.init.zeros_(layer.bias)
+    th.nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
+    if layer.bias is not None:
+        nn.init.zeros_(layer.bias)
+    return layer
 
 class ObservationEncoder(nn.Module):
     """Encoder for encoding observations.
@@ -221,7 +216,7 @@ class ForwardDynamicsModel(nn.Module):
     def __init__(self, latent_dim, action_dim, encoder_model="mnih", weight_init="default") -> None:
         super().__init__()
 
-        self.trunk = ObservationEncoder(obs_shape=(latent_dim + action_dim,), latent_dim=latent_dim, encoder_model=encoder_model, weight_init=weight_init)
+        self.trunk = ObservationEncoder(obs_shape=(latent_dim + action_dim,), latent_dim=latent_dim, encoder_model=encoder_model, weight_init=weight_init) #128+3= 131, 128, Nature, Orth
 
     def forward(self, obs: th.Tensor, pred_actions: th.Tensor) -> th.Tensor:
         """Forward function for outputing predicted next-obs.
