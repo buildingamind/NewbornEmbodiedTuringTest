@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
+from matplotlib.lines import Line2D
 
 CUSTOM_PALETTE = [
     "#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779",
@@ -28,14 +29,18 @@ def compute_stats(group, column='percent_correct', mu=0.5):
 def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
                     img_name, chick_data, color_bars):
     plt.figure(figsize=(6, 6))
-    sns.set_style("whitegrid")
+    sns.set_style("white")
+    # sns.set_style("whitegrid")
     ax = plt.gca()
+    # Hide the right and top spines
+    ax.spines[['right', 'top']].set_visible(False)
 
     y = data[y_col]
     yerr = [data[y_col] - data[error_min_col],
             data[error_max_col] - data[y_col]]
 
     x_categories = data['test.cond'].unique()
+
     data['test.cond'] = pd.Categorical(data['test.cond'], categories=x_categories, ordered=True)
 
     if color_bars:
@@ -45,25 +50,34 @@ def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
         colors = 'gray45'
 
     x_pos = np.arange(len(x_categories))
-    ax.bar(x_pos, y, yerr=yerr, color=colors, capsize=3,
-           edgecolor='black', width=0.7)
+    ax.bar(x_pos, y, yerr=yerr, color=colors, capsize=14,
+           width=0.7, linewidth=0)
 
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(x_categories, rotation=45, ha='right',
+    ax.set_xticklabels(x_categories, rotation=0, ha='center',
                        fontsize=7.5, fontweight='bold')
 
     chick_data_filtered = chick_data[chick_data['test.cond'].isin(x_categories)]
     if not chick_data_filtered.empty:
         chick_data_filtered['test.cond'] = pd.Categorical(
             chick_data_filtered['test.cond'], categories=x_categories, ordered=True)
-        chick_x_pos = chick_data_filtered['test.cond'].cat.codes
-        ax.errorbar(chick_x_pos, chick_data_filtered['avg'],
-                    yerr=chick_data_filtered['avg_dev'], fmt='o',
-                    color=CHICK_RED, capsize=3, label='Chick Performance')
-        for xi, yi, yerr in zip(chick_x_pos, chick_data_filtered['avg'],
-                                chick_data_filtered['avg_dev']):
-            ax.add_patch(plt.Rectangle((xi - 0.35, yi - yerr), 0.7, 2*yerr,
-                                       color=CHICK_RED, alpha=0.2))
+        chick_x_pos = chick_data_filtered['test.cond'].cat.codes - 1
+        print(f'Chick x_pos: {chick_x_pos}')
+        print(f'Chick avg: {chick_data_filtered["avg"]}')
+        print(f'Chick avg_dev: {chick_data_filtered["avg_dev"]}')
+        shift = 0
+        for xi, yi, yerr, i in zip(chick_x_pos, chick_data_filtered['avg'],
+                                chick_data_filtered['avg_dev'], range(len(chick_x_pos))):
+            if x_categories[i] == 'Rest':
+                shift = 1
+            rect = plt.Rectangle((xi + shift - 0.35, yi - yerr), 0.7, 2*yerr,
+                                       color=CHICK_RED, alpha=0.2)
+            ax.add_patch(rect)
+            # Calculate the y-coordinate for the horizontal line
+            y_center = rect.get_y() + rect.get_height() / 2
+            # Add the horizontal line
+            line = Line2D([rect.get_x(), rect.get_x() + rect.get_width()], [y_center, y_center], c=CHICK_RED)
+            ax.add_line(line)
 
     if dots is not None and 'test.cond' in dots.columns:
         dots['test.cond'] = pd.Categorical(
@@ -73,15 +87,14 @@ def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
                       jitter=0.3, size=3)
 
     ax.axhline(0.5, linestyle='--', color='grey')
-    ax.set_xlabel("Test Condition", fontweight='bold')
-    ax.set_ylabel("Percent Correct", fontweight='bold')
+    ax.set_xlabel("Test Condition", fontweight='bold', fontsize=14)
+    ax.set_ylabel("Percent Correct", fontweight='bold', fontsize=14)
     ax.set_ylim(0, 1)
     ax.set_yticks(np.linspace(0, 1, 11))
     ax.set_yticklabels(
         ['{:.0%}'.format(t) for t in np.linspace(0, 1, 11)],
         fontsize=7.5, fontweight='bold'
     )
-    ax.legend()
     plt.tight_layout()
     plt.savefig(img_name)
     plt.close()
