@@ -165,14 +165,15 @@ class NETT:
         if mode == "test":
             # calculate number of environments that can be run at once per job (using SubProcVecEnv)
             max_envs = os.cpu_count() / (2*self.n_tasks)
-            if (max_envs < 1):
-                self.num_envs = 1
+            if (max_envs <= 1):
+                self.num_parallel_envs = 1
+                iterations["test"] *= test_eps
             elif test_eps <= max_envs:
-                self.num_envs = test_eps # reduced to just the number of test_eps for this for now #TODO: Prevent this from crashing from too many episodes, might make sense to wrap subprocvecenv and callback and close in a while loop and create a new subprocvecenv from the each subset of all num_envs over a limit of 50? workers
+                self.num_parallel_envs = test_eps # reduced to just the number of test_eps for this for now #TODO: Prevent this from crashing from too many episodes, might make sense to wrap subprocvecenv and callback and close in a while loop and create a new subprocvecenv from the each subset of all num_parallel_envs over a limit of 50? workers
             else:
                 eps_per_env = math.ceil(test_eps / max_envs)
                 iterations["test"] *= eps_per_env # this will do a little more than what is defined in the config file, but it effectively comes for free #TODO: Add either a way of defining different number of iterations between jobs OR notify user that this is happening
-                self.num_envs = math.ceil(test_eps / eps_per_env)
+                self.num_parallel_envs = math.ceil(test_eps / eps_per_env)
 
         # initialize job object
         Job.initialize(
