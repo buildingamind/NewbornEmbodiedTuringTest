@@ -323,11 +323,11 @@ class Brain:
         """
         # for when encoder is a string
         if isinstance(encoder, str):
-            if encoder in encoders_dict.keys() and encoder != 'small':
-                encoder = getattr(encoders, encoders_dict[encoder])
-            elif encoder == 'small':
+            if encoder == 'small':
                 encoder = NatureCNN
                 encoder.__name__ = 'NatureCNN'
+            elif encoder in encoders_dict.keys():
+                encoder = getattr(encoders, encoders_dict[encoder])
             else:
                 raise ValueError(f"If a string, should be one of: {encoders_dict.keys()}")
             

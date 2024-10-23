@@ -72,7 +72,7 @@ def get_encoder_dict() -> dict[str, str]:
             encoders_dict[module_name] = encoder_class.name
 
     # add small, medium and large encoders too
-    encoders_dict['small'] = 'defualt'
+    encoders_dict['small'] = 'default'
     encoders_dict['medium'] = encoders_dict['resnet10']
     encoders_dict['large'] = encoders_dict['resnet18']
 
