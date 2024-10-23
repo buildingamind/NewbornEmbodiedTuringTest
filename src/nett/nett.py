@@ -717,7 +717,7 @@ class NETT:
             # with self._wrap_env(mode, kwargs) as environment:
             # run the callback. This can be check_env or brain.train or brain.test
             if mode == "test" and "validation-mode" not in kwargs:
-                def make_env(rank, seed=0):
+                def make_env(rank):
                     def _init():
                         kwargs_copy = deepcopy(kwargs)
                         kwargs_copy["rank"] = rank
@@ -734,7 +734,7 @@ class NETT:
                 def make_env():
                     def _init():
                         environment = self._wrap_env(mode, kwargs)
-                        environment.action_space.seed(kwargs["brain_id"])
+                        # environment.action_space.seed(kwargs["brain_id"])
                         # Wrap the env in a Monitor wrapper
                         # to have additional training information
                         

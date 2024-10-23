@@ -107,7 +107,7 @@ class Environment(Wrapper):
             seed = kwargs["rank"]
         else:
             brain = f"{kwargs['brain_id']}"
-            seed = 0
+            seed = kwargs['brain_id']
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=f"{kwargs['log_path']}/")
