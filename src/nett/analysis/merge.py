@@ -56,7 +56,7 @@ def _find_files(logs_dir: Path, mode: str) -> list[Path]:
     return files
 def _combine_data(files: list[Path], mode: str) -> pd.DataFrame:
     # Combine all data, ignoring empty files
-    data_frames = [_read_data(file, BOUNDS) for file in files if file.stat().st_size > 0]
+    data_frames = [_read_data(file) for file in files if file.stat().st_size > 0]
     if data_frames:
         return pd.concat(data_frames, ignore_index=True)
     else:
