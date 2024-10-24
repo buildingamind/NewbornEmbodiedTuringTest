@@ -1,23 +1,33 @@
 from pathlib import Path
 import pandas as pd
 
-def read_data(filename: Path, bounds: list[float]) -> pd.DataFrame:
+# Define x_limits and calculate BOUNDS of chamber
+X_LIMITS: tuple[int, int] = (-10, 10)
+ONE_THIRD: float = (X_LIMITS[1] - X_LIMITS[0]) / 3
+BOUNDS: list[float] = [X_LIMITS[0] + ONE_THIRD, X_LIMITS[1] - ONE_THIRD]
+
+# Define the grouping columns
+GROUP_COLUMNS: list[str] = [
+    'Episode', 
+    'left.monitor', 
+    'right.monitor', 
+    'correct.monitor',
+    'experiment.phase', 
+    'imprint.cond', 
+    'test.cond'
+]
+
+def _read_data(filename: Path) -> pd.DataFrame:
     print(f"Reading {filename}")
-    data = pd.read_csv(filename, skipinitialspace=True).fillna("NA")
+    data: pd.DataFrame = pd.read_csv(filename, skipinitialspace=True).fillna("NA")
 
-    # Add 'left', 'right', 'middle' columns based on 'agent.x' and 'bounds'
-    data['left'] = (data['agent.x'] < bounds[0]).astype(int)
-    data['right'] = (data['agent.x'] > bounds[1]).astype(int)
-    data['middle'] = ((data['agent.x'] >= bounds[0]) & (data['agent.x'] <= bounds[1])).astype(int)
-
-    # Define the grouping columns
-    group_cols = [
-        'Episode', 'left.monitor', 'right.monitor', 'correct.monitor',
-        'experiment.phase', 'imprint.cond', 'test.cond'
-    ]
+    # Add 'left', 'right', 'middle' columns based on 'agent.x' and 'BOUNDS'
+    data['left'] = (data['agent.x'] < BOUNDS[0]).astype(int)
+    data['right'] = (data['agent.x'] > BOUNDS[1]).astype(int)
+    data['middle'] = ((data['agent.x'] >= BOUNDS[0]) & (data['agent.x'] <= BOUNDS[1])).astype(int)
 
     # Sum the steps for each condition and rename columns
-    data = data.groupby(group_cols).agg(
+    data = data.groupby(GROUP_COLUMNS).agg(
         left_steps=('left', 'sum'),
         right_steps=('right', 'sum'),
         middle_steps=('middle', 'sum')
@@ -36,47 +46,35 @@ def read_data(filename: Path, bounds: list[float]) -> pd.DataFrame:
 
     return data
 
-def merge(
-    logs_dir: Path | str,
-    results_dir: Path | str,
-    csv_train_name: str = "train_results.csv",
-    csv_test_name: str = "test_results.csv"
-) -> None:
-    # Define x_limits and calculate bounds
-    x_limits = (-10, 10)
-    one_third = (x_limits[1] - x_limits[0]) / 3
-    bounds = [x_limits[0] + one_third, x_limits[1] - one_third]
+def _find_files(logs_dir: Path, mode: str) -> list[Path]:
+    # Find all CSV files
+    files = list(logs_dir.glob(f'**/*{mode}.csv'))
 
+    if not files:
+        raise FileNotFoundError(f"No {mode}ing data found at {logs_dir}")
+    
+    return files
+def _combine_data(files: list[Path], mode: str) -> pd.DataFrame:
+    # Combine all data, ignoring empty files
+    data_frames = [_read_data(file, BOUNDS) for file in files if file.stat().st_size > 0]
+    if data_frames:
+        return pd.concat(data_frames, ignore_index=True)
+    else:
+        raise ValueError(f"No valid {mode}ing data found. Log csv files are likely empty.")
+
+def merge(logs_dir: str ,
+                results_dir: str) -> None:
     # Convert directories to Path objects
     logs_dir = Path(logs_dir)
     results_dir = Path(results_dir)
 
-    if not logs_dir.exists():
-        print(f"Logs directory {logs_dir} does not exist")
-        return
+    for mode in ("train", "test"):
+        print(f"Searching for {mode} data files...\n")
+        files: list[Path] = _find_files(logs_dir, mode)
 
-    results_dir.mkdir(parents=True, exist_ok=True)
+        print(f"Combining {mode}ing data...\n")
+        data: pd.DataFrame = _combine_data(files, mode)
 
-    # Find all train and test CSV files
-    train_files = list(logs_dir.glob('**/*train.csv'))
-    test_files = list(logs_dir.glob('**/*test.csv'))
-
-    if not train_files:
-        print("No training data found")
-        return
-    if not test_files:
-        print("No testing data found")
-        return
-
-    # Combine all the training data
-    print("Combining training data...\n")
-    train_data = pd.concat([read_data(file, bounds) for file in train_files], ignore_index=True)
-
-    # Combine all the testing data
-    print("Combining testing data...\n")
-    test_data = pd.concat([read_data(file, bounds) for file in test_files], ignore_index=True)
-
-    # Save the combined data
-    print("Saving data...\n")
-    train_data.to_csv(results_dir / csv_train_name, index=False)
-    test_data.to_csv(results_dir / csv_test_name, index=False)
+        # Save the combined data
+        print("Saving data...\n")
+        data.to_csv(results_dir / f"{mode}_results.csv", index=False)
