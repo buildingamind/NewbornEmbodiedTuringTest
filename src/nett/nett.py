@@ -339,11 +339,10 @@ class NETT:
     # Discussion v0.3 move this out of the class entirely? from nett import analyze, analyze(...)
 
     # TODO: Add option to not have a config here either?
-
     @staticmethod
     def analyzePython(config: str,
-                run_dir: str | Path,
-                output_dir: Optional[str | Path] = None,
+                run_dir: str,
+                output_dir: Optional[str] = None,
                 ep_bucket: int = 100,
                 num_episodes: int = 1000,
                 bar_order: str | list[int] = "default",
