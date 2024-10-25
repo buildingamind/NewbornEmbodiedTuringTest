@@ -19,7 +19,7 @@ try :
 except PermissionError as _:
     raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
-from nett.utils.environment import Logger, port_in_use
+from nett.environment.utils import Logger, random_port
 
 class Environment(Wrapper):
     """
@@ -116,7 +116,7 @@ class Environment(Wrapper):
         complete = False
         while not complete:
             try:
-                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=self._random_port(), seed=seed)
+                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=seed)
                 complete = True
             except UnityWorkerInUseException as e:
                 continue
@@ -127,16 +127,6 @@ class Environment(Wrapper):
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
-
-    @staticmethod
-    def _random_port():
-        complete = False
-        while not complete:
-            port = np.random.choice(np.arange(1024, 49151))
-            if not port_in_use(port):
-                complete = True
-        return port
-
 
     def log(self, msg: str) -> None:
         """

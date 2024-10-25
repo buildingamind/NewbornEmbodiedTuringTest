@@ -593,6 +593,8 @@ class NETT:
         """
         try:
             max_workers = 1 if len(jobs) == 1 else os.cpu_count()
+
+            mute = lambda: setattr(sys, 'stdout', open(os.devnull, "w"))
             initializer = mute if not verbose else None
             executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
             job_sheet: dict[Future, dict[str, Job]] = {}
