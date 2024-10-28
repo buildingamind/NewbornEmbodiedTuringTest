@@ -32,7 +32,6 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
 
-from nett.utils.io import mute
 from nett.utils.job import Job
 
 from nett.brain.builder import Brain
@@ -771,7 +770,7 @@ class NETT:
         if "rank" in kwargs:
             time.sleep(kwargs["rank"])
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, allow_multi_obs=self.body.binocular, **kwargs)
+        copy_environment.initialize(mode, allow_multi_obs=self.body.allow_multi_obs, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
