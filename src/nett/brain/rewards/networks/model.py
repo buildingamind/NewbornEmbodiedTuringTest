@@ -25,29 +25,9 @@
 
 from typing import Tuple
 from torch import nn
-from torch.nn import functional as F
-
-import numpy as np
 import torch as th
-import math
+from .layer_init import orthogonal_layer_init, default_layer_init, kaiming_he_init
 
-def orthogonal_layer_init(layer, std=np.sqrt(2), bias_const=0.0):
-    th.nn.init.orthogonal_(layer.weight, std)
-    th.nn.init.constant_(layer.bias, bias_const)
-    return layer
-
-def default_layer_init(layer):
-    stdv = 1. / math.sqrt(layer.weight.size(1))
-    layer.weight.data.uniform_(-stdv, stdv)
-    if layer.bias is not None:
-        layer.bias.data.uniform_(-stdv, stdv)
-    return layer
-
-def kaiming_he_init(layer):
-    th.nn.init.kaiming_normal_(layer.weight, nonlinearity='relu')
-    if layer.bias is not None:
-        nn.init.zeros_(layer.bias)
-    return layer
 
 class ObservationEncoder(nn.Module):
     """Encoder for encoding observations.
