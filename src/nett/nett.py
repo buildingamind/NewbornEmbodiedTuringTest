@@ -768,7 +768,7 @@ class NETT:
         if "rank" in kwargs:
             time.sleep(kwargs["rank"])
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, allow_multi_obs=self.body.allow_multi_obs, **kwargs)
+        copy_environment.initialize(mode, allow_multi_obs=self.body.allow_multi_obs, self.body.multiagent, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    

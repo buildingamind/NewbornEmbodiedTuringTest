@@ -46,8 +46,8 @@ class Body:
         self.wrap = wrap
         self.multiagent = multiagent
 
-        #Allow multiple observations for multiagent or binocular
-        self.allow_multi_obs = self.multiagent or self.binocular
+        #Allow multiple observations for binocular
+        self.allow_multi_obs = self.binocular
         
         if trace is not None:
             self.trace = Path(trace)

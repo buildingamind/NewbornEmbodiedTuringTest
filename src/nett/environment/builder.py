@@ -12,6 +12,7 @@ import yaml
 from gym import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
+from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 
 # checks to see if ml-agents tmp files have the proper permissions
 try :
@@ -62,7 +63,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, allow_multi_obs=True, **kwargs) -> None:
+    def initialize(self, mode: str, allow_multi_obs=True, multiagent: bool = False, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -123,7 +124,10 @@ class Environment(Wrapper):
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed) #TODO: Change this to vary base on Binocular Wrapper
+        if multiagent:
+            self.env = UnityParallelEnv(self.env, seed=seed)
+        else:
+            self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed) #TODO: Change this to vary base on Binocular Wrapper
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
