@@ -38,8 +38,6 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 
-from nett.fast2 import fast as fastrun
-
 class NETT:
     """
     The NETT class is the main class for training, testing, and analyzing brains in environments.
