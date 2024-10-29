@@ -1,5 +1,4 @@
 [build-system]
-requires = ["setuptools<=65.5.0", "pip<=21"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -16,8 +15,8 @@ license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
     "mlagents_envs @ git+ssh://git@github.com:Zach-Attach/ml-agents.git@develop",
-    "stable-baselines3[extra]==1.8.0",
-    "sb3-contrib==1.8.0",
+    "stable-baselines3[extra]",
+    "sb3-contrib",
     "torchvision",
     "timm",
     "nvidia-ml-py",
