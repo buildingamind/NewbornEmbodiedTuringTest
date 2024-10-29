@@ -32,8 +32,7 @@ class Body:
                     dvs: bool = False,
                     binocular: bool = True,
                     wrap: bool = False,
-                    trace: Path | str = None,
-                    multiagent: bool = False) -> None:
+                    trace: Path | str = None) -> None:
         """
         Constructor method
         """
@@ -44,7 +43,6 @@ class Body:
         self.dvs = self._validate_dvs(dvs)
         self.binocular = self._validate_dvs(binocular)
         self.wrap = wrap
-        self.multiagent = multiagent
 
         #Allow multiple observations for binocular
         self.allow_multi_obs = self.binocular

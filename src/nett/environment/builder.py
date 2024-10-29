@@ -42,9 +42,11 @@ class Environment(Wrapper):
     """
     def __init__(self,
                  executable_path: str,
-                 display: int = 0) -> None:
+                 display: int = 0,
+                 multiagent: bool = False) -> None:
         """Constructor method
         """
+        self.multiagent = multiagent
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
 
@@ -62,7 +64,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, allow_multi_obs=True, multiagent: bool = False, **kwargs) -> None:
+    def initialize(self, mode: str, allow_multi_obs=True, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -112,7 +114,7 @@ class Environment(Wrapper):
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=f"{kwargs['log_path']}/")
 
-        if multiagent:
+        if self.multiagent:
             # create environment and connect it to logger
             complete = False
             while not complete:
