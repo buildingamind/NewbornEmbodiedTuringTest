@@ -167,5 +167,5 @@ class DVS(gym.ObservationWrapper):
         Returns:
             numpy.ndarray: The initial observation.
         """
-        initial_obs = self.env.reset(**kwargs)
-        return self.observation(initial_obs)
+        initial_obs, initial_info  = self.env.reset(**kwargs)
+        return self.observation(initial_obs), initial_info 

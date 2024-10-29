@@ -55,5 +55,5 @@ class Binocular(gym.ObservationWrapper):
         return combined_obs
     
     def reset(self, **kwargs):
-        initial_obs = self.env.reset(**kwargs)
-        return self.observation(initial_obs)
+        initial_obs, initial_info = self.env.reset(**kwargs)
+        return self.observation(initial_obs), initial_info 

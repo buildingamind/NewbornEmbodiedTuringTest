@@ -161,8 +161,8 @@ class DVSWrapper(gym.ObservationWrapper):
         return ret_frame
     
     def reset(self, **kwargs):
-        initial_obs = self.env.reset(**kwargs)
-        return self.observation(initial_obs)
+        initial_obs, initial_info  = self.env.reset(**kwargs)
+        return self.observation(initial_obs), initial_info 
     
     
     
