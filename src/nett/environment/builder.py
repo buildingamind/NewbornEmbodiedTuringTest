@@ -191,8 +191,8 @@ class Environment(Wrapper):
         Returns:
             tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
         """
-        next_state, reward, done, info = self.env.step(action)
-        return next_state, float(reward), done, info
+        next_state, reward, terminated, truncated, info = self.env.step(action)
+        return next_state, float(reward), terminated, truncated, info
 
     def _set_executable_permission(self) -> None:
         """
