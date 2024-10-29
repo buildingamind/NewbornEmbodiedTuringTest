@@ -37,10 +37,10 @@ import torch as th
 
 from typing import Dict, Tuple, Union
 
-import gym
+import gymnasium as gym
 import numpy as np
 import torch as th
-from gym import spaces
+from gymnasium import spaces
 
 ObsShape = Union[Tuple[int, ...], Dict[str, Tuple[int, ...]]]
 
@@ -71,14 +71,18 @@ class BaseReward(ABC):
         obs_norm_type: str = "rms",
     ) -> None:
         # get environment information
-        self.observation_space = envs.observation_space
         self.action_space = envs.action_space
         self.n_envs = envs.num_envs
         ## process the observation and action space
-        self.obs_shape: Tuple = process_observation_space(self.observation_space)  # type: ignore
-        self.action_shape, self.action_dim, self.policy_action_dim, self.action_type = (
-            process_action_space(self.action_space)
-        )
+        observation_space = envs.observation_space
+        self.obs_shape: Tuple = observation_space.shape
+
+        action_shape = self.action_space.shape
+        self.policy_action_dim = int(np.prod(self.action_space.shape))
+        action_dim = self.policy_action_dim
+        action_type = "Box"
+        
+
         # set device and parameters
         self.device = th.device("cuda", device)
         self.beta = beta
@@ -87,15 +91,14 @@ class BaseReward(ABC):
         self.obs_norm_type = obs_norm_type
         # build the running mean and std for normalization
         self.rwd_norm = TorchRunningMeanStd() if self.rwd_norm_type == "rms" else None
-        self.obs_norm = (
-            TorchRunningMeanStd(shape=self.obs_shape)
-            if self.obs_norm_type == "rms"
-            else None
-        )
-        # initialize the normalization parameters if necessary
+
         if self.obs_norm_type == "rms":
+            self.obs_norm = TorchRunningMeanStd(shape=self.obs_shape)
+            # initialize the normalization parameters if necessary
             self.envs = envs
             self.init_normalization()
+        else:
+            self.obs_norm = None
         # build the reward forward filter
         self.rff = RewardForwardFilter(gamma) if gamma is not None else None
         # training tracker
@@ -151,7 +154,7 @@ class BaseReward(ABC):
         _ = self.envs.reset()
         if self.obs_norm_type == "rms":
             all_next_obs = []
-            for step in range(num_steps * num_iters):
+            for _ in range(num_steps * num_iters):
                 actions = [self.action_space.sample() for _ in range(self.n_envs)]
                 actions = np.stack(actions)
 
@@ -247,9 +250,9 @@ class TorchRunningMeanStd:
     """Running mean and std for torch tensor."""
 
     def __init__(self, epsilon=1e-4, shape=(), device=None) -> None:
-        self.mean = th.zeros(shape, device=device)
-        self.var = th.ones(shape, device=device)
-        self.count = epsilon
+        self.mean: th.Tensor = th.zeros(shape, device=device)
+        self.var: th.Tensor = th.ones(shape, device=device)
+        self.count: th.Tensor = epsilon
 
     def update(self, x) -> None:
         """Update mean and std with batch data."""
@@ -261,91 +264,17 @@ class TorchRunningMeanStd:
 
     def update_from_moments(self, batch_mean, batch_var, batch_count) -> None:
         """Update mean and std with batch moments."""
-        self.mean, self.var, self.count = self.update_mean_var_count_from_moments(
-            self.mean, self.var, self.count, batch_mean, batch_var, batch_count
-        )
+        delta = batch_mean - self.mean
+        tot_count = self.count + batch_count
+
+        self.mean += delta * batch_count / tot_count
+        m_a = self.var * self.count
+        m_b = batch_var * batch_count
+        M2 = m_a + m_b + th.pow(delta, 2) * self.count * batch_count / tot_count
+        self.var = M2 / tot_count
+        self.count = tot_count
 
     @property
     def std(self) -> th.Tensor:
         return th.sqrt(self.var)
 
-    def update_mean_var_count_from_moments(
-        self, mean, var, count, batch_mean, batch_var, batch_count
-    ) -> Tuple[th.Tensor, th.Tensor, th.Tensor]:
-        delta = batch_mean - mean
-        tot_count = count + batch_count
-
-        new_mean = mean + delta * batch_count / tot_count
-        m_a = var * count
-        m_b = batch_var * batch_count
-        M2 = m_a + m_b + th.pow(delta, 2) * count * batch_count / tot_count
-        new_var = M2 / tot_count
-        new_count = tot_count
-
-        return new_mean, new_var, new_count
-
-def process_observation_space(observation_space: gym.Space) -> ObsShape:
-    """Process the observation space.
-
-    Args:
-        observation_space (gym.Space): Observation space.
-
-    Returns:
-        Information of the observation space.
-    """
-    if isinstance(observation_space, spaces.Box):
-        # Observation is a vector
-        return observation_space.shape
-    elif isinstance(observation_space, spaces.Discrete):
-        # Observation is an int
-        return (1,)
-    elif isinstance(observation_space, spaces.MultiDiscrete):
-        # Number of discrete features
-        return (int(len(observation_space.nvec)),)
-    elif isinstance(observation_space, spaces.MultiBinary):
-        # Number of binary features
-        return observation_space.shape
-    elif isinstance(observation_space, spaces.Dict):
-        return {
-            key: process_observation_space(subspace)  # type: ignore[misc]
-            for (key, subspace) in observation_space.spaces.items()
-        }
-    else:
-        raise NotImplementedError(f"{observation_space} observation space is not supported")
-
-
-def process_action_space(action_space: gym.Space) -> Tuple[Tuple[int, ...], int, int, str]:
-    """Get the dimension of the action space.
-
-    Args:
-        action_space (gym.Space): Action space.
-
-    Returns:
-        Information of the action space.
-    """
-    # TODO: revise the action_range
-    assert action_space.shape is not None, "The action data shape cannot be `None`!"
-    action_shape = action_space.shape
-    if isinstance(action_space, spaces.Discrete):
-        policy_action_dim = int(action_space.n)
-        action_dim = 1
-        action_type = "Discrete"
-    elif isinstance(action_space, spaces.Box):
-        policy_action_dim = int(np.prod(action_space.shape))
-        action_dim = policy_action_dim
-        action_type = "Box"
-    elif isinstance(action_space, spaces.MultiDiscrete):
-        policy_action_dim = sum(list(action_space.nvec))
-        action_dim = int(len(action_space.nvec))
-        action_type = "MultiDiscrete"
-    elif isinstance(action_space, spaces.MultiBinary):
-        assert isinstance(
-            action_space.n, int
-        ), "Multi-dimensional MultiBinary action space is not supported. You can flatten it instead."
-        policy_action_dim = int(action_space.n)
-        action_dim = policy_action_dim
-        action_type = "MultiBinary"
-    else:
-        raise NotImplementedError(f"{action_space} action space is not supported")
-
-    return action_shape, action_dim, policy_action_dim, action_type

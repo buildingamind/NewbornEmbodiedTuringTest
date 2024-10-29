@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-import gym
+import gymnasium as gym
 import numpy as np 
 
 class ObservationWrapper(gym.ObservationWrapper):

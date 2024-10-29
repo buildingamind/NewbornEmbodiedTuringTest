@@ -5,7 +5,7 @@ import os
 from typing import Any, Optional
 from pathlib import Path
 import inspect
-import gym
+import gymnasium as gym
 import torch
 import stable_baselines3
 import sb3_contrib

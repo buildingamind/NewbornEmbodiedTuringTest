@@ -1,5 +1,5 @@
 """The body of the agent in the environment."""
-from gym import Env, Wrapper
+from gymnasium import Env, Wrapper
 from pathlib import Path
 
 from nett.body import types

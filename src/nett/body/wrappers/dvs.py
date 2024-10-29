@@ -3,7 +3,7 @@ Dynamic Vision Sensor (DVS) transformation for gym environments.
 """
 
 import collections
-import gym
+import gymnasium as gym
 import numpy as np
 import cv2
 import logging

@@ -1,5 +1,5 @@
 
-import gym
+import gymnasium as gym
 import torch as th
 from torch import nn
 

@@ -133,11 +133,6 @@ class Disagreement(BaseReward):
         actions_tensor = (
             samples.get("actions").to(self.device).view(-1, *self.action_shape)
         )
-        # apply one-hot encoding if the action type is discrete
-        if self.action_type == "Discrete":
-            actions_tensor = F.one_hot(
-                actions_tensor.long(), self.policy_action_dim
-            ).float()
         # compute the intrinsic rewards
         with th.no_grad():
             random_feats = self.random_encoder(obs_tensor.view(-1, *self.obs_shape))
@@ -176,14 +171,8 @@ class Disagreement(BaseReward):
         # normalize the observations
         obs_tensor = self.normalize(obs_tensor)
         next_obs_tensor = self.normalize(next_obs_tensor)
-        # apply one-hot encoding if the action type is discrete
-        if self.action_type == "Discrete":
-            actions_tensor = samples.get("actions").view(n_steps * n_envs)
-            actions_tensor = F.one_hot(
-                actions_tensor.long(), self.policy_action_dim
-            ).float()
-        else:
-            actions_tensor = samples.get("actions").view(n_steps * n_envs, -1)
+
+        actions_tensor = samples.get("actions").view(n_steps * n_envs, -1)
         # build the dataset and dataloader
         dataset = TensorDataset(obs_tensor, actions_tensor, next_obs_tensor)
         loader = DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)

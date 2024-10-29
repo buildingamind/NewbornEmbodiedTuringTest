@@ -7,8 +7,8 @@ Currently does not support:
 
 import numpy as np
 
-import gym
-from gym import error, spaces
+import gymnasium as gym
+from gymnasium import error, spaces
 
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.side_channel.engine_configuration_channel import EngineConfigurationChannel

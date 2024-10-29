@@ -98,10 +98,7 @@ class ICM(BaseReward):
             weight_init=weight_init,
         ).to(self.device)
         # set the loss function
-        if self.action_type == "Discrete":
-            self.im_loss = nn.CrossEntropyLoss(reduction="none")
-        else:
-            self.im_loss = nn.MSELoss(reduction="none")
+        self.im_loss = nn.MSELoss(reduction="none")
         # set the optimizers
         self.encoder_opt = th.optim.Adam(self.encoder.parameters(), lr=lr)
         self.im_opt = th.optim.Adam(self.im.parameters(), lr=lr)
@@ -134,13 +131,7 @@ class ICM(BaseReward):
         # normalize the observations
         obs_tensor = self.normalize(obs_tensor)
         next_obs_tensor = self.normalize(next_obs_tensor)
-        # apply one-hot encoding if the action type is discrete
-        if self.action_type == "Discrete":
-            actions_tensor = (
-                F.one_hot(actions_tensor.long(), self.policy_action_dim)
-                .float()
-                .squeeze(2)
-            )
+
         # compute the intrinsic rewards
         intrinsic_rewards = th.zeros(size=(n_steps, n_envs)).to(self.device)
         with th.no_grad():
@@ -180,14 +171,8 @@ class ICM(BaseReward):
         # normalize the observations
         obs_tensor = self.normalize(obs_tensor)
         next_obs_tensor = self.normalize(next_obs_tensor)
-        # transform the actions to one-hot vectors if the action space is discrete
-        if self.action_type == "Discrete":
-            actions_tensor = samples.get("actions").view(n_steps * n_envs)
-            actions_tensor = F.one_hot(
-                actions_tensor.long(), self.policy_action_dim
-            ).float()
-        else:
-            actions_tensor = samples.get("actions").view(n_steps * n_envs, -1)
+
+        actions_tensor = samples.get("actions").view(n_steps * n_envs, -1)
         # build the dataset and dataloader
         dataset = TensorDataset(obs_tensor, actions_tensor, next_obs_tensor)
         loader = DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)

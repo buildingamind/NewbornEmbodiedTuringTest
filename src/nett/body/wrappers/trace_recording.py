@@ -3,8 +3,8 @@ import time
 import json
 import logging
 import numpy as np
-import gym
-from gym.utils import atomic_write, closer
+import gymnasium as gym
+from gymnasium.utils import atomic_write, closer
 logger = logging.getLogger(__name__)
 
 __all__ = ['TraceRecordingWrapper']

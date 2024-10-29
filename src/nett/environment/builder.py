@@ -9,7 +9,7 @@ from typing import Optional, Any
 import numpy as np
 import yaml
 
-from gym import Wrapper
+from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 
