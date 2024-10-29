@@ -3,7 +3,7 @@ from gymnasium import Env, Wrapper
 from pathlib import Path
 
 from nett.body import types
-from nett.body.wrappers import DVS, Binocular, TraceRecordingWrapper, ObservationWrapper
+from nett.body.wrappers import DVS, Binocular#, TraceRecordingWrapper, ObservationWrapper
 # from nett.body import ascii_art
 
 class Body:
@@ -31,8 +31,9 @@ class Body:
                     wrappers: list[Wrapper] = [],
                     dvs: bool = False,
                     binocular: bool = True,
-                    wrap: bool = False,
-                    trace: Path | str = None) -> None:
+                    # wrap: bool = False,
+                    # trace: Path | str = None
+                ) -> None:
         """
         Constructor method
         """
@@ -42,16 +43,16 @@ class Body:
         self.wrappers = self._validate_wrappers(wrappers)
         self.dvs = self._validate_dvs(dvs)
         self.binocular = self._validate_dvs(binocular)
-        self.wrap = wrap
+        # self.wrap = wrap
 
         #Allow multiple observations for binocular
         self.allow_multi_obs = self.binocular
         
-        if trace is not None:
-            self.trace = Path(trace)
-            self.trace.mkdir(parents=True, exist_ok=True)
-        else:
-            self.trace = None
+        # if trace is not None:
+            # self.trace = Path(trace)
+            # self.trace.mkdir(parents=True, exist_ok=True)
+        # else:
+            # self.trace = None
 
     @staticmethod
     def _validate_agent_type(type: str) -> str:
@@ -146,10 +147,10 @@ class Body:
                 env = self._wrap(env, DVS)
             if self.binocular:
                 env = self._wrap(env, Binocular)
-            elif self.wrap:
-                env = self._wrap(env, ObservationWrapper)
-            if self.trace is not None:
-                env = self._wrap(env, TraceRecordingWrapper, self.trace)
+            # elif self.wrap:
+                # env = self._wrap(env, ObservationWrapper)
+            # if self.trace is not None:
+                # env = self._wrap(env, TraceRecordingWrapper, self.trace)
             # apply all custom wrappers
             if self.wrappers:
                 for wrapper in self.wrappers:
