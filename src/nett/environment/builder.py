@@ -167,7 +167,7 @@ class Environment(Wrapper):
         """
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1]) #TODO: Why?
     
-    def reset(self, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
+    def reset(self, seed=0, **kwargs) -> None | list[np.ndarray] | np.ndarray: # pylint: disable=unused-argument
         # nothing to do if the wrapped env does not accept `seed`
         """
         Resets the environment with the given seed and arguments.
