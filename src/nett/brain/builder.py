@@ -26,7 +26,8 @@ from nett.brain import encoders
 from nett.brain.utils.callbacks import initialize_callbacks
 from gymnasium.wrappers import RecordVideo
 
-from nett.brain.rewards import ICM, RND, Disagreement
+# from nett.brain.rewards import ICM, RND, Disagreement
+from rllte.xplore.reward import ICM, RND, Disagreement
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -142,12 +143,19 @@ class Brain:
 
         # create reward function
         if job.reward not in ["supervised", "unsupervised"]:
-            if job.reward.lower() == "rnd":
-                job.reward_func = RND(envs, job.device)
-            elif job.reward.lower() == "icm":
-                job.reward_func = ICM(envs, job.device, batch_size=self.batch_size)
-            elif job.reward.lower() == "disagreement":
-                job.reward_func = Disagreement(envs, job.device)
+            reward_dict: dict[str, callable] = {
+                "rnd": RND,
+                "icm": ICM,
+                "disagreement": Disagreement
+            }
+            if job.reward.lower() in reward_dict.keys():
+                job.reward_func = reward_dict[job.reward.lower()](
+                    envs=envs, 
+                    device=job.device,
+                    beta=0.2,
+                    kappa=0.0,
+                    gamma=0.99, 
+                    batch_size=self.batch_size)
             else:
                 raise ValueError(f"Reward type {job.reward} not recognized")
         # initialize callbacks
