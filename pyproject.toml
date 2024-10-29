@@ -15,7 +15,7 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
-    "mlagents==1.0.0",
+    "mlagents_envs @ git+ssh://git@github.com:Zach-Attach/ml-agents.git@develop",
     "stable-baselines3[extra]==1.8.0",
     "sb3-contrib==1.8.0",
     "torchvision",
