@@ -118,7 +118,6 @@ class Environment(Wrapper):
             while not complete:
                 try:
                     self.env = MultiAgentEnv(self.executable_path, additional_args=args, base_port=random_port(), seed=seed) # currently no support for action_space_seed
-                    self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=seed)
                     complete = True
                 except UnityWorkerInUseException as e:
                     continue
