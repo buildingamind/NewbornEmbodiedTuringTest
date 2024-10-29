@@ -24,7 +24,7 @@ from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.brain.utils.callbacks import initialize_callbacks
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
+from gymnasium.wrappers import RecordVideo
 
 from nett.brain.rewards import ICM, RND, Disagreement
 
@@ -208,7 +208,7 @@ class Brain:
             self.logger.info(f'Testing with {self.algorithm.__name__}')
             
             num_envs = envs.num_envs
-            # vr = VideoRecorder(env=envs,
+            # vr = RecordVideo(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
             
