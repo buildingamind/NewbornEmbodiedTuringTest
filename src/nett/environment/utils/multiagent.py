@@ -35,15 +35,17 @@ class MultiAgentEnv(gym.Env):
             additional_args=additional_args,
             base_port=base_port, seed=seed)
         
-        if not self._env.get_agent_groups():
+        # if not self._env.get_agent_groups():
+        agent_groups = list(self._env._env_specs.keys())
+        if not agent_groups:
             self._env.step()
         
         self._multiagent = True
-        self.brain_name = self._env.get_agent_groups()[0]
-        self.group_spec = self._env.get_agent_group_spec(self.brain_name)
+        self.brain_name = agent_groups[0] #self._env.get_agent_groups()[0]
+        self.group_spec = self._env._env_specs[self.brain_name] #self._env.get_agent_group_spec(self.brain_name)
         
         self._env.reset()
-        step_result = self._env.get_step_result(self.brain_name)
+        step_result = self._env._env_state[self.brain_name] #self._env.get_step_result(self.brain_name)
         
         self._previous_step_result = step_result
         self._previous_new_id_order = list(range(step_result.n_agents()))
@@ -55,7 +57,7 @@ class MultiAgentEnv(gym.Env):
         self._n_actions_to_send = self.n_agents
         
         # Check brain configuration
-        if len(self._env.get_agent_groups()) != 1:
+        if len(list(self._env._env_specs.keys())) != 1:
             raise MultiAgentEnvException(
                 "There can only be one brain in a UnityEnvironment "
                 "if it is wrapped in a gym."
