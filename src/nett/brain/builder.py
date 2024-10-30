@@ -26,14 +26,14 @@ from nett.brain import encoders
 from nett.brain.utils.callbacks import initialize_callbacks
 from gymnasium.wrappers import RecordVideo
 
-# from nett.brain.rewards import ICM, RND, Disagreement
-from rllte.xplore.reward import ICM, RND, Disagreement, E3B
+from nett.brain.rewards import ICM  #, RND, Disagreement
+from rllte.xplore.reward import RND, Disagreement #ICM, E3B
 
 REWARD_DICT: dict[str, callable] = {
     "rnd": RND,
     "icm": ICM,
     "disagreement": Disagreement,
-    "e3b": E3B,
+    # "e3b": E3B,
     "supervised": None,
     "unsupervised": None
 }
