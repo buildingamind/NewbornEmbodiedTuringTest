@@ -12,6 +12,7 @@ import yaml
 from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
+from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 
 # checks to see if ml-agents tmp files have the proper permissions
 try :
@@ -114,31 +115,21 @@ class Environment(Wrapper):
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=str(kwargs['log_path']))
 
+        # create environment and connect it to logger
+        complete = False
+        while not complete:
+            try:
+                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=seed)
+                complete = True
+            except UnityWorkerInUseException as e:
+                continue
+            except Exception as e:
+                self.logger.exception(f"Error initializing environment: {e}")
+                raise e
         if self.multiagent:
-            # create environment and connect it to logger
-            complete = False
-            while not complete:
-                try:
-                    self.env = MultiAgentEnv(self.executable_path, additional_args=args, base_port=random_port(), seed=seed) # currently no support for action_space_seed
-                    complete = True
-                except UnityWorkerInUseException as e:
-                    continue
-                except Exception as e:
-                    self.logger.exception(f"Error initializing environment: {e}")
-                    raise e
+            self.env = UnityParallelEnv(self.env, seed=seed)
         else:
-            # create environment and connect it to logger
-            complete = False
-            while not complete:
-                try:
-                    self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=seed)
-                    complete = True
-                except UnityWorkerInUseException as e:
-                    continue
-                except Exception as e:
-                    self.logger.exception(f"Error initializing environment: {e}")
-                    raise e
-            self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed) #TODO: Change this to vary base on Binocular Wrapper
+            self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed)
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
