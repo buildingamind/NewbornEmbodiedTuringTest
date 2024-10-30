@@ -27,7 +27,16 @@ from nett.brain.utils.callbacks import initialize_callbacks
 from gymnasium.wrappers import RecordVideo
 
 # from nett.brain.rewards import ICM, RND, Disagreement
-from rllte.xplore.reward import ICM, RND, Disagreement
+from rllte.xplore.reward import ICM, RND, Disagreement, E3B
+
+REWARD_DICT: dict[str, callable] = {
+    "rnd": RND,
+    "icm": ICM,
+    "disagreement": Disagreement,
+    "e3b": E3B,
+    "supervised": None,
+    "unsupervised": None
+}
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -142,22 +151,14 @@ class Brain:
             self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
         # create reward function
-        if job.reward not in ["supervised", "unsupervised"]:
-            reward_dict: dict[str, callable] = {
-                "rnd": RND,
-                "icm": ICM,
-                "disagreement": Disagreement
-            }
-            if job.reward.lower() in reward_dict.keys():
-                job.reward_func = reward_dict[job.reward.lower()](
-                    envs=envs, 
-                    device=job.device,
-                    beta=0.2,
-                    kappa=0.0,
-                    gamma=0.99, 
-                    batch_size=self.batch_size)
-            else:
-                raise ValueError(f"Reward type {job.reward} not recognized")
+        if REWARD_DICT[self.reward] is not None:
+            job.reward_func = REWARD_DICT[self.reward](
+                envs=envs, 
+                device=job.device,
+                beta=0.2,
+                kappa=0.0,
+                gamma=0.99, 
+                batch_size=self.batch_size)
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
@@ -447,10 +448,9 @@ class Brain:
             ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
-        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised', 'icm', 'rnd', 'disagreement']:
-            raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
+        if reward not in REWARD_DICT.keys():
+            raise ValueError(f"If a string, should be one of: {REWARD_DICT.keys()}")
         return reward
-
 
     @staticmethod
     def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:

@@ -51,7 +51,7 @@ def initialize_callbacks(job: "Job") -> CallbackList:
             save_replay_buffer=True,
             save_vecnormalize=True))
     
-    if job.reward not in ["supervised", "unsupervised"]:
+    if hasattr(job, "reward_func"):
         callback_list.append(IntrinsicRewardWithOnPolicyRL(job.reward_func))
         # callback_list.append(IntrinsicRewardWithOffPolicyRL(job.reward_func))
 
