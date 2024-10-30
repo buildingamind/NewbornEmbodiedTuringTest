@@ -32,7 +32,7 @@ from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
 
-from nett.utils.job import Job
+from nett.utils import Job, SafeVecEnv
 
 from nett.brain.builder import Brain
 from nett.body.builder import Body
@@ -711,64 +711,33 @@ class NETT:
         # run environment
         # can be train or test mode and can be for validation or actual run
         try:
-            # wrap environment
-            # with self._wrap_env(mode, kwargs) as environment:
-            # run the callback. This can be check_env or brain.train or brain.test
-            if mode == "test" and "validation-mode" not in kwargs:
-                def make_env(rank):
-                    def _init():
-                        kwargs_copy = deepcopy(kwargs)
-                        kwargs_copy["rank"] = rank
-                        env_copy = self._wrap_env(mode, kwargs_copy)
-                        #env_copy.reset()
-                        return env_copy
-
-                    return _init
-
-                # initialize environment
-                envs = SubprocVecEnv([make_env(i) for i in range(self.num_parallel_envs)])
-                callback(envs)
-            else:
-                def make_env():
-                    def _init():
-                        environment = self._wrap_env(mode, kwargs)
-                        # environment.action_space.seed(kwargs["brain_id"])
-                        # Wrap the env in a Monitor wrapper
-                        # to have additional training information
-                        
-                        monitor_path: Path = Path(kwargs["log_path"])
-                        # Create the monitor folder if needed
-                        monitor_path.mkdir(exist_ok=True, parents=True)
-
-                        return Monitor(environment, filename=str(monitor_path))
-
-                    return _init
-
-                if "validation-mode" in kwargs:
-                    environment = self._wrap_env(mode, kwargs)
+            if "validation-mode" in kwargs:
+                with self._wrap_env(mode, kwargs) as environment:
                     check_env(environment)
-                else:
-                    envs = DummyVecEnv([make_env()])
+            elif mode == "train":
+                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
+
+                make_env = lambda: self._wrap_env(mode, kwargs)
+                with SafeVecEnv(make_env) as envs:
                     callback(envs)
+            else:
+                make_env = lambda rank: self._wrap_env(mode, kwargs, rank)
+                with SafeVecEnv(make_env, self.num_parallel_envs) as envs:
+                    callback(envs)
+
+            self.logger.info("Environments Closed")
         except Exception as ex:
             if kwargs["validation-mode"]:
                 self.logger.exception(f"{mode} env validation failed: {str(ex)}")
             else:
                 self.logger.exception(f"{mode} env failed: {str(ex)}")  
             raise ex
-        finally:
-            self.logger.info("Closing Environments...")
-            if 'envs' in locals():
-                envs.close()                
-            if 'environment' in locals():
-                environment.close()
-            self.logger.info("Environments Closed")
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
-        if "rank" in kwargs:
-            time.sleep(kwargs["rank"])
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any], rank: Optional[int] = None) -> "nett.Body":
+        if rank is not None:
+            time.sleep(rank)
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, allow_multi_obs=self.body.allow_multi_obs, **kwargs)
+        copy_environment.initialize(mode, allow_multi_obs=self.body.allow_multi_obs, rank=rank, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
-        return copy_body(copy_environment)    
+        return copy_body(copy_environment)

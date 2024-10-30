@@ -58,7 +58,6 @@ class Job:
 
     self.logger = logger.getChild(__class__.__name__+"."+condition+"."+str(brain_id))
 
-
   def _configure_paths(self) -> dict[str, Path]:
     """Configure Paths for the job
 
@@ -85,7 +84,7 @@ class Job:
     return {
       "rewarded": bool(self.reward == "supervised"),
       "rec_path": str(self.paths["env_recs"]),
-      "log_path": str(self.paths["env_logs"]),
+      "log_path": self.paths["env_logs"],
       "condition": self.condition,
       "brain_id": self.brain_id,
       "device": self.device,
