@@ -8,7 +8,7 @@ from torch.nn import functional as F
 from torch import nn
 
 # Pytorch-Lightning
-import pytorch_lightning as pl
+from lightning import LightningModule
 from vit_pytorch import ViT
 
 import math
@@ -66,7 +66,7 @@ class Projection(nn.Module):
         x = self.model(x)
         return F.normalize(x, dim=1)
 
-class LitClassifier(pl.LightningModule):
+class LitClassifier(LightningModule):
     def __init__(
         self,
         backbone_config: dict,
