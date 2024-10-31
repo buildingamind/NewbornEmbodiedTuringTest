@@ -291,30 +291,10 @@ class ZooEnvironment(Env, BaseParallelWrapper):
         # initialize the grandparent class (BaseParallelWrapper)
         BaseParallelWrapper.__init__(self.env)
 
-class Environment():#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
-    """
-    Represents the environment where the agent lives.
-
-    The environment is the source of all input data streams to train the brain of the agent. 
-    It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment 
-    class from the mlagents_envs library.
-
-    It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
-
-    Args:
-        executable_path (str): The path to the Unity executable file.
-        display (int, optional): The display number to use for the Unity environment. Defaults to 0.
-
-    Example:
-
-        >>> from nett import Environment
-        >>> env = Environment(executable_path="path/to/executable")
-    """
-    def __init__(self,
-                 executable_path: str,
-                 display: int = 0,
-                 multiagent: bool = False) -> Env:
-        if multiagent:
-            return ZooEnvironment(executable_path, display)
-        else:
-            return GymEnvironment(executable_path, display)
+def Environment(executable_path: str,
+                display: int = 0,
+                multiagent: bool = False) -> Env:#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
+    if multiagent:
+        return ZooEnvironment(executable_path, display)
+    else:
+        return GymEnvironment(executable_path, display)
