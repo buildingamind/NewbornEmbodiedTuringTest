@@ -279,14 +279,14 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
 
 class GymEnvironment(Env, Wrapper):
     def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
-        Env.initialize(mode, allow_multi_obs, rank, kwargs)
+        Env.initialize(mode, allow_multi_obs, rank, **kwargs)
         self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=self.seed)
         # initialize the grandparent class (gym.Wrapper)
         Wrapper.__init__(self.env)
 
 class ZooEnvironment(Env, BaseParallelWrapper):
     def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
-        Env.initialize(mode, allow_multi_obs, rank, kwargs)
+        Env.initialize(mode, allow_multi_obs, rank, **kwargs)
         self.env = UnityParallelEnv(self.env, seed=self.seed)
         # initialize the grandparent class (BaseParallelWrapper)
         BaseParallelWrapper.__init__(self.env)
