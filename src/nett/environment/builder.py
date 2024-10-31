@@ -13,6 +13,7 @@ from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
+from pettingzoo.utils.wrappers import BaseParallelWrapper
 
 # checks to see if ml-agents tmp files have the proper permissions
 try :
@@ -22,7 +23,7 @@ except PermissionError as _:
 
 from nett.environment.utils import Logger, random_port, MultiAgentEnv
 
-class Environment(Wrapper):
+class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     """
     Represents the environment where the agent lives.
 
@@ -43,11 +44,9 @@ class Environment(Wrapper):
     """
     def __init__(self,
                  executable_path: str,
-                 display: int = 0,
-                 multiagent: bool = False) -> None:
+                 display: int = 0) -> None:
         """Constructor method
         """
-        self.multiagent = multiagent
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
 
@@ -107,10 +106,10 @@ class Environment(Wrapper):
 
         if rank is not None:
             brain = f"{kwargs['brain_id']}-{rank}"
-            seed = rank
+            self.seed = rank
         else:
             brain = f"{kwargs['brain_id']}"
-            seed = kwargs['brain_id']
+            self.seed = kwargs['brain_id']
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=str(kwargs['log_path']))
@@ -126,13 +125,6 @@ class Environment(Wrapper):
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-        if self.multiagent:
-            self.env = UnityParallelEnv(self.env, seed=seed)
-        else:
-            self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=seed)
-
-        # initialize the parent class (gym.Wrapper)
-        super().__init__(self.env)
 
     def log(self, msg: str) -> None:
         """
@@ -284,3 +276,45 @@ class Environment(Wrapper):
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
+
+class GymEnvironment(Env, Wrapper):
+    def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
+        Env.initialize(mode, allow_multi_obs, rank, kwargs)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=self.seed)
+        # initialize the grandparent class (gym.Wrapper)
+        Wrapper.__init__(self.env)
+
+class ZooEnvironment(Env, BaseParallelWrapper):
+    def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
+        Env.initialize(mode, allow_multi_obs, rank, kwargs)
+        self.env = UnityParallelEnv(self.env, seed=self.seed)
+        # initialize the grandparent class (BaseParallelWrapper)
+        BaseParallelWrapper.__init__(self.env)
+
+class Environment():#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
+    """
+    Represents the environment where the agent lives.
+
+    The environment is the source of all input data streams to train the brain of the agent. 
+    It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment 
+    class from the mlagents_envs library.
+
+    It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
+
+    Args:
+        executable_path (str): The path to the Unity executable file.
+        display (int, optional): The display number to use for the Unity environment. Defaults to 0.
+
+    Example:
+
+        >>> from nett import Environment
+        >>> env = Environment(executable_path="path/to/executable")
+    """
+    def __init__(self,
+                 executable_path: str,
+                 display: int = 0,
+                 multiagent: bool = False) -> Env:
+        if multiagent:
+            return ZooEnvironment(executable_path, display)
+        else:
+            return GymEnvironment(executable_path, display)

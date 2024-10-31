@@ -45,7 +45,7 @@ class NETT:
     Args:
         brain (Brain): The brain to be trained and tested.
         body (Body): The body to be used for training and testing the brain.
-        environment (Environment): The environment in which the brain is to be trained and tested.
+        environment (Env): The environment in which the brain is to be trained and tested.
 
     Example:
         >>> from nett import NETT
@@ -56,7 +56,7 @@ class NETT:
     def __init__(self, 
                  brain: "nett.Brain" = None, 
                  body: "nett.Body" = None, 
-                 environment: "nett.Environment" = None, 
+                 environment: "nett.Env" = None, 
                  config: Path | str | list[Path | str] = None, 
                  fast: bool = False) -> None:
         """
