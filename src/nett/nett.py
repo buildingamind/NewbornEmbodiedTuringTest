@@ -57,17 +57,13 @@ class NETT:
                  brain: "nett.Brain" = None, 
                  body: "nett.Body" = None, 
                  environment: "nett.Env" = None, 
-                 config: Path | str | list[Path | str] = None, 
-                 fast: bool = False) -> None:
+                 config: Path | str | list[Path | str] = None) -> None:
         """
         Initialize the NETT class.
         """
 
         # for NVIDIA memory management
         nvmlInit()
-
-        if fast and config is not None:
-            fastrun(config)
 
         # initialize logger
         from nett import logger
