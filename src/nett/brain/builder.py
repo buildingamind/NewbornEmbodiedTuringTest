@@ -134,7 +134,8 @@ class Brain:
                 verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{job.device}",
-                seed=self.seed)
+                # seed=self.seed # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                )
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")

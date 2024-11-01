@@ -118,7 +118,7 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
         complete = False
         while not complete:
             try:
-                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=seed)
+                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=self.seed)
                 complete = True
             except UnityWorkerInUseException as e:
                 continue
@@ -269,6 +269,12 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
 
         return executable_path
 
+    def __enter__(self) -> Env:
+        return self
+
+    def __exit__(self):
+        self.env.close()
+
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
@@ -276,20 +282,31 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
+    
 
 class GymEnvironment(Env, Wrapper):
+    def __init__(self,
+                 executable_path: str,
+                 display: int = 0) -> None:
+        Env.__init__(self, executable_path, display)
+
     def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
-        Env.initialize(mode, allow_multi_obs, rank, **kwargs)
+        Env.initialize(self, mode, allow_multi_obs, rank, **kwargs)
         self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=self.seed)
         # initialize the grandparent class (gym.Wrapper)
-        Wrapper.__init__(self.env)
+        Wrapper.__init__(self, self.env)
 
 class ZooEnvironment(Env, BaseParallelWrapper):
+    def __init__(self,
+                 executable_path: str,
+                 display: int = 0) -> None:
+        Env.__init__(self, executable_path, display)
+
     def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
-        Env.initialize(mode, allow_multi_obs, rank, **kwargs)
+        Env.initialize(self, mode, allow_multi_obs, rank, **kwargs)
         self.env = UnityParallelEnv(self.env, seed=self.seed)
         # initialize the grandparent class (BaseParallelWrapper)
-        BaseParallelWrapper.__init__(self.env)
+        BaseParallelWrapper.__init__(self, self.env)
 
 def Environment(executable_path: str,
                 display: int = 0,

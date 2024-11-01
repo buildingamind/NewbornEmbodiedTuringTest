@@ -38,6 +38,8 @@ from nett.brain.builder import Brain
 from nett.body.builder import Body
 from nett.environment.builder import Environment
 
+import gymnasium as gym
+
 class NETT:
     """
     The NETT class is the main class for training, testing, and analyzing brains in environments.
@@ -502,17 +504,26 @@ class NETT:
         # loop over modes to validate then run the environment
         for mode in modes:
             # validation run
-            self._run_env(
-                mode=mode, 
-                kwargs = job.validation_kwargs(), 
-                callback = lambda envs: check_env(envs.envs[0])
-            )   
-            # actual run
-            self._run_env(
-                mode=mode, 
-                kwargs = job.env_kwargs(), 
-                callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
-            )
+            if type(self.environment) == gym.Env:
+                self._run_env(
+                    mode=mode, 
+                    kwargs = job.validation_kwargs(), 
+                    callback = lambda envs: check_env(envs.envs[0])
+                )   
+                # actual run
+                self._run_env(
+                    mode=mode, 
+                    kwargs = job.env_kwargs(), 
+                    callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
+                )
+            else:
+                # actual run
+                self._run_env(
+                    mode=mode, 
+                    kwargs = job.env_kwargs(), 
+                    callback = lambda envs: getattr(brain, mode)(envs, job), # grabs brain.train or brain.test based on mode
+                    zoo=True
+                )
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -707,11 +718,17 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, kwargs: dict[str,Any], callback):
+    def _run_env(self, mode: str, kwargs: dict[str,Any], callback, zoo: Optional[bool] = False) -> None:
         # run environment
         # can be train or test mode and can be for validation or actual run
         try:
-            if "validation-mode" in kwargs:
+            if zoo:
+                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
+
+                make_env = lambda: self._wrap_env(mode, kwargs)
+                with SafeVecEnv(make_env, zoo=True) as envs:
+                    callback(envs)
+            elif "validation-mode" in kwargs:
                 with self._wrap_env(mode, kwargs) as environment:
                     check_env(environment)
             elif mode == "train":

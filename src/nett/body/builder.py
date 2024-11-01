@@ -155,11 +155,11 @@ class Body:
             if self.wrappers:
                 for wrapper in self.wrappers:
                     env = self._wrap(env, wrapper)
+            self.env = env
+            return self.env
         except Exception as e:
             self.logger.exception(f"Failed to apply wrappers to environment")
             raise e
-        self.env = env
-        return self.env
     
     def __enter__(self):
         return self.env
