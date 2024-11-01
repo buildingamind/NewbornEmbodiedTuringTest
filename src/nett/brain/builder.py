@@ -1,17 +1,19 @@
 """Module for the Brain class."""
 
+import importlib
 import os
-from typing import Any, Optional
-from pathlib import Path
 import inspect
 import torch
 import stable_baselines3
 import sb3_contrib
 import numpy as np
 import matplotlib.pyplot as plt
+
 from tqdm import tqdm
+from typing import Any, Optional
+from pathlib import Path
 from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.torch_layers import NatureCNN, BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -19,10 +21,9 @@ from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
-from nett.brain import algorithms, policies, encoder_dict
+from nett.brain import algorithms, policies, encoders_dict
 from nett.brain import encoders
 from nett.utils.callbacks import initialize_callbacks
-from gym.wrappers.monitoring.video_recorder import VideoRecorder
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -54,7 +55,7 @@ class Brain:
         self,
         policy: Any | str,
         algorithm:  str | OnPolicyAlgorithm | OffPolicyAlgorithm,
-        encoder: Any | str = None,
+        encoder: Any | str = 'small',
         embedding_dim: Optional[int] = None,
         reward: str = "supervised",
         batch_size: int = 512,
@@ -75,7 +76,7 @@ class Brain:
         self.algorithm = self._validate_algorithm(algorithm)
         self.policy = self._validate_policy(policy)
         self.train_encoder = train_encoder
-        self.encoder = self._validate_encoder(encoder) if encoder else None
+        self.encoder = self._validate_encoder(encoder)
         self.reward = self._validate_reward(reward) if reward else None
 
         self.embedding_dim = embedding_dim
@@ -120,7 +121,7 @@ class Brain:
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
             
-        self.logger.info(f'Training with {self.algorithm.__name__}')
+        self.logger.info(f'Training {self.encoder.__name__} with {self.algorithm.__name__}')
         try:
             model = self.algorithm(
                 self.policy,
@@ -322,10 +323,14 @@ class Brain:
         """
         # for when encoder is a string
         if isinstance(encoder, str):
-            if encoder not in encoder_dict.keys():
-                raise ValueError(f"If a string, should be one of: {encoder_dict.keys()}")
-            encoder = getattr(encoders, encoder_dict[encoder])
-
+            if encoder == 'small':
+                encoder = NatureCNN
+                encoder.__name__ = 'NatureCNN'
+            elif encoder in encoders_dict.keys():
+                encoder = getattr(encoders, encoders_dict[encoder])
+            else:
+                raise ValueError(f"If a string, should be one of: {encoders_dict.keys()}")
+            
         # for when encoder is a custom PyTorch encoder
         if isinstance(encoder, BaseFeaturesExtractor):
             # TODO (v0.3) pass dummy torch.tensor on "meta" device to validate embedding dim

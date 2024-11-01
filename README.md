@@ -133,7 +133,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
    Configure the learning aspects, including the policy network (e.g. "CnnPolicy"), learning algorithm (e.g. "PPO"), the reward function, and the encoder.
    ```python
-   brain = Brain(policy="CnnPolicy", algorithm="PPO")
+   brain = Brain(policy="CnnPolicy", algorithm="PPO", encoder='small')
    ```
    *(To get a list of all available policies, algorithms, and encoders, run `nett.list_policies()`, `nett.list_algorithms()`, and `nett.list_encoders()` respectively, which requires you to run`import nett` beforehand.)*
 
@@ -141,7 +141,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
    Set up the agent's physical interface with the environment. It's possible to apply gym.Wrappers for data preprocessing.
    ```python
-   body = Body(type="basic", dvs=False, wrappers=None)
+   body = Body(type="basic", wrappers=None)
    ```
    Here, we do not pass any wrappers, letting information from the environment reach the brain "as is". Alternative body types (e.g. `two-eyed`, `rag-doll`) are planned in future updates.
 
@@ -162,7 +162,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
    ```python
    job_sheet = benchmarks.run(output_dir="path/to/run/output/directory/", num_brains=5, train_eps=10, test_eps=5)
    ```
-   The `run` function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the `batch_mode` parameter to `False`.
+   The `run` function is asynchronous, returning the list of jobs that may or may not be complete. If you wish to display the Unity environments running, set the `batch_mode` parameter to `False`. 
 
 5. **Check Status**:
 
