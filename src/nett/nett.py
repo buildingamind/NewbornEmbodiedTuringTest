@@ -67,6 +67,7 @@ class NETT:
             steps_per_episode: int = 1000,
             conditions: Optional[list[str]] = None,
             verbose: int = True,
+            synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
             base_port: int = 5004) -> list[Future]:
@@ -85,6 +86,7 @@ class NETT:
             buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbose (int, optional): Whether or not to print info statements. Defaults to True.
+            synchronous (bool, optional): Whether to keep code running in the foreground until completion. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
             base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
@@ -143,7 +145,7 @@ class NETT:
 
         # launch jobs
         self.logger.info("Launching")
-        job_sheet = self._launch_jobs(jobs, waitlist, verbose)
+        job_sheet = self._launch_jobs(jobs, synchronous, waitlist, verbose)
 
         # return control back to the user after launching jobs, do not block
         return job_sheet
@@ -354,7 +356,7 @@ class NETT:
         }
         return memory_status
     
-    def _launch_jobs(self, jobs: list[Job], waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
+    def _launch_jobs(self, jobs: list[Job], synchronous: bool, waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
         """
         Launch the jobs in the job sheet.
 
@@ -387,6 +389,13 @@ class NETT:
                     job.port = free_port
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
+                    time.sleep(1)
+
+            if synchronous:
+                while job_sheet:
+                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
+                    for doneFuture in done:
+                        job_sheet.pop(doneFuture)
                     time.sleep(1)
             
             # close processes and free up resources on completion
