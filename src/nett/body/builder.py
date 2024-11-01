@@ -2,9 +2,10 @@
 from gym import Env, Wrapper
 from stable_baselines3.common.env_checker import check_env
 
-from nett.body import types
-from nett.body.wrappers.dvs import DVSWrapper
-# from nett.body import ascii_art
+from nett.body import wrapper_dict
+from nett.body import types, wrappers, wrapper_dict 
+
+
 
 class Body:
     """Represents the body of an agent in an environment.
@@ -14,8 +15,7 @@ class Body:
 
     Args:
         type (str, optional): The type of the agent's body. Defaults to "basic".
-        wrappers (list[Wrapper], optional): List of wrappers to be applied to the environment. Defaults to [].
-        dvs (bool, optional): Flag indicating whether the agent uses dynamic vision sensors. Defaults to False.
+        wrappers (list[Wrapper | str], optional): List of wrappers to be applied to the environment. Defaults to [].
 
     Raises:
         ValueError: If the agent type is not valid.
@@ -27,17 +27,14 @@ class Body:
         >>> body = Body(type="basic", wrappers=None, dvs=False)
     """
 
-    def __init__(self, type: str = "basic",
-                    wrappers: list[Wrapper] = [],
-                    dvs: bool = False) -> None:
+    def __init__(self, type: str = "basic", wrappers: list[Wrapper | str] = []) -> None:
         """
         Constructor method
         """
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.type = self._validate_agent_type(type)
-        self.wrappers = self._validate_wrappers(wrappers)
-        self.dvs = self._validate_dvs(dvs)
+        self.wrappers = self._validate_wrappers(wrappers) if wrappers else []
 
     @staticmethod
     def _validate_agent_type(type: str) -> str:
@@ -58,30 +55,12 @@ class Body:
         return type
 
     @staticmethod
-    def _validate_dvs(dvs: bool) -> bool:
-        """
-        Validate the dvs flag.
-
-        Args:
-            dvs (bool): The dvs flag.
-
-        Returns:
-            bool: The validated dvs flag.
-
-        Raises:
-            TypeError: If dvs is not a boolean.
-        """
-        if not isinstance(dvs, bool):
-            raise TypeError("dvs should be a boolean [True, False]")
-        return dvs
-
-    @staticmethod
-    def _validate_wrappers(wrappers: list[Wrapper]) -> list[Wrapper]:
+    def _validate_wrappers(wrappers: list[Wrapper | str]) -> list[Wrapper]:
         """
         Validate the wrappers.
 
         Args:
-            wrappers (list[Wrapper]): The list of wrappers.
+            wrappers (list[Wrapper] | str): The list of wrappers.
 
         Returns:
             list[Wrapper]: The validated list of wrappers.
@@ -90,8 +69,16 @@ class Body:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
         for wrapper in wrappers:
+             # for when wrapper is a string
+            if isinstance(wrapper, str):
+                if wrapper not in wrapper_dict.keys():
+                    raise ValueError(f"If a string, should be one of: {wrapper_dict.keys()}")
+                wrapper = getattr(globals()['wrappers'], wrapper_dict[wrapper])
+
+            # for when wrapper is a custom gym wrapper
             if not issubclass(wrapper, Wrapper):
                 raise ValueError("Wrappers must inherit from gym.Wrapper")
+            
         return wrappers
 
     @staticmethod
@@ -128,17 +115,13 @@ class Body:
         Returns:
             Env: The modified environment.
         """
-        try:
-            # apply DVS wrapper
-            if self.dvs:
-                env = self._wrap(env, DVSWrapper)
-            # apply all custom wrappers
-            if self.wrappers:
+        if self.wrappers:
+            try:
                 for wrapper in self.wrappers:
                     env = self._wrap(env, wrapper)
-        except Exception as e:
-            self.logger.exception(f"Failed to apply wrappers to environment")
-            raise e
+            except Exception as e:
+                self.logger.exception(f"Failed to apply wrappers to environment")
+                raise e
         self.env = env
         return self.env
     

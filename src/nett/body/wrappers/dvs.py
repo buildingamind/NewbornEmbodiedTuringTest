@@ -1,4 +1,6 @@
-#!/usr/bin/env python3
+"""
+Dynamic Vision Sensor (DVS) transformation for gym environments.
+"""
 
 import collections
 import gym
@@ -28,6 +30,7 @@ class DVSWrapper(gym.ObservationWrapper):
         stack (collections.deque): A deque to store the stacked frames.
         shape (tuple): The shape of the observation space.
         observation_space (gym.spaces.Box): The modified observation space.
+        is_color (bool): Whether the observation is in color or grayscale.
 
     Methods:
         create_grayscale(image): Converts an image to grayscale.
@@ -50,8 +53,8 @@ class DVSWrapper(gym.ObservationWrapper):
         self.is_color = is_color
         
         try:
-            _, _, width, height = self.env.observation_space.shape # stack, channels,
-            self.shape=(3, width, height)
+            _, channels, width, height = self.env.observation_space.shape # stack,
+            self.shape=(channels, width, height)
             self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
             logger.info("In dvs wrapper")
         except Exception as e:
@@ -155,5 +158,14 @@ class DVSWrapper(gym.ObservationWrapper):
         return ret_frame
     
     def reset(self, **kwargs):
+        """
+        Resets the environment and returns the initial observation.
+        
+        Args:
+            **kwargs: Additional arguments for the reset method.
+            
+        Returns:
+            numpy.ndarray: The initial observation.
+        """
         initial_obs = self.env.reset(**kwargs)
         return self.observation(initial_obs)
