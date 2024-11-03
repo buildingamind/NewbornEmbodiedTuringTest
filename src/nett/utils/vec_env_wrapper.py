@@ -10,7 +10,6 @@ class SafeVecEnv():
     def __init__(self, callback: callable, n_envs: Optional[int] = None, zoo: Optional[bool] = False):
       if zoo:
         env = callback()
-        env.render_mode = "human"
         env = ss.pettingzoo_env_to_vec_env_v1(env)
         env = ConcatVecEnv([lambda: env])
         self._vecenv = SB3VecEnvWrapper(env)

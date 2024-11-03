@@ -304,7 +304,7 @@ class ZooEnvironment(Env, BaseParallelWrapper):
 
     def initialize(self, mode: str, allow_multi_obs=True, rank: Optional[int] = None, **kwargs) -> None:
         Env.initialize(self, mode, allow_multi_obs, rank, **kwargs)
-        self.env = UnityParallelEnv(self.env, seed=self.seed)
+        self.env = UnityParallelEnv(self.env, uint8_visual=True, seed=self.seed)
         # initialize the grandparent class (BaseParallelWrapper)
         BaseParallelWrapper.__init__(self, self.env)
 
