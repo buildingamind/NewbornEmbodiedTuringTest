@@ -16,8 +16,8 @@ license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
     "mlagents_envs @ git+https://github.com/Zach-Attach/ml-agents.git@gym-plus#subdirectory=ml-agents-envs",
-    "stable-baselines3[extra_no_roms]",
-    "sb3-contrib",
+    "stable-baselines3[extra_no_roms]>=2.0.0",
+    "sb3-contrib>=2.0.0",
     "torchvision",
     "timm",
     "nvidia-ml-py",
