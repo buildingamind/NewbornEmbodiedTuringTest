@@ -35,6 +35,8 @@ class ObservationEncoder(nn.Module):
     Args:
         obs_shape (Tuple): The data shape of observations.
         latent_dim (int): The dimension of encoding vectors.
+        encoder_model (str): The network architecture of the encoder from ['mnih', 'espeholt'].
+        weight_init (str): The weight initialization method from ['default', 'orthogonal', 'kaiming he'].
 
     Returns:
         Encoder instance.
