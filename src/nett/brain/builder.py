@@ -24,6 +24,7 @@ from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoder_dict
 from nett.brain import encoders
 from nett.brain.utils.callbacks import initialize_callbacks
+from nett.utils import Job
 from gymnasium.wrappers import RecordVideo
 
 from nett.brain.rewards import ICM  #, RND, Disagreement
@@ -101,7 +102,7 @@ class Brain:
         self.seed = seed
         self.custom_policy_arch = custom_policy_arch
 
-    def train(self, envs, job: "Job"):
+    def train(self, envs, job: Job):
         """
         Train the brain.
 
@@ -199,7 +200,7 @@ class Brain:
                         plots_dir=job.paths["plots"],
                         name="reward_graph")   
 
-    def test(self, envs, job: "Job"):
+    def test(self, envs, job: Job):
         """
         Test the brain.
 

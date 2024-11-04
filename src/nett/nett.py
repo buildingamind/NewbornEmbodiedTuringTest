@@ -18,25 +18,22 @@ from copy import deepcopy
 from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 from PIL import Image, ImageChops
+from logging import Logger
 
 from matplotlib import pyplot as plt
 import numpy as np
 import pandas as pd
-from mlagents_envs.exception import UnityWorkerInUseException
 from sb3_contrib import RecurrentPPO
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 from stable_baselines3.common.env_checker import check_env
 import yaml
-
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.monitor import Monitor
+from sklearn.decomposition import PCA
 
 from nett.utils import Job, SafeVecEnv
 
 from nett.brain.builder import Brain
 from nett.body.builder import Body
-from nett.environment.builder import Environment
+from nett.environment.builder import Env, Environment
 
 import gymnasium as gym
 
@@ -56,9 +53,9 @@ class NETT:
     """
 
     def __init__(self, 
-                 brain: "nett.Brain" = None, 
-                 body: "nett.Body" = None, 
-                 environment: "nett.Env" = None, 
+                 brain: Brain = None, 
+                 body: Body = None, 
+                 environment: Env = None, 
                  config: Path | str | list[Path | str] = None, 
                  fast: bool = False) -> None:
         """
@@ -67,9 +64,6 @@ class NETT:
 
         # for NVIDIA memory management
         nvmlInit()
-
-        if fast and config is not None:
-            fastrun(config)
 
         # initialize logger
         from nett import logger
@@ -261,7 +255,6 @@ class NETT:
                 states = (np.array(states)-np.min(states))/(np.max(states)-np.min(states))
             
             # perform PCA on observations
-            from sklearn.decomposition import PCA
             pca1 = PCA(n_components=1)
             pca2 = PCA(n_components=2)
             pc_obs = pca2.fit_transform(obs)
@@ -491,7 +484,7 @@ class NETT:
         print(f"Analysis complete. See results at {output_dir}")
 
     def _execute_job(self, job: Job) -> Future:
-        brain: "nett.Brain" = deepcopy(self.brain)
+        brain: Brain = deepcopy(self.brain)
         brain.seed = job.brain_id
         
         if job.estimate_memory: # estimate memory uses train env for estimation
@@ -657,7 +650,7 @@ class NETT:
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
 
-    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, logger: Logger) -> tuple[list[Job], list[Job]]:
         # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
@@ -750,7 +743,7 @@ class NETT:
                 self.logger.exception(f"{mode} env failed: {str(ex)}")  
             raise ex
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any], rank: Optional[int] = None) -> "nett.Body":
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any], rank: Optional[int] = None) -> Body:
         if rank is not None:
             time.sleep(rank)
         copy_environment = deepcopy(self.environment)

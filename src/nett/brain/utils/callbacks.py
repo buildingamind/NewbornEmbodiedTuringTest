@@ -13,13 +13,14 @@ from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback,
 from stable_baselines3.common.logger import HParam
 
 # from nett.utils.train import compute_train_performance
+from nett.utils import Job
 
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
 from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
 
-def initialize_callbacks(job: "Job") -> CallbackList:
+def initialize_callbacks(job: Job) -> CallbackList:
     """
     Initialize the callbacks for training.
 
