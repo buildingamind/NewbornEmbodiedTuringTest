@@ -106,7 +106,8 @@ class NETT:
             synchronous: bool = False,
             save_checkpoints: bool = False,
             checkpoint_freq: int = 30_000,
-            record: Optional[list[str]] = [],
+            record_training: Optional[list[str]] = [],
+            record_testing: Optional[list[str]] = [],
             recording_eps: int = 10,
             base_port: int = 5004) -> list[Future]:
         """
@@ -127,7 +128,8 @@ class NETT:
             synchronous (bool, optional): Whether to wait for all jobs to end rather than return a Promise. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
-            record (list[str], optional): The list of what record options to use. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
+            record_training (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
+            record_testing (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
             recording_eps (int, optional): Number of episodes to record for. Defaults to 10.
             base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
 
