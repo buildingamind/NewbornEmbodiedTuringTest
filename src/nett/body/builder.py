@@ -160,13 +160,6 @@ class Body:
         except Exception as e:
             self.logger.exception(f"Failed to apply wrappers to environment")
             raise e
-    
-    def __enter__(self):
-        return self.env
-
-    def __exit__(self):
-        self.env.close()
-    
 
     def __repr__(self) -> str:
         """
