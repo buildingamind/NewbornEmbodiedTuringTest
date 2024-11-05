@@ -301,8 +301,8 @@ class NETT:
 
                     # Check if there are at least two images to blend
                     if len(images) < 2:
-                        print("Not enough images to blend.")
-                        sys.exit(1)
+                        print(f"Not enough images to blend for {brain_dir}. Skipping.")
+                        continue
 
                     # Open the first image
                     result_image = Image.open(images[0]).convert('RGBA')
