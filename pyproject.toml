@@ -26,7 +26,8 @@ dependencies = [
     "scikit-learn==1.5.0",
     "vit-pytorch",
     "seaborn",
-    "rllte-core"
+    "rllte-core",
+    "supersuit",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
