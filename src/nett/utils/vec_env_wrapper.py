@@ -22,5 +22,4 @@ class SafeVecEnv():
       return self._vecenv
 
     def __exit__(self, *args):
-      self.logger.info("Closing Environments...")
       return self._vecenv.close()
