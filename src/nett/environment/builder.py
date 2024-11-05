@@ -164,7 +164,7 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
         """
         return self.env.reset(**kwargs)
 
-    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict] | tuple[dict, dict, dict, dict, dict]:
         """
         Takes a step in the environment with the given action.
 
@@ -272,7 +272,7 @@ class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     def __enter__(self) -> Env:
         return self
 
-    def __exit__(self):
+    def __exit__(self, exc_type, exc_value, traceback):
         self.env.close()
 
     def __repr__(self) -> str:
@@ -295,6 +295,11 @@ class GymEnvironment(Env, Wrapper):
         self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=allow_multi_obs, action_space_seed=self.seed)
         # initialize the grandparent class (gym.Wrapper)
         Wrapper.__init__(self, self.env)
+
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+        next_state, reward, terminated, truncated, info = super().step(action)
+        return next_state, float(reward), terminated, truncated, info
+
 
 class ZooEnvironment(Env, BaseParallelWrapper):
     def __init__(self,
