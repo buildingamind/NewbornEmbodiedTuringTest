@@ -36,6 +36,7 @@ from nett.body.builder import Body
 from nett.environment.builder import Env, Environment
 
 import gymnasium as gym
+from pettingzoo.utils.wrappers import BaseParallelWrapper
 
 class NETT:
     """
@@ -500,7 +501,7 @@ class NETT:
         # loop over modes to validate then run the environment
         for mode in modes:
             # validation run
-            if type(self.environment) == gym.Env:
+            if isinstance(self.environment, gym.Wrapper):
                 self._run_env(
                     mode=mode, 
                     kwargs = job.validation_kwargs(), 
@@ -512,7 +513,7 @@ class NETT:
                     kwargs = job.env_kwargs(mode), 
                     callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
                 )
-            else:
+            elif isinstance(self.environment, BaseParallelWrapper):
                 # actual run
                 self._run_env(
                     mode=mode, 
@@ -520,6 +521,8 @@ class NETT:
                     callback = lambda envs: getattr(brain, mode)(envs, job), # grabs brain.train or brain.test based on mode
                     zoo=True
                 )
+            else:
+                raise TypeError("Environment must be a gym.Wrapper or a BaseParallelWrapper")
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
