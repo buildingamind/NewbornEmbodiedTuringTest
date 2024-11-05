@@ -180,7 +180,8 @@ class NETT:
             reward=self.brain.reward,
             batch_mode=batch_mode, 
             iterations=iterations,
-            record=record,
+            record_training=record_training,
+            record_testing=record_testing,
             recording_eps=recording_eps
             )
 
@@ -508,14 +509,14 @@ class NETT:
                 # actual run
                 self._run_env(
                     mode=mode, 
-                    kwargs = job.env_kwargs(), 
+                    kwargs = job.env_kwargs(mode), 
                     callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
                 )
             else:
                 # actual run
                 self._run_env(
                     mode=mode, 
-                    kwargs = job.env_kwargs(), 
+                    kwargs = job.env_kwargs(mode), 
                     callback = lambda envs: getattr(brain, mode)(envs, job), # grabs brain.train or brain.test based on mode
                     zoo=True
                 )

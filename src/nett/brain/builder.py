@@ -227,7 +227,7 @@ class Brain:
             iterations: int = job.iterations["test"]
             self.logger.info(f"Total iterations: {iterations}")
             t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index, leave=True)
-            record_states: bool = "state" in job.record
+            record_states: bool = "state" in job.record["test"]
             if record_states:
                 # change print option for recording obs
                 np.set_printoptions(threshold=np.inf)

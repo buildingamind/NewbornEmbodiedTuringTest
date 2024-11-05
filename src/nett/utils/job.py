@@ -17,7 +17,7 @@ class Job:
   _RECORD: Final = ("agent", "chamber", "state")
 
   @classmethod
-  def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int], record: list[str], recording_eps: int) -> None:
+  def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int], record_training: list[str], record_testing: list[str], recording_eps: int) -> None:
     """Initialize the class
 
     Args:
@@ -29,7 +29,8 @@ class Job:
         reward (str): reward type
         batch_mode (bool): whether to run in batch mode
         iterations (dict[str, int]): number of iterations for the job with labels "train" and/or "test" to denote the number of iterations for training and testing
-        record (list[str]): list of what to record
+        record_training (list[str]): list of what to record in training
+        record_testing (list[str]): list of what to record in testing
         recording_eps (int): number of episodes to record
     """
     cls.mode = cls._validate_mode(mode)
@@ -40,7 +41,10 @@ class Job:
     cls.save_checkpoints: bool = save_checkpoints
     cls.batch_mode: bool = batch_mode
     cls.iterations: dict[str, int] = iterations
-    cls.record: list[str] = cls._validate_record(record)
+    cls.record: dict[str, list[str]] = {
+      "train": cls._validate_record(record_training),
+      "test": cls._validate_record(record_testing)
+    }
     cls.recording_eps: int = recording_eps
 
   def __init__(self, brain_id: int, condition: str, device: int, index: int, estimate_memory: bool = False) -> None:
@@ -78,9 +82,7 @@ class Job:
 
     return paths
 
-  def env_kwargs(self) -> dict[str, Any]:
-    """Get the environment kwargs
-    """
+  def _base_args(self) -> dict[str, Any]:
     return {
       "rewarded": bool(self.reward == "supervised"),
       "rec_path": str(self.paths["env_recs"]),
@@ -91,18 +93,24 @@ class Job:
       "episode_steps": self.steps_per_episode,
       "batch_mode": self.batch_mode,
       "recording-eps": str(self.recording_eps), #TODO: This should be changed in the Unity code to expect an int
-      "record-chamber": "chamber" in self.record,
-      "record-agent": "agent" in self.record
+    }
+
+  def env_kwargs(self, mode) -> dict[str, Any]:
+    """Get the environment kwargs
+    """
+    return self._base_args() | {
+      "record-chamber": "chamber" in self.record[mode],
+      "record-agent": "agent" in self.record[mode]
     }
   
   def validation_kwargs(self) -> dict[str, Any]:
     """Get the environment kwargs for validation
     """
-    kwargs = self.env_kwargs()
-    kwargs["validation-mode"] = True
-    kwargs["record-chamber"] = False
-    kwargs["record-agent"] = False
-    return kwargs
+    return self._base_args() | {
+      "record-chamber": False,
+      "record-agent": False,
+      "validation-mode": True
+    }
 
   @staticmethod
   def _validate_mode(mode: str) -> str:
