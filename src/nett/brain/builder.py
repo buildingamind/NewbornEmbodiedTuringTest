@@ -78,7 +78,8 @@ class Brain:
         ent_coef: float = 0,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_policy_arch: Optional[list[int]] = None
+        custom_policy_arch: Optional[list[int]] = None,
+        encoder_args: dict[str, Any] = {}
     ) -> None:
         """Constructor method
         """
@@ -101,6 +102,7 @@ class Brain:
         self.ent_coef = ent_coef
         self.seed = seed
         self.custom_policy_arch = custom_policy_arch
+        self.encoder_args = encoder_args
 
     def train(self, envs, job: Job):
         """
@@ -112,11 +114,13 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
+        
         # build model
         policy_kwargs = {
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
                 "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
+                **self.encoder_args
             }
         } if self.encoder is not None else {}
         
