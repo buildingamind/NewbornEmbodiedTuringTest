@@ -546,9 +546,6 @@ class NETT:
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
 
-            # create folder for brain 0
-            if not job.paths["base"].exists():
-                os.makedirs(job.paths["base"], parents=True)
 
             # initializer = mute if not verbose else None
             # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
