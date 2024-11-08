@@ -22,6 +22,9 @@ from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoders_dict
 from nett.brain import encoders
 from .utils import initialize_callbacks
+from nett.utils import Job
+from gymnasium.wrappers import RecordVideo
+
 from nett.brain.rewards import ICM  #, RND, Disagreement
 from rllte.xplore.reward import RND, Disagreement #ICM, E3B
 
@@ -100,7 +103,7 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
 
-    def train(self, envs, job: "Job"):
+    def train(self, envs, job: Job):
         """
         Train the brain.
 
@@ -125,7 +128,7 @@ class Brain:
             
         self.logger.info(f'Training {self.encoder.__name__} with {self.algorithm.__name__}')
         try:
-            model = self.algorithm(
+                model = self.algorithm(
                 self.policy,
                 envs,
                 batch_size=self.batch_size,
@@ -133,6 +136,7 @@ class Brain:
                 verbose=1,
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
+                verbose=0, #TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{job.device}",
                 seed=self.seed # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
@@ -168,10 +172,10 @@ class Brain:
         # train
         self.logger.info(f"Total number of training steps: {job.iterations['train']}")
         try:
-        model.learn(
-            total_timesteps=job.iterations["train"],
-            tb_log_name=self.algorithm.__name__,
-            progress_bar=False,
+            model.learn(
+                total_timesteps=job.iterations["train"],
+                tb_log_name=self.algorithm.__name__,
+                progress_bar=False,
                     callback=callback_list)
         except Exception as e:
             if "CUDA out of memory" in str(e):
@@ -203,15 +207,15 @@ class Brain:
             job (Job): The job object containing the environment, paths, and training parameters.
         """
         try:
-        # load previously trained model from save_dir, if it exists
-        model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
-            job.paths['model'].joinpath('latest_model.zip'), 
-            device=f"cuda:{job.device}")
+            # load previously trained model from save_dir, if it exists
+            model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
+                job.paths['model'].joinpath('latest_model.zip'), 
+                device=f"cuda:{job.device}")
 
-        self.logger.info(f'Testing with {self.algorithm.__name__}')
+            self.logger.info(f'Testing with {self.algorithm.__name__}')
 
             num_envs = envs.num_envs
-        ## record - test video
+            ## record - test video
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
@@ -220,6 +224,14 @@ class Brain:
             iterations: int = job.iterations["test"]
             self.logger.info(f"Total iterations: {iterations}")
             t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index, leave=True)
+            # record_states: bool = "state" in job.record["test"]
+            # if record_states:
+            #     # change print option for recording obs
+            #     np.set_printoptions(threshold=np.inf)
+            #     # create folder for recording states
+            #     states_path: Path = Path.joinpath(job.paths['env_recs'], 'states')
+            #     states_path.mkdir(parents=True, exist_ok=True)
+
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
@@ -236,6 +248,13 @@ class Brain:
                             state=states,
                             episode_start=episode_starts,
                             deterministic=True)
+                        # if (record_states and i < job.recording_eps):
+                        #     with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
+                        #         f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
+                        #     with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
+                        #         f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
+                        #     with open(Path.joinpath(states_path, 'states.txt'), 'a') as f:
+                        #         f.write(f"{' '.join(map(str, np.array(states).flatten()))}\n")
                         obs, _, dones, _ = envs.step(action) # obs, rewards, done, info
                         t.update(1)
                         episode_starts = dones
@@ -250,6 +269,11 @@ class Brain:
                 t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
+                    # if (record_states and i < job.recording_eps*job.steps_per_episode):
+                    #     with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
+                    #         f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
+                    #     with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
+                    #         f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                     obs, _, dones, _ = envs.step(action) # obs, reward, done, info
                     t.update(1)
                     if dones[0]:
@@ -449,4 +473,3 @@ class Brain:
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
         return f"{self.__class__.__name__}({attrs!r})"
-

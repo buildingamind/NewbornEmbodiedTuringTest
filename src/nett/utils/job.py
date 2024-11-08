@@ -14,7 +14,7 @@ class Job:
   """
 
   _MODES: Final = ("train", "test", "full")
-  _RECORD: Final = ("agent", "chamber")
+  _RECORD: Final = ("agent", "chamber", "state")
 
   @classmethod
   def initialize(cls, mode: str, output_dir: Path | str, steps_per_episode: int, save_checkpoints: bool, checkpoint_freq: int,  reward: str, batch_mode: bool, iterations: dict[str, int], record_training: list[str], record_testing: list[str], recording_eps: int) -> None:

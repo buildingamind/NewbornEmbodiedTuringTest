@@ -92,7 +92,7 @@ read_data <- function(filename)
   
   # Add columns for original filename and agent ID number
   data$filename <- basename(filename)
-  data$agent <- gsub("\\D", "", data$filename) # Only keep the number
+  data$agent <- regmatches(data$filename, regexpr("\\d+", data$filename)) # Only keep the first number
 
   return(data)
 }

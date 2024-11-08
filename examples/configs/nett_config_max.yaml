@@ -1,0 +1,45 @@
+
+Brain:
+  policy: "CnnPolicy"
+  algorithm: "PPO"
+  encoder: ""
+  embedding_dim: 512
+  reward: "supervised"
+  batch_size: 512
+  buffer_size: 2048
+  learning_rate: 0.0003
+  ent_coef: 0
+  train_encoder: True
+  seed: 12
+  custom_policy_arch:
+    - 32 # each member defines the number of neurons in that layer
+Body:
+  type: "basic"
+Environment:
+  executable_path: "path/to/executable.x86_64"
+  display: 0
+Run:
+  output_dir: "path/to/output/dir/of/run/"
+  num_brains: 1
+  mode: "full"
+  train_eps: 1000
+  test_eps: 20
+  batch_mode: True
+  devices:
+    - 0
+  job_memory: "auto"
+  buffer: 1.2
+  steps_per_episode: 1000
+  conditions:
+    - object1
+    - object2
+  verbose: True
+  synchronous: False
+  save_checkpoints: False
+  checkpoint_freq: 30_000
+  record:
+    - agent
+    - chamber
+    - state
+  recording_eps: 10
+  base_port: 5004
