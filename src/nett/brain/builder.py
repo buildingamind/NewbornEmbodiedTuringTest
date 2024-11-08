@@ -22,7 +22,7 @@ from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoders_dict
 from nett.brain import encoders
-from nett.utils.callbacks import initialize_callbacks
+from .utils import initialize_callbacks
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
