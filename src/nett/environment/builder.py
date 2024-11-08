@@ -12,6 +12,8 @@ import yaml
 from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
+from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
+from pettingzoo.utils.wrappers import BaseParallelWrapper
 
 # checks to see if ml-agents tmp files have the proper permissions
 try :
@@ -21,7 +23,7 @@ except PermissionError as _:
 
 from .utils import Logger, random_port
 
-class Environment(Wrapper):
+class Env():  #TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     """
     Represents the environment where the agent lives.
 
@@ -99,7 +101,6 @@ class Environment(Wrapper):
         if kwargs["batch_mode"]:
             args.append("-batchmode")
         
-        
         # TODO: Figure out a way to run on multiple GPUs
         if ("device" in kwargs):
             args.extend(["-force-device-index", str(kwargs["device"])])
@@ -126,10 +127,6 @@ class Environment(Wrapper):
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-        self.env = UnityToGymWrapper(self.env, allow_multiple_obs=True, uint8_visual=True, action_space_seed=self.seed)
-
-        # initialize the parent class (gym.Wrapper)
-        super().__init__(self.env)
 
     def log(self, msg: str) -> None:
         """
@@ -169,7 +166,7 @@ class Environment(Wrapper):
         """
         return self.env.reset(**kwargs)
 
-    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, bool, dict]:
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, bool, dict] | tuple[dict, dict, dict, dict, dict]:
         """
         Takes a step in the environment with the given action.
 
@@ -274,7 +271,7 @@ class Environment(Wrapper):
 
         return executable_path
 
-    def __enter__(self):
+    def __enter__(self) -> Env:
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -287,3 +284,41 @@ class Environment(Wrapper):
     def __str__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
+
+
+class GymEnvironment(Env, Wrapper):
+    def __init__(self,
+                 executable_path: str,
+                 display: int = 0) -> None:
+        Env.__init__(self, executable_path, display)
+
+    def initialize(self, mode: str, rank: Optional[int] = None, **kwargs) -> None:
+        Env.initialize(self, mode, rank, **kwargs)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True, action_space_seed=self.seed)
+        # initialize the grandparent class (gym.Wrapper)
+        Wrapper.__init__(self, self.env)
+
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+        next_state, reward, terminated, truncated, info = super().step(action)
+        return next_state, float(reward), terminated, truncated, info
+
+
+class ZooEnvironment(Env, BaseParallelWrapper):
+    def __init__(self,
+                 executable_path: str,
+                 display: int = 0) -> None:
+        Env.__init__(self, executable_path, display)
+
+    def initialize(self, mode: str, rank: Optional[int] = None, **kwargs) -> None:
+        Env.initialize(self, mode, rank, **kwargs)
+        self.env = UnityParallelEnv(self.env, uint8_visual=True, seed=self.seed)
+        # initialize the grandparent class (BaseParallelWrapper)
+        BaseParallelWrapper.__init__(self, self.env)
+
+def Environment(executable_path: str,
+                display: int = 0,
+                multiagent: bool = False) -> Env:#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
+    if multiagent:
+        return ZooEnvironment(executable_path, display)
+    else:
+        return GymEnvironment(executable_path, display)
