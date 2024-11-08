@@ -122,7 +122,9 @@ class Brain:
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
                 policy_kwargs=policy_kwargs,
-                device=f"cuda:{job.device}")
+                device=f"cuda:{job.device}",
+                seed=self.seed # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                )
             
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")

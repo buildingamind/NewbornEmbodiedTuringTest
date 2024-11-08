@@ -107,8 +107,10 @@ class Environment(Wrapper):
 
         if rank is not None:
             brain = f"{kwargs['brain_id']}-{rank}"
+            self.seed = rank
         else:
             brain = f"{kwargs['brain_id']}"
+            self.seed = kwargs['brain_id']
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=str(kwargs['log_path']))
@@ -117,14 +119,14 @@ class Environment(Wrapper):
         complete = False
         while not complete:
             try:
-                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port())
+                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port(), seed=self.seed)
                 complete = True
             except UnityWorkerInUseException as e:
                 continue
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, action_space_seed=self.seed)
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
