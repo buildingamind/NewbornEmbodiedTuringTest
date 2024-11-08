@@ -75,7 +75,7 @@ class Body:
                 wrappers[i] = getattr(globals()['wrappers'], wrapper_dict[wrapper])
 
             # for when wrapper is a custom gym wrapper
-            if not issubclass(wrapper, Wrapper):
+            if not issubclass(wrappers[i], Wrapper):
                 raise ValueError("Wrappers must inherit from gym.Wrapper")
         return wrappers
 

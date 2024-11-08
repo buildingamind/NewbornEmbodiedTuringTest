@@ -106,9 +106,11 @@ def get_wrapper_dict() -> dict[str, str]:
             # parse it
             module = ast.parse(source)
             # get the first class definition
-            wrapper_class = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)][0]
-            # add to the dictionary
-            wrapper_dict[module_name] = wrapper_class.name
+            wrapper_classes = [node for node in ast.walk(module) if isinstance(node, ast.ClassDef)]
+            # check if file contains a class definition
+            if wrapper_classes:
+                # add to the dictionary
+                wrapper_dict[module_name] = wrapper_classes[0].name
     return wrapper_dict
 
 wrapper_dict = get_wrapper_dict()
