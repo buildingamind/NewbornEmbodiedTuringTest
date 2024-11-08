@@ -1,6 +1,5 @@
 """Module for the Brain class."""
 
-import importlib
 import os
 import inspect
 import torch
@@ -44,6 +43,7 @@ class Brain:
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         seed (int, optional): The random seed used for training. Defaults to 12.
         custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
+        custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
 
     Example:
 
@@ -62,7 +62,7 @@ class Brain:
         buffer_size: int = 2048,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_encoder_args: dict[str, str]= {},
+        custom_encoder_args: dict[str, Any]= {},
         custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
     ) -> None:
         """Constructor method
@@ -112,11 +112,9 @@ class Brain:
             "features_extractor_class": self.encoder,
             "features_extractor_kwargs": {
                 "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
+                **self.custom_encoder_args
             }
         } if self.encoder is not None else {}
-
-        if len(self.custom_encoder_args) > 0:
-            policy_kwargs["features_extractor_kwargs"].update(self.custom_encoder_args)
         
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
@@ -152,11 +150,18 @@ class Brain:
 
         # train
         self.logger.info(f"Total number of training steps: {job.iterations['train']}")
+        try:
         model.learn(
             total_timesteps=job.iterations["train"],
             tb_log_name=self.algorithm.__name__,
             progress_bar=False,
-            callback=[callback_list])
+                    callback=callback_list)
+        except Exception as e:
+            if "CUDA out of memory" in str(e):
+                self.logger.error("CUDA out of memory. Try reducing batch size.")
+            else:
+                self.logger.exception(f"Failed to train model with error: {str(e)}")
+                raise e
         self.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
@@ -165,7 +170,6 @@ class Brain:
 
         # save
         ## create save directory
-        job.paths["model"].mkdir(parents=True, exist_ok=True)
         self.save_encoder_policy_network(model.policy, job.paths["model"])
         print("Saved feature extractor")
         
@@ -187,6 +191,7 @@ class Brain:
             env (gym.Env): The environment used for testing.
             job (Job): The job object containing the environment, paths, and training parameters.
         """
+        try:
         # load previously trained model from save_dir, if it exists
         model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
             job.paths['model'].joinpath('latest_model.zip'), 
@@ -207,7 +212,6 @@ class Brain:
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
         ## record - test video
-        try:
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
@@ -358,11 +362,8 @@ class Brain:
                 raise ValueError(f"If a string, should be one of: {algorithms}")
             # check for the passed policy in stable_baselines3 as well as sb3-contrib
             # at this point in the code, it is guaranteed to be in either of the two
-            try:
-                algorithm = getattr(stable_baselines3, algorithm)
                 
-            except:
-                algorithm = getattr(sb3_contrib, algorithm)
+            algorithm = getattr(stable_baselines3, algorithm, None) or getattr(sb3_contrib, algorithm)
 
         # for when policy algorithm is custom
         elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):

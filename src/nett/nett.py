@@ -6,7 +6,6 @@ This module contains the NETT class, which is the main class for training, testi
 
 """
 import os
-import mlagents_envs
 import time
 import subprocess
 import shutil
@@ -15,7 +14,7 @@ import pandas as pd
 from pathlib import Path
 from typing import Any, Callable, Optional
 from copy import deepcopy
-from itertools import product, cycle
+from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
 from mlagents_envs.exception import UnityWorkerInUseException
 from sb3_contrib import RecurrentPPO
@@ -399,12 +398,13 @@ class NETT:
                     time.sleep(1)
             
             # close processes and free up resources on completion
+            self.logger.info("Shutting down executor")
             executor.shutdown()
 
             return job_sheet
-
         except Exception as e:
-            print(str(e))
+            self.logger.exception(f"Error in launching jobs: {e}")
+            raise e
 
     @staticmethod
     def _get_task_set(num_brains: int, all_conditions: list[str], conditions: Optional[list[str]]) -> set[tuple[str,int]]: #TODO: Create a better name for this method
@@ -509,11 +509,11 @@ class NETT:
                 self.logger.warning(f"Worker {port} is in use. Trying next port...")
                 port += 1
             except Exception as e:
-                self.logger.exception(f"{mode} env validation failed: {str(e)}" if kwargs["validation-mode"] \
-                                      else f"{mode} env failed: {str(e)}")  
+                if kwargs["validation-mode"]:
+                    self.logger.exception(f"{mode} env validation failed: {str(e)}")
+                else:
+                    self.logger.exception(f"{mode} env failed: {str(e)}")  
                 raise e
-        
-
 
     def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
