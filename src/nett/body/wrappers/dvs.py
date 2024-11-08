@@ -20,6 +20,7 @@ class DVSWrapper(gym.ObservationWrapper):
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
         kernel_size (tuple): The size of the Gaussian kernel used for blurring.
         sigma (float): The standard deviation of the Gaussian kernel.
+        is_color (bool): Whether the observation is in color or grayscale.
 
     Attributes:
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
