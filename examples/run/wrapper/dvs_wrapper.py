@@ -1,6 +1,6 @@
 # pylint: skip-file
 import collections
-import gym
+import gymnasium as gym
 from scipy.ndimage import gaussian_filter
 import numpy as np
 import matplotlib.pyplot as plt

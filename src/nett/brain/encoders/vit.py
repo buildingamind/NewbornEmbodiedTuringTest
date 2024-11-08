@@ -1,5 +1,5 @@
 """ViT (Vision Transformer) encoder"""
-import gym
+import gymnasium as gym
 import torch
 import timm
 

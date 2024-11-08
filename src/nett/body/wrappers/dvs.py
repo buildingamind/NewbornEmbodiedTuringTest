@@ -3,7 +3,7 @@ Dynamic Vision Sensor (DVS) transformation for gym environments.
 """
 
 import collections
-import gym
+import gymnasium as gym
 import numpy as np
 import cv2
 import logging
@@ -168,5 +168,5 @@ class DVSWrapper(gym.ObservationWrapper):
         Returns:
             numpy.ndarray: The initial observation.
         """
-        initial_obs = self.env.reset(**kwargs)
-        return self.observation(initial_obs)
+        initial_obs, initial_info  = self.env.reset(**kwargs)
+        return self.observation(initial_obs), initial_info 

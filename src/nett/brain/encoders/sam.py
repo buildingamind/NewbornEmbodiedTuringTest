@@ -3,7 +3,7 @@ This module contains the implementation of the SegmentAnything class, which is a
 for image observations in a gym environment. It uses a pre-trained model from the timm library to extract
 features from the input images.
 """
-import gym
+import gymnasium as gym
 
 import torch as th
 import timm
