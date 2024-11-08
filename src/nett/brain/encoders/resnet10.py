@@ -1,13 +1,10 @@
 """
 Resnet10CNN feature extractor for stable-baselines3
 """
-import pdb
 import gym
-
 
 import torch as th
 import torch.nn as nn
-import torchvision
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
