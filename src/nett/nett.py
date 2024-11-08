@@ -16,15 +16,12 @@ from typing import Any, Callable, Optional
 from copy import deepcopy
 from itertools import product
 from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
-from mlagents_envs.exception import UnityWorkerInUseException
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.env_checker import check_env
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
 from nett.utils.io import mute
 from nett.utils.job import Job
-from nett.utils.environment import port_in_use
-
 
 class NETT:
     """
@@ -68,8 +65,7 @@ class NETT:
             verbose: int = True,
             synchronous: bool = False,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000,
-            base_port: int = 5004) -> list[Future]:
+            checkpoint_freq: int = 30_000) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -88,7 +84,6 @@ class NETT:
             synchronous (bool, optional): Whether to keep code running in the foreground until completion. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
-            base_port (int, optional): The base port number to use for communication with the Unity environment. Defaults to 5004.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -129,7 +124,7 @@ class NETT:
         # estimate memory for a single job
         if job_memory == "auto":
             self.logger.info("Estimating Job Memory...")
-            job_memory = int(buffer * self._estimate_job_memory(devices, base_port))
+            job_memory = int(buffer * self._estimate_job_memory(devices))
             self.logger.info(f"Estimated Job Memory: {job_memory / (1024**3)} GiB")
         else:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
@@ -139,7 +134,7 @@ class NETT:
         task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
         
         # schedule jobs
-        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, base_port, self.logger)
+        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, self.logger)
         self.logger.info("Scheduled jobs")
 
         # launch jobs
@@ -272,7 +267,6 @@ class NETT:
             # validation run
             self._run_env(
                 mode=mode, 
-                port=job.port, 
                 kwargs = job.validation_kwargs(), 
                 callback = check_env
             )   
@@ -280,23 +274,18 @@ class NETT:
             # actual run
             self._run_env(
                 mode=mode, 
-                port=job.port, 
                 kwargs = job.env_kwargs(), 
                 callback = lambda env: getattr(brain, mode)(env, job) # grabs brain.train or brain.test based on mode
             )
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
-    def _estimate_job_memory(self, devices: list[int], base_port: int) -> int:
+    def _estimate_job_memory(self, devices: list[int]) -> int:
         self.logger.info("Estimating memory for a single job")
         try:
             # find the GPU with the most free memory
             free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
             most_free_gpu = free_memory.index(max(free_memory))
-
-            # find unused port
-            while port_in_use(base_port):
-                base_port += 1
 
             # create a test job to estimate memory
             job = Job(
@@ -304,13 +293,9 @@ class NETT:
                 condition=self.environment.imprinting_conditions[0], 
                 device=most_free_gpu, 
                 index=0,
-                port=base_port,
                 estimate_memory=True)
 
             job.save_checkpoints = False
-
-            # change initial port for next job
-            base_port += 1
 
             # calculate current memory usage for baseline for comparison
             pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
@@ -382,10 +367,8 @@ class NETT:
                 for done_future in done:
                     done_job: Job = job_sheet.pop(done_future)
                     free_device: int = done_job.device
-                    free_port: int = done_job.port
                     job = waitlist.pop()
                     job.device = free_device
-                    job.port = free_port
                     job_future = executor.submit(self._execute_job, job)
                     job_sheet[job_future] = job
                     time.sleep(1)
@@ -425,7 +408,7 @@ class NETT:
         # create set of all brain-environment combinations
         return set(product(condition_set, set(range(1, num_brains + 1))))
 
-    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, port: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
+    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
         # create jobs
         jobs: list[Job] = []
         waitlist: list[Job] = []
@@ -444,7 +427,7 @@ class NETT:
                     raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
                 logger.info("No free devices. Jobs will be queued until a device is available.")
                 waitlist = [
-                    Job(brain_id, condition, device=-1, index=len(jobs)+i, port=-1) 
+                    Job(brain_id, condition, device=-1, index=len(jobs)+i) 
                     for i, (condition, brain_id) in enumerate(task_set)
                 ]
                 logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
@@ -460,20 +443,12 @@ class NETT:
                 # create job
                 condition, brain_id = task_set.pop()
 
-                # find unused port
-                while port_in_use(port):
-                    port += 1
-
                 job = Job(
                     brain_id=brain_id, 
                     condition=condition, 
                     device=free_devices[-1], 
-                    index=len(jobs),
-                    port=port)
+                    index=len(jobs))
                 jobs.append(job)
-
-                # change initial port for next job
-                port += 1
 
                 # allocate memory
                 free_device_memory[free_devices[-1]] -= job_memory
@@ -494,20 +469,16 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, port: int, kwargs: dict[str,Any], callback: Callable[...,None]):
+    def _run_env(self, mode: str, kwargs: dict[str,Any], callback: Callable[...,None]):
         # run environment
         # can be train or test mode and can be for validation or actual run
         while True:
             try:
                 # wrap environment
-                with self._wrap_env(mode, port, kwargs) as environment:
+                with self._wrap_env(mode, kwargs) as environment:
                     # run the callback. This can be check_env or brain.train or brain.test
                     callback(environment)
                 break
-            # when running multiple runs in parallel, the port may be in use, so try the next port
-            except UnityWorkerInUseException as _:
-                self.logger.warning(f"Worker {port} is in use. Trying next port...")
-                port += 1
             except Exception as e:
                 if kwargs["validation-mode"]:
                     self.logger.exception(f"{mode} env validation failed: {str(e)}")
@@ -515,9 +486,9 @@ class NETT:
                     self.logger.exception(f"{mode} env failed: {str(e)}")  
                 raise e
 
-    def _wrap_env(self, mode: str, port: int, kwargs: dict[str,Any]) -> "nett.Body":
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, port, **kwargs)
+        copy_environment.initialize(mode, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
