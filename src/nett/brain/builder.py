@@ -22,6 +22,17 @@ from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoders_dict
 from nett.brain import encoders
 from .utils import initialize_callbacks
+from nett.brain.rewards import ICM  #, RND, Disagreement
+from rllte.xplore.reward import RND, Disagreement #ICM, E3B
+
+REWARD_DICT: dict[str, callable] = {
+    "rnd": RND,
+    "icm": ICM,
+    "disagreement": Disagreement,
+    # "e3b": E3B,
+    "supervised": None,
+    "unsupervised": None
+}
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
@@ -141,6 +152,15 @@ class Brain:
             model = self._set_encoder_as_eval(model)
             self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
 
+        # create reward function
+        if REWARD_DICT[self.reward] is not None:
+            job.reward_func = REWARD_DICT[self.reward](
+                envs=envs, 
+                device=job.device,
+                beta=0.2,
+                kappa=0.0,
+                gamma=0.99, 
+                batch_size=self.batch_size)
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
@@ -401,8 +421,8 @@ class Brain:
             ValueError: If the reward is a string and not one of the supported reward types.
         """
         # for when reward is a string
-        if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
-            raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
+        if reward not in REWARD_DICT.keys():
+            raise ValueError(f"If a string, should be one of: {REWARD_DICT.keys()}")
         return reward
 
     @staticmethod
