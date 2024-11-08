@@ -5,8 +5,8 @@ This module contains the functions to compute the train performance of the agent
 
 Functions:
     compute_train_performance: Compute Train performance
-    average_in_episode_three_region: Train performance
-    moving_average: Smooth values by doing a moving average
+    _average_in_episode_three_region: Train performance
+    _moving_average: Smooth values by doing a moving average
 """
 
 import os
@@ -37,8 +37,8 @@ def compute_train_performance(path) -> tuple[list, np.ndarray | list]:
 
             log_df = pd.read_csv(file_name, skipinitialspace=True)
 
-            _, _, values = average_in_episode_three_region(log_df,"agent.x") # percents,df,
-            y = moving_average(values, window=100)
+            _, _, values = _average_in_episode_three_region(log_df,"agent.x") # percents,df,
+            y = _moving_average(values, window=100)
             x = list(range(len(y)))
 
             break
@@ -50,7 +50,7 @@ def compute_train_performance(path) -> tuple[list, np.ndarray | list]:
 
     return x,y
 
-def average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', transient: int = 90) -> tuple[dict, pd.DataFrame, list]:
+def _average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', transient: int = 90) -> tuple[dict, pd.DataFrame, list]:
     """
     Train performance
 
@@ -88,7 +88,7 @@ def average_in_episode_three_region(log: pd.DataFrame, column: str = 'agent.x', 
         print(str(ex))
         return (None, None, None)
 
-def moving_average(values: list, window: int) -> np.ndarray:
+def _moving_average(values: list, window: int) -> np.ndarray:
     """
     Smooth values by doing a moving average.
 

@@ -19,7 +19,7 @@ try :
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
-from nett.utils.environment import Logger, random_port
+from .utils import Logger, random_port
 
 class Environment(Wrapper):
     """
