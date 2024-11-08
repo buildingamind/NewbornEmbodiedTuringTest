@@ -70,7 +70,7 @@ class ResNet(nn.Module):
         maxpool1=True,
         res_remove=False #  decide for last residual block
     ):
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer

@@ -76,7 +76,7 @@ class ResNet(nn.Module):
         first_conv=True, # pre-processing layers which makes the image size half [64->32]
         maxpool1=True # used in pre-processing
     ):
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
