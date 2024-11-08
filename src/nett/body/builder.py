@@ -1,5 +1,5 @@
 """The body of the agent in the environment."""
-from gym import Env, Wrapper
+from gymnasium import Env, Wrapper
 
 from nett.body import wrapper_dict
 from nett.body import types, wrappers, wrapper_dict 

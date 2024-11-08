@@ -2,6 +2,7 @@
 
 import os
 import inspect
+import gymnasium as gym
 import torch
 import stable_baselines3
 import sb3_contrib

@@ -12,7 +12,7 @@ Example:
 
 """
 
-import gym
+import gymnasium as gym
 import torch
 
 from torchvision.transforms import Compose, Resize, CenterCrop, Normalize, InterpolationMode

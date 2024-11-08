@@ -9,7 +9,7 @@ from typing import Optional, Any
 import numpy as np
 import yaml
 
-from gym import Wrapper
+from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 
@@ -169,7 +169,7 @@ class Environment(Wrapper):
         """
         return self.env.reset(**kwargs)
 
-    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, bool, dict]:
         """
         Takes a step in the environment with the given action.
 
@@ -177,10 +177,10 @@ class Environment(Wrapper):
             action (list[Any]): The action to take in the environment.
 
         Returns:
-            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, done flag, and info dictionary.
+            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, terminated flag, truncated flag, and info dictionary.
         """
-        next_state, reward, done, info = self.env.step(action)
-        return next_state, float(reward), done, info
+        next_state, reward, terminated, truncated, info = self.env.step(action)
+        return next_state, reward, terminated, truncated, info
 
     def _set_executable_permission(self) -> None:
         """
