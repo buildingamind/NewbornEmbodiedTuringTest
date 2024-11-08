@@ -62,7 +62,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, **kwargs) -> None:
+    def initialize(self, mode: str, rank: Optional[int] = None, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -105,9 +105,13 @@ class Environment(Wrapper):
             args.extend(["-force-device-index", str(kwargs["device"])])
             args.extend(["-gpu", str(kwargs["device"])])
 
+        if rank is not None:
+            brain = f"{kwargs['brain_id']}-{rank}"
+        else:
+            brain = f"{kwargs['brain_id']}"
+
         # create logger
-        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}",
-                          log_dir=str(kwargs['log_path']))
+        self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{brain}-{mode}", log_dir=str(kwargs['log_path']))
 
         # create environment and connect it to logger
         complete = False
@@ -267,6 +271,12 @@ class Environment(Wrapper):
             raise FileNotFoundError(f"Expected {data_directory} to exist in executable directory, but it does not exist. Please check that the path to the Unity executable is correct and that the data directory and executable use the same naming convention.")
 
         return executable_path
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.env.close()
 
     def __repr__(self) -> str:
         attrs = {k: v for k, v in vars(self).items() if k != "logger"}

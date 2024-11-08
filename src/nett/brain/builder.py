@@ -16,8 +16,6 @@ from stable_baselines3.common.torch_layers import NatureCNN, BaseFeaturesExtract
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.logger import configure
 from stable_baselines3.common import results_plotter
 from nett.brain import algorithms, policies, encoders_dict
@@ -90,7 +88,7 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_policy_arch = custom_policy_arch
 
-    def train(self, env: "gym.Env", job: "Job"):
+    def train(self, envs, job: "Job"):
         """
         Train the brain.
 
@@ -100,16 +98,6 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        # importlib.reload(stable_baselines3)
-        # validate environment
-        env = self._validate_env(env)
-
-        # initialize environment
-        envs = make_vec_env(
-            env_id=lambda: env, 
-            n_envs=1, 
-            # seed=self.seed, # Commented out as seed does not work
-            monitor_dir=str(job.paths["env_logs"])) #TODO: Switch to multi-processing for parallel environments with vec_envs #TODO: Add custom seed function for seeding env, see https://stackoverflow.com/questions/47331235/how-should-openai-environments-gyms-use-env-seed0
 
         # build model
         policy_kwargs = {
@@ -183,13 +171,7 @@ class Brain:
         model.save(save_path)
         self.logger.info(f"Saved model at {save_path}")
 
-        # plot reward graph
-        self.plot_results(iterations=job.iterations["train"],
-                        model_log_dir=job.paths["env_logs"],
-                        plots_dir=job.paths["plots"],
-                        name="reward_graph")   
-
-    def test(self, env: "gym.Env", job: "Job"):
+    def test(self, envs, job: Job):
         """
         Test the brain.
 
@@ -203,20 +185,9 @@ class Brain:
             job.paths['model'].joinpath('latest_model.zip'), 
             device=f"cuda:{job.device}")
 
-        # validate environment
-        env = self._validate_env(env)
-
-        # initialize environment
-        num_envs = 1
-        envs = make_vec_env(
-            env_id=lambda: env, 
-            n_envs=num_envs, 
-            # seed=self.seed # Commented out as seed does not work
-            )
-        obs = envs.reset() #TODO: try to use envs. This will return a list of obs, rather than a single obs #see https://stable-baselines3.readthedocs.io/en/master/guide/vec_envs.html for details on conversion
-
         self.logger.info(f'Testing with {self.algorithm.__name__}')
 
+            num_envs = envs.num_envs
         ## record - test video
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
@@ -224,27 +195,27 @@ class Brain:
             
             # for when algorithm is RecurrentPPO
             iterations: int = job.iterations["test"]
+            self.logger.info(f"Total iterations: {iterations}")
+            t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index, leave=True)
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
                 #iterations = 20*50 # 20 episodes of 50 conditions  each
                 t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     # cell and hidden state of the LSTM 
-                    done, lstm_states = False, None
+                    dones, states = [False], None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
-                    episode_length = 0
-                    while not done:
-                        action, lstm_states = model.predict(
+                    obs = envs.reset()
+                    while not dones[0]:
+                        action, states = model.predict(
                             obs,
-                            state=lstm_states,
+                            state=states,
                             episode_start=episode_starts,
                             deterministic=True)
-                        obs, _, done, _ = envs.step(action) # obs, rewards, done, info #TODO: try to use envs. This will return a list for each of obs, rewards, done, info rather than single values. Ex: done = [False, False, False, False, False] and not False
+                        obs, _, dones, _ = envs.step(action) # obs, rewards, done, info
                         t.update(1)
-                        episode_starts = done
-                        episode_length += 1
-                        envs.render(mode="rgb_array") #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                        episode_starts = dones
                         # vr.capture_frame()    
 
                 # vr.close()
@@ -252,16 +223,15 @@ class Brain:
 
             # for all other algorithms
             else:
-            #iterations = 50*20*200 # 50 conditions of 20 steps each
-                self.logger.info(f"Total number of testing steps: {iterations}")
+                obs = envs.reset()
                 t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
                 for _ in range(iterations):
                     action, _ = model.predict(obs, deterministic=True) # action, states
-                    obs, _, done, _ = envs.step(action) # obs, reward, done, info #TODO: try to use envs. This will return a list of obs, rewards, done, info rather than single values
+                    obs, _, dones, _ = envs.step(action) # obs, reward, done, info
                     t.update(1)
-                    if done:
-                        envs.reset()
-                    envs.render(mode="rgb_array")
+                    if dones[0]:
+                        obs = envs.reset()
+                    # envs.render(mode="rgb_array")
                     # vr.capture_frame()
         except Exception as e:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
@@ -431,26 +401,6 @@ class Brain:
         if not isinstance(reward, str) or reward not in ['supervised', 'unsupervised']:
             raise ValueError("If a string, should be one of: ['supervised', 'unsupervised']")
         return reward
-
-    @staticmethod
-    def _validate_env(env: "gym.Env") -> "gym.Env":
-        """
-        Validate the environment.
-
-        Args:
-            env (gym.Env): The environment to validate.
-
-        Returns:
-            gym.Env: The validated environment.
-
-        Raises:
-            ValueError: If the environment fails the validation check.
-        """
-        try:
-            check_env(env)
-        except Exception as ex:
-            raise ValueError(f"Failed training env check with {str(ex)}")
-        return env
 
     @staticmethod
     def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:

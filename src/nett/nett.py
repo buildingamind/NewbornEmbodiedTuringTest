@@ -5,6 +5,7 @@ This module contains the NETT class, which is the main class for training, testi
    :synopsis: Main class for training, testing and analyzing brains in environments.
 
 """
+from math import ceil
 import sys
 import os
 import time
@@ -21,7 +22,7 @@ from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.env_checker import check_env
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
 
-from .utils import Job
+from .utils import Job, VecEnv
 
 class NETT:
     """
@@ -107,9 +108,26 @@ class NETT:
         if mode in ["train", "full"] or job_memory == "auto": #TODO: auto job_memory runs a train job, requiring iterations["train"] to run:
             iterations["train"] = steps_per_episode * train_eps
         if mode in ["test", "full"]:
-            iterations["test"] = test_eps * self.environment.num_test_conditions
+            iterations["test"] = self.environment.num_test_conditions
             if not issubclass(self.brain.algorithm, RecurrentPPO):
                 iterations["test"] *= steps_per_episode
+
+        # get task set
+        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
+        self.n_tasks = len(task_set)
+
+        if mode == "test":
+            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
+            max_envs = os.cpu_count() / (2*self.n_tasks)
+            if (max_envs <= 1):
+                self.num_parallel_envs = 1
+                iterations["test"] *= test_eps
+            elif test_eps <= max_envs:
+                self.num_parallel_envs = test_eps # reduced to just the number of test_eps for this for now #TODO: Prevent this from crashing from too many episodes, might make sense to wrap subprocvecenv and callback and close in a while loop and create a new subprocvecenv from the each subset of all num_parallel_envs over a limit of 50? workers
+            else:
+                eps_per_env = ceil(test_eps / max_envs)
+                iterations["test"] *= eps_per_env # this will do a little more than what is defined in the config file, but it effectively comes for free #TODO: Add either a way of defining different number of iterations between jobs OR notify user that this is happening
+                self.num_parallel_envs = ceil(test_eps / eps_per_env)
 
         # initialize job object
         Job.initialize(
@@ -138,10 +156,6 @@ class NETT:
         else:
             job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
         
-
-        # get task set
-        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
-        
         # schedule jobs
         jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, self.logger)
         self.logger.info("Scheduled jobs")
@@ -167,8 +181,6 @@ class NETT:
             >>> status = benchmarks.status(job_sheet)
             >>> # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
-        if not job_sheet or not isinstance(job_sheet, dict):
-            raise ValueError(f"job_sheet must be a dict with signature: dict[Future, Job]")
         selected_columns = ["brain_id", "condition", "device"]
         filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
         return pd.json_normalize(filtered_job_sheet)
@@ -277,14 +289,13 @@ class NETT:
             self._run_env(
                 mode=mode, 
                 kwargs = job.validation_kwargs(), 
-                callback = check_env
+                    callback = lambda envs: check_env(envs.envs[0])
             )   
-
             # actual run
             self._run_env(
                 mode=mode, 
-                kwargs = job.env_kwargs(), 
-                callback = lambda env: getattr(brain, mode)(env, job) # grabs brain.train or brain.test based on mode
+                kwargs = job.env_kwargs(mode), 
+                callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
             )
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
@@ -483,23 +494,35 @@ class NETT:
     def _run_env(self, mode: str, kwargs: dict[str,Any], callback: Callable[...,None]):
         # run environment
         # can be train or test mode and can be for validation or actual run
-        while True:
-            try:
-                # wrap environment
+        try:
+            # wrap environment
+            if "validation-mode" in kwargs:
                 with self._wrap_env(mode, kwargs) as environment:
-                    # run the callback. This can be check_env or brain.train or brain.test
-                    callback(environment)
-                break
-            except Exception as e:
+                    check_env(environment)
+            elif mode == "train":
+                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
+
+                make_env = lambda: self._wrap_env(mode, kwargs)
+                with VecEnv(make_env) as envs:
+                    callback(envs)
+            else:
+                make_env = lambda rank: self._wrap_env(mode, kwargs, rank)
+                with VecEnv(make_env, self.num_parallel_envs) as envs:
+                    callback(envs)
+
+            self.logger.info("Environments Closed")
+        except Exception as e:
                 if kwargs["validation-mode"]:
                     self.logger.exception(f"{mode} env validation failed: {str(e)}")
                 else:
                     self.logger.exception(f"{mode} env failed: {str(e)}")  
                 raise e
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any]) -> "nett.Body":
+    def _wrap_env(self, mode: str, kwargs: dict[str,Any], rank: Optional[int] = None) -> "nett.Body":
+        if rank is not None:
+            time.sleep(rank)
         copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, **kwargs)
+        copy_environment.initialize(mode, rank=rank, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
