@@ -10,7 +10,6 @@ class Job:
     condition (str): condition for the job
     device (int): device to run the job on
     index (int): index for the job
-    port (int): port for the job
     estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
   """
 
@@ -39,7 +38,7 @@ class Job:
     cls.batch_mode: bool = batch_mode
     cls.iterations: dict[str, int] = iterations
 
-  def __init__(self, brain_id: int, condition: str, device: int, index: int, port: int, estimate_memory: bool = False) -> None:
+  def __init__(self, brain_id: int, condition: str, device: int, index: int, estimate_memory: bool = False) -> None:
     """initialize job"""
     self.device: int = device
     self.condition: str = condition
@@ -47,7 +46,6 @@ class Job:
 
     self.paths: dict[str, Path] = self._configure_paths()
     self.index: int = index
-    self.port: int = port
     self.estimate_memory: bool = estimate_memory
 
     # Initialize logger
@@ -91,7 +89,7 @@ class Job:
     return {
       "rewarded": bool(self.reward == "supervised"),
       "rec_path": str(self.paths["env_recs"]),
-      "log_path": str(self.paths["env_logs"]),
+      "log_path": self.paths["env_logs"],
       "condition": self.condition,
       "brain_id": self.brain_id,
       "device": self.device,

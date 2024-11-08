@@ -10,6 +10,7 @@ import numpy as np
 import yaml
 
 from gym import Wrapper
+from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 
 # checks to see if ml-agents tmp files have the proper permissions
@@ -18,7 +19,7 @@ try :
 except PermissionError as _:
      raise PermissionError("Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again.")
 
-from nett.utils.environment import Logger
+from nett.utils.environment import Logger, random_port
 
 class Environment(Wrapper):
     """
@@ -70,7 +71,7 @@ class Environment(Wrapper):
     # TODO (v0.4) Critical refactor, don't like how this works, extremely error prone.
     # how can we build + constraint arguments better? something like an ArgumentParser sounds neat
     # TODO (v0.4) fix random_pos logic inside of Unity code
-    def initialize(self, mode: str, port: int, **kwargs) -> None:
+    def initialize(self, mode: str, **kwargs) -> None:
         """
         Initializes the environment with the given mode and arguments.
 
@@ -115,10 +116,19 @@ class Environment(Wrapper):
 
         # create logger
         self.log = Logger(f"{kwargs['condition'].replace('-', '_')}{kwargs['brain_id']}-{mode}",
-                          log_dir=f"{kwargs['log_path']}/")
+                          log_dir=str(kwargs['log_path']))
 
         # create environment and connect it to logger
-        self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=port)
+        complete = False
+        while not complete:
+            try:
+                self.env = UnityEnvironment(self.executable_path, side_channels=[self.log], additional_args=args, base_port=random_port())
+                complete = True
+            except UnityWorkerInUseException as e:
+                continue
+            except Exception as e:
+                self.logger.exception(f"Error initializing environment: {e}")
+                raise e
         self.env = UnityToGymWrapper(self.env, uint8_visual=True)
 
         # initialize the parent class (gym.Wrapper)
