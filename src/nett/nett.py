@@ -21,6 +21,8 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait,
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.env_checker import check_env
 from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
+import gymnasium as gym
+from pettingzoo.utils.wrappers import BaseParallelWrapper
 
 from .utils import Job, VecEnv
 
@@ -31,7 +33,7 @@ class NETT:
     Args:
         brain (Brain): The brain to be trained and tested.
         body (Body): The body to be used for training and testing the brain.
-        environment (Environment): The environment in which the brain is to be trained and tested.
+        environment (Env): The environment in which the brain is to be trained and tested.
 
     Example:
         >>> from nett import NETT
@@ -287,6 +289,7 @@ class NETT:
         # loop over modes to validate then run the environment
         for mode in modes:
             # validation run
+            if isinstance(self.environment, gym.Wrapper):
             self._run_env(
                 mode=mode, 
                 kwargs = job.validation_kwargs(), 
@@ -298,6 +301,16 @@ class NETT:
                 kwargs = job.env_kwargs(mode), 
                 callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
             )
+            elif isinstance(self.environment, BaseParallelWrapper):
+                # actual run
+                self._run_env(
+                    mode=mode, 
+                    kwargs = job.env_kwargs(mode), 
+                    callback = lambda envs: getattr(brain, mode)(envs, job), # grabs brain.train or brain.test based on mode
+                    zoo=True
+                )
+            else:
+                raise TypeError("Environment must be a gym.Wrapper or a BaseParallelWrapper")
 
         return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
 
@@ -492,12 +505,17 @@ class NETT:
 
         return devices
 
-    def _run_env(self, mode: str, kwargs: dict[str,Any], callback: Callable[...,None]):
+    def _run_env(self, mode: str, kwargs: dict[str,Any], callback, zoo: Optional[bool] = False) -> None:
         # run environment
         # can be train or test mode and can be for validation or actual run
         try:
-            # wrap environment
-            if "validation-mode" in kwargs:
+            if zoo:
+                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
+
+                make_env = lambda: self._wrap_env(mode, kwargs)
+                with VecEnv(make_env, zoo=True) as envs:
+                    callback(envs)
+            elif "validation-mode" in kwargs:
                 with self._wrap_env(mode, kwargs) as environment:
                     check_env(environment)
             elif mode == "train":
