@@ -133,7 +133,6 @@ class Brain:
                 envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
-                verbose=1,
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
                 verbose=0, #TODO: Incorporate this into options
