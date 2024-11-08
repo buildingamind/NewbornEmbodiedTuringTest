@@ -126,7 +126,7 @@ class Environment(Wrapper):
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, action_space_seed=self.seed)
+        self.env = UnityToGymWrapper(self.env, allow_multiple_obs=True, uint8_visual=True, action_space_seed=self.seed)
 
         # initialize the parent class (gym.Wrapper)
         super().__init__(self.env)
