@@ -65,7 +65,10 @@ class NETT:
             verbose: int = True,
             synchronous: bool = False,
             save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000) -> list[Future]:
+            checkpoint_freq: int = 30_000,
+            record_training: Optional[list[str]] = [],
+            record_testing: Optional[list[str]] = [],
+            recording_eps: int = 10) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
@@ -84,6 +87,9 @@ class NETT:
             synchronous (bool, optional): Whether to keep code running in the foreground until completion. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
+            record_training (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view and/or "chamber" for recording the top-down view of the chamber.
+            record_testing (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view and/or "chamber" for recording the top-down view of the chamber.
+            recording_eps (int, optional): Number of episodes to record for. Defaults to 10.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -114,7 +120,10 @@ class NETT:
             checkpoint_freq=checkpoint_freq,
             reward=self.brain.reward,
             batch_mode=batch_mode, 
-            iterations=iterations 
+            iterations=iterations,
+            record_training=record_training,
+            record_testing=record_testing,
+            recording_eps=recording_eps
             )
 
         # validate devices
