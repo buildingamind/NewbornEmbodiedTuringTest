@@ -33,7 +33,7 @@ class Body:
         from nett import logger
         self.logger = logger.getChild(__class__.__name__)
         self.type = self._validate_agent_type(type)
-        self.multiobs = 'binocular' in self.wrappers
+        self.multiobs = 'binocular' in wrappers
         self.wrappers = self._validate_wrappers(wrappers) if wrappers else []
 
     @staticmethod

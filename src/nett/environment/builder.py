@@ -318,9 +318,8 @@ class ZooEnvironment(Env, BaseParallelWrapper):
 
 def Environment(executable_path: str,
                 display: int = 0,
-                multiobs: bool = False,
                 multiagent: bool = False) -> Env:#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     if multiagent:
         return ZooEnvironment(executable_path, display)
     else:
-        return GymEnvironment(executable_path, display, multiobs)
+        return GymEnvironment(executable_path, display)
