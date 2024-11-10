@@ -14,7 +14,7 @@ CUSTOM_PALETTE = [
 # color for chick data
 CHICK_RED = "#AF264A"
 
-def sortConditions(data, bar_order: str) -> list[str]:
+def sort_cond(data, bar_order: str) -> list[str]:
     match bar_order:
         case "desc":
             order = data.groupby('test.cond')['percent_correct'].mean().sort_values(ascending=False).index.tolist()
@@ -115,6 +115,71 @@ def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
     plt.savefig(img_name)
     plt.close()
 
+def agent_bar_charts(data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFrame, color_bars: bool):
+    for imp_agent in data['imp_agent'].unique():
+        bar_data = data[data['imp_agent'] == imp_agent]
+        bar_data['error_min'] = bar_data['avgs'] - bar_data['se']
+        bar_data['error_max'] = bar_data['avgs'] + bar_data['se']
+        make_bar_charts(
+            data=bar_data, 
+            dots=None, 
+            y_col='avgs',
+            error_min_col='error_min', 
+            error_max_col='error_max',
+            img_name=results_dir / f"{imp_agent}_test.png", 
+            chick_data=chick_data, 
+            color_bars=color_bars
+        )
+
+def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
+    grouped_imp = data.groupby(['imprint.cond', 'test.cond'])
+    by_imp_cond = grouped_imp.apply(
+        lambda g: compute_stats(g, column='avgs')
+    ).reset_index()
+    by_imp_cond.to_csv(results_dir / "stats_by_imp_cond.csv", index=False)
+    return by_imp_cond
+
+def imprint_cond_bar_charts(by_imp_cond, by_test_cond, results_dir, chick_data, color_bars):
+    for imp_cond in by_imp_cond['imprint.cond'].unique():
+        bar_data = by_imp_cond[
+            (by_imp_cond['imprint.cond'] == imp_cond) \
+            # & (by_imp_cond['test.cond'] != "Rest")
+        ]
+        dot_data = by_test_cond[
+            (by_test_cond['imprint.cond'] == imp_cond) \
+            # & (by_test_cond['test.cond'] != "Rest")
+        ]
+        bar_data['error_min'] = bar_data['avgs'] - bar_data['se']
+        bar_data['error_max'] = bar_data['avgs'] + bar_data['se']
+        img_name = results_dir / f"{imp_cond}_test.png"
+        make_bar_charts(
+            data=bar_data, dots=dot_data, y_col='avgs',
+            error_min_col='error_min', error_max_col='error_max',
+            img_name=img_name, chick_data=chick_data, color_bars=color_bars
+        )
+
+def stats_overall(by_test_cond: pd.DataFrame, results_dir: Path):
+    across_imp_cond = by_test_cond[
+        by_test_cond['test.cond'] != "Rest"
+    ].groupby('test.cond').apply(
+        lambda g: compute_stats(g, column='avgs')
+    ).drop('Rest').reset_index()
+    across_imp_cond.to_csv(
+        results_dir / "stats_across_all_agents.csv", index=False
+    )
+    return across_imp_cond
+
+def all_cond_bar_chart(by_test_cond, across_imp_cond, results_dir, chick_data, color_bars):
+    across_imp_cond['error_min'] = across_imp_cond['avgs'] - across_imp_cond['se']
+    across_imp_cond['error_max'] = across_imp_cond['avgs'] + across_imp_cond['se']
+    dot_data = by_test_cond[by_test_cond['test.cond'] != "Rest"]
+    img_name = results_dir / 'all_imprinting_conds_test.png'
+    make_bar_charts(
+        data=across_imp_cond, dots=dot_data, y_col='avgs',
+        error_min_col='error_min', error_max_col='error_max',
+        img_name=img_name, chick_data=chick_data, color_bars=color_bars
+    )
+
 def test_viz(results_dir: Path, chick_file: Path, bar_order="default", color_bars=False):
     # Do not warn about chained assignments
     pd.options.mode.chained_assignment = None
@@ -134,70 +199,22 @@ def test_viz(results_dir: Path, chick_file: Path, bar_order="default", color_bar
         test_data['correct_steps'] + test_data['incorrect_steps'])
 
     print("Adjusting bar order...")
-    test_data['test.cond'] = sortConditions(test_data, bar_order)
+    test_data['test.cond'] = sort_cond(test_data, bar_order)
 
     print("Computing statistics by agent...")
     by_test_cond = compute_stats(test_data, results_dir)
 
     print("Creating bar charts by agent...")
-    for imp_agent in by_test_cond['imp_agent'].unique():
-        bar_data = by_test_cond[by_test_cond['imp_agent'] == imp_agent]
-        bar_data['error_min'] = bar_data['avgs'] - bar_data['se']
-        bar_data['error_max'] = bar_data['avgs'] + bar_data['se']
-        make_bar_charts(
-            data=bar_data, 
-            dots=None, 
-            y_col='avgs',
-            error_min_col='error_min', 
-            error_max_col='error_max',
-            img_name=results_dir / f"{imp_agent}_test.png", 
-            chick_data=chick_data, 
-            color_bars=color_bars
-        )
+    agent_bar_charts(by_test_cond, results_dir, chick_data, color_bars)
 
     print("Computing statistics by imprinting condition...")
-    grouped_imp = by_test_cond.groupby(['imprint.cond', 'test.cond'])
-    by_imp_cond = grouped_imp.apply(
-        lambda g: compute_stats(g, column='avgs')
-    ).reset_index()
-    by_imp_cond.to_csv(results_dir / "stats_by_imp_cond.csv", index=False)
+    by_imp_cond = stats_by_imprint_cond(by_test_cond, results_dir)
 
     print("Creating bar charts by imprinting condition...")
-    for imp_cond in by_imp_cond['imprint.cond'].unique():
-        bar_data = by_imp_cond[
-            (by_imp_cond['imprint.cond'] == imp_cond) &
-            (by_imp_cond['test.cond'] != "Rest")
-        ]
-        dot_data = by_test_cond[
-            (by_test_cond['imprint.cond'] == imp_cond) &
-            (by_test_cond['test.cond'] != "Rest")
-        ]
-        bar_data['error_min'] = bar_data['avgs'] - bar_data['se']
-        bar_data['error_max'] = bar_data['avgs'] + bar_data['se']
-        img_name = results_dir / f"{imp_cond}_test.png"
-        make_bar_charts(
-            data=bar_data, dots=dot_data, y_col='avgs',
-            error_min_col='error_min', error_max_col='error_max',
-            img_name=img_name, chick_data=chick_data, color_bars=color_bars
-        )
+    imprint_cond_bar_charts(by_imp_cond, by_test_cond, results_dir, chick_data, color_bars)
 
     print("Computing statistics across all imprinting conditions...")
-    across_imp_cond = by_test_cond[
-        by_test_cond['test.cond'] != "Rest"
-    ].groupby('test.cond').apply(
-        lambda g: compute_stats(g, column='avgs')
-    ).drop('Rest').reset_index()
-    across_imp_cond.to_csv(
-        results_dir / "stats_across_all_agents.csv", index=False
-    )
+    across_imp_cond = stats_overall(data=by_test_cond, results_dir=results_dir, chick_data=chick_data, color_bars=color_bars)
 
     print("Creating bar chart for all imprinting conditions...")
-    across_imp_cond['error_min'] = across_imp_cond['avgs'] - across_imp_cond['se']
-    across_imp_cond['error_max'] = across_imp_cond['avgs'] + across_imp_cond['se']
-    dot_data = by_test_cond[by_test_cond['test.cond'] != "Rest"]
-    img_name = results_dir / 'all_imprinting_conds_test.png'
-    make_bar_charts(
-        data=across_imp_cond, dots=dot_data, y_col='avgs',
-        error_min_col='error_min', error_max_col='error_max',
-        img_name=img_name, chick_data=chick_data, color_bars=color_bars
-    )
+    all_cond_bar_chart(by_test_cond, across_imp_cond, results_dir, chick_data, color_bars)
