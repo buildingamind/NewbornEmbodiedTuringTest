@@ -292,9 +292,10 @@ class GymEnvironment(Env, Wrapper):
                  display: int = 0) -> None:
         Env.__init__(self, executable_path, display)
 
-    def initialize(self, mode: str, rank: Optional[int] = None, **kwargs) -> None:
+    def initialize(self, mode: str, rank: Optional[int] = None,
+                 multiobs: bool = False, **kwargs) -> None:
         Env.initialize(self, mode, rank, **kwargs)
-        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=True, action_space_seed=self.seed)
+        self.env = UnityToGymWrapper(self.env, uint8_visual=True, allow_multiple_obs=multiobs, action_space_seed=self.seed)
         # initialize the grandparent class (gym.Wrapper)
         Wrapper.__init__(self, self.env)
 
@@ -317,8 +318,9 @@ class ZooEnvironment(Env, BaseParallelWrapper):
 
 def Environment(executable_path: str,
                 display: int = 0,
+                multiobs: bool = False,
                 multiagent: bool = False) -> Env:#TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
     if multiagent:
         return ZooEnvironment(executable_path, display)
     else:
-        return GymEnvironment(executable_path, display)
+        return GymEnvironment(executable_path, display, multiobs)
