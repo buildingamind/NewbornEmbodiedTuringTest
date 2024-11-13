@@ -21,7 +21,7 @@ def sort_cond(data, bar_order: str) -> list[str]:
         case "asc":
             order = data.groupby('test.cond')['percent_correct'].mean().sort_values().index.tolist()
         case "default":
-            order = [x.strip() for x in order.split(',')]
+            order = [x.strip() for x in bar_order.split(',')]
         case _:
             order = data['test.cond'].unique().tolist()
     
@@ -134,7 +134,7 @@ def agent_bar_charts(data: pd.DataFrame, results_dir: Path, chick_data: pd.DataF
 def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
     grouped_imp = data.groupby(['imprint.cond', 'test.cond'])
     by_imp_cond = grouped_imp.apply(
-        lambda g: compute_stats(g, column='avgs')
+        lambda g: _stats(g, column='avgs')
     ).reset_index()
     by_imp_cond.to_csv(results_dir / "stats_by_imp_cond.csv", index=False)
     return by_imp_cond
@@ -162,7 +162,7 @@ def stats_overall(by_test_cond: pd.DataFrame, results_dir: Path):
     across_imp_cond = by_test_cond[
         by_test_cond['test.cond'] != "Rest"
     ].groupby('test.cond').apply(
-        lambda g: compute_stats(g, column='avgs')
+        lambda g: _stats(g, column='avgs')
     ).drop('Rest').reset_index()
     across_imp_cond.to_csv(
         results_dir / "stats_across_all_agents.csv", index=False
