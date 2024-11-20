@@ -32,8 +32,12 @@ import torch.nn.functional as F
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
 
-from nett.brain.rewards.networks.prototype import BaseReward
-from nett.brain.rewards.networks.model import ForwardDynamicsModel, InverseDynamicsModel, ObservationEncoder
+from .networks.prototype import BaseReward
+from .networks.model import (
+    ForwardDynamicsModel,
+    InverseDynamicsModel,
+    ObservationEncoder,
+)
 
 
 class ICM(BaseReward):
@@ -64,9 +68,9 @@ class ICM(BaseReward):
         self,
         envs,
         device: int,
-        beta: float = 0.2, #1.0,
+        beta: float = 0.2,  # 1.0,
         kappa: float = 0.0,
-        gamma: float = 0.99, #Optional[float] = None,
+        gamma: float = 0.99,  # Optional[float] = None,
         rwd_norm_type: str = "rms",
         obs_norm_type: str = "none",
         latent_dim: int = 128,
@@ -74,7 +78,7 @@ class ICM(BaseReward):
         batch_size: int = 256,
         update_proportion: float = 1.0,
         encoder_model: str = "mnih",
-        weight_init: str = "Kaiming He", #"orthogonal",
+        weight_init: str = "Kaiming He",  # "orthogonal",
     ) -> None:
         super().__init__(envs, device, beta, kappa, gamma, rwd_norm_type, obs_norm_type)
 

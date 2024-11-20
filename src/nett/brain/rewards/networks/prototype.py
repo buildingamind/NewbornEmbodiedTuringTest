@@ -21,7 +21,7 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 # =============================================================================
-#copied from:
+# copied from:
 # https://github.com/RLE-Foundation/rllte/main/rllte/common/prototype/base_reward.py
 # https://github.com/RLE-Foundation/rllte/blob/main/rllte/common/utils.py
 # https://github.com/RLE-Foundation/rllte/blob/main/rllte/common/preprocessing.py
@@ -43,6 +43,7 @@ import torch as th
 from gymnasium import spaces
 
 ObsShape = Union[Tuple[int, ...], Dict[str, Tuple[int, ...]]]
+
 
 class BaseReward(ABC):
     """Base class of reward module.
@@ -81,7 +82,6 @@ class BaseReward(ABC):
         self.policy_action_dim = int(np.prod(self.action_space.shape))
         action_dim = self.policy_action_dim
         action_type = "Box"
-        
 
         # set device and parameters
         self.device = th.device("cuda", device)
@@ -90,7 +90,9 @@ class BaseReward(ABC):
         self.rwd_norm_type = rwd_norm_type
         self.obs_norm_type = obs_norm_type
         # build the running mean and std for normalization
-        self.rwd_norm = TorchRunningMeanStd(device=device) if self.rwd_norm_type == "rms" else None
+        self.rwd_norm = (
+            TorchRunningMeanStd(device=device) if self.rwd_norm_type == "rms" else None
+        )
 
         if self.obs_norm_type == "rms":
             self.obs_norm = TorchRunningMeanStd(shape=self.obs_shape, device=device)
@@ -212,7 +214,7 @@ class BaseReward(ABC):
             "next_observations",
         ]:
             assert key in samples.keys(), f"Key {key} is not in samples."
-        
+
         # update the obs RMS if necessary
         if self.obs_norm_type == "rms" and sync:
             self.obs_norm.update(
@@ -232,8 +234,10 @@ class BaseReward(ABC):
             None.
         """
 
+
 class RewardForwardFilter:
     """Reward forward filter."""
+
     def __init__(self, gamma: float = 0.99) -> None:
         self.rewems = None
         self.gamma = gamma

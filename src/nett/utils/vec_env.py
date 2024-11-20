@@ -1,25 +1,54 @@
-from typing import Optional
-from functools import partial
+"""Vector Environment Classes"""
+
+from time import sleep
 
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
 import supersuit as ss
 from supersuit.vector.concat_vec_env import ConcatVecEnv
 from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
 
-class VecEnv():
-    def __init__(self, callback: callable, n_envs: Optional[int] = None, zoo: Optional[bool] = False):
-      if zoo:
-        env = callback()
+from nett.environment import ZooEnvironment, GymEnvironment
+from nett.body import Body
+from . import Task
+
+
+class SafeEnv:
+    def __enter__(self):
+        return self._vecenv
+
+    def __exit__(self, *args):
+        return self._vecenv.close()
+
+
+class ZooEnv(SafeEnv):
+    def __init__(self, task: Task):
+        env = ZooEnvironment(task)
+        # env = Body(ZooEnvironment) TODO: Add support for wrapping ZooEnvironments
+        # TODO: Add support for recording agents in ZooEnvironments
         env = ss.pettingzoo_env_to_vec_env_v1(env)
         env = ConcatVecEnv([lambda: env])
         self._vecenv = SB3VecEnvWrapper(env)
-      elif n_envs is None:
+
+
+class SingleEnv(SafeEnv):
+    def __init__(self, task: Task, validation_mode: bool = False):
+        def callback():
+            env = GymEnvironment(task, validation_mode)
+            return Body(env, task)
+
         self._vecenv = DummyVecEnv([callback])
-      else:
-        self._vecenv = SubprocVecEnv([partial(callback, rank=i) for i in range(n_envs)])
 
-    def __enter__(self):
-      return self._vecenv
 
-    def __exit__(self, *args):
-      return self._vecenv.close()
+class MultiEnv(SafeEnv):
+    def __init__(self, task: Task, n_envs: int):
+        # define callback
+        def seed_callback(seed):
+            def callback():
+                sleep(seed)
+                env = GymEnvironment(task, False, seed)
+                return Body(env, task)
+
+            return callback
+
+        # create n_envs environments
+        self._vecenv = SubprocVecEnv([seed_callback(seed) for seed in range(n_envs)])

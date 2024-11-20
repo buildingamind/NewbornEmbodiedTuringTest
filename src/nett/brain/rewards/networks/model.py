@@ -42,7 +42,13 @@ class ObservationEncoder(nn.Module):
         Encoder instance.
     """
 
-    def __init__(self, obs_shape: Tuple, latent_dim: int, encoder_model:str = "mnih", weight_init="default") -> None:
+    def __init__(
+        self,
+        obs_shape: Tuple,
+        latent_dim: int,
+        encoder_model: str = "mnih",
+        weight_init="default",
+    ) -> None:
         super().__init__()
 
         if weight_init == "Kaiming He":
@@ -53,7 +59,6 @@ class ObservationEncoder(nn.Module):
             init_ = default_layer_init
         else:
             raise ValueError("Invalid weight_init")
-
 
         # visual
         if encoder_model == "mnih" and len(obs_shape) > 2:
@@ -92,10 +97,7 @@ class ObservationEncoder(nn.Module):
             self.trunk.append(init_(nn.Linear(n_flatten, latent_dim)))
             self.trunk.append(nn.ReLU())
         else:
-            self.trunk = nn.Sequential(
-                init_(nn.Linear(obs_shape[0], 256)), 
-                nn.ReLU()
-            )
+            self.trunk = nn.Sequential(init_(nn.Linear(obs_shape[0], 256)), nn.ReLU())
             self.trunk.append(init_(nn.Linear(256, latent_dim)))
 
     def forward(self, obs: th.Tensor) -> th.Tensor:
@@ -109,7 +111,8 @@ class ObservationEncoder(nn.Module):
         """
         # normalization for intrinsic rewards is dealt with in the base intrinsic reward class
         return self.trunk(obs)
-    
+
+
 class InverseDynamicsEncoder(nn.Module):
     """Encoder with inverse dynamics prediction.
 
@@ -122,11 +125,22 @@ class InverseDynamicsEncoder(nn.Module):
         Encoder instance.
     """
 
-    def __init__(self, obs_shape: Tuple, action_dim: int, latent_dim: int, encoder_model:str="mnih", weight_init="default") -> None:
+    def __init__(
+        self,
+        obs_shape: Tuple,
+        action_dim: int,
+        latent_dim: int,
+        encoder_model: str = "mnih",
+        weight_init="default",
+    ) -> None:
         super().__init__()
 
-        self.encoder = ObservationEncoder(obs_shape, latent_dim, encoder_model=encoder_model, weight_init=weight_init)
-        self.policy = InverseDynamicsModel(latent_dim, action_dim, encoder_model=encoder_model, weight_init=weight_init)
+        self.encoder = ObservationEncoder(
+            obs_shape, latent_dim, encoder_model=encoder_model, weight_init=weight_init
+        )
+        self.policy = InverseDynamicsModel(
+            latent_dim, action_dim, encoder_model=encoder_model, weight_init=weight_init
+        )
 
     def forward(self, obs: th.Tensor, next_obs: th.Tensor) -> th.Tensor:
         """Forward function for outputing predicted actions.
@@ -154,7 +168,7 @@ class InverseDynamicsEncoder(nn.Module):
             Encoding tensors.
         """
         return self.encoder(obs)
-    
+
 
 class InverseDynamicsModel(nn.Module):
     """Inverse model for reconstructing transition process.
@@ -167,10 +181,17 @@ class InverseDynamicsModel(nn.Module):
         Model instance.
     """
 
-    def __init__(self, latent_dim, action_dim, encoder_model="mnih", weight_init="default") -> None:
+    def __init__(
+        self, latent_dim, action_dim, encoder_model="mnih", weight_init="default"
+    ) -> None:
         super().__init__()
 
-        self.trunk = ObservationEncoder(obs_shape=(latent_dim * 2,), latent_dim=action_dim, encoder_model=encoder_model, weight_init=weight_init)
+        self.trunk = ObservationEncoder(
+            obs_shape=(latent_dim * 2,),
+            latent_dim=action_dim,
+            encoder_model=encoder_model,
+            weight_init=weight_init,
+        )
 
     def forward(self, obs: th.Tensor, next_obs: th.Tensor) -> th.Tensor:
         """Forward function for outputing predicted actions.
@@ -184,6 +205,7 @@ class InverseDynamicsModel(nn.Module):
         """
         return self.trunk(th.cat([obs, next_obs], dim=1))
 
+
 class ForwardDynamicsModel(nn.Module):
     """Forward model for reconstructing transition process.
 
@@ -195,10 +217,17 @@ class ForwardDynamicsModel(nn.Module):
         Model instance.
     """
 
-    def __init__(self, latent_dim, action_dim, encoder_model="mnih", weight_init="default") -> None:
+    def __init__(
+        self, latent_dim, action_dim, encoder_model="mnih", weight_init="default"
+    ) -> None:
         super().__init__()
 
-        self.trunk = ObservationEncoder(obs_shape=(latent_dim + action_dim,), latent_dim=latent_dim, encoder_model=encoder_model, weight_init=weight_init) #128+3= 131, 128, Nature, Orth
+        self.trunk = ObservationEncoder(
+            obs_shape=(latent_dim + action_dim,),
+            latent_dim=latent_dim,
+            encoder_model=encoder_model,
+            weight_init=weight_init,
+        )  # 128+3= 131, 128, Nature, Orth
 
     def forward(self, obs: th.Tensor, pred_actions: th.Tensor) -> th.Tensor:
         """Forward function for outputing predicted next-obs.

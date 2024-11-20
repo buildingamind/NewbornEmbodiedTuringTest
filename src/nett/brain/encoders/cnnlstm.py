@@ -6,6 +6,7 @@ import torch as th
 from torch import nn
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 
+
 class CNNLSTM(BaseFeaturesExtractor):
     """
     CNNLSTM is a class that represents a convolutional neural network (CNN)
@@ -16,9 +17,11 @@ class CNNLSTM(BaseFeaturesExtractor):
         observation_space (gym.Space): The observation space of the environment.
         features_dim (int, optional): Number of features extracted. This corresponds to the number of units for the last layer. Defaults to 256.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
-        """Constructor method
-        """
+
+    def __init__(
+        self, observation_space: gym.spaces.Box, features_dim: int = 256
+    ) -> None:
+        """Constructor method"""
         super().__init__(observation_space, features_dim)
 
         n_input_channels = observation_space.shape[0]
@@ -29,18 +32,24 @@ class CNNLSTM(BaseFeaturesExtractor):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
-            nn.Flatten()
+            nn.Flatten(),
         )
 
         # Compute shape by doing one forward pass
         with th.no_grad():
-            n_flatten = self.cnn(th.as_tensor(observation_space.sample()[None]).float()).shape[1]
+            n_flatten = self.cnn(
+                th.as_tensor(observation_space.sample()[None]).float()
+            ).shape[1]
 
         # define LSTM layer
         hidden_size = 512
-        self.lstm = nn.LSTM(input_size=n_flatten, hidden_size=hidden_size,
-                            num_layers=2, batch_first=True)
-        
+        self.lstm = nn.LSTM(
+            input_size=n_flatten,
+            hidden_size=hidden_size,
+            num_layers=2,
+            batch_first=True,
+        )
+
         # outputs
         self.linear = nn.Sequential(nn.Linear(hidden_size, features_dim), nn.ReLU())
 
@@ -54,7 +63,7 @@ class CNNLSTM(BaseFeaturesExtractor):
         Returns:
             torch.Tensor: The extracted features.
         """
-        x = observations # original shape -> (length, batchsize, obs_size)
+        x = observations  # original shape -> (length, batchsize, obs_size)
         # T,B, *_ = x.shape
 
         # Pass through CNN layers
@@ -71,9 +80,10 @@ class CNNLSTM(BaseFeaturesExtractor):
 
         return x
 
+
 class Identity(nn.Module):
     """Identity module
-    
+
     This module is used to return the input tensor as is.
 
     Args:
@@ -82,6 +92,7 @@ class Identity(nn.Module):
     Returns:
         torch.nn.Module: Identity module
     """
+
     def __init__(self) -> None:
         """Constructor method"""
         super().__init__()
