@@ -2,7 +2,7 @@
 
 from itertools import product
 from pathlib import Path
-from . import Task
+from .task import Task
 
 
 class TaskList:
@@ -10,10 +10,10 @@ class TaskList:
         self.output_dir = output_dir
         self.conditions = conditions
         self.conditions = conditions
-        self.brain_env_combinations = product(conditions, range(1, num_brains + 1))
+        self.brain_env_combinations = product(range(1, num_brains + 1), conditions)
         self.n_tasks = len(conditions) * num_brains
 
-    def __call__(self, mode: str, episodes: int):
+    def __call__(self, mode: str):
         self.mode = mode
 
         self.current = 0

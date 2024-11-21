@@ -1,1 +1,1 @@
-from brain import Brain
+from .brain import Brain

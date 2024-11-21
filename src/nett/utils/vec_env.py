@@ -9,7 +9,7 @@ from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
 
 from nett.environment import ZooEnvironment, GymEnvironment
 from nett.body import Body
-from . import Task
+from .task import Task
 
 
 class SafeEnv:

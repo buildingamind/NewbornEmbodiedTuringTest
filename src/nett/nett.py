@@ -10,12 +10,12 @@ from typing import Optional
 from concurrent.futures import Future
 
 import yaml
-from nett.brain.brain import Brain
-from nett.body.body import Body
-from nett.environment.environment import Environment
-from nett.utils import TaskList
-
-from .utils import TaskManager, validate_mode
+from .brain.brain import Brain
+from .body.body import Body
+from .environment.environment import Environment
+from .utils.tasklist import TaskList
+from .utils.task_manager import TaskManager
+from .utils.mode import validate_mode
 
 
 class NETT:
@@ -115,7 +115,6 @@ class NETT:
         Body.initialize(**self.body_config)
 
         Environment.initialize(
-            output_dir=output_dir,
             steps_per_episode=steps_per_episode,
             supervised_reward=supervised_reward,
             record_training=record_training,
@@ -130,6 +129,7 @@ class NETT:
         )
 
         Brain.initialize(
+            steps_per_episode=steps_per_episode,
             num_test_conditions=Environment.num_test_conditions,
             num_imprinting_conditions=len(conditions),
             num_brains=num_brains,
@@ -182,6 +182,7 @@ class NETT:
     #     jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
     #     return [runStatus(job_future) | jobInfo(job) for job_future, job in task_sheet.items()]
+
 
 from typing import Optional
 

@@ -1,5 +1,5 @@
 from types import ModuleType
-from typing import Optional
+from typing import Optional, Callable
 
 import stable_baselines3
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, NatureCNN
@@ -13,13 +13,15 @@ from sb3_contrib.ppo_recurrent.ppo_recurrent import RecurrentPPO
 from rllte.common.prototype import BaseReward
 import rllte.xplore.reward as rl_rewards
 
-import encoders
+from . import encoders
 
 # custom reward override
-from rewards import ICM
+from .rewards import ICM
 
 
-def _getMapping(sources: list[ModuleType], override: dict[str, type]):
+def _getMapping(
+    sources: list[ModuleType], override: dict[str, type]
+) -> dict[str, type]:
     mapping: dict[str, type] = {}
     for source in sources:
         for key in dir(source):
@@ -29,10 +31,12 @@ def _getMapping(sources: list[ModuleType], override: dict[str, type]):
     for key, value in override.items():
         mapping[key] = value
 
+    return mapping
+
 
 def _getValidator(
     label: str, baseclass: type, mapping: dict[str, type]
-) -> callable[str | type, type]:
+) -> Callable[str | type, type]:
     """
     Validate the value.
 

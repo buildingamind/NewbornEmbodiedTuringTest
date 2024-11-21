@@ -16,7 +16,7 @@ from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 from pettingzoo.utils.wrappers import BaseParallelWrapper
 
-from nett.utils import Task
+from ..utils.task import Task
 
 # checks to see if ml-agents tmp files have the proper permissions
 try:
@@ -26,10 +26,10 @@ except PermissionError as _:
         "Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again."
     )
 
-from .utils import Logger, random_port
+from .utils.ports import random_port
 
 
-class Environment:  # TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
+class Environment:
     """
     Represents the environment where the agent lives.
 
@@ -104,6 +104,7 @@ class Environment:  # TODO: CHANGE THIS TO OPTIONALLY BE A PETTING ZOO WRAPPER
         # grab the experiment design from the executable directory
         cls._get_experiment_design()
 
+    @classmethod
     def _get_experiment_design(cls) -> None:
         """
         Gets the experiment design from the executable directory.
@@ -327,6 +328,7 @@ class ZooEnvironment(Environment, BaseParallelWrapper):
         # initialize the grandparent class (BaseParallelWrapper)
         BaseParallelWrapper.__init__(self, self.env)
 
+
 def validate_executable_path(executable_path: str) -> str:
     """
     Validates the Unity executable path.
@@ -351,7 +353,7 @@ def validate_executable_path(executable_path: str) -> str:
 
     executable_path: Path = Path(executable_path)
     unityplayer_path: Path = executable_path.with_name("UnityPlayer.so")
-    datadir_path: Path = executable_path.with_suffix("_Data")
+    datadir_path: Path = executable_path.with_name(executable_path.stem + "_Data")
 
     # check if executable is correct filetype
     if executable_path.suffix not in [".x86_64", ".x86"]:

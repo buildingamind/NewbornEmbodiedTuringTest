@@ -7,9 +7,14 @@ from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait
 
 from stable_baselines3.common.env_checker import check_env
 
-from nett.brain import Brain
-from nett.environment import Environment
-from . import Task, TaskList, MultiEnv, SingleEnv, ZooEnv, MemoryManager
+# from nett.brain import Brain
+# from nett.environment import Environment
+from ..brain import Brain
+from ..environment import Environment
+from .task import Task
+from .tasklist import TaskList
+from .vec_env import MultiEnv, SingleEnv, ZooEnv
+from .memory import MemoryManager
 
 JobTooBigError = ValueError(
     "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
@@ -42,7 +47,7 @@ class TaskManager:
         self.logger.info(f"Devices that will be used: {devices}")
 
         self.executor = ProcessPoolExecutor(
-            max_workers=os.cpu_count(), initializer=initializer
+            max_workers=os.cpu_count(), initializer=initializer # TODO: too many workers
         )
 
         if job_memory == "auto":
@@ -56,7 +61,7 @@ class TaskManager:
         most_free_gpu = self.memory_manager.get_most_free_gpu(self.devices)
         gpu_max_capacity = self.memory_manager.get_free_memory(most_free_gpu)
         if self.job_memory > gpu_max_capacity:
-            raise self.JobTooBigError
+            raise JobTooBigError
 
         for mode in modes:
             tasks = tasklist(mode)
@@ -92,8 +97,6 @@ class TaskManager:
                 # close processes and free up resources on completion
                 self.logger.info("Shutting down executor")
                 self.executor.shutdown()  # TODO: does future wait and this both need to be here?
-
-                return self.task_sheet
 
             except Exception as e:
                 self.logger.exception(f"Error in launching jobs: {e}")

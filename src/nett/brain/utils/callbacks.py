@@ -14,7 +14,7 @@ from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
 from stable_baselines3.common.base_class import BaseAlgorithm
 
-from nett.utils import MemoryManager
+from ...utils.memory import MemoryManager
 
 # from nett.utils.performance import compute_train_performance
 

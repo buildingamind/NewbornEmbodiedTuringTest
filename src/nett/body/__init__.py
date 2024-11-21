@@ -5,7 +5,7 @@ Body module for nett
   :synopsis: Body module for nett
 """
 
-from body import Body
+from .body import Body
 
 # ASCII art
 ascii_basic = """

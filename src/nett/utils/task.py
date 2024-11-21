@@ -11,7 +11,7 @@ class Task:
         condition (str): condition for the task
         estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
     """
-
+    device: int
     def __init__(
         self,
         mode: str,
@@ -25,9 +25,7 @@ class Task:
         self.brain_id: int = brain_id
         self.condition: str = condition
         self.estimate_memory = estimate_memory
-        self.path: Path = Path.joinpath(
-            output_dir, self.condition, f"brain_{self.brain_id}"
-        )
+        self.path: Path = output_dir / self.condition / f"brain_{self.brain_id}"
 
         # self.estimate_memory: bool = estimate_memory
 
@@ -57,6 +55,3 @@ class Task:
 
         return paths
 
-    @property
-    def device(self):
-        return self.device

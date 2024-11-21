@@ -18,10 +18,10 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 from rllte.common.prototype import BaseReward
 
-from nett.utils.task import Task
+from ..utils.task import Task
 
 from .utils import callbacks as cb
-from nett.brain.params import (
+from .params import (
     validate_algorithm,
     validate_encoder,
     validate_reward,
@@ -59,9 +59,6 @@ class Brain:
         num_test_conditions: int,
         num_imprinting_conditions: int,
         num_brains: int,
-        train_eps: int,
-        test_eps: int,
-        steps_per_episode: int,
         policy: Any | str,
         algorithm: str | BaseAlgorithm,
         encoder: Any | str = "small",
@@ -71,6 +68,9 @@ class Brain:
         buffer_size: int = 2048,
         learning_rate: float = 0.0003,
         ent_coef: float = 0,
+        train_eps: int = 5000,  # 1000
+        test_eps: int = 100,  # 20
+        steps_per_episode: int = 200,  # 1000
         save_checkpoints: bool = False,
         checkpoint_freq: int = 30_000,
         train_encoder: bool = True,
@@ -115,7 +115,7 @@ class Brain:
 
         # calculate number of environments that can be run at once per job (using SubProcVecEnv)
         max_envs = os.cpu_count() / (
-            2 * cls.n_tasks
+            4 * cls.n_tasks
         )  # TODO: Determine the number of threads used per brain and per env
         if max_envs <= 1:
             cls.n_parallel_envs = 1
@@ -173,7 +173,7 @@ class Brain:
                 n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
-                verbose=0,  # TODO: Incorporate this into options
+                verbose=1, #0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=self.device,
                 seed=self.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
@@ -203,7 +203,7 @@ class Brain:
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
                 callback=callback_list,
-                tb_log_name="train",
+                # tb_log_name="train",
             )
         except Exception as e:
             if "CUDA out of memory" in str(e):

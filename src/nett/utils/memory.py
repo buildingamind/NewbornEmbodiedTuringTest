@@ -22,7 +22,7 @@ def singleton(cls):
 
 @singleton
 class MemoryManager:
-    def __init__():
+    def __init__(self) -> None:
         nvmlInit()
 
     @staticmethod

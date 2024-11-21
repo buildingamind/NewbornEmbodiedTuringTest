@@ -5,7 +5,7 @@ from gymnasium.wrappers import RecordVideo
 
 from nett.utils.task import Task
 
-from wrappers import validate_wrappers
+from .wrappers import validate_wrappers
 
 
 class Body(gym.Wrapper):

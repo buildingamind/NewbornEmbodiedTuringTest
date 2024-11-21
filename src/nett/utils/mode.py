@@ -17,7 +17,7 @@ def validate_mode(mode: str) -> str:
     str: mode
     """
     try:
-        return MODES(mode.upper())
+        return MODES[mode.upper()].value
     except KeyError:
         all_modes = [mode.name for mode in MODES]
         raise ValueError(f"Unknown mode type {mode}, should be one of {all_modes}")
