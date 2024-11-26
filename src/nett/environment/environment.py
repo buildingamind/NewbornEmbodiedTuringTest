@@ -16,7 +16,8 @@ from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 from pettingzoo.utils.wrappers import BaseParallelWrapper
 
-from ..utils.task import Task
+from nett.utils.task import Task
+from nett import logger
 
 # checks to see if ml-agents tmp files have the proper permissions
 try:
@@ -64,8 +65,6 @@ class Environment:
         cls.executable_path: Path = validate_executable_path(executable_path)
         cls.multiobs = multiobs
         cls.multiagent = multiagent
-
-        from nett import logger
 
         cls.logger = logger.getChild(__class__.__name__)
 

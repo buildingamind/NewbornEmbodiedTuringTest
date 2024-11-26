@@ -6,6 +6,7 @@ from pynvml import (
     nvmlDeviceGetCount,
     c_nvmlMemory_t,
     c_nvmlMemory_v2_t,
+    nvmlShutdown,
 )
 
 
@@ -24,6 +25,9 @@ def singleton(cls):
 class MemoryManager:
     def __init__(self) -> None:
         nvmlInit()
+
+    def close(self) -> None:
+        nvmlShutdown()
 
     @staticmethod
     def get_memory_status(device_id: int) -> c_nvmlMemory_t | c_nvmlMemory_v2_t:

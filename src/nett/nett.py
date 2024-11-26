@@ -17,6 +17,7 @@ from .utils.tasklist import TaskList
 from .utils.task_manager import TaskManager
 from .utils.mode import validate_mode
 
+from nett import logger
 
 class NETT:
     """
@@ -37,10 +38,7 @@ class NETT:
         """
         Initialize the NETT class.
         """
-
         # initialize logger
-        from nett import logger
-
         self.logger = logger.getChild(__class__.__name__)
 
         try:
@@ -182,9 +180,6 @@ class NETT:
     #     jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
 
     #     return [runStatus(job_future) | jobInfo(job) for job_future, job in task_sheet.items()]
-
-
-from typing import Optional
 
 
 def validate_conditions(all_conditions: list[str], conditions: Optional[list[str]]):

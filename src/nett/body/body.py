@@ -4,6 +4,7 @@ import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
 from nett.utils.task import Task
+from nett import logger
 
 from .wrappers import validate_wrappers
 
@@ -37,8 +38,6 @@ class Body(gym.Wrapper):
         """
         Constructor method
         """
-        from nett import logger
-
         cls.logger = logger.getChild(__class__.__name__)
 
         cls.multiobs = "binocular" in wrappers

@@ -16,6 +16,8 @@ from .tasklist import TaskList
 from .vec_env import MultiEnv, SingleEnv, ZooEnv
 from .memory import MemoryManager
 
+from nett import logger
+
 JobTooBigError = ValueError(
     "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
 )
@@ -32,8 +34,6 @@ class TaskManager:
         synchronous: bool,
     ) -> None:
         # initialize logger
-        from nett import logger
-
         self.logger = logger.getChild(__class__.__name__)
 
         mute = lambda: setattr(sys, "stdout", open(os.devnull, "w"))
@@ -47,7 +47,8 @@ class TaskManager:
         self.logger.info(f"Devices that will be used: {devices}")
 
         self.executor = ProcessPoolExecutor(
-            max_workers=os.cpu_count(), initializer=initializer # TODO: too many workers
+            max_workers=os.cpu_count(),
+            initializer=initializer,  # TODO: too many workers
         )
 
         if job_memory == "auto":
@@ -94,13 +95,15 @@ class TaskManager:
                 if synchronous:
                     future_wait(self.task_sheet.keys(), return_when="ALL_COMPLETED")
 
-                # close processes and free up resources on completion
-                self.logger.info("Shutting down executor")
-                self.executor.shutdown()  # TODO: does future wait and this both need to be here?
-
             except Exception as e:
                 self.logger.exception(f"Error in launching jobs: {e}")
                 raise e
+            finally:
+                # close memory manager
+                self.memory_manager.close()
+                # close processes and free up resources on completion
+                self.logger.info("Shutting down executor")
+                self.executor.shutdown()  # TODO: does future wait and this both need to be here?
 
     def run(self, task: Task) -> None:
         # run environment
