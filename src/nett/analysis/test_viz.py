@@ -100,7 +100,13 @@ def make_bar_charts(data, dots, y_col, error_min_col, error_max_col,
             dots['test.cond'], categories=x_categories, ordered=True)
         dot_x_pos = dots['test.cond'].cat.codes
         # Add dots to bar chart
-        sns.stripplot(x=dot_x_pos, y=dots['avgs'], ax=ax, color='black',jitter=0.3, size=7)
+        not_nan_indices = pd.notna(dots['avgs'])
+        x_vals = dot_x_pos[not_nan_indices]
+        y_vals = dots['avgs'][not_nan_indices]
+        if len(y_vals) != 0:
+            sns.stripplot(x=x_vals, y=y_vals, ax=ax, color='black',jitter=0.3, size=7)
+        else:
+            print('All values were none. No dots to add.')
 
     ax.axhline(0.5, linestyle='--', color='grey')
     ax.set_xlabel("Test Condition", fontweight='bold', fontsize=14)
@@ -158,9 +164,9 @@ def imprint_cond_bar_charts(by_imp_cond, by_test_cond, results_dir, chick_data, 
             img_name=img_name, chick_data=chick_data, color_bars=color_bars
         )
 
-def stats_overall(by_test_cond: pd.DataFrame, results_dir: Path):
-    across_imp_cond = by_test_cond[
-        by_test_cond['test.cond'] != "Rest"
+def stats_overall(data: pd.DataFrame, results_dir: Path):
+    across_imp_cond = data[
+        data['test.cond'] != "Rest"
     ].groupby('test.cond').apply(
         lambda g: _stats(g, column='avgs')
     ).drop('Rest').reset_index()
@@ -199,7 +205,19 @@ def test_viz(results_dir: Path, chick_file: Path, bar_order="default", color_bar
         test_data['correct_steps'] + test_data['incorrect_steps'])
 
     print("Adjusting bar order...")
-    test_data['test.cond'] = sort_cond(test_data, bar_order)
+    # test_data['test.cond'] = sort_cond(test_data, bar_order)
+    if bar_order == "desc":
+        order = test_data.groupby('test.cond')['percent_correct']\
+            .mean().sort_values(ascending=False).index.tolist()
+    elif bar_order == "asc":
+        order = test_data.groupby('test.cond')['percent_correct']\
+            .mean().sort_values().index.tolist()
+    elif bar_order != "default":
+        order = [x.strip() for x in bar_order.split(',')]
+    else:
+        order = test_data['test.cond'].unique().tolist()
+    test_data['test.cond'] = pd.Categorical(
+        test_data['test.cond'], categories=order, ordered=True)
 
     print("Computing statistics by agent...")
     by_test_cond = compute_stats(test_data, results_dir)
@@ -214,7 +232,7 @@ def test_viz(results_dir: Path, chick_file: Path, bar_order="default", color_bar
     imprint_cond_bar_charts(by_imp_cond, by_test_cond, results_dir, chick_data, color_bars)
 
     print("Computing statistics across all imprinting conditions...")
-    across_imp_cond = stats_overall(data=by_test_cond, results_dir=results_dir, chick_data=chick_data, color_bars=color_bars)
+    across_imp_cond = stats_overall(data=by_test_cond, results_dir=results_dir)
 
     print("Creating bar chart for all imprinting conditions...")
     all_cond_bar_chart(by_test_cond, across_imp_cond, results_dir, chick_data, color_bars)
