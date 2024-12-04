@@ -38,7 +38,7 @@ class Binocular(gym.ObservationWrapper):
     
     def observation(self, obs):
         """
-        Performs the DVS transformation on the observation.
+        Combines two observations into a single observation.
 
         Args:
             obs (list): The list of stacked frames.
