@@ -126,7 +126,9 @@ class Brain:
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
             
-        self.logger.info(f'Training {self.encoder.__name__} with {self.algorithm.__name__}')
+        self.logger.info(
+            f'Training {self.encoder.__name__ if self.encoder is not None else "default encoder"} with {self.algorithm.__name__}'
+        )
         try:
                 model = self.algorithm(
                 self.policy,

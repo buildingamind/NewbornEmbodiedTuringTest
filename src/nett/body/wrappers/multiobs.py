@@ -9,6 +9,13 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def _tuple_to_dict(tup: tuple):
+    """
+    Converts a tuple to a dictionary.
+    """
+    return {f"obs {k}": v for k, v in enumerate(tup)}
+
+
 class MultiObs(gym.ObservationWrapper):
     """
     A gym observation wrapper for using SB3 MultiInputPolicy.
@@ -31,7 +38,7 @@ class MultiObs(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
         # convert Tuple to Dict
-        self.observation_space = gym.spaces.Dict(dict(enumerate(env.observation_space)))
+        self.observation_space = gym.spaces.Dict(_tuple_to_dict(env.observation_space))
 
     def observation(self, obs):
         """
@@ -44,4 +51,4 @@ class MultiObs(gym.ObservationWrapper):
             numpy.ndarray: The transformed observation.
 
         """
-        return gym.spaces.Dict(dict(enumerate(obs)))
+        return _tuple_to_dict(obs)
