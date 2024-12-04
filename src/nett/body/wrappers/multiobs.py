@@ -1,11 +1,13 @@
 #!/usr/bin/env python3
 
 import gymnasium as gym
+
 # import numpy as np
 import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 class MultiObs(gym.ObservationWrapper):
     """
@@ -28,33 +30,18 @@ class MultiObs(gym.ObservationWrapper):
 
     def __init__(self, env):
         super().__init__(env)
+        # convert Tuple to Dict
+        self.observation_space = gym.spaces.Dict(dict(enumerate(env.observation_space)))
 
-        try:
-            obs_dict = {}
-            for k, v in enumerate(env.observation_space):
-                obs_dict[f'obs {k}'] = v
-            self.observation_space = gym.spaces.Dict(obs_dict)
-        except Exception as e:
-            raise e
-    
-    # def observation(self, obs):
-    #     """
-    #     Performs the DVS transformation on the observation.
+    def observation(self, obs):
+        """
+        Performs the DVS transformation on the observation.
 
-    #     Args:
-    #         obs (list): The list of stacked frames.
+        Args:
+            obs (list): The list of stacked frames.
 
-    #     Returns:
-    #         numpy.ndarray: The transformed observation.
+        Returns:
+            numpy.ndarray: The transformed observation.
 
-    #     """
-    #     left, right = obs
-
-    #     # Combine two observations into a single observation
-    #     combined_obs = np.concatenate([left, right])
-
-    #     return combined_obs
-    
-    # def reset(self, **kwargs):
-    #     initial_obs, initial_info = self.env.reset(**kwargs)
-    #     return self.observation(initial_obs), initial_info 
+        """
+        return gym.spaces.Dict(dict(enumerate(obs)))
