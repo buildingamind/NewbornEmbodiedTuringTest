@@ -25,8 +25,8 @@ from .utils import initialize_callbacks
 from nett.utils import Job
 from gymnasium.wrappers import RecordVideo
 
-from nett.brain.rewards import ICM  #, RND, Disagreement
-from rllte.xplore.reward import RND, Disagreement #ICM, E3B
+from nett.brain.rewards import ICM  # , RND, Disagreement
+from rllte.xplore.reward import RND, Disagreement  # ICM, E3B
 
 REWARD_DICT: dict[str, callable] = {
     "rnd": RND,
@@ -34,14 +34,15 @@ REWARD_DICT: dict[str, callable] = {
     "disagreement": Disagreement,
     # "e3b": E3B,
     "supervised": None,
-    "unsupervised": None
+    "unsupervised": None,
 }
 
 # TODO (v0.3): Extend with support for custom policy models
 # TODO (v0.3): should we move validation checks to utils under validations.py?
 
+
 class Brain:
-    """Represents the brain of an agent. 
+    """Represents the brain of an agent.
 
     The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
 
@@ -67,8 +68,8 @@ class Brain:
     def __init__(
         self,
         policy: Any | str,
-        algorithm:  str | OnPolicyAlgorithm | OffPolicyAlgorithm,
-        encoder: Any | str = 'small',
+        algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm,
+        encoder: Any | str = "small",
         embedding_dim: Optional[int] = None,
         reward: str = "supervised",
         batch_size: int = 512,
@@ -77,11 +78,10 @@ class Brain:
         ent_coef: float = 0,
         train_encoder: bool = True,
         seed: int = 12,
-        custom_encoder_args: dict[str, Any]= {},
-        custom_policy_arch: Optional[list[int|dict[str,list[int]]]] = None
+        custom_encoder_args: dict[str, Any] = {},
+        custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
     ) -> None:
-        """Constructor method
-        """
+        """Constructor method"""
         # Initialize logger
         from nett import logger
 
@@ -115,34 +115,41 @@ class Brain:
         """
 
         # build model
-        policy_kwargs = {
-            "features_extractor_class": self.encoder,
-            "features_extractor_kwargs": {
-                "features_dim": self.embedding_dim or inspect.signature(self.encoder).parameters["features_dim"].default,
-                **self.custom_encoder_args
+        policy_kwargs = (
+            {
+                "features_extractor_class": self.encoder,
+                "features_extractor_kwargs": {
+                    "features_dim": self.embedding_dim
+                    or inspect.signature(self.encoder)
+                    .parameters["features_dim"]
+                    .default,
+                    **self.custom_encoder_args,
+                },
             }
-        } if self.encoder is not None else {}
-        
+            if self.encoder is not None
+            else {}
+        )
+
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
-            
+
         self.logger.info(
             f'Training {self.encoder.__name__ if self.encoder is not None else "default encoder"} with {self.algorithm.__name__}'
         )
         try:
-                model = self.algorithm(
+            model = self.algorithm(
                 self.policy,
                 envs,
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
-                verbose=0, #TODO: Incorporate this into options
+                verbose=0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{job.device}",
-                seed=self.seed # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
-                )
-            
+                seed=self.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+            )
+
         except Exception as e:
             self.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
@@ -150,22 +157,25 @@ class Brain:
         # setup tensorboard logger and attach to model
         tb_logger = configure(str(job.paths["logs"]), ["stdout", "csv", "tensorboard"])
         model.set_logger(tb_logger)
-        
+
         self.logger.info(f"Tensorboard logs saved at {str(job.paths['logs'])}")
         # set encoder as eval only if train_encoder is not True
         if not self.train_encoder:
             model = self._set_encoder_as_eval(model)
-            self.logger.warning(f"Encoder training is set to {str(self.train_encoder).upper()}")
+            self.logger.warning(
+                f"Encoder training is set to {str(self.train_encoder).upper()}"
+            )
 
         # create reward function
         if REWARD_DICT[self.reward] is not None:
             job.reward_func = REWARD_DICT[self.reward](
-                envs=envs, 
+                envs=envs,
                 device=job.device,
                 beta=0.2,
                 kappa=0.0,
-                gamma=0.99, 
-                batch_size=self.batch_size)
+                gamma=0.99,
+                batch_size=self.batch_size,
+            )
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
         callback_list = initialize_callbacks(job)
@@ -177,7 +187,8 @@ class Brain:
                 total_timesteps=job.iterations["train"],
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
-                    callback=callback_list)
+                callback=callback_list,
+            )
         except Exception as e:
             if "CUDA out of memory" in str(e):
                 self.logger.error("CUDA out of memory. Try reducing batch size.")
@@ -194,7 +205,7 @@ class Brain:
         ## create save directory
         self.save_encoder_policy_network(model.policy, job.paths["model"])
         print("Saved feature extractor")
-        
+
         save_path = f"{job.paths['model'].joinpath('latest_model.zip')}"
         model.save(save_path)
         self.logger.info(f"Saved model at {save_path}")
@@ -210,21 +221,27 @@ class Brain:
         try:
             # load previously trained model from save_dir, if it exists
             model: OnPolicyAlgorithm | OffPolicyAlgorithm = self.algorithm.load(
-                job.paths['model'].joinpath('latest_model.zip'), 
-                device=f"cuda:{job.device}")
+                job.paths["model"].joinpath("latest_model.zip"),
+                device=f"cuda:{job.device}",
+            )
 
-            self.logger.info(f'Testing with {self.algorithm.__name__}')
+            self.logger.info(f"Testing with {self.algorithm.__name__}")
 
             num_envs = envs.num_envs
             ## record - test video
             # vr = VideoRecorder(env=envs,
             # path="{}/agent_{}.mp4".format(job.paths["env_recs"], \
             #     str(index)), enabled=True)
-            
+
             # for when algorithm is RecurrentPPO
             iterations: int = job.iterations["test"]
             self.logger.info(f"Total iterations: {iterations}")
-            t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index, leave=True)
+            t = tqdm(
+                total=iterations,
+                desc=f"Condition {job.index}",
+                position=job.index,
+                leave=True,
+            )
             # record_states: bool = "state" in job.record["test"]
             # if record_states:
             #     # change print option for recording obs
@@ -235,10 +252,12 @@ class Brain:
 
             if issubclass(self.algorithm, RecurrentPPO):
                 self.logger.info(f"Total number of episodes: {iterations}")
-                #iterations = 20*50 # 20 episodes of 50 conditions  each
-                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
+                # iterations = 20*50 # 20 episodes of 50 conditions  each
+                t = tqdm(
+                    total=iterations, desc=f"Condition {job.index}", position=job.index
+                )
                 for _ in range(iterations):
-                    # cell and hidden state of the LSTM 
+                    # cell and hidden state of the LSTM
                     dones, states = [False], None
                     # episode start signals are used to reset the lstm states
                     episode_starts = np.ones((num_envs,), dtype=bool)
@@ -248,7 +267,8 @@ class Brain:
                             obs,
                             state=states,
                             episode_start=episode_starts,
-                            deterministic=True)
+                            deterministic=True,
+                        )
                         # if (record_states and i < job.recording_eps):
                         #     with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
                         #         f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
@@ -256,10 +276,10 @@ class Brain:
                         #         f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
                         #     with open(Path.joinpath(states_path, 'states.txt'), 'a') as f:
                         #         f.write(f"{' '.join(map(str, np.array(states).flatten()))}\n")
-                        obs, _, dones, _ = envs.step(action) # obs, rewards, done, info
+                        obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
                         t.update(1)
                         episode_starts = dones
-                        # vr.capture_frame()    
+                        # vr.capture_frame()
 
                 # vr.close()
                 # vr.enabled = False
@@ -267,15 +287,17 @@ class Brain:
             # for all other algorithms
             else:
                 obs = envs.reset()
-                t = tqdm(total=iterations, desc=f"Condition {job.index}", position=job.index)
+                t = tqdm(
+                    total=iterations, desc=f"Condition {job.index}", position=job.index
+                )
                 for _ in range(iterations):
-                    action, _ = model.predict(obs, deterministic=True) # action, states
+                    action, _ = model.predict(obs, deterministic=True)  # action, states
                     # if (record_states and i < job.recording_eps*job.steps_per_episode):
                     #     with open(Path.joinpath(states_path, 'obs.txt'), 'a') as f:
                     #         f.write(f"{' '.join(map(str, np.array(obs).flatten()))}\n")
                     #     with open(Path.joinpath(states_path, 'actions.txt'), 'a') as f:
                     #         f.write(f"{' '.join(map(str, np.array(action).flatten()))}\n")
-                    obs, _, dones, _ = envs.step(action) # obs, reward, done, info
+                    obs, _, dones, _ = envs.step(action)  # obs, reward, done, info
                     t.update(1)
                     if dones[0]:
                         obs = envs.reset()
@@ -285,11 +307,11 @@ class Brain:
             self.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
         # finally:
-            # vr.close()
-            # vr.enabled = False
-        
+        # vr.close()
+        # vr.enabled = False
+
         t.close()
-    
+
     @staticmethod
     def save_encoder_policy_network(policy, path: Path):
         """
@@ -302,11 +324,11 @@ class Brain:
 
         Returns:
             None
-        """        
+        """
         ## save policy
         path.mkdir(parents=True, exist_ok=True)
         policy.save(os.path.join(path, "policy.pkl"))
-        
+
         ## save encoder
         encoder = policy.features_extractor.state_dict()
         save_path = os.path.join(path, "feature_extractor.pth")
@@ -316,10 +338,7 @@ class Brain:
 
     @staticmethod
     def plot_results(
-        iterations: int,
-        model_log_dir: Path,
-        plots_dir: Path,
-        name: str
+        iterations: int, model_log_dir: Path, plots_dir: Path, name: str
     ) -> None:
         """
         Plot the training results.
@@ -330,10 +349,9 @@ class Brain:
             plots_dir (Path): The directory to save the plots.
             name (str): The name of the plot.
         """
-        results_plotter.plot_results([str(model_log_dir)],
-            iterations,
-            results_plotter.X_TIMESTEPS,
-            name)
+        results_plotter.plot_results(
+            [str(model_log_dir)], iterations, results_plotter.X_TIMESTEPS, name
+        )
         plots_dir.mkdir(parents=True, exist_ok=True)
         plt.savefig(plots_dir.joinpath(f"{name}.png"))
         plt.clf()
@@ -351,14 +369,16 @@ class Brain:
         """
         # for when encoder is a string
         if isinstance(encoder, str):
-            if encoder == 'small':
+            if encoder == "small":
                 encoder = NatureCNN
-                encoder.__name__ = 'NatureCNN'
+                encoder.__name__ = "NatureCNN"
             elif encoder in encoders_dict.keys():
                 encoder = getattr(encoders, encoders_dict[encoder])
             else:
-                raise ValueError(f"If a string, should be one of: {encoders_dict.keys()}")
-            
+                raise ValueError(
+                    f"If a string, should be one of: {encoders_dict.keys()}"
+                )
+
         # for when encoder is a custom PyTorch encoder
         if isinstance(encoder, BaseFeaturesExtractor):
             # TODO (v0.3) pass dummy torch.tensor on "meta" device to validate embedding dim
@@ -367,7 +387,9 @@ class Brain:
         return encoder
 
     @staticmethod
-    def _validate_algorithm(algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    def _validate_algorithm(
+        algorithm: str | OnPolicyAlgorithm | OffPolicyAlgorithm,
+    ) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Validate the optimization algorithm.
 
@@ -386,18 +408,23 @@ class Brain:
                 raise ValueError(f"If a string, should be one of: {algorithms}")
             # check for the passed policy in stable_baselines3 as well as sb3-contrib
             # at this point in the code, it is guaranteed to be in either of the two
-                
-            algorithm = getattr(stable_baselines3, algorithm, None) or getattr(sb3_contrib, algorithm)
+
+            algorithm = getattr(stable_baselines3, algorithm, None) or getattr(
+                sb3_contrib, algorithm
+            )
 
         # for when policy algorithm is custom
-        elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(algorithm, OffPolicyAlgorithm):
+        elif isinstance(algorithm, OnPolicyAlgorithm) or isinstance(
+            algorithm, OffPolicyAlgorithm
+        ):
             # TODO (v0.4) determine appropriate validation checks to be performed before passing
             pass
 
         else:
-            raise ValueError(f"Policy Algorithm should be either one of {algorithms} or a subclass of [{OnPolicyAlgorithm}, {OffPolicyAlgorithm}]")
+            raise ValueError(
+                f"Policy Algorithm should be either one of {algorithms} or a subclass of [{OnPolicyAlgorithm}, {OffPolicyAlgorithm}]"
+            )
 
-        
         return algorithm
 
     @staticmethod
@@ -427,7 +454,9 @@ class Brain:
             pass
 
         else:
-            raise ValueError(f"Policy Model should be either one of {policies} or a subclass of [{BasePolicy}]")
+            raise ValueError(
+                f"Policy Model should be either one of {policies} or a subclass of [{BasePolicy}]"
+            )
 
         return policy
 
@@ -451,7 +480,9 @@ class Brain:
         return reward
 
     @staticmethod
-    def _set_encoder_as_eval(model: OnPolicyAlgorithm | OffPolicyAlgorithm) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
+    def _set_encoder_as_eval(
+        model: OnPolicyAlgorithm | OffPolicyAlgorithm,
+    ) -> OnPolicyAlgorithm | OffPolicyAlgorithm:
         """
         Set the encoder as evaluation mode and freeze its parameters.
 
@@ -466,11 +497,11 @@ class Brain:
         for param in model.policy.features_extractor.parameters():
             param.requires_grad = False
         return model
-    
+
     def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
 
     def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != 'logger'}
+        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
         return f"{self.__class__.__name__}({attrs!r})"
