@@ -36,6 +36,7 @@ class TaskManager:
         # initialize logger
         self.logger = logger.getChild(__class__.__name__)
 
+        # mute stdout if not verbose
         mute = lambda: setattr(sys, "stdout", open(os.devnull, "w"))
         initializer = mute if not verbose else None
 
@@ -47,7 +48,6 @@ class TaskManager:
         self.logger.info(f"Devices that will be used: {devices}")
 
         self.executor = ProcessPoolExecutor(
-            max_workers=os.cpu_count(),
             initializer=initializer,  # TODO: too many workers
         )
 
@@ -120,7 +120,7 @@ class TaskManager:
             else:
                 # validation run
                 validate_env(task)
-                if self.mode == "train":
+                if task.mode == "train":
                     with SingleEnv(task) as envs:
                         brain.train(envs, task)
                 else:
