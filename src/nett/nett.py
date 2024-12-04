@@ -749,8 +749,7 @@ class NETT:
         if rank is not None:
             time.sleep(rank)
         copy_environment = deepcopy(self.environment)
-        multiobs: bool = self.body.multiobs or self.brain.policy == 'MultiInputPolicy'
-        copy_environment.initialize(mode, rank=rank, multiobs=multiobs, **kwargs)
+        copy_environment.initialize(mode, rank=rank, multiobs=self.body.multiobs, **kwargs)
         copy_body = deepcopy(self.body)
         # apply wrappers (body)
         return copy_body(copy_environment)    
