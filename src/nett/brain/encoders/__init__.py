@@ -7,3 +7,4 @@ from .sam import SegmentAnything
 from .vit import ViT
 from .cnnlstm import CNNLSTM
 from .frozensimclr import FrozenSimCLR
+from .multi import MultiInputEncoder
