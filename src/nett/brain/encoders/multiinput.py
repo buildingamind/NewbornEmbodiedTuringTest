@@ -9,7 +9,6 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.type_aliases import TensorDict
 from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
 
-
 class MultiInputEncoder(BaseFeaturesExtractor):
     """
     TODO: Update docstring
@@ -21,10 +20,6 @@ class MultiInputEncoder(BaseFeaturesExtractor):
     :param observation_space:
     :param cnn_output_dim: Number of features to output from each CNN submodule(s). Defaults to
         256 to avoid exploding network sizes.
-    :param normalized_image: Whether to assume that the image is already normalized
-        or not (this disables dtype and bounds checks): when True, it only checks that
-        the space is a Box and has 3 dimensions.
-        Otherwise, it checks that it has expected dtype (uint8) and bounds (values in [0, 255]).
     """
 
     def __init__(
@@ -32,15 +27,13 @@ class MultiInputEncoder(BaseFeaturesExtractor):
         observation_space: gym.spaces.Dict,
         extractor_class: Type[BaseFeaturesExtractor],
         features_dim: int = 512,
-        normalized_image: bool = False,
+        **extractor_args,
     ) -> None:
         n_image_spaces = 0
         vector_features = 0
 
         for subspace in observation_space.spaces.values():
-            if is_image_space(
-                observation_space=subspace, normalized_image=normalized_image
-            ):
+            if is_image_space(subspace):
                 n_image_spaces += 1
             else:
                 vector_features += get_flattened_obs_dim(subspace)
@@ -75,13 +68,11 @@ class MultiInputEncoder(BaseFeaturesExtractor):
         extractors: dict[str, nn.Module] = {}
 
         for key, subspace in observation_space.spaces.items():
-            if is_image_space(
-                observation_space=subspace, normalized_image=normalized_image
-            ):
+            if is_image_space(subspace):
                 extractors[key] = extractor_class(
                     observation_space=subspace,
                     features_dim=features_per_image,
-                    normalized_image=normalized_image,
+                    **extractor_args,
                 )
             else:
                 # The observation key is a vector, flatten it if needed
