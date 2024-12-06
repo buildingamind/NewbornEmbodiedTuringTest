@@ -92,8 +92,8 @@ class Brain:
         self.policy = self._validate_policy(policy)
         self.train_encoder = train_encoder
         self.encoder = self._validate_encoder(encoder)
-        if 'extractor_class' in self.custom_encoder_args:
-            self.custom_encoder_args['extractor_class'] = self._validate_encoder(self.custom_encoder_args['extractor_class'] )
+        if 'extractor_class' in custom_encoder_args:
+            custom_encoder_args['extractor_class'] = self._validate_encoder(custom_encoder_args['extractor_class'] )
         self.reward = self._validate_reward(reward) if reward else None
 
         self.embedding_dim = embedding_dim
