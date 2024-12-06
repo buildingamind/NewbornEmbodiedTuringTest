@@ -60,7 +60,7 @@ class MultiInputEncoder(BaseFeaturesExtractor):
             # add image features to used features
             used_features += image_features
             # calculate the number of features per image space
-            features_per_image = image_features / n_image_spaces
+            features_per_image = int(image_features / n_image_spaces)
 
         # initialize the base features extractor
         super().__init__(observation_space, features_dim=used_features)
