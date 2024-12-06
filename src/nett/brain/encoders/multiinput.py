@@ -63,7 +63,7 @@ class MultiInputEncoder(BaseFeaturesExtractor):
             features_per_image = image_features / n_image_spaces
 
         # initialize the base features extractor
-        super().__init__(observation_space, features_dim=vector_features)
+        super().__init__(observation_space, features_dim=used_features)
 
         extractors: dict[str, nn.Module] = {}
 
