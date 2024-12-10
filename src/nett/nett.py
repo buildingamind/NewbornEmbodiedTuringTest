@@ -5,6 +5,7 @@ This module contains the NETT class, which is the main class for training, testi
    :synopsis: Main class for training, testing and analyzing brains in environments.
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
 from concurrent.futures import Future
@@ -16,8 +17,6 @@ from .environment.environment import Environment
 from .utils.tasklist import TaskList
 from .utils.task_manager import TaskManager
 from .utils.mode import validate_mode
-
-from nett import logger
 
 class NETT:
     """
@@ -39,7 +38,7 @@ class NETT:
         Initialize the NETT class.
         """
         # initialize logger
-        self.logger = logger.getChild(__class__.__name__)
+        self.logger = logging.getLogger("nett.NETT")
 
         try:
             if isinstance(config, list):

@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 import sys
@@ -16,8 +17,6 @@ from .tasklist import TaskList
 from .vec_env import MultiEnv, SingleEnv, ZooEnv
 from .memory import MemoryManager
 
-from nett import logger
-
 JobTooBigError = ValueError(
     "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
 )
@@ -34,7 +33,7 @@ class TaskManager:
         synchronous: bool,
     ) -> None:
         # initialize logger
-        self.logger = logger.getChild(__class__.__name__)
+        self.logger = logging.getLogger("nett.TaskManager")
 
         # mute stdout if not verbose
         mute = lambda: setattr(sys, "stdout", open(os.devnull, "w"))

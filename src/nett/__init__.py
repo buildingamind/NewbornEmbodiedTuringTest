@@ -29,7 +29,7 @@ from .brain.params import list_algorithms, list_encoders, list_policies, list_re
 
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger('nett')
 
 # Alter permissions for ml-agents binaries which are shared between users
 for tmp_dir in [

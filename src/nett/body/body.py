@@ -1,10 +1,10 @@
 """The body of the agent in the environment."""
 
+import logging
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
 from nett.utils.task import Task
-from nett import logger
 
 from .wrappers import validate_wrappers
 
@@ -38,7 +38,7 @@ class Body(gym.Wrapper):
         """
         Constructor method
         """
-        cls.logger = logger.getChild(__class__.__name__)
+        cls.logger = logging.getLogger('nett.Body')
 
         cls.multiobs = "binocular" in wrappers
         cls.wrappers = validate_wrappers(wrappers)

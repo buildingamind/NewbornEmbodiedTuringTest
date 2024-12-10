@@ -1,5 +1,6 @@
 """Module for the Brain class."""
 
+import logging
 import os
 import inspect
 from math import ceil
@@ -80,9 +81,7 @@ class Brain:
     ):
 
         # Initialize logger
-        from nett import logger
-
-        cls.logger = logger.getChild(__class__.__name__)
+        cls.logger = logging.getLogger("nett.Brain")
 
         # Set attributes
         cls.algorithm = validate_algorithm(algorithm)
