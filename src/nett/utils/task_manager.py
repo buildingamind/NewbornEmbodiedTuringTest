@@ -151,7 +151,7 @@ class TaskManager:
         # calculate current memory usage for baseline for comparison
         # find the GPU with the most free memory
         most_free_gpu: int = self.memory_manager.get_most_free_gpu(self.devices)
-        pre_memory: int = self.memory_manager.get_free_memory(self.devices)
+        pre_memory: int = self.memory_manager.get_free_memory(most_free_gpu)
         try:
             # create a test task to estimate memory
             # TODO: Allow mem estimation to accurately estimate for test
