@@ -114,9 +114,6 @@ class NETT:
         Environment.initialize(
             steps_per_episode=steps_per_episode,
             supervised_reward=supervised_reward,
-            record_training=record_training,
-            record_testing=record_testing,
-            recording_eps=recording_eps,
             multiobs=Body.multiobs,
             **self.environment_config,
         )
