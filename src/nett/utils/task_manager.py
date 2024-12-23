@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 import shutil
 import sys
 from typing import Optional
@@ -51,8 +52,8 @@ class TaskManager:
         )
 
         if job_memory == "auto":
-            self.job_memory = self._estimate_job_memory(
-                tasklist.conditions[0]
+            self.job_memory = self._estimate_task_memory(
+                tasklist.conditions[0], tasklist.output_dir
             )  # TODO Clean this up
         else:
             self.job_memory = job_memory * (1024**3)
@@ -146,7 +147,7 @@ class TaskManager:
         free_device: int = self.task_sheet.pop(done_future)
         self.submitTask(task, free_device)
 
-    def _estimate_task_memory(self, example_condition: str) -> int:
+    def _estimate_task_memory(self, example_condition: str, output_dir: Path) -> int:
         self.logger.info("Estimating memory for a single task")
         # calculate current memory usage for baseline for comparison
         # find the GPU with the most free memory
@@ -155,14 +156,14 @@ class TaskManager:
         try:
             # create a test task to estimate memory
             # TODO: Allow mem estimation to accurately estimate for test
-            task = Task(
-                "train", 0, example_condition, self.output_dir, estimate_memory=True
-            )
+            task = Task("train", 0, example_condition, output_dir, estimate_memory=True)
             task.device = most_free_gpu
             task_future = self.executor.submit(self.run, task)
-            future_wait(task_future, return_when="ALL_COMPLETED")
+            future_wait(
+                [task_future], return_when="ALL_COMPLETED"
+            )  # TODO: Change this to run it in the same process
 
-            with open(self.path / "mem.txt", "r") as file:
+            with open(task.path / "mem.txt", "r") as file:
                 post_memory: int = int(file.readline())
         except Exception as e:
             self.logger.exception(f"Error in estimating memory: {e}")
