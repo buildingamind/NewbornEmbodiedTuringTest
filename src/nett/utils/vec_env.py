@@ -31,12 +31,18 @@ class ZooEnv(SafeEnv):
 
 
 class SingleEnv(SafeEnv):
-    def __init__(self, task: Task, validation_mode: bool = False):
+    def __init__(self, task: Task):
         def callback():
-            env = GymEnvironment(task, validation_mode)
+            env = GymEnvironment(task, False)
             return Body(env, task)
 
         self._vecenv = DummyVecEnv([callback])
+
+
+class TestEnv(SafeEnv):
+    def __init__(self, task: Task):
+        env = GymEnvironment(task, True)
+        self._vecenv = Body(env, task)
 
 
 class MultiEnv(SafeEnv):

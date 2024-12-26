@@ -15,7 +15,7 @@ from ..brain import Brain
 from ..environment import Environment
 from .task import Task
 from .tasklist import TaskList
-from .vec_env import MultiEnv, SingleEnv, ZooEnv
+from .vec_env import MultiEnv, SingleEnv, TestEnv, ZooEnv
 from .memory import MemoryManager
 
 JobTooBigError = ValueError(
@@ -80,20 +80,20 @@ class TaskManager:
                     if not free_device_memory:
                         # waitlist task
                         self.waitlist(task)
-                    elif free_device_memory[-1]["memory"] < job_memory:
+                    elif free_device_memory[-1]["memory"] < self.job_memory:
                         free_device_memory.pop()
                     else:
                         # create job
                         self.submitTask(task, free_device_memory[-1]["device"])
                         # allocate memory
-                        free_device_memory[-1]["memory"] -= job_memory
+                        free_device_memory[-1]["memory"] -= self.job_memory
                         # rotate devices
                         free_device_memory = [
                             free_device_memory[-1]
                         ] + free_device_memory[:-1]
 
                 if synchronous:
-                    future_wait(self.task_sheet.keys(), return_when="ALL_COMPLETED")
+                    future_wait(self.task_sheet, return_when="ALL_COMPLETED")
 
             except Exception as e:
                 self.logger.exception(f"Error in launching jobs: {e}")
@@ -105,14 +105,15 @@ class TaskManager:
                 self.logger.info("Shutting down executor")
                 self.executor.shutdown()  # TODO: does future wait and this both need to be here?
 
-    def run(self, task: Task) -> None:
+    @staticmethod
+    def run(task: Task, logger) -> None:
         # run environment
         # can be train or test mode and can be for validation or actual run
         try:
             brain: Brain = Brain(task.device, task.brain_id)
 
             log_path = task.path / "env_logs"
-            log_path.mkdir(exist_ok=True)
+            log_path.mkdir(exist_ok=True, parents=True)
 
             if Environment.multiagent:
                 with ZooEnv(task) as envs:
@@ -127,14 +128,14 @@ class TaskManager:
                     with MultiEnv(task, brain.n_parallel_envs) as envs:
                         brain.test(envs, task)
 
-            self.logger.info("Environments Closed")
+            logger.info("Environments Closed")
         except Exception as e:
-            self.logger.exception(f"{self.mode} env failed: {str(e)}")
+            logger.exception(f"{task.mode} env failed: {str(e)}")
             raise e
 
     def submitTask(self, task: Task, device: int) -> None:
         task.device = device
-        task_future = self.executor.submit(self.run, task)
+        task_future = self.executor.submit(self.run, task, self.logger)
         self.task_sheet[task_future] = device
 
     def waitlist(self, task):
@@ -142,7 +143,7 @@ class TaskManager:
         self.logger.warning(
             "Insufficient GPU Memory. Waiting for running tasks to complete."
         )
-        done, _ = future_wait(self.task_sheet.keys(), return_when="FIRST_COMPLETED")
+        done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
         done_future = done[0]
         free_device: int = self.task_sheet.pop(done_future)
         self.submitTask(task, free_device)
@@ -158,10 +159,8 @@ class TaskManager:
             # TODO: Allow mem estimation to accurately estimate for test
             task = Task("train", 0, example_condition, output_dir, estimate_memory=True)
             task.device = most_free_gpu
-            task_future = self.executor.submit(self.run, task)
-            future_wait(
-                [task_future], return_when="ALL_COMPLETED"
-            )  # TODO: Change this to run it in the same process
+            task_future = self.executor.submit(self.run, task, self.logger)
+            future_wait({task_future: task}, return_when="ALL_COMPLETED")
 
             with open(task.path / "mem.txt", "r") as file:
                 post_memory: int = int(file.readline())
@@ -179,7 +178,7 @@ class TaskManager:
 
 def validate_env(task: Task) -> None:
     try:
-        with SingleEnv(task, validation_mode=True) as environment:
+        with TestEnv(task) as environment:
             check_env(environment)
     except Exception as e:
         raise RuntimeError(f"{task.mode} env validation failed: {str(e)}")
