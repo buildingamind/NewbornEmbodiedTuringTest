@@ -77,7 +77,7 @@ class Environment:
         cls.logger.info("Display is set")
 
         # create the base args for creating a new Unity environment
-        args = ["--episode-steps", steps_per_episode]
+        args = ["--episode-steps", str(steps_per_episode)]
 
         # add supervised reward
         if supervised_reward:
@@ -162,11 +162,11 @@ class Environment:
                 "--mode",
                 f"{task.mode}-{task.condition}",  # set mode
                 "--log-dir",
-                recording_path,  # set log path
+                str(recording_path),  # set log path
                 "-force-device-index",
-                task.device,  # set GPU
+                str(task.device),  # set GPU
                 "-gpu",
-                task.device,  # set GPU
+                str(task.device),  # set GPU
             ]
         )
 
@@ -187,7 +187,7 @@ class Environment:
         while not complete:
             try:
                 self.env = UnityEnvironment(
-                    self.executable_path,
+                    str(self.executable_path),
                     # side_channels=[self.log],
                     additional_args=args,
                     base_port=random_port(),
@@ -264,17 +264,6 @@ class Environment:
             if mode in record_eps
             else []
         )
-
-        has_flag = lambda flag, flag_list: any(
-            flag.lower() == f.lower() for f in flag_list
-        )
-        res = []
-        if has_flag("chamber", args):
-            res.extend(["--record-chamber", "true"])
-        if has_flag("agent", args):
-            res.extend(["--record-agent", "true"])
-
-        return res
 
     @staticmethod
     def _set_executable_permission(executable_path: str | Path) -> None:
