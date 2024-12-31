@@ -123,7 +123,7 @@ class Brain:
             cls.n_parallel_envs = test_eps
             cls.test_iterations = num_test_conditions
         else:  # max_envs is between 1 and test_eps
-            cls.n_parallel_envs = max_envs
+            cls.n_parallel_envs = int(max_envs)
             cls.test_iterations = num_test_conditions * ceil(test_eps / max_envs)
 
     def __init__(self, device: int, seed: int) -> None:
@@ -172,7 +172,7 @@ class Brain:
                 n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
                 learning_rate=self.learning_rate,
                 ent_coef=self.ent_coef,
-                verbose=1, #0,  # TODO: Incorporate this into options
+                verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=self.device,
                 seed=self.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
