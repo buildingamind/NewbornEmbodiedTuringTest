@@ -18,6 +18,20 @@ from .utils.tasklist import TaskList
 from .utils.task_manager import TaskManager
 from .utils.mode import validate_mode
 
+
+def validate_conditions(all_conditions: list[str], conditions: Optional[list[str]]):
+    # check if user-defined their own conditions
+    if conditions is None:
+        # default to all conditions
+        return all_conditions
+    elif not set(conditions).issubset(all_conditions):
+        raise ValueError(
+            f"Unknown conditions: {conditions}. Available conditions are: {all_conditions}"
+        )
+    else:
+        return conditions
+
+
 class NETT:
     """
     The NETT class is the main class for training, testing, and analyzing brains in environments.
@@ -65,11 +79,11 @@ class NETT:
         num_brains: int = 1,
         mode: str = "full",
         devices: Optional[list[int]] = None,
-        job_memory: str | int = 4,
+        task_memory: str | int = 4,
         steps_per_episode: int = 1000,
         conditions: Optional[list[str]] = None,
         verbose: int = True,
-        synchronous: bool = False
+        synchronous: bool = False,
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -98,12 +112,13 @@ class NETT:
         Example:
             >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
+
+        Body.initialize(**self.body_config)
+
         # check if environment should use supervised reward or not. Defaults to True
         supervised_reward: bool = (
             self.brain_config.get("reward", "supervised") == "supervised"
         )
-
-        Body.initialize(**self.body_config)
 
         Environment.initialize(
             steps_per_episode=steps_per_episode,
@@ -129,57 +144,11 @@ class NETT:
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
 
+        task_manager = TaskManager(devices, verbose)
+
         tasklist = TaskList(num_brains, conditions, output_dir)
 
         modes = validate_mode(mode)
         self.logger.info("Launching")
 
-        self.task_manager = TaskManager(
-            modes, tasklist, devices, job_memory, verbose, synchronous
-        )
-
-        # launch jobs
-
-        # task_sheet = self.task_manager.run(job_memory, synchronous)
-
-        # return control back to the user after launching jobs, do not block
-        # return task_sheet # should we continue to have this. Needs discussion
-
-    # def status(self, task_sheet: dict[Future, Job]) -> pd.DataFrame:
-    #     """
-    #     Get the status of the jobs in the job sheet.
-
-    #     Args:
-    #         task_sheet (dict[Future, Job]): The job sheet returned by the .launch_jobs() method.
-
-    #     Returns:
-    #         pd.DataFrame: A dataframe containing the status of the jobs in the job sheet.
-
-    #     Example:
-    #         >>> status = benchmarks.status(task_sheet)
-    #         >>> # benchmarks is an instance of NETT, task_sheet is the job sheet returned by the .run() method
-    #     """
-    #     selected_columns = ["brain_id", "condition", "device"]
-    #     filtered_task_sheet = self._filter_task_sheet(task_sheet, selected_columns)
-    #     return pd.json_normalize(filtered_task_sheet)
-
-    # @staticmethod
-    # def _filter_task_sheet(task_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
-    #     # TODO include waitlisted jobs
-    #     runStatus = lambda job_future: {'running': job_future.running()}
-    #     jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
-
-    #     return [runStatus(job_future) | jobInfo(job) for job_future, job in task_sheet.items()]
-
-
-def validate_conditions(all_conditions: list[str], conditions: Optional[list[str]]):
-    # check if user-defined their own conditions
-    if conditions is None:
-        # default to all conditions
-        return all_conditions
-    elif not set(conditions).issubset(all_conditions):
-        raise ValueError(
-            f"Unknown conditions: {conditions}. Available conditions are: {all_conditions}"
-        )
-    else:
-        return conditions
+        task_manager.run(modes, tasklist, task_memory, synchronous)

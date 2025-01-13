@@ -52,12 +52,12 @@ class Body(gym.Wrapper):
             self.logger.exception(f"Failed to apply wrappers to environment")
             raise e
 
-        env = self.record_wrapper(env, task)
+        env = self._record_wrapper(env, task)
 
         super().__init__(env)
         self.env = env
 
-    def record_wrapper(self, env: gym.Env, task: Task) -> gym.Env:
+    def _record_wrapper(self, env: gym.Env, task: Task) -> gym.Env:
         record_episodes = self.record_eps.get(task.mode, 0)
         if record_episodes > 0:
             record_ep_cb = lambda t: t < record_episodes
