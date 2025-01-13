@@ -59,8 +59,7 @@ class Environment:
         executable_path: str,  # env
         record_eps: dict = {"train": 0, "test": 0},
         multiagent: bool = False,  # env
-        batch_mode: bool = True,  # env
-        display: int = 0,  # env
+        display: Optional[int] = None,  # env
     ):
         cls.executable_path: Path = validate_executable_path(executable_path)
         cls.multiobs = multiobs
@@ -72,9 +71,13 @@ class Environment:
         cls._set_executable_permission(executable_path)
         cls.logger.info("Executable permission is set")
 
-        # set the display for Unity environment
-        cls._set_display(display)
-        cls.logger.info("Display is set")
+        if display is None:
+            # enable batchmode for headless servers
+            args.append("-batchmode")
+        else:
+            # set the display for Unity environment
+            cls._set_display(display)
+            cls.logger.info("Display is set")
 
         # create the base args for creating a new Unity environment
         args = ["--episode-steps", str(steps_per_episode)]
@@ -82,10 +85,6 @@ class Environment:
         # add supervised reward
         if supervised_reward:
             args.extend(["--rewarded", "true"])
-
-        # enable batchmode
-        if batch_mode:
-            args.append("-batchmode")
 
         # split into train and test args
         cls.base_args = {"train": args[:], "test": args[:]}

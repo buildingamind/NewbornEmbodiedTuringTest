@@ -64,18 +64,12 @@ class NETT:
         output_dir: Path | str,
         num_brains: int = 1,
         mode: str = "full",
-        train_eps: int = 1000,
-        test_eps: int = 20,
-        batch_mode: bool = True,
         devices: Optional[list[int]] = None,
         job_memory: str | int = 4,
         steps_per_episode: int = 1000,
         conditions: Optional[list[str]] = None,
         verbose: int = True,
-        synchronous: bool = False,
-        record_training: Optional[list[str]] = [],
-        record_testing: Optional[list[str]] = [],
-        recording_eps: int = 10,
+        synchronous: bool = False
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
