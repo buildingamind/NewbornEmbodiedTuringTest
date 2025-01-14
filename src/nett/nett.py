@@ -31,6 +31,7 @@ def validate_conditions(all_conditions: list[str], conditions: Optional[list[str
     else:
         return conditions
 
+
 def get_experiment_design(executable_path: Path) -> tuple[int, list[str]]:
     """
     Gets the experiment design from the executable directory.
@@ -84,14 +85,14 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
-    def __init__(
-        self, config: Path | str | dict = None
-    ) -> None:
+    def __init__(self, config: Path | str | dict) -> None:
         """
         Initialize the NETT class.
         """
         # initialize logger
         self.logger = logging.getLogger("nett.NETT")
+
+        self.config: dict
 
         try:
             if isinstance(config, dict):
@@ -99,11 +100,12 @@ class NETT:
             elif isinstance(config, (str, Path)):
                 with open(config, "r") as file:
                     self.config = yaml.safe_load(file)
-
-            self.run(**self.config["Run"])
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e
+
+        if "Run" in self.config:
+            self.run(**self.config["Run"])
 
     def run(
         self,
@@ -147,10 +149,10 @@ class NETT:
         ## Initialization ##
 
         Brain.initialize(**self.config["Brain"])
-        Body.initialize(**self.config["Body"])
+        Body.initialize(**self.config.get("Body", {}))
         Environment.initialize(**self.config["Environment"])
 
-        ## Input Validation ##
+        ## Validation ##
 
         # get experiment design
         num_test_conditions, valid_imprinting_conditions = get_experiment_design(
@@ -165,23 +167,54 @@ class NETT:
 
         ## Setup ##
 
+        # set up the output directory
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        self.logger.info(f"Set up output directory at: {output_dir.resolve()}")
+
+        # calculate run info for Brain
         Brain.calc_run_info(num_brains, num_test_conditions, conditions)
 
+        # adjust environment to agent settings
         Environment.adjust_to_agent(
             steps_per_episode=Brain.steps_per_episode,
             supervised_reward=Brain.supervised,
             multiobs=Body.multiobs,
         )
 
-        # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
+        ## Run ##
 
+        # create task manager
         task_manager = TaskManager(devices, verbose)
 
+        # create task list
         tasklist = TaskList(num_brains, conditions, output_dir)
 
-        self.logger.info("Launching")
-
+        # run tasks
+        self.logger.info("Launching...")
         task_manager.run(modes, tasklist, task_memory, synchronous)
+
+    def update(self, supplementary_config: Path | str | dict):
+        """
+        Update the current configuration with a supplementary configuration.
+
+        Args:
+            supplementary_config (Path | str | dict): The supplementary configuration to update the current configuration with.
+
+        Example:
+            >>> benchmarks.update(supplementary_config="./supplementary_config.yaml")
+        """
+        try:
+            if isinstance(supplementary_config, dict):
+                supplementary_config = supplementary_config
+            elif isinstance(supplementary_config, (str, Path)):
+                with open(supplementary_config, "r") as file:
+                    supplementary_config = yaml.safe_load(file)
+        except Exception as e:
+            self.logger.exception("Error in loading supplementary config")
+            raise e
+
+        self.config.update(supplementary_config)
+        self.logger.info(
+            "Extended the current configuration with the supplementary configuration."
+        )

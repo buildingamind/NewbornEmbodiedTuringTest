@@ -7,7 +7,7 @@ class MODES(Enum):
     FULL = ["train", "test"]
 
 
-def validate_mode(mode: str) -> str:
+def validate_mode(mode: str) -> list[str]:
     """Validate the mode
 
     Args:
