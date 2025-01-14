@@ -1,0 +1,253 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "$id": "https://buildingamind.com/nett.schema.json",
+  "title": "NETT Config Schema",
+  "type": "object",
+  "properties": {
+    "Brain":{
+      "type": "object",
+      "properties": {
+        "policy": {
+          "description": "Policy Network. Defaults to 'CnnPolicy'",
+          "type": "string",
+          "enum": [
+            "CnnLstmPolicy", "CnnPolicy", "MlpPolicy", "MlpLstmPolicy", "MultiInputLstmPolicy", "MultiInputPolicy"
+          ],
+          "default": "CnnPolicy"
+        },
+        "algorithm": {
+          "description": "Optimization Algorithm. Defaults to 'PPO'",
+          "type": "string",
+          "enum": [
+            "A2C", "DDPG", "DQN", "HER", "HerReplayBuffer", "PPO", "SAC", "TD3", "ARS", "MaskablePPO", "QRDQN", "RecurrentPPO", "TQC", "TRPO"
+          ],
+          "default": "PPO"
+        },
+        "encoder": {
+          "description": "Encoder Network. Defaults to 'small'",
+          "type": "string",
+          "enum": [
+            "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "small", "medium", "large"
+          ],
+          "default": "small"
+        },
+        "embedding_dim": {
+          "description": "Embedding Dimension. Defaults to null. If null, the embedding dimension is the default for the particular encoder.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
+        },
+        "reward": {
+          "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'supervised'",
+          "type": "string",
+          "enum": ["supervised", "unsupervised", "ICM", "Fabric", "E3B", "Disagreement", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
+          "default": "supervised"
+        },
+        "batch_size": {
+          "description": "Mini-batch Size",
+          "type": "integer",
+          "minimum": 1,
+          "data": {"maximum": "/Brain/buffer_size"},
+          "default": 512
+        },
+        "buffer_size": {
+          "description": "Replay Buffer Size",
+          "type": "integer",
+          "data": {"minimum": "/Brain/batch_size"},
+          "default": 2048
+        },
+        "learning_rate": {
+          "description": "Learning Rate",
+          "type": "number",
+          "minimum": 0,
+          "default": 3e-4
+        },
+        "ent_coef": {
+          "description": "Entropy Coefficient",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "train_eps": {
+          "description": "Number of training episodes",
+          "type": "integer",
+          "minimum": 1,
+          "default": 5000
+        },
+        "test_eps": {
+          "description": "Number of testing episodes",
+          "type": "integer",
+          "minimum": 1,
+          "default": 100
+        },
+        "steps_per_episode": {
+          "description": "Number of steps per episode",
+          "type": "integer",
+          "minimum": 1,
+          "default": 200
+        },
+        "checkpoint_freq": {
+          "description": "Frequency of saving checkpoints. If null, no checkpoints are saved. Defaults to null.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
+        },
+        "train_encoder": {
+          "description": "Whether to train the encoder",
+          "type": "boolean",
+          "default": true
+        },
+        "custom_encoder_args": {
+          "description": "Custom Encoder Arguments that are fed directly into the encoder network",
+          "type": "object"
+        },
+        "custom_policy_arch": {
+          "description": "An array of integers defining the number of neurons in each layer of the policy network. If not provided, the default architecture is used as defined by Stable Baselines 3.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "integer"
+          },
+          "default": null
+        },
+        "reward_args": {
+          "description": "Arguments passed on to the reward function",
+          "type": "object",
+          "default": {
+            "beta": 0.2,
+            "kappa": 0.0,
+            "gamma": 0.99
+          }
+        }
+      }
+    },
+    "Body": {
+      "type": ["object", "null"],
+      "properties": {
+        "wrappers": {
+          "description": "List of wrappers to apply to the body. Can be either a string or an object that inherits from gym.Wrapper.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "record_eps": {
+          "description": "Number of episodes to record from the body.",
+          "type": "object",
+          "properties": {
+            "train": {
+              "description": "Number of training episodes to record. Defaults to 0.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "test": {
+              "description": "Number of testing episodes to record. Defaults to 0.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          }
+        }
+      }
+    },
+    "Environment": {
+      "type": "object",
+      "properties": {
+        "executable_path": {
+          "description": "Path to the executable",
+          "type": "string"
+        },
+        "record_eps": {
+          "description": "Number of episodes to record of the environment (top-down view).",
+          "type": "object",
+          "properties": {
+            "train": {
+              "description": "Number of training episodes to record. Defaults to 0.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            },
+            "test": {
+              "description": "Number of testing episodes to record. Defaults to 0.",
+              "type": "integer",
+              "minimum": 0,
+              "default": 0
+            }
+          },
+          "default": {"train": 0, "test": 0}
+        },
+        "multiagent": {
+          "description": "Whether the environment supports multi-agent training",
+          "type": "boolean",
+          "default": false
+        },
+        "display": {
+          "description": "Display number to output to. Set to null to run headless. Defaults to null.",
+          "type": ["integer", "null"],
+          "default": null
+        }
+      },
+      "required": ["executable_path"]
+    },
+    "Run": {
+      "type": "object",
+      "properties": {
+        "output_dir": {
+          "description": "Path to the output directory",
+          "type": "string"
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["train", "test", "full"],
+          "default": "full"
+        },
+        "conditions": {
+          "description": "List of conditions to run",
+          "type": ["array", "null"],
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "default": "null"
+        },
+        "num_brains": {
+          "description": "Number of brains to run in parallel. Defaults to 1.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "devices": {
+          "description": "List of devices to run on",
+          "type": ["array", "null"],
+          "uniqueItems": true,
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "default": null
+        },
+        "task_memory": {
+          "description": "Memory limit for a single task",
+          "oneOf": [
+            { "type": "number" },
+            { "type": "string", "enum": ["auto"] }
+          ],
+          "default": "auto"
+        },
+        "verbose": {
+          "description": "Verbosity level",
+          "type": "boolean",
+          "default": true
+        },
+        "synchronous": {
+          "description": "Whether to run in synchronous mode",
+          "type": "boolean",
+          "default": true
+        }
+      },
+      "required": ["output_dir"]
+    }
+  }
+}
