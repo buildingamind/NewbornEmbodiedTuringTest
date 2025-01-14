@@ -57,8 +57,8 @@ class Brain:
     @classmethod
     def initialize(
         cls,
-        policy: Any | str,
-        algorithm: str | BaseAlgorithm,
+        policy: Any | str = "CnnPolicy",
+        algorithm: str | BaseAlgorithm = "PPO",
         encoder: Any | str = "small",
         embedding_dim: Optional[int] = None,
         reward: str | type[BaseReward] = "supervised",
