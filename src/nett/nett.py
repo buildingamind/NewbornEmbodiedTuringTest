@@ -167,6 +167,7 @@ class NETT:
         output_dir: Path | str,
         mode: str = "full",
         conditions: Optional[list[str]] = None,
+        num_brains: int = 1,
         devices: Optional[list[int]] = None,
         task_memory: str | int = 4,
         verbose: int = True,
@@ -220,18 +221,16 @@ class NETT:
         # validate mode
         modes = validate_mode(mode)
 
+        Brain.initialize(**self.brain_config)
 
-        Brain.initialize(
-            num_test_conditions=num_test_conditions,
-            num_imprinting_conditions=len(conditions),
-            **self.brain_config,
-        )
+        Brain.calc_run_info(num_brains, num_test_conditions, conditions)
 
-        Environment.initialize(
+        Environment.initialize(**self.environment_config)
+
+        Environment.adjust_to_agent(
             steps_per_episode=Brain.steps_per_episode,
             supervised_reward=Brain.supervised,
             multiobs=Body.multiobs,
-            **self.environment_config,
         )
 
         # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
@@ -241,7 +240,7 @@ class NETT:
 
         task_manager = TaskManager(devices, verbose)
 
-        tasklist = TaskList(Brain.num_brains, conditions, output_dir)
+        tasklist = TaskList(num_brains, conditions, output_dir)
 
         self.logger.info("Launching")
 

@@ -53,16 +53,12 @@ class Environment:
     @classmethod
     def initialize(
         cls,
-        steps_per_episode: int,  # run
-        supervised_reward: bool,  # brain
-        multiobs: bool,  # body
         executable_path: str,  # env
         record_eps: dict = {"train": 0, "test": 0},
         multiagent: bool = False,  # env
         display: Optional[int] = None,  # env
     ):
         cls.executable_path: Path = validate_executable_path(executable_path)
-        cls.multiobs = multiobs
         cls.multiagent = multiagent
 
         cls.logger = logging.getLogger("nett.Environment")
@@ -71,6 +67,9 @@ class Environment:
         cls._set_executable_permission(executable_path)
         cls.logger.info("Executable permission is set")
 
+        # Create a list of arguments to pass to the Unity environment
+        args = []
+
         if display is None:
             # enable batchmode for headless servers
             args.append("-batchmode")
@@ -78,13 +77,6 @@ class Environment:
             # set the display for Unity environment
             cls._set_display(display)
             cls.logger.info("Display is set")
-
-        # create the base args for creating a new Unity environment
-        args = ["--episode-steps", str(steps_per_episode)]
-
-        # add supervised reward
-        if supervised_reward:
-            args.extend(["--rewarded", "true"])
 
         # split into train and test args
         cls.base_args = {"train": args[:], "test": args[:]}
@@ -99,48 +91,22 @@ class Environment:
                     ["--record-chamber", "true", "--recording-steps", record_eps[mode]]
                 )
 
-        # grab the experiment design from the executable directory
-        cls._get_experiment_design()
-
     @classmethod
-    def _get_experiment_design(cls) -> None:
-        """
-        Gets the experiment design from the executable directory.
+    def adjust_to_agent(cls,
+        steps_per_episode: int,
+        supervised_reward: bool,
+        multiobs: bool,):
 
-        Args:
-            executable_path (str): The path to the Unity executable file.
+        cls.multiobs = multiobs
 
-        Returns:
-            tuple[int, list[str]]: A tuple containing the number of test conditions and the list of imprinting conditions.
+        args = ["--episode-steps", str(steps_per_episode)]
 
-        Raises:
-            FileNotFoundError: If the experiment configuration file is not found.
-            KeyError: If the experiment configuration file is not properly formatted.
-        """
-        # get the experiment design from the executable directory
-        parent_dir = cls.executable_path.parent
-        yaml_files: str = [file for file in parent_dir.glob("*.yaml")]
+        # add supervised reward
+        if supervised_reward:
+            args.extend(["--rewarded", "true"])
 
-        if not yaml_files:
-            raise FileNotFoundError(
-                "No experiment configuration file found in the executable directory. You may be using a Unity executable meant for nett versions prior to v0.5.0. Please update the Unity executable to the latest version or use nett v0.4.1 or older."
-            )
-
-        yaml_file: Path = yaml_files[0]
-
-        # read the yaml file
-        with open(yaml_file, "r") as file:
-            yaml_data = yaml.safe_load(file)
-
-        try:
-            cls.num_test_conditions: int = yaml_data["num_test_conditions"]
-            cls.valid_imprinting_conditions: list[str] = yaml_data[
-                "imprinting_conditions"
-            ]
-        except KeyError:
-            raise KeyError(
-                "Experiment configuration file is not properly formatted. It should contain 'num_test_conditions' and 'imprinting_conditions' keys."
-            )
+        for mode in ["train", "test"]:
+            cls.base_args[mode].extend(args)
 
     def __init__(
         self, task: Task, validation_mode: bool, seed: Optional[int] = None

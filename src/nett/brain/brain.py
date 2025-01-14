@@ -88,6 +88,7 @@ class Brain:
         cls.policy = validate_policy(policy)
         cls.train_encoder = train_encoder
         cls.encoder = validate_encoder(encoder)
+        cls.supervised: bool = reward == "supervised"
         cls.reward: Optional[type[BaseReward]] = validate_reward(reward)
 
         cls.embedding_dim = embedding_dim
@@ -108,23 +109,32 @@ class Brain:
         cls.train_iterations = train_eps * steps_per_episode
         # test
         # test_eps, n_tasks (brains*conditions)
-        cls.test_iterations = test_eps
+        cls.test_eps = test_eps
+
+    @classmethod
+    def calc_run_info(
+        cls,
+        num_brains: int,
+        num_test_conditions: int,
+        num_imprinting_conditions: int,
+    ):
 
         cls.n_tasks = num_imprinting_conditions * num_brains
 
         # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-        max_envs = os.cpu_count() / (
-            4 * cls.n_tasks
-        )  # TODO: Determine the number of threads used per brain and per env
+        # TODO: Determine the number of threads used per brain and per env
+        n_threads_per_task = 4
+
+        max_envs = os.cpu_count() / (n_threads_per_task * cls.n_tasks)
         if max_envs <= 1:
             cls.n_parallel_envs = 1
-            cls.test_iterations = num_test_conditions * test_eps
-        elif max_envs >= test_eps:
-            cls.n_parallel_envs = test_eps
+            cls.test_iterations = num_test_conditions * cls.test_eps
+        elif max_envs >= cls.test_eps:
+            cls.n_parallel_envs = cls.test_eps
             cls.test_iterations = num_test_conditions
         else:  # max_envs is between 1 and test_eps
             cls.n_parallel_envs = int(max_envs)
-            cls.test_iterations = num_test_conditions * ceil(test_eps / max_envs)
+            cls.test_iterations = num_test_conditions * ceil(cls.test_eps / max_envs)
 
     def __init__(self, device: int, seed: int) -> None:
         """Constructor method"""
