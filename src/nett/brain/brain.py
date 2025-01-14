@@ -57,9 +57,6 @@ class Brain:
     @classmethod
     def initialize(
         cls,
-        num_test_conditions: int,
-        num_imprinting_conditions: int,
-        num_brains: int,
         policy: Any | str,
         algorithm: str | BaseAlgorithm,
         encoder: Any | str = "small",
@@ -67,13 +64,12 @@ class Brain:
         reward: str | type[BaseReward] = "supervised",
         batch_size: int = 512,
         buffer_size: int = 2048,
-        learning_rate: float = 0.0003,
+        learning_rate: float = 3e-4,
         ent_coef: float = 0,
         train_eps: int = 5000,  # 1000
         test_eps: int = 100,  # 20
         steps_per_episode: int = 200,  # 1000
-        save_checkpoints: bool = False,
-        checkpoint_freq: int = 30_000,
+        checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         custom_encoder_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
@@ -97,7 +93,6 @@ class Brain:
         cls.learning_rate = learning_rate
         cls.ent_coef = ent_coef
 
-        cls.save_checkpoints = save_checkpoints
         cls.checkpoint_freq = checkpoint_freq
 
         cls.custom_encoder_args = custom_encoder_args
@@ -365,7 +360,7 @@ class Brain:
                 )
             )
 
-            if self.save_checkpoints:
+            if self.checkpoint_freq is not None:
                 callback_list.append(
                     CheckpointCallback(
                         save_freq=self.checkpoint_freq,  # defaults to 30_000 steps

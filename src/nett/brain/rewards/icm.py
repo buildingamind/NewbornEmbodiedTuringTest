@@ -74,7 +74,7 @@ class ICM(BaseReward):
         rwd_norm_type: str = "rms",
         obs_norm_type: str = "none",
         latent_dim: int = 128,
-        lr: float = 0.001,
+        lr: float = 3e-4,
         batch_size: int = 256,
         update_proportion: float = 1.0,
         encoder_model: str = "mnih",

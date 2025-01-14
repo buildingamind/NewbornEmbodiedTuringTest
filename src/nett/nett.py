@@ -116,7 +116,7 @@ class NETT:
         devices: Optional[list[int]] = None,
         task_memory: str | int = 4,
         verbose: int = True,
-        synchronous: bool = False,
+        synchronous: bool = True,
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
