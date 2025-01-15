@@ -130,8 +130,8 @@ def timelapse(data_dir: Path | str, output_dir: Path | str):
 
 # TODO: Add option to not have a config here either?
 @staticmethod
-def analyzePython(
-    config: str,
+def analyze(
+    experiment: str,
     run_dir: str,
     output_dir: Optional[str] = None,
     ep_bucket: int = 100,
@@ -145,7 +145,7 @@ def analyzePython(
     This method is a static method and does not require an instance of the NETT class to be called.
 
     Args:
-        config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
+        experiment (str): The  experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
         run_dir (str | Path): The directory where the run results are stored.
         output_dir (str | Path, optional): The directory where the analysis results will be stored.
             If None, the analysis results will be stored in the run directory.
@@ -173,10 +173,10 @@ def analyzePython(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}.csv")
+    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{experiment.lower()}.csv")
 
     if not chick_data_dir.exists():
-        raise ValueError(f"'{config}' is not a valid config.")
+        raise ValueError(f"'{experiment}' is not a valid experiment.")
     elif not run_dir.exists():
         raise ValueError(f"'{run_dir}' is not a valid run directory.")
     elif not analysis_dir.exists():
@@ -205,7 +205,7 @@ def analyzePython(
 
 @staticmethod
 def analyze_archive(
-    config: str,
+    experiment: str,
     run_dir: str | Path,
     output_dir: Optional[str | Path] = None,
     ep_bucket: int = 100,
@@ -219,7 +219,7 @@ def analyze_archive(
     This method is a static method and does not require an instance of the NETT class to be called.
 
     Args:
-        config (str): The configuration of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
+        experiment (str): The experiment of the experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
         run_dir (str | Path): The directory where the run results are stored.
         output_dir (str | Path, optional): The directory where the analysis results will be stored.
             If None, the analysis results will be stored in the run directory.
@@ -247,10 +247,10 @@ def analyze_archive(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{config.lower()}.csv")
+    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{experiment.lower()}.csv")
 
     if not chick_data_dir.exists():
-        raise ValueError(f"'{config}' is not a valid config.")
+        raise ValueError(f"'{experiment}' is not a valid experiment.")
     elif not run_dir.exists():
         raise ValueError(f"'{run_dir}' is not a valid run directory.")
     elif not analysis_dir.exists():

@@ -218,6 +218,12 @@
           "minimum": 1,
           "default": 1
         },
+        "num_threads":{
+          "description": "Number of threads to run in parallel. Defaults to null. If null, the number of threads is equal to the number of cpu cores.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
+        },
         "devices": {
           "description": "List of devices to run on",
           "type": ["array", "null"],

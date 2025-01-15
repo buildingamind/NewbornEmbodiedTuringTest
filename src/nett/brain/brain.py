@@ -109,6 +109,7 @@ class Brain:
     @classmethod
     def calc_run_info(
         cls,
+        num_threads: int,
         num_brains: int,
         num_test_conditions: int,
         num_imprinting_conditions: int,
@@ -119,8 +120,8 @@ class Brain:
         # calculate number of environments that can be run at once per job (using SubProcVecEnv)
         # TODO: Determine the number of threads used per brain and per env
         n_threads_per_task = 4
-
-        max_envs = os.cpu_count() / (n_threads_per_task * cls.n_tasks)
+        num_threads = os.cpu_count() if num_threads is None else num_threads
+        max_envs = num_threads / (n_threads_per_task * cls.n_tasks)
         if max_envs <= 1:
             cls.n_parallel_envs = 1
             cls.test_iterations = num_test_conditions * cls.test_eps

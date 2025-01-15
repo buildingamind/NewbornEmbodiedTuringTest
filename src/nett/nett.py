@@ -57,12 +57,16 @@ class NETT:
         if "Run" in self.config:
             self.run(**self.config["Run"])
 
+        # if "Analysis" in self.config:
+        #     self.analysis(**self.config["Analysis"])
+
     def run(
         self,
         output_dir: Path | str,
         mode: str = "full",
         conditions: Optional[list[str]] = None,
         num_brains: int = 1,
+        num_threads: Optional[int] = None,
         devices: Optional[list[int]] = None,
         task_memory: str | int = 4,
         verbose: int = True,
@@ -123,7 +127,7 @@ class NETT:
         self.logger.info(f"Set up output directory at: {output_dir.resolve()}")
 
         # calculate run info for Brain
-        Brain.calc_run_info(num_brains, num_test_conditions, conditions)
+        Brain.calc_run_info(num_threads, num_brains, num_test_conditions, conditions)
 
         # adjust environment to agent settings
         Environment.adjust_to_agent(
