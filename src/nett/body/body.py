@@ -6,7 +6,7 @@ from gymnasium.wrappers import RecordVideo
 
 from nett.utils.task import Task
 
-from .wrappers import validate_wrappers
+from .utils import validate_wrappers
 
 
 class Body(gym.Wrapper):
@@ -29,6 +29,11 @@ class Body(gym.Wrapper):
         >>> body = Body(type="basic", wrappers=None, dvs=False)
     """
 
+    logger: logging.Logger
+    multiobs: bool
+    wrappers: list[gym.Wrapper]
+    record_eps: dict
+
     @classmethod
     def initialize(
         cls,
@@ -38,7 +43,7 @@ class Body(gym.Wrapper):
         """
         Constructor method
         """
-        cls.logger = logging.getLogger('nett.Body')
+        cls.logger = logging.getLogger("nett.Body")
 
         cls.multiobs = "binocular" in wrappers
         cls.wrappers = validate_wrappers(wrappers)

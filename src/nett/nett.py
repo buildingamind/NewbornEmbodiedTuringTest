@@ -34,14 +34,15 @@ class NETT:
         >>> benchmarks = NETT(brain, body, environment)
     """
 
+    logger: logging.Logger
+    config: dict
+
     def __init__(self, config: Path | str | dict) -> None:
         """
         Initialize the NETT class.
         """
         # initialize logger
         self.logger = logging.getLogger("nett.NETT")
-
-        self.config: dict
 
         try:
             if isinstance(config, dict):

@@ -11,7 +11,9 @@ class Task:
         condition (str): condition for the task
         estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
     """
+
     device: int
+
     def __init__(
         self,
         mode: str,
@@ -54,4 +56,3 @@ class Task:
             paths[subdir] = Path.joinpath(paths["base"], subdir)
 
         return paths
-

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-class BinocularWrapper(gym.ObservationWrapper):
+class Binocular(gym.ObservationWrapper):
     """
     A gym observation wrapper for Binocular Vision.
 
