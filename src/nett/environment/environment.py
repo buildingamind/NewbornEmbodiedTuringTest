@@ -29,20 +29,6 @@ except PermissionError as _:
 from .utils.ports import random_port
 
 
-def set_executable_permission(executable_path: str | Path) -> None:
-    """
-    Sets the executable permission for the Unity executable file.
-    """
-    subprocess.run(["chmod", "-R", "755", executable_path], check=True)
-
-
-def set_display(display) -> None:
-    """
-    Sets the display environment variable for the Unity environment.
-    """
-    os.environ["DISPLAY"] = str(f":{display}")
-
-
 class Environment:
     """
     Represents the environment where the agent lives.
@@ -77,7 +63,7 @@ class Environment:
         cls.logger = logging.getLogger("nett.Environment")
 
         # set the correct permissions on the executable
-        set_executable_permission(executable_path)
+        subprocess.run(["chmod", "-R", "755", executable_path], check=True)
         cls.logger.info("Executable permission is set")
 
         # Create a list of arguments to pass to the Unity environment
@@ -88,7 +74,7 @@ class Environment:
             args.append("-batchmode")
         else:
             # set the display for Unity environment
-            set_display(display)
+            os.environ["DISPLAY"] = str(f":{display}")
             cls.logger.info("Display is set")
 
         # split into train and test args
