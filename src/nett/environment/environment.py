@@ -9,7 +9,6 @@ import subprocess
 from typing import Optional, Any
 
 import numpy as np
-import yaml
 
 from gymnasium import Wrapper
 from mlagents_envs.exception import UnityWorkerInUseException
@@ -28,6 +27,20 @@ except PermissionError as _:
     )
 
 from .utils.ports import random_port
+
+
+def set_executable_permission(executable_path: str | Path) -> None:
+    """
+    Sets the executable permission for the Unity executable file.
+    """
+    subprocess.run(["chmod", "-R", "755", executable_path], check=True)
+
+
+def set_display(display) -> None:
+    """
+    Sets the display environment variable for the Unity environment.
+    """
+    os.environ["DISPLAY"] = str(f":{display}")
 
 
 class Environment:
@@ -64,7 +77,7 @@ class Environment:
         cls.logger = logging.getLogger("nett.Environment")
 
         # set the correct permissions on the executable
-        cls._set_executable_permission(executable_path)
+        set_executable_permission(executable_path)
         cls.logger.info("Executable permission is set")
 
         # Create a list of arguments to pass to the Unity environment
@@ -75,7 +88,7 @@ class Environment:
             args.append("-batchmode")
         else:
             # set the display for Unity environment
-            cls._set_display(display)
+            set_display(display)
             cls.logger.info("Display is set")
 
         # split into train and test args
@@ -92,10 +105,12 @@ class Environment:
                 )
 
     @classmethod
-    def adjust_to_agent(cls,
+    def adjust_to_agent(
+        cls,
         steps_per_episode: int,
         supervised_reward: bool,
-        multiobs: bool,):
+        multiobs: bool,
+    ):
 
         cls.multiobs = multiobs
 
@@ -135,17 +150,7 @@ class Environment:
             ]
         )
 
-        # if rank is not None:
-        # brain = f"{env_args['brain_id']}-{rank}"
-        # self.seed = rank
-        # else:
-        # brain = f"{env_args['brain_id']}"
-        # self.seed = env_args['brain_id']
         self.seed = seed if seed is not None else task.brain_id
-
-        # create logger
-        # TODO: might not be necessary
-        # self.log = Logger(f"{env_args['condition'].replace('-', '_')}{brain}-{mode}", log_dir=str(env_args['log_path']))
 
         # create environment and connect it to logger
         complete = False
@@ -153,7 +158,6 @@ class Environment:
             try:
                 self.env = UnityEnvironment(
                     str(self.executable_path),
-                    # side_channels=[self.log],
                     additional_args=args,
                     base_port=random_port(),
                     seed=self.seed,
@@ -164,15 +168,6 @@ class Environment:
             except Exception as e:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
-
-    def log(self, msg: str) -> None:
-        """
-        Logs a message to the environment.
-
-        Args:
-            msg (str): The message to log.
-        """
-        self.log.log_str(msg)
 
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
     # as expected by gym==0.21.0
@@ -221,36 +216,6 @@ class Environment:
         """
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, reward, terminated, truncated, info
-
-    @staticmethod
-    def _record_args(record_eps: dict, mode: str) -> list[str]:
-        return (
-            ["--record-chamber", "true", "--recording-steps", record_eps[mode]]
-            if mode in record_eps
-            else []
-        )
-
-    @staticmethod
-    def _set_executable_permission(executable_path: str | Path) -> None:
-        """
-        Sets the executable permission for the Unity executable file.
-        """
-        subprocess.run(["chmod", "-R", "755", executable_path], check=True)
-
-    @staticmethod
-    def _set_display(display) -> None:
-        """
-        Sets the display environment variable for the Unity environment.
-        """
-        os.environ["DISPLAY"] = str(f":{display}")
-
-    def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
-        return f"{self.__class__.__name__}({attrs!r})"
-
-    def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
-        return f"{self.__class__.__name__}({attrs!r})"
 
 
 class GymEnvironment(Environment, Wrapper):
