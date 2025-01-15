@@ -30,6 +30,49 @@ from .params import (
 )
 
 
+def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
+    """
+    Set the encoder as evaluation mode and freeze its parameters.
+
+    Args:
+        model (BaseAlgorithm): The model containing the encoder.
+
+    Returns:
+        BaseAlgorithm: The model with the encoder set as evaluation mode.
+    """
+    model.policy.features_extractor.eval()
+
+    for param in model.policy.features_extractor.parameters():
+        param.requires_grad = False
+    return model
+
+
+def _save_model(model: BaseAlgorithm, path: Path) -> None:
+    """
+    Saves the policy and feature extractor of the agent's model.
+
+    This method saves the policy and feature extractor of the agent's model
+    to the specified paths. It first checks if the model is loaded, and if not,
+    it prints an error message and returns. Otherwise, it saves the policy as
+    a pickle file and the feature extractor as a PyTorch state dictionary.
+
+    Returns:
+        None
+    """
+    ## save policy
+    path.mkdir(parents=True, exist_ok=True)
+    model.policy.save(path / "policy.pkl")
+
+    ## save encoder
+    encoder = model.policy.features_extractor.state_dict()
+    torch.save(encoder, path / "feature_extractor.pth")
+
+    print("Saved feature extractor")
+
+    save_path = path / "model" / "latest_model.zip"
+    model.save(save_path)
+
+
 class Brain:
     """Represents the brain of an agent.
 
@@ -187,7 +230,7 @@ class Brain:
 
             # set encoder as eval only if train_encoder is not True
             if not self.train_encoder:
-                model = self._set_encoder_as_eval(model)
+                model = _set_encoder_as_eval(model)
                 self.logger.warning(
                     f"Encoder training is set to {str(self.train_encoder).upper()}"
                 )
@@ -198,7 +241,7 @@ class Brain:
 
         # initialize callbacks
         self.logger.info("Initializing Callbacks")
-        callback_list = self.initialize_callbacks(envs, task)
+        callback_list = self._init_callbacks(envs, task)
 
         # train
         self.logger.info(f"Total number of training steps: {self.train_iterations}")
@@ -226,7 +269,7 @@ class Brain:
         # save
         ## create save directory
         model_path = task.path / "model"
-        self.save(model, model_path)
+        _save_model(model, model_path)
         self.logger.info(f"Saved model at {model_path}")
 
     def test(self, envs: VecEnv, task: Task):
@@ -285,58 +328,7 @@ class Brain:
 
         t.close()
 
-    @staticmethod
-    def save(model: BaseAlgorithm, path: Path) -> None:
-        """
-        Saves the policy and feature extractor of the agent's model.
-
-        This method saves the policy and feature extractor of the agent's model
-        to the specified paths. It first checks if the model is loaded, and if not,
-        it prints an error message and returns. Otherwise, it saves the policy as
-        a pickle file and the feature extractor as a PyTorch state dictionary.
-
-        Returns:
-            None
-        """
-        ## save policy
-        path.mkdir(parents=True, exist_ok=True)
-        model.policy.save(path / "policy.pkl")
-
-        ## save encoder
-        encoder = model.policy.features_extractor.state_dict()
-        torch.save(encoder, path / "feature_extractor.pth")
-
-        print("Saved feature extractor")
-
-        save_path = path / "model" / "latest_model.zip"
-        model.save(save_path)
-
-    @staticmethod
-    def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
-        """
-        Set the encoder as evaluation mode and freeze its parameters.
-
-        Args:
-            model (BaseAlgorithm): The model containing the encoder.
-
-        Returns:
-            BaseAlgorithm: The model with the encoder set as evaluation mode.
-        """
-        model.policy.features_extractor.eval()
-
-        for param in model.policy.features_extractor.parameters():
-            param.requires_grad = False
-        return model
-
-    def __repr__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
-        return f"{self.__class__.__name__}({attrs!r})"
-
-    def __str__(self) -> str:
-        attrs = {k: v for k, v in vars(self).items() if k != "logger"}
-        return f"{self.__class__.__name__}({attrs!r})"
-
-    def initialize_callbacks(self, envs, task: Task) -> CallbackList:
+    def _init_callbacks(self, envs, task: Task) -> CallbackList:
         """Initialize the callbacks for training.
         Args:
             envs (VecEnv): The environments for which to initialize the callbacks.
