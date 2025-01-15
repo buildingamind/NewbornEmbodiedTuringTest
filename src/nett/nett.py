@@ -148,7 +148,7 @@ class NETT:
 
         ## Initialization ##
 
-        Brain.initialize(**self.config["Brain"])
+        Brain.initialize(**self.config.get("Brain", {}))
         Body.initialize(**self.config.get("Body", {}))
         Environment.initialize(**self.config["Environment"])
 
