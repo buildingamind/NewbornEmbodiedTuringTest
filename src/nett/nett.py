@@ -16,7 +16,7 @@ from .body.body import Body
 from .environment.environment import Environment
 from .utils.condition import validate_conditions
 from .utils.tasklist import TaskList
-from .utils.task_manager import TaskManager
+from .utils.taskmanager import TaskManager
 from .utils.mode import validate_mode
 from .utils.design import get_experiment_design
 

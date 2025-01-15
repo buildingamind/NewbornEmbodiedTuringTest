@@ -58,10 +58,6 @@ def validate_env(task: Task) -> None:
     except Exception as e:
         raise RuntimeError(f"{task.mode} env validation failed: {str(e)}")
 
-    def _init_logger():
-        # initialize logger
-        return
-
 
 def _init_executor(verbose: bool) -> None:
     # mute stdout if not verbose
