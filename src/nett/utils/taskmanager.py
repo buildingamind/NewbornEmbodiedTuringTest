@@ -23,7 +23,7 @@ JobTooBigError = ValueError(
 )
 
 
-def run_task(task: Task, logger) -> None:
+def _run_task(task: Task, logger) -> None:
     # run environment
     # can be train or test mode and can be for validation or actual run
     try:
@@ -37,7 +37,7 @@ def run_task(task: Task, logger) -> None:
                 getattr(brain, task.mode)(envs, task)  # brain.train or brain.test
         else:
             # validation run
-            validate_env(task)
+            _validate_env(task)
             if task.mode == "train":
                 with SingleEnv(task) as envs:
                     brain.train(envs, task)
@@ -51,14 +51,6 @@ def run_task(task: Task, logger) -> None:
         raise e
 
 
-def validate_env(task: Task) -> None:
-    try:
-        with TestEnv(task) as environment:
-            check_env(environment)
-    except Exception as e:
-        raise RuntimeError(f"{task.mode} env validation failed: {str(e)}")
-
-
 def _init_executor(verbose: bool) -> None:
     # mute stdout if not verbose
     mute = lambda: setattr(sys, "stdout", open(os.devnull, "w"))
@@ -67,6 +59,14 @@ def _init_executor(verbose: bool) -> None:
     return ProcessPoolExecutor(
         initializer=initializer,  # TODO: too many workers
     )
+
+
+def _validate_env(task: Task) -> None:
+    try:
+        with TestEnv(task) as environment:
+            check_env(environment)
+    except Exception as e:
+        raise RuntimeError(f"{task.mode} env validation failed: {str(e)}")
 
 
 class TaskManager:
@@ -91,17 +91,15 @@ class TaskManager:
     def run(
         self,
         modes: list[str],
-        tasklist: TaskList,
         task_memory: str | int,
         synchronous: bool,
     ) -> None:
         # estimate memory for a single task
-        self._calculate_task_memory(task_memory, tasklist)
+        self._calculate_task_memory(task_memory)
 
         # run tasks
         for mode in modes:
-            tasks = tasklist(mode)
-            self._run_tasks(tasks, synchronous)
+            self._run_tasks(mode, synchronous)
 
     ##########################
 
@@ -114,7 +112,7 @@ class TaskManager:
 
     def submit_task(self, task: Task, device: int) -> None:
         task.device = device
-        task_future = self.executor.submit(run_task, task, self.logger)
+        task_future = self.executor.submit(_run_task, task, self.logger)
         self.task_sheet[task_future] = device
 
     def waitlist(self, task):
@@ -143,17 +141,15 @@ class TaskManager:
             # rotate devices
             free_device_memory = [free_device_memory[-1]] + free_device_memory[:-1]
 
-    def _calculate_task_memory(self, job_memory: str | int, tasklist: TaskList) -> None:
+    def _calculate_task_memory(self, job_memory: str | int) -> None:
         most_free_gpu: int = self.memory_manager.get_most_free_gpu(self.devices)
         gpu_max_capacity: int = self.memory_manager.get_free_memory(most_free_gpu)
 
         if job_memory == "auto":
             self.job_memory = self._estimate_task_memory(
-                tasklist.conditions[0],
-                tasklist.output_dir,
                 most_free_gpu,
                 gpu_max_capacity,
-            )  # TODO Clean this up
+            )
         else:
             self.job_memory = job_memory * (1024**3)
             # check to see if GPUs can run a single job
@@ -162,8 +158,6 @@ class TaskManager:
 
     def _estimate_task_memory(
         self,
-        example_condition: str,
-        output_dir: Path,
         most_free_gpu: int,
         pre_memory: int,
     ) -> int:
@@ -173,9 +167,9 @@ class TaskManager:
         try:
             # create a test task to estimate memory
             # TODO: Allow mem estimation to accurately estimate for test
-            task = Task("train", 0, example_condition, output_dir, estimate_memory=True)
+            task = TaskList.example()
             task.device = most_free_gpu
-            task_future = self.executor.submit(run_task, task, self.logger)
+            task_future = self.executor.submit(_run_task, task, self.logger)
             future_wait({task_future: task}, return_when="ALL_COMPLETED")
 
             with open(task.path / "mem.txt", "r") as file:
@@ -191,7 +185,7 @@ class TaskManager:
         # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
         return post_memory - pre_memory
 
-    def _run_tasks(self, tasks: TaskList, synchronous: bool) -> None:
+    def _run_tasks(self, mode: str, synchronous: bool) -> None:
         self.task_sheet: dict[Future, int] = {}
 
         # get the free memory status for each device
@@ -201,7 +195,7 @@ class TaskManager:
 
         # assign devices based on memory availability
         try:
-            for task in tasks:
+            for task in TaskList(mode):
                 self._assign_task(task, free_device_memory)
 
             if synchronous:

@@ -22,7 +22,7 @@ from rllte.common.prototype import BaseReward
 from ..utils.task import Task
 
 from .utils import callbacks as cb
-from .params import (
+from .utils.validate import (
     validate_algorithm,
     validate_encoder,
     validate_reward,

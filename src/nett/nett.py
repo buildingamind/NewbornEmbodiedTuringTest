@@ -14,10 +14,9 @@ import yaml
 from .brain.brain import Brain
 from .body.body import Body
 from .environment.environment import Environment
-from .utils.condition import validate_conditions
 from .utils.tasklist import TaskList
 from .utils.taskmanager import TaskManager
-from .utils.mode import validate_mode
+from .utils.validate import validate_conditions, validate_mode
 from .utils.design import get_experiment_design
 
 
@@ -142,11 +141,11 @@ class NETT:
         task_manager = TaskManager(devices, verbose)
 
         # create task list
-        tasklist = TaskList(num_brains, conditions, output_dir)
+        TaskList.initialize(num_brains, conditions, output_dir)
 
         # run tasks
         self.logger.info("Launching...")
-        task_manager.run(modes, tasklist, task_memory, synchronous)
+        task_manager.run(modes, task_memory, synchronous)
 
     def update(self, supplementary_config: Path | str | dict):
         """

@@ -6,14 +6,14 @@ from .task import Task
 
 
 class TaskList:
-    def __init__(self, num_brains: int, conditions: list[str], output_dir: Path):
-        self.output_dir = output_dir
-        self.conditions = conditions
-        self.conditions = conditions
-        self.brain_env_combinations = product(range(1, num_brains + 1), conditions)
-        self.n_tasks = len(conditions) * num_brains
+    @classmethod
+    def initialize(cls, num_brains: int, conditions: list[str], output_dir: Path):
+        cls.output_dir = output_dir
+        cls.conditions = conditions
+        cls.brain_env_combinations = product(range(1, num_brains + 1), conditions)
+        cls.n_tasks = len(conditions) * num_brains
 
-    def __call__(self, mode: str):
+    def __init__(self, mode: str):
         self.mode = mode
 
         self.current = 0
@@ -22,7 +22,6 @@ class TaskList:
             Task(mode, brain, condition, self.output_dir)
             for brain, condition in self.brain_env_combinations
         ]
-        return self
 
     def __iter__(self):
         return self
@@ -33,3 +32,7 @@ class TaskList:
         current = self.current
         self.current += 1
         return self.tasks[current]
+
+    @classmethod
+    def example(cls) -> Task:
+        return Task("train", 0, cls.conditions[0], cls.output_dir, estimate_memory=True)

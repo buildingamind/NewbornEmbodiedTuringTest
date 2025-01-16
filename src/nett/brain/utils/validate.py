@@ -13,10 +13,10 @@ from sb3_contrib.ppo_recurrent.ppo_recurrent import RecurrentPPO
 from rllte.common.prototype import BaseReward
 import rllte.xplore.reward as rl_rewards
 
-from . import encoders
+from .. import encoders
 
 # custom reward override
-from .rewards import ICM
+from ..rewards import ICM
 
 
 def _getMapping(
