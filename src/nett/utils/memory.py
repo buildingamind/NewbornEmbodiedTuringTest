@@ -39,7 +39,7 @@ class MemoryManager:
     def get_used_memory(self, device_id: int) -> int:
         return self.get_memory_status(device_id).used
 
-    def get_most_free_gpu(self, devices: list[int]) -> int:
+    def get_most_free_gpu(self, devices: list[int]) -> tuple[int, int]:
         maxMemory: int = 0
         maxMemoryDevice: int = None
         for device in devices:
@@ -47,13 +47,7 @@ class MemoryManager:
         if memory > maxMemory:
             maxMemory = memory
             maxMemoryDevice = device
-        return maxMemoryDevice
-
-    def get_free_memory_by_device(self, devices: list[int]) -> list[dict[str, int]]:
-        return [
-            {"device": device, "memory": self.get_free_memory(device)}
-            for device in devices
-        ]
+        return maxMemoryDevice, maxMemory
 
     @staticmethod
     def validate_devices(devices: Optional[list[int]]) -> list[int]:

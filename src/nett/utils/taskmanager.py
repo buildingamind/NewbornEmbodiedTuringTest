@@ -142,56 +142,48 @@ class TaskManager:
             free_device_memory = [free_device_memory[-1]] + free_device_memory[:-1]
 
     def _calculate_task_memory(self, job_memory: str | int) -> None:
-        most_free_gpu: int = self.memory_manager.get_most_free_gpu(self.devices)
-        gpu_max_capacity: int = self.memory_manager.get_free_memory(most_free_gpu)
+        most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
+            self.devices
+        )
 
         if job_memory == "auto":
-            self.job_memory = self._estimate_task_memory(
-                most_free_gpu,
-                gpu_max_capacity,
-            )
+            self.logger.info("Estimating memory for a single task")
+            # calculate current memory usage for baseline for comparison
+
+            try:
+                # create a test task to estimate memory
+                # TODO: Allow mem estimation to accurately estimate for test
+                task = TaskList.example()
+                task.device = most_free_gpu
+                task_future = self.executor.submit(_run_task, task, self.logger)
+                future_wait({task_future: task}, return_when="ALL_COMPLETED")
+
+                with open(task.path / "mem.txt", "r") as file:
+                    post_memory: int = int(file.readline())
+            except Exception as e:
+                self.logger.exception(f"Error in estimating memory: {e}")
+                raise e
+            finally:
+                if task.path.exists():
+                    shutil.rmtree(task.path)
+
+            # estimate memory allocated
+            # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
+            self.job_memory = gpu_max_capacity - post_memory
         else:
             self.job_memory = job_memory * (1024**3)
             # check to see if GPUs can run a single job
             if self.job_memory > gpu_max_capacity:
                 raise JobTooBigError
 
-    def _estimate_task_memory(
-        self,
-        most_free_gpu: int,
-        pre_memory: int,
-    ) -> int:
-        self.logger.info("Estimating memory for a single task")
-        # calculate current memory usage for baseline for comparison
-
-        try:
-            # create a test task to estimate memory
-            # TODO: Allow mem estimation to accurately estimate for test
-            task = TaskList.example()
-            task.device = most_free_gpu
-            task_future = self.executor.submit(_run_task, task, self.logger)
-            future_wait({task_future: task}, return_when="ALL_COMPLETED")
-
-            with open(task.path / "mem.txt", "r") as file:
-                post_memory: int = int(file.readline())
-        except Exception as e:
-            self.logger.exception(f"Error in estimating memory: {e}")
-            raise e
-        finally:
-            if task.path.exists():
-                shutil.rmtree(task.path)
-
-        # estimate memory allocated
-        # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
-        return post_memory - pre_memory
-
     def _run_tasks(self, mode: str, synchronous: bool) -> None:
         self.task_sheet: dict[Future, int] = {}
 
         # get the free memory status for each device
-        free_device_memory: list[dict[str, int]] = (
-            self.memory_manager.get_free_memory_by_device(self.devices)
-        )
+        free_device_memory: list[dict[str, int]] = [
+            {"device": device, "memory": self.memory_manager.get_free_memory(device)}
+            for device in self.devices
+        ]
 
         # assign devices based on memory availability
         try:
