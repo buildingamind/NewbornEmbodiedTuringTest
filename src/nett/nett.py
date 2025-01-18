@@ -8,16 +8,36 @@ This module contains the NETT class, which is the main class for training, testi
 import logging
 from pathlib import Path
 from typing import Optional
-from concurrent.futures import Future
+# from concurrent.futures import Future
 import yaml
+
+from nett.utils.executor import Executor
 
 from .brain.brain import Brain
 from .body.body import Body
 from .environment.environment import Environment
 from .utils.tasklist import TaskList
-from .utils.taskmanager import TaskManager
+# from .utils.taskmanager import TaskManager
 from .utils.validate import validate_conditions, validate_mode
 from .utils.design import get_experiment_design
+
+####################
+import os
+import shutil
+import sys
+
+from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait
+
+from stable_baselines3.common.env_checker import check_env
+
+from .utils.task import Task
+from .utils.vec_env import MultiEnv, SingleEnv, TestEnv, ZooEnv
+from .utils.memory import MemoryManager
+
+JobTooBigError = ValueError(
+    "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
+)
+
 
 
 class NETT:
@@ -113,7 +133,7 @@ class NETT:
         )
 
         # validate conditions
-        conditions = validate_conditions(valid_imprinting_conditions, conditions)
+        self.conditions = validate_conditions(valid_imprinting_conditions, conditions)
 
         # validate mode
         modes = validate_mode(mode)
@@ -121,7 +141,7 @@ class NETT:
         ## Setup ##
 
         # set up the output directory
-        output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up output directory at: {output_dir.resolve()}")
 
@@ -137,15 +157,125 @@ class NETT:
 
         ## Run ##
 
-        # create task manager
-        task_manager = TaskManager(devices, verbose)
-
-        # create task list
-        TaskList.initialize(num_brains, conditions, output_dir)
-
         # run tasks
         self.logger.info("Launching...")
-        task_manager.run(modes, task_memory, synchronous)
+        # task_manager.run(modes, task_memory, synchronous)
+
+        # initialize executor
+        self.executor = Executor(verbose)
+
+        # initialize NVIDIA memory management
+        self.memory_manager = MemoryManager()
+
+        # validate devices
+        self.devices: list[int] = self.memory_manager.validate_devices(devices)
+        self.logger.info(f"Devices that will be used: {devices}")
+
+        # estimate memory for a single task
+        self._calculate_task_memory(task_memory)
+
+        # run tasks
+        for mode in modes:
+            # initialize task sheet
+            self.task_sheet: dict[Future, int] = {}
+
+            # get the free memory status for each device
+            free_device_memory: list[dict[str, int]] = [
+                {"device": device, "memory": self.memory_manager.get_free_memory(device)}
+                for device in self.devices
+            ]
+
+            # assign devices based on memory availability
+            try:
+                # assign tasks to devices and run them
+                for task in TaskList(num_brains, conditions, output_dir, mode):
+                    self._assign_task(task, free_device_memory)
+
+                # wait for all tasks to complete if synchronous is True
+                if synchronous:
+                    future_wait(self.task_sheet, return_when="ALL_COMPLETED")
+
+            except Exception as e:
+                self.logger.exception(f"Error in launching jobs: {e}")
+                raise e
+            finally:
+                self._close()
+
+#####################
+    def _close(self) -> None:
+        # close memory manager
+        self.memory_manager.close()
+        # close processes and free up resources on completion
+        self.logger.info("Shutting down executor")
+        self.executor.close()  # TODO: does future wait and this both need to be here?
+
+    def _waitlist(self, task):
+        # wait until there is GPU space to run task
+        self.logger.warning(
+            "Insufficient GPU Memory. Waiting for running tasks to complete."
+        )
+        done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
+        done_future = done[0]
+        free_device: int = self.task_sheet.pop(done_future)
+        task_future: Future = self.executor.submit(task, free_device)
+        self.task_sheet[task_future] = free_device
+
+    def _assign_task(self, task: Task, free_device_memory: list[dict[str, int]]):
+        # waitlist remaining tasks if no free memory
+        if not free_device_memory:
+            self._waitlist(task)
+        # remove devices without enough remaining memory
+        elif free_device_memory[-1]["memory"] < self.job_memory:
+            free_device_memory.pop()
+        # run the task
+        else:
+            # create task
+            device = free_device_memory[-1]["device"]
+            task_future = self.executor.submit(task, free_device_memory[-1]["device"])
+            self.task_sheet[task_future] = device
+            # allocate memory
+            free_device_memory[-1]["memory"] -= self.job_memory
+            # rotate devices
+            free_device_memory = [free_device_memory[-1]] + free_device_memory[:-1]
+
+    def _calculate_task_memory(self, job_memory: str | int) -> None:
+        most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
+            self.devices
+        )
+
+        if job_memory == "auto":
+            self.logger.info("Estimating memory for a single task")
+            # calculate current memory usage for baseline for comparison
+
+            try:
+                # create a test task to estimate memory
+                # TODO: Allow mem estimation to accurately estimate for test
+                task = Task("train", 0, self.conditions[0], self.output_dir, estimate_memory=True)
+                task_future = self.executor.submit(task, most_free_gpu)
+                future_wait({task_future: task}, return_when="ALL_COMPLETED")
+
+                with open(task.path / "mem.txt", "r") as file:
+                    post_memory: int = int(file.readline())
+            except Exception as e:
+                self.logger.exception(f"Error in estimating memory: {e}")
+                raise e
+            finally:
+                if task.path.exists():
+                    shutil.rmtree(task.path)
+
+            # estimate memory allocated
+            # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
+            self.job_memory = gpu_max_capacity - post_memory
+        else:
+            self.job_memory = job_memory * (1024**3)
+            # check to see if GPUs can run a single job
+            if self.job_memory > gpu_max_capacity:
+                raise JobTooBigError
+
+
+
+#####################
+
 
     def update(self, supplementary_config: Path | str | dict):
         """
