@@ -6,7 +6,6 @@ import sys
 
 from nett.brain.brain import Brain
 from nett.environment.environment import Environment
-from nett.nett import _validate_env
 from nett.utils.task import Task
 from nett.utils.vec_env import MultiEnv, SingleEnv, TestEnv, ZooEnv
 

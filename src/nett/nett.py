@@ -38,8 +38,6 @@ JobTooBigError = ValueError(
     "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
 )
 
-
-
 class NETT:
     """
     The NETT class is the main class for training, testing, and analyzing brains in environments.
