@@ -1,12 +1,7 @@
 # NETT Architecture
 
 ```mermaid
----
-config:
-  theme: neutral
-  look: classic
-  layout: elk
----
+%%{ config: { theme: "neutral", look: "classic", layout: "elk" } }%%
 
 flowchart TB
     classDef dir fill:#bbb,stroke-width: 0px,font-size:22pt;
