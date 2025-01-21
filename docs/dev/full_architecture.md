@@ -1,15 +1,22 @@
 # NETT Architecture
 
 ```mermaid
-%%{init: {"flowchart": {"defaultRenderer": "elk"}} }%%
+---
+config:
+  theme: neutral
+  look: classic
+  layout: elk
+---
+
 
 flowchart TB
-    classDef dir fill:#bbb,stroke-width: 0px,font-size:22pt;
-    classDef subdir fill:#ccc,stroke-width: 0px,font-size:20pt;
-    classDef file fill:#ddd,stroke-width: 0px,font-size:18pt;
-    classDef clss fill:#eee,stroke-width: 0px,font-size:16pt;
-    classDef func fill:#fff,stroke-width: 0px,font-size:14pt;
-    classDef lib font-size:20pt;
+    classDef dir fill:#bbb,stroke-width:0px,font-size:22pt;
+    classDef subdir fill:#ccc,stroke-width:0px,font-size:20pt;
+    classDef file fill:#ddd,stroke-width:0px,font-size:18pt;
+    classDef clss fill:#eee,stroke-width:0px,font-size:16pt;
+    classDef func fill:#fff,stroke-width:0px,font-size:14pt;
+    classDef stack fill:#fff,stroke:#ccc,font-size:14pt;
+    classDef lib fill:#fff,stroke:#000,stroke-width:3px,font-size:20pt;
 
     utils:::dir
     subgraph utils
@@ -115,14 +122,14 @@ flowchart TB
         subgraph brain.encoders[encoders]
             brain.encoders.encoder:::file
             subgraph brain.encoders.encoder[#60;encoder#62;.py]
-                Encoder[#60;Encoder#62;]@{shape: processes,fill:#eee,font-size:14pt}
+                Encoder[#60;Encoder#62;]@{shape: processes}
             end
         end
         brain.rewards:::subdir
         subgraph brain.rewards[rewards]
             brain.rewards.reward:::file
             subgraph brain.rewards.reward[#60;reward#62;.py]
-                Reward[#60;Reward#62;]@{shape: processes,fill:#eee,font-size:14pt}
+                Reward[#60;Reward#62;]@{shape: processes}
             end
         end
     end
@@ -147,7 +154,7 @@ flowchart TB
         subgraph wrappers
             wrapper.py:::file
             subgraph wrapper.py[#60;wrapper#62;.py]
-                Wrapper[#60;Wrapper#62;]@{shape: processes,fill:#eee,font-size:14pt}
+                Wrapper[#60;Wrapper#62;]@{shape: processes}
             end
         end
     end
@@ -186,7 +193,7 @@ flowchart TB
         end
         ChickData:::subdir
         subgraph ChickData
-            experiment[#60;experiment#62;.csv]@{shape: processes,fill:#ddd,font-size:14pt}
+            experiment[#60;experiment#62;.csv]@{shape: processes}
         end
         analysis.utils:::subdir
         subgraph analysis.utils[utils]
@@ -205,13 +212,16 @@ flowchart TB
         end
     end
 
+
     sb3@{ shape: stadium, label: "Stable Baselines 3", font-size: 40pt }
     sb3_contrib@{ shape: stadium, label: "SB3 Contrib", font-size: 40pt }
-    rllte@{ shape: stadium, label: "RLLTE", font-size: 40pt }
+    rllte@{ shape: stadium, label: "RLLTE", font-size: 40pt, img: "" }
     gym@{ shape: stadium, label: "gymnasium", font-size: 40pt }
     zoo@{ shape: stadium, label: "Petting Zoo", font-size: 40pt }
 
     class sb3,sb3_contrib,rllte,gym,zoo lib
+    class Encoder,Wrapper,Reward stack
+    style experiment fill:#eee,stroke:#bbb,font-size:16pt
 
     nett.run --> Brain.initialize & Body.initialize & Environment.initialize & get_experiment_design & validate_mode & calc_run_info & adjust_to_agent & MemoryManager & validate_conditions & validate_devices & TaskList & nett._close
     Brain.initialize --> validate_algorithm & validate_encoder & validate_policy & validate_reward
