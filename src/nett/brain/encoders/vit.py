@@ -19,7 +19,7 @@ class ViT(BaseFeaturesExtractor):
     def __init__(
         self,
         observation_space: gym.spaces.Box,
-        learning_rate: float = 1e-3,
+        learning_rate: float = 3e-4,
         features_dim: int = 512,
         patch_size: int = 4,  # 8,
         depth: int = 3,
