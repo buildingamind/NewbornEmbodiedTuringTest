@@ -45,10 +45,32 @@ class NETT:
     Args:
         config
 
-    Example:
+    Examples:
         >>> from nett import NETT
-        >>> # create a brain, body, and environment
-        >>> benchmarks = NETT(brain, body, environment)
+        >>> NETT('./config.yaml')
+
+        >>> from nett import NETT
+        >>> benchmark = NETT(config={
+        >>>     "Environment": {
+        >>>         "executable_path": "path/to/executable.x86_64",
+                    "record_eps": {"train": 10, "test": 10}
+                }
+        >>> })
+        >>>
+        >>> benchmark.update({
+        >>>     "Brain": {
+        >>>         "policy": "CnnPolicy",
+        >>>         "algorithm": "PPO",
+        >>>         "encoder": "small",
+        >>>         "reward": "supervised"
+        >>>     },
+        >>>     "Body": {
+        >>>         "wrappers": ["dvs"],
+        >>>         "record_eps": {"train": 10, "test": 10}
+        >>>     }
+        >>> })
+        >>> # run the benchmark
+        >>> benchmark.run(output_dir="path/to/output/directory", num_brains=2, mode="full")
     """
 
     logger: logging.Logger

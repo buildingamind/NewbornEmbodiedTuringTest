@@ -24,7 +24,7 @@ from ._version import __version__
 
 # simplify imports
 from .nett import NETT
-from .body.wrappers import list_wrappers
+from .body.utils.validate import list_wrappers
 from .brain.utils.validate import list_algorithms, list_encoders, list_policies, list_rewards
 
 # set up logging
