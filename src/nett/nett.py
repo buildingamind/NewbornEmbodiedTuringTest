@@ -8,39 +8,35 @@ This module contains the NETT class, which is the main class for training, testi
 import logging
 from pathlib import Path
 from typing import Optional
-# from concurrent.futures import Future
 import yaml
-
-from nett.utils.executor import Executor
+import shutil
+from concurrent.futures import Future, wait as future_wait
 
 from .brain.brain import Brain
 from .body.body import Body
 from .environment.environment import Environment
+from .utils.executor import Executor
 from .utils.tasklist import TaskList
-# from .utils.taskmanager import TaskManager
 from .utils.validate import validate_conditions, validate_mode
 from .utils.design import get_experiment_design
-
-####################
-import os
-import shutil
-import sys
-
-from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait
-
-from stable_baselines3.common.env_checker import check_env
-
 from .utils.task import Task
-from .utils.vec_env import MultiEnv, SingleEnv, TestEnv, ZooEnv
 from .utils.memory import MemoryManager
+
 
 JobTooBigError = ValueError(
     "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
 )
 
+
 class NETT:
     """
-    The NETT class is the main class for training, testing, and analyzing brains in environments.
+    The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a YAML file containing the configuration.
+
+    A NETT configuration consists of the following sections:
+    - Brain: Defines the agent brain, such as the policy and encoder networks and the training/testing parameters. A valid parameters are those for :func:`~nett.brain.brain`
+    - Body: Defines the agent body.
+    - Environment: Defines the Unity environment.
+    - Run: Contains the run settings.
 
     Args:
         config
@@ -201,7 +197,10 @@ class NETT:
 
             # get the free memory status for each device
             free_device_memory: list[dict[str, int]] = [
-                {"device": device, "memory": self.memory_manager.get_free_memory(device)}
+                {
+                    "device": device,
+                    "memory": self.memory_manager.get_free_memory(device),
+                }
                 for device in self.devices
             ]
 
@@ -221,7 +220,7 @@ class NETT:
             finally:
                 self._close()
 
-#####################
+    #####################
     def _close(self) -> None:
         # close memory manager
         self.memory_manager.close()
@@ -270,7 +269,13 @@ class NETT:
             try:
                 # create a test task to estimate memory
                 # TODO: Allow mem estimation to accurately estimate for test
-                task = Task("train", 0, self.conditions[0], self.output_dir, estimate_memory=True)
+                task = Task(
+                    "train",
+                    0,
+                    self.conditions[0],
+                    self.output_dir,
+                    estimate_memory=True,
+                )
                 task_future = self.executor.submit(task, most_free_gpu)
                 future_wait({task_future: task}, return_when="ALL_COMPLETED")
 
@@ -292,10 +297,7 @@ class NETT:
             if self.job_memory > gpu_max_capacity:
                 raise JobTooBigError
 
-
-
-#####################
-
+    #####################
 
     def update(self, supplementary_config: Path | str | dict):
         """

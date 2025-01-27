@@ -1,5 +1,4 @@
-body
+Body
 ====
 
-.. autoclass:: nett.Body
-   :members:
+.. automodule:: nett.body.body

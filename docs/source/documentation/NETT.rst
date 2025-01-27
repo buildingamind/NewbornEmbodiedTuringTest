@@ -1,5 +1,5 @@
 NETT
 ====
 
-.. autoclass:: nett.NETT
+.. autoclass:: nett.nett.NETT
   :members:

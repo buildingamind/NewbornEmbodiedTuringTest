@@ -23,9 +23,14 @@ import logging
 from ._version import __version__
 
 # simplify imports
-from .nett import NETT
+# from .nett import NETT
 from .body.utils.validate import list_wrappers
-from .brain.utils.validate import list_algorithms, list_encoders, list_policies, list_rewards
+from .brain.utils.validate import (
+    list_algorithms,
+    list_encoders,
+    list_policies,
+    list_rewards,
+)
 
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)

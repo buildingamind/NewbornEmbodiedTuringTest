@@ -48,4 +48,4 @@ cd docs
 make html
 ```
 
-The documentation can be viewed by opening the `index.html` file in the `docs/build` folder in a web browser.
+The documentation can be viewed by opening the `index.html` file in the `docs/build/html` folder in a web browser.
