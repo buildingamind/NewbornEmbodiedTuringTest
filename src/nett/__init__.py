@@ -42,8 +42,11 @@ for tmp_dir in [
     "/tmp/ml-agents-binaries/binaries",
     "/tmp/ml-agents-binaries/tmp",
 ]:
+    # Check if directory exists
+    if not os.path.exists(tmp_dir):
+        os.makedirs(tmp_dir, mode=0o777)
     # check if directory is correct permission
-    if os.stat(tmp_dir).st_mode % 0o1000 != 0o777:
+    elif os.stat(tmp_dir).st_mode % 0o1000 != 0o777:
         # check if directory is owned by user
         if os.stat(tmp_dir).st_uid == os.getuid():
             # change permission of directory
