@@ -4,7 +4,7 @@ import logging
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
-from nett.utils.task import Task
+from ..utils.task import Task
 
 from .utils import validate_wrappers
 
