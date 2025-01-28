@@ -133,13 +133,13 @@ class NETT:
             >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
 
-        ## Initialization ##
+        ########## Initialization ##########
 
         Brain.initialize(**self.config.get("Brain", {}))
         Body.initialize(**self.config.get("Body", {}))
         Environment.initialize(**self.config["Environment"])
 
-        ## Validation ##
+        ############ Validation ############
 
         # get experiment design
         num_test_conditions, valid_imprinting_conditions = get_experiment_design(
@@ -152,12 +152,16 @@ class NETT:
         # validate mode
         modes = validate_mode(mode)
 
-        ## Setup ##
+        ############## Setup ###############
 
         # set up the output directory
         self.output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         self.logger.info(f"Set up output directory at: {output_dir.resolve()}")
+
+        # save a copy of the config
+        with open(Path.joinpath(self.output_dir, "config.yaml"), "w") as f:
+            f.write(yaml.dump(self.config))
 
         # calculate run info for Brain
         Brain.calc_run_info(num_threads, num_brains, num_test_conditions, conditions)
@@ -169,7 +173,7 @@ class NETT:
             multiobs=Body.multiobs,
         )
 
-        ## Run ##
+        ############### Run ################
 
         # run tasks
         self.logger.info("Launching...")
@@ -215,7 +219,6 @@ class NETT:
             finally:
                 self._close()
 
-    #####################
     def _close(self) -> None:
         # close memory manager
         self.memory_manager.close()
