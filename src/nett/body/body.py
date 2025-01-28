@@ -28,8 +28,9 @@ class Body(gym.Wrapper):
         >>> from nett import Body
         >>> body = Body(type="basic", wrappers=None, dvs=False)
     """
+    initialized = False # keeps track of whether the class has been initialized
+    input_params = {}  # keeps track of the parameters that were fed into the class during initialization
 
-    logger: logging.Logger
     multiobs: bool
     wrappers: list[gym.Wrapper]
     record_eps: dict
@@ -43,13 +44,22 @@ class Body(gym.Wrapper):
         """
         Constructor method
         """
-        cls.logger = logging.getLogger("nett.Body")
+        # save all of the input parameters (executable_path etc) in case they are needed later
+        cls.input_params.update({k: v for k, v in locals().items() if k != 'cls'})
 
         cls.multiobs = "binocular" in wrappers
         cls.wrappers = validate_wrappers(wrappers)
         cls.record_eps = record_eps
 
+        cls.initialized = True
+
     def __init__(self, env: gym.Env, task: Task) -> None:
+        if not self.initialized:
+            raise RuntimeError("Body must be initialized before use")
+
+        # set up logger
+        self.logger: logging.Logger = task.logger
+
         try:
             for wrapper in self.wrappers:
                 env = wrapper(env)

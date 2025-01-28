@@ -71,13 +71,12 @@ class NETT:
 
     logger: logging.Logger
     config: dict
+    logger = logging.getLogger("nett.NETT")
 
     def __init__(self, config: Path | str | dict) -> None:
         """
         Initialize the NETT class.
         """
-        # initialize logger
-        self.logger = logging.getLogger("nett.NETT")
 
         try:
             if isinstance(config, dict):
@@ -91,9 +90,6 @@ class NETT:
 
         if "Run" in self.config:
             self.run(**self.config["Run"])
-
-        # if "Analysis" in self.config:
-        #     self.analysis(**self.config["Analysis"])
 
     def run(
         self,
@@ -132,12 +128,16 @@ class NETT:
         Example:
             >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
+        input_params = {k: v for k, v in locals().items() if k != 'self'}
 
         ########## Initialization ##########
 
-        Brain.initialize(**self.config.get("Brain", {}))
-        Body.initialize(**self.config.get("Body", {}))
-        Environment.initialize(**self.config["Environment"])
+        if not Brain.initialized:
+            Brain.initialize(**self.config.get("Brain", {}))
+        if not Body.initialized:
+            Body.initialize(**self.config.get("Body", {}))
+        if not Environment.initialized:
+            Environment.initialize(**self.config["Environment"])
 
         ############ Validation ############
 
@@ -161,7 +161,12 @@ class NETT:
 
         # save a copy of the config
         with open(Path.joinpath(self.output_dir, "config.yaml"), "w") as f:
-            f.write(yaml.dump(self.config))
+            f.write(yaml.dump({
+                "Brain": Brain.input_params,
+                "Body": Body.input_params,
+                "Environment": Environment.input_params,
+                "Run": input_params
+            }))
 
         # calculate run info for Brain
         Brain.calc_run_info(num_threads, num_brains, num_test_conditions, conditions)

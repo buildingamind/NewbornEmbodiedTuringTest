@@ -137,6 +137,9 @@ class Brain:
         >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
     """
 
+    initialized = False # keeps track of whether the class has been initialized
+    input_params = {}  # keeps track of the parameters that were fed into the class during initialization
+
     @classmethod
     def initialize(
         cls,
@@ -161,9 +164,8 @@ class Brain:
         """
         Constructor method
         """
-
-        # Initialize logger
-        cls.logger = logging.getLogger("nett.Brain")
+        # save all of the input parameters (executable_path etc) in case they are needed later
+        cls.input_params.update({k: v for k, v in locals().items() if k != 'cls'})
 
         # Set attributes
         cls.algorithm = validate_algorithm(algorithm)
@@ -192,6 +194,8 @@ class Brain:
         # test_eps, n_tasks (brains*conditions)
         cls.test_eps = test_eps
 
+        cls.initialized = True
+
     @classmethod
     def calc_run_info(
         cls,
@@ -218,10 +222,14 @@ class Brain:
             cls.n_parallel_envs = int(max_envs)
             cls.test_iterations = num_test_conditions * ceil(cls.test_eps / max_envs)
 
-    def __init__(self, device: int, seed: int) -> None:
+    def __init__(self, task: Task) -> None:
         """Constructor method"""
-        self.device = f"cuda:{device}"
-        self.seed = seed
+        if not self.initialized:
+            raise RuntimeError("Brain must be initialized before use")
+
+        self.logger: logging.Logger = task.logger
+        self.device: int = f"cuda:{task.device}"
+        self.seed: int = task.seed
 
     def train(self, envs: VecEnv, task: Task):
         """

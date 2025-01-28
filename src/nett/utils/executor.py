@@ -16,7 +16,7 @@ def _run_task(task: Task) -> None:
 # can be train or test mode and can be for validation or actual run
     logger = logging.getLogger(f"nett.executor.task-{task.condition}-{task.brain_id}-{task.mode}")       
     try:
-        brain: Brain = Brain(task.device, task.brain_id)
+        brain: Brain = Brain(task)
 
         log_path = task.path / "env_logs"
         log_path.mkdir(exist_ok=True, parents=True)

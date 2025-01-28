@@ -1,5 +1,6 @@
 """Task class for holding information for each task to run"""
 
+import logging
 from pathlib import Path
 
 
@@ -28,3 +29,6 @@ class Task:
         self.condition: str = condition
         self.estimate_memory = estimate_memory
         self.path: Path = output_dir / self.condition / f"brain_{self.brain_id}"
+        self.logger: logging.Logger = logging.getLogger(
+            f"nett.task-{self.condition}-{self.brain_id}-{self.mode}"
+        )

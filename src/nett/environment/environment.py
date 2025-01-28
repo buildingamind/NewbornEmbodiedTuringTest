@@ -16,8 +16,6 @@ from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 from pettingzoo.utils.wrappers import BaseParallelWrapper
 
-
-
 # checks to see if ml-agents tmp files have the proper permissions
 try:
     from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
@@ -28,6 +26,10 @@ except PermissionError as _:
 
 from nett.utils.task import Task
 from .utils import random_port, validate_executable_path
+
+# Types
+SINGLE_AGENT_STEP_RETURN = tuple[np.ndarray, float, bool, bool, dict]
+MULTI_AGENT_STEP_RETURN = tuple[dict, dict, dict, dict, dict]
 
 
 class Environment:
@@ -50,6 +52,14 @@ class Environment:
         >>> env = Environment(executable_path="path/to/executable")
     """
 
+    # Class Variables
+    input_params: dict = {} # keeps track of the parameters that were fed into the class during initialization
+    executable_path: Path  # the path to the Unity executable file
+    multiagent: bool  # whether the environment is multiagent
+    base_args: dict  # the base arguments to pass to the Unity environment
+    initialized: bool = False  # keeps track of whether the class has been initialized
+    multiobs: bool  # whether the environment passes multiple observations to the agent
+
     @classmethod
     def initialize(
         cls,
@@ -58,14 +68,14 @@ class Environment:
         multiagent: bool = False,  # env
         display: Optional[int] = None,  # env
     ):
-        cls.executable_path: Path = validate_executable_path(executable_path)
-        cls.multiagent = multiagent
+        # save all of the input parameters (executable_path etc) in case they are needed later
+        cls.input_params.update({k: v for k, v in locals().items() if k != "cls"})
 
-        cls.logger = logging.getLogger("nett.Environment")
+        cls.executable_path = validate_executable_path(executable_path)
+        cls.multiagent = multiagent
 
         # set the correct permissions on the executable
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
-        cls.logger.info("Executable permission is set")
 
         # Create a list of arguments to pass to the Unity environment
         args = []
@@ -76,7 +86,6 @@ class Environment:
         else:
             # set the display for Unity environment
             os.environ["DISPLAY"] = str(f":{display}")
-            cls.logger.info("Display is set")
 
         # split into train and test args
         cls.base_args = {"train": args[:], "test": args[:]}
@@ -91,6 +100,8 @@ class Environment:
                     ["--record-chamber", "true", "--recording-steps", record_eps[mode]]
                 )
 
+        cls.initialized = True
+
     @classmethod
     def adjust_to_agent(
         cls,
@@ -98,7 +109,6 @@ class Environment:
         supervised_reward: bool,
         multiobs: bool,
     ):
-
         cls.multiobs = multiobs
 
         args = ["--episode-steps", str(steps_per_episode)]
@@ -113,7 +123,17 @@ class Environment:
     def __init__(
         self, task: Task, validation_mode: bool, seed: Optional[int] = None
     ) -> None:
-        """Constructor method"""
+        # constructor method, opens the Unity environment
+
+        # check if the class has been initialized
+        if not self.initialized:
+            raise RuntimeError(
+                "Environment class must be initialized before creating an instance"
+            )
+
+        # set up logger
+        self.logger = task.logger
+
         args = self.base_args[task.mode]
 
         # create record path
@@ -156,19 +176,10 @@ class Environment:
                 self.logger.exception(f"Error initializing environment: {e}")
                 raise e
 
-    # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c)
-    # as expected by gym==0.21.0
-    # HACK: mode is not used, but is required by the gym.Wrapper class (might be unnecessary but keeping for now)
+    # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c) as expected by gym
+    # TODO: See if this is still necessary
     def render(self, mode="rgb_array") -> np.ndarray:  # pylint: disable=unused-argument
-        """
-        Renders the current frame of the environment.
-
-        Args:
-            mode (str, optional): The mode to render the frame in. Defaults to "rgb_array".
-
-        Returns:
-            numpy.ndarray: The rendered frame of the environment.
-        """
+        # Renders the current frame of the environment.
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])  # TODO: Why?
 
     def reset(
@@ -189,47 +200,46 @@ class Environment:
 
     def step(
         self, action: list[Any]
-    ) -> (
-        tuple[np.ndarray, float, bool, bool, dict] | tuple[dict, dict, dict, dict, dict]
-    ):
-        """
-        Takes a step in the environment with the given action.
-
-        Args:
-            action (list[Any]): The action to take in the environment.
-
-        Returns:
-            tuple[numpy.ndarray, float, bool, dict]: A tuple containing the next state, reward, terminated flag, truncated flag, and info dictionary.
-        """
+    ) -> SINGLE_AGENT_STEP_RETURN | MULTI_AGENT_STEP_RETURN:
+        # Takes a step in the environment with the given action.
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, reward, terminated, truncated, info
 
 
 class GymEnvironment(Environment, Wrapper):
+    # used for single-agent environments
     def __init__(
         self, task: Task, validation_mode: bool, seed: Optional[int] = None
     ) -> None:
+        # init the Environment instance
         Environment.__init__(self, task, validation_mode, seed)
 
+        # wrap the environment for ML Agents to work with Gym
         self.env = UnityToGymWrapper(
             self.env,
             uint8_visual=True,
             allow_multiple_obs=self.multiobs,
             action_space_seed=self.seed,
         )
-        # initialize the grandparent class (gym.Wrapper)
+
+        # init the Gym Wrapper instance
         Wrapper.__init__(self, self.env)
 
-    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, dict]:
+    def step(self, action: list[Any]) -> SINGLE_AGENT_STEP_RETURN:
+        # step
         next_state, reward, terminated, truncated, info = super().step(action)
+        # convert reward to float
         return next_state, float(reward), terminated, truncated, info
 
 
 class ZooEnvironment(Environment, BaseParallelWrapper):
+    # used for multi-agent environments
     def __init__(self, task: Task) -> None:
+        # init the Environment instance
         Environment.__init__(self, task, False)
 
+        # wrap the environment for ML Agents to work with PettingZoo
         self.env = UnityParallelEnv(self.env, uint8_visual=True, seed=self.seed)
-        # initialize the grandparent class (BaseParallelWrapper)
-        BaseParallelWrapper.__init__(self, self.env)
 
+        # init the PettingZoo BaseParallelWrapper instance
+        BaseParallelWrapper.__init__(self, self.env)
