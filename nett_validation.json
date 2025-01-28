@@ -246,11 +246,6 @@
           "description": "Verbosity level",
           "type": "boolean",
           "default": true
-        },
-        "synchronous": {
-          "description": "Whether to run in synchronous mode",
-          "type": "boolean",
-          "default": true
         }
       },
       "required": ["output_dir"]

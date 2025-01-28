@@ -105,7 +105,6 @@ class NETT:
         devices: Optional[list[int]] = None,
         task_memory: str | int = 4,
         verbose: int = True,
-        synchronous: bool = True,
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -121,7 +120,6 @@ class NETT:
             job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
             verbose (int, optional): Whether or not to print info statements. Defaults to True.
-            synchronous (bool, optional): Whether to keep code running in the foreground until completion. Defaults to False.
             save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
             checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
             record_training (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
@@ -175,7 +173,6 @@ class NETT:
 
         # run tasks
         self.logger.info("Launching...")
-        # task_manager.run(modes, task_memory, synchronous)
 
         # initialize executor
         self.executor = Executor(verbose)
@@ -210,9 +207,7 @@ class NETT:
                 for task in TaskList(num_brains, conditions, output_dir, mode):
                     self._assign_task(task, free_device_memory)
 
-                # wait for all tasks to complete if synchronous is True
-                if synchronous:
-                    future_wait(self.task_sheet, return_when="ALL_COMPLETED")
+                future_wait(self.task_sheet, return_when="ALL_COMPLETED")
 
             except Exception as e:
                 self.logger.exception(f"Error in launching jobs: {e}")
