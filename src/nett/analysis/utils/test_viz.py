@@ -41,9 +41,9 @@ def sort_cond(data, bar_order: str) -> list[str]:
                 .index.tolist()
             )
         case "default":
-            order = [x.strip() for x in bar_order.split(",")]
-        case _:
             order = data["test.cond"].unique().tolist()
+        case _:
+            order = [x.strip() for x in bar_order.split(",")]
 
     return pd.Categorical(data["test.cond"], categories=order, ordered=True)
 
@@ -263,7 +263,7 @@ def all_cond_bar_chart(
 
 
 def test_viz(
-    results_dir: Path, chick_file: Path, bar_order="default", color_bars=False
+    results_dir: Path, chick_file: Path, bar_order="default", color_bars=True
 ):
     # Do not warn about chained assignments
     pd.options.mode.chained_assignment = None
@@ -288,28 +288,7 @@ def test_viz(
     )
 
     print("Adjusting bar order...")
-    # test_data['test.cond'] = sort_cond(test_data, bar_order)
-    if bar_order == "desc":
-        order = (
-            test_data.groupby(["test.cond"])["percent_correct"]
-            .mean()
-            .sort_values(ascending=False)
-            .index.tolist()
-        )
-    elif bar_order == "asc":
-        order = (
-            test_data.groupby("test.cond")["percent_correct"]
-            .mean()
-            .sort_values()
-            .index.tolist()
-        )
-    elif bar_order != "default":
-        order = [x.strip() for x in bar_order.split(",")]
-    else:
-        order = test_data["test.cond"].unique().tolist()
-    test_data["test.cond"] = pd.Categorical(
-        test_data["test.cond"], categories=order, ordered=True
-    )
+    test_data['test.cond'] = sort_cond(test_data, bar_order)
 
     print("Computing statistics by agent...")
     by_test_cond = _compute_agent_stats(test_data, results_dir)
