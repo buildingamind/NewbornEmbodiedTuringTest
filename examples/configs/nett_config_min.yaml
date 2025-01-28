@@ -1,7 +1,3 @@
-Brain:
-  policy: "CnnPolicy"
-  algorithm: "PPO"
-Body:
 Environment:
   executable_path: "path/to/executable.x86_64"
 Run:
