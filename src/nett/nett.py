@@ -70,37 +70,42 @@ class NETT:
     """
 
     logger: logging.Logger
-    config: dict
+    configs: list[dict]
     logger = logging.getLogger("nett.NETT")
 
-    def __init__(self, config: Path | str | dict) -> None:
+    def __init__(self, config: Path | str | dict | list[Path | str | dict]) -> None:
         """
         Initialize the NETT class.
         """
 
         try:
-            if isinstance(config, dict):
-                self.config = config
-            elif isinstance(config, (str, Path)):
-                with open(config, "r") as file:
-                    self.config = yaml.safe_load(file)
+            if not isinstance(config, list):
+                self.configs = [config]
+
+            for config in self.configs:
+                if isinstance(config, (str, Path)):
+                    with open(config, "r") as file:
+                        self.config = yaml.safe_load(file)
+                elif not isinstance(config, dict):
+                    raise TypeError("Configs should be type dict, str or Path.")
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e
 
-        if "Run" in self.config:
-            self.run(**self.config["Run"])
+        # if "Run" in self.config:
+            # self.run(**self.config["Run"])
 
     def run(
         self,
-        output_dir: Path | str,
-        mode: str = "full",
-        conditions: Optional[list[str]] = None,
-        num_brains: int = 1,
+        output_dir: Path | str, 
         num_threads: Optional[int] = None,
-        devices: Optional[list[int]] = None,
-        task_memory: str | int = 4,
+        devices: Optional[list[int]] = None, 
         verbose: int = True,
+
+        mode: str = "full", # mutli
+        conditions: Optional[list[str]] = None, # mutli
+        num_brains: int = 1, # multi
+        task_memory: str | int = 4, # multi
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -144,13 +149,13 @@ class NETT:
         # get experiment design
         num_test_conditions, valid_imprinting_conditions = get_experiment_design(
             Environment.executable_path
-        )
+        ) # multi
 
         # validate conditions
-        self.conditions = validate_conditions(valid_imprinting_conditions, conditions)
+        self.conditions = validate_conditions(valid_imprinting_conditions, conditions) # multi
 
         # validate mode
-        modes = validate_mode(mode)
+        modes = validate_mode(mode) # multi
 
         ############## Setup ###############
 
@@ -194,7 +199,7 @@ class NETT:
         self.logger.info(f"Devices that will be used: {devices}")
 
         # estimate memory for a single task
-        self._calculate_task_memory(task_memory)
+        self._calculate_task_memory(task_memory) # multi
 
         # run tasks
         for mode in modes:
@@ -213,16 +218,16 @@ class NETT:
             # assign devices based on memory availability
             try:
                 # assign tasks to devices and run them
-                for task in TaskList(num_brains, conditions, output_dir, mode):
+                for task in TaskList(num_brains, conditions, output_dir, mode): #multi
                     self._assign_task(task, free_device_memory)
 
-                future_wait(self.task_sheet, return_when="ALL_COMPLETED")
+                future_wait(self.task_sheet, return_when="ALL_COMPLETED") # mutli
 
             except Exception as e:
-                self.logger.exception(f"Error in launching jobs: {e}")
+                self.logger.exception(f"Error in launching jobs: {e}") #single
                 raise e
             finally:
-                self._close()
+                self._close() # single
 
     def _close(self) -> None:
         # close memory manager

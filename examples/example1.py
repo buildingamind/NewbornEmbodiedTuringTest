@@ -16,5 +16,7 @@ def main():
         }
     })
 
+    NETT.run()
+
 if __name__ == '__main__':  
     main()
