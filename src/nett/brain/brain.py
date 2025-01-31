@@ -69,7 +69,6 @@ from .utils.validate import (
     validate_policy,
 )
 
-
 def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
     """
     Set the encoder as evaluation mode and freeze its parameters.
@@ -137,12 +136,8 @@ class Brain:
         >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
     """
 
-    initialized = False # keeps track of whether the class has been initialized
-    input_params = {}  # keeps track of the parameters that were fed into the class during initialization
-
-    @classmethod
-    def initialize(
-        cls,
+    def __init__(
+        self,
         policy: Any | str = "CnnPolicy",
         algorithm: str | BaseAlgorithm = "PPO",
         encoder: Any | str = "small",
@@ -152,84 +147,60 @@ class Brain:
         buffer_size: int = 2048,
         learning_rate: float = 3e-4,
         ent_coef: float = 0,
-        train_eps: int = 5000,  # 1000
-        test_eps: int = 100,  # 20
-        steps_per_episode: int = 200,  # 1000
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         custom_encoder_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
-        """
-        Constructor method
-        """
-        # save all of the input parameters (executable_path etc) in case they are needed later
-        cls.input_params.update({k: v for k, v in locals().items() if k != 'cls'})
-
         # Set attributes
-        cls.algorithm = validate_algorithm(algorithm)
-        cls.policy = validate_policy(policy)
-        cls.train_encoder = train_encoder
-        cls.encoder = validate_encoder(encoder)
-        cls.supervised: bool = reward == "supervised"
-        cls.reward: Optional[type[BaseReward]] = validate_reward(reward)
+        self.algorithm = validate_algorithm(algorithm)
+        self.policy = validate_policy(policy)
+        self.encoder = validate_encoder(encoder)
 
-        cls.embedding_dim = embedding_dim
-        cls.batch_size = batch_size
-        cls.buffer_size = buffer_size
-        cls.learning_rate = learning_rate
-        cls.ent_coef = ent_coef
+        self.supervised: bool = reward == "supervised"
+        self.reward: Optional[type[BaseReward]] = validate_reward(reward)
 
-        cls.checkpoint_freq = checkpoint_freq
+        self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
+        self.batch_size = int(batch_size)
+        self.buffer_size = int(buffer_size)
+        self.learning_rate = float(learning_rate)
+        self.ent_coef = float(ent_coef)
 
-        cls.custom_encoder_args = custom_encoder_args
-        cls.custom_policy_arch = custom_policy_arch
-        cls.reward_args = reward_args
+        self.checkpoint_freq = int(checkpoint_freq) if checkpoint_freq is not None else None
+        self.train_encoder = bool(train_encoder)
 
-        # train
-        # train_eps
-        cls.train_iterations = train_eps * steps_per_episode
-        # test
-        # test_eps, n_tasks (brains*conditions)
-        cls.test_eps = test_eps
+        self.custom_encoder_args = custom_encoder_args
+        self.custom_policy_arch = custom_policy_arch
+        self.reward_args = reward_args
 
-        cls.initialized = True
-
-    @classmethod
-    def calc_run_info(
-        cls,
-        num_threads: int,
+    def calc_iterations(
+        self,
         num_brains: int,
-        num_test_conditions: int,
+        num_threads: int, # test, test_iterations
         num_imprinting_conditions: int,
+        num_test_conditions: int, # test_iterations
+        episodes: dict[str,int], # train_iterations
+        steps_per_episode: int, # train_iterations
     ):
+        self.n_tasks = num_imprinting_conditions * num_brains
+        if "train" in episodes:
+            self.train_iterations = episodes['train'] * steps_per_episode
+        if "test" in episodes:
+            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
+            n_threads_per_task = 4 # TODO: Determine the number of threads used per brain and per env
 
-        cls.n_tasks = num_imprinting_conditions * num_brains
+            max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
-        # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-        # TODO: Determine the number of threads used per brain and per env
-        n_threads_per_task = 4
-        num_threads = os.cpu_count() if num_threads is None else num_threads
-        max_envs = num_threads / (n_threads_per_task * cls.n_tasks)
-        if max_envs <= 1:
-            cls.n_parallel_envs = 1
-            cls.test_iterations = num_test_conditions * cls.test_eps
-        elif max_envs >= cls.test_eps:
-            cls.n_parallel_envs = cls.test_eps
-            cls.test_iterations = num_test_conditions
-        else:  # max_envs is between 1 and test_eps
-            cls.n_parallel_envs = int(max_envs)
-            cls.test_iterations = num_test_conditions * ceil(cls.test_eps / max_envs)
-
-    def __init__(self, task: Task) -> None:
-        """Constructor method"""
-        if not self.initialized:
-            raise RuntimeError("Brain must be initialized before use")
-
-        self.logger: logging.Logger = task.logger
-        self.device: int = f"cuda:{task.device}"
-        self.seed: int = task.seed
+            if max_envs <= 1:
+                self.n_parallel_envs = 1
+                self.test_iterations = num_test_conditions * episodes["test"]
+            elif max_envs >= episodes["test"]:
+                self.n_parallel_envs = episodes["test"]
+                self.test_iterations = num_test_conditions
+            else:  # max_envs is between 1 and test_eps
+                self.n_parallel_envs = int(max_envs)
+                self.test_iterations = num_test_conditions * ceil(episodes["test"] / max_envs)
 
     def train(self, envs: VecEnv, task: Task):
         """
@@ -241,7 +212,7 @@ class Brain:
         Raises:
             ValueError: If the environment fails the validation check.
         """
-        self.logger.info(
+        task.logger.info(
             f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
         )
 
@@ -274,28 +245,28 @@ class Brain:
                 ent_coef=self.ent_coef,
                 verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
-                device=self.device,
-                seed=self.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                device=f"cuda:{task.device}",
+                seed=task.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
                 tensorboard_log=task.path / "logs",
             )
 
             # set encoder as eval only if train_encoder is not True
             if not self.train_encoder:
                 model = _set_encoder_as_eval(model)
-                self.logger.warning(
+                task.logger.warning(
                     f"Encoder training is set to {str(self.train_encoder).upper()}"
                 )
 
         except Exception as e:
-            self.logger.exception(f"Failed to initialize model with error: {str(e)}")
+            task.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
 
         # initialize callbacks
-        self.logger.info("Initializing Callbacks")
+        task.logger.info("Initializing Callbacks")
         callback_list = self._init_callbacks(envs, task)
 
         # train
-        self.logger.info(f"Total number of training steps: {self.train_iterations}")
+        task.logger.info(f"Total number of training steps: {self.train_iterations}")
         try:
             model.learn(
                 total_timesteps=self.train_iterations,
@@ -306,12 +277,12 @@ class Brain:
             )
         except Exception as e:
             if "CUDA out of memory" in str(e):
-                self.logger.error("CUDA out of memory. Try reducing batch size.")
+                task.logger.error("CUDA out of memory. Try reducing batch size.")
                 raise
             else:
-                self.logger.exception(f"Failed to train model with error: {str(e)}")
+                task.logger.exception(f"Failed to train model with error: {str(e)}")
                 raise e
-        self.logger.info("Training Complete")
+        task.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
         if task.estimate_memory:
@@ -321,9 +292,9 @@ class Brain:
         ## create save directory
         model_path = task.path / "model"
         _save_model(model, model_path)
-        self.logger.info(f"Saved model at {model_path}")
+        task.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, task: Task):
+    def test(self, envs: VecEnv, task: Task, base_env, base_body):
         """
         Test the brain.
 
@@ -334,47 +305,48 @@ class Brain:
         try:
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
-                task.path / "model" / "latest_model.zip", device=self.device
+                task.path / "model" / "latest_model.zip", device=f"cuda:{task.device}"
             )
 
-            self.logger.info(f"Testing with {self.algorithm.__name__}")
+            task.logger.info(f"Testing with {self.algorithm.__name__}")
 
-            num_envs = envs.num_envs
+            vec_env = ZooEnv if base_env.muliagent else MultiEnv
 
-            # progress bar
-            t = tqdm(
-                total=self.test_iterations * self.n_parallel_envs,
-                desc=f"Test Progress",
-                position=0,
-                leave=True,
-            )
-            # loop over episodes
-            for _ in range(self.test_iterations):
-                # reset environment and get initial obs
-                obs = envs.reset()
-                # reset states for recurrentPPO
-                states = None
-                # dones need to start True for episode_start for recurrentPPO
-                dones = np.ones((num_envs,), dtype=bool)
+            with envs as vec_env(task, base_env, base_body, self.n_parallel_envs):
+                # progress bar
+                t = tqdm(
+                    total=self.test_iterations * self.n_parallel_envs,
+                    desc=f"Test Progress",
+                    position=0,
+                    leave=True,
+                )
+                # loop over episodes
+                for _ in range(self.test_iterations):
+                    # reset environment and get initial obs
+                    obs = envs.reset()
+                    # reset states for recurrentPPO
+                    states = None
+                    # dones need to start True for episode_start for recurrentPPO
+                    dones = np.ones((self.n_parallel_envs,), dtype=bool)
 
-                while True:
-                    # predict an action
-                    action, states = model.predict(
-                        obs,
-                        state=states,  # used only for recurrentPPO
-                        episode_start=dones,  # used only for recurrentPPO
-                        deterministic=True,
-                    )
-                    # perform the action
-                    obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
-                    # update the loading bar
-                    t.update(1)
+                    while True:
+                        # predict an action
+                        action, states = model.predict(
+                            obs,
+                            state=states,  # used only for recurrentPPO
+                            episode_start=dones,  # used only for recurrentPPO
+                            deterministic=True,
+                        )
+                        # perform the action
+                        obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
+                        # update the loading bar
+                        t.update(1)
 
-                    if not all(dones):
-                        # episode is done
-                        break
+                        if not all(dones):
+                            # episode is done
+                            break
         except Exception as e:
-            self.logger.exception(f"Failed to test model with error: {str(e)}")
+            task.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
 
         t.close()
@@ -418,7 +390,7 @@ class Brain:
         if self.reward is not None:
             reward_func: BaseReward = self.reward(
                 envs,
-                device=self.device,
+                device=f"cuda:{task.device}",
                 batch_size=self.batch_size,
                 lr=self.learning_rate,
                 **self.reward_args,
@@ -429,7 +401,7 @@ class Brain:
             elif self.algorithm.issubclass(OffPolicyAlgorithm):
                 callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
             else:
-                self.logger.warning(
+                task.logger.warning(
                     f"Instrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
 

@@ -196,7 +196,8 @@
       "properties": {
         "output_dir": {
           "description": "Path to the output directory",
-          "type": "string"
+          "type": "string",
+          "default": "./output"
         },
         "mode": {
           "type": "string",

@@ -4,12 +4,29 @@ import logging
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
+from abc import abstractmethod
+from time import sleep
+from typing import Callable, Optional
+
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+import supersuit as ss
+from supersuit.vector.concat_vec_env import ConcatVecEnv
+from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
+from stable_baselines3.common.env_checker import check_env
+
+from nett.environment import ZooEnvironment, GymEnvironment
+from nett.body import Body
+from nett.environment.environment import Environment
+
+
 from ..utils.task import Task
+
+
+import gymnasium as gym
 
 from .utils import validate_wrappers
 
-
-class Body(gym.Wrapper):
+class Body:
     """Represents the body of an agent in an environment.
 
     The body determines how observations from the environment are processed before they reach the brain.
@@ -28,58 +45,95 @@ class Body(gym.Wrapper):
         >>> from nett import Body
         >>> body = Body(type="basic", wrappers=None, dvs=False)
     """
-    initialized = False # keeps track of whether the class has been initialized
-    input_params = {}  # keeps track of the parameters that were fed into the class during initialization
-
     multiobs: bool
     wrappers: list[gym.Wrapper]
     record_eps: dict
 
-    @classmethod
-    def initialize(
-        cls,
+    def __init__(
+        self,
         wrappers: list[gym.Wrapper | str] = [],
         record_eps: dict = {"train": 0, "test": 0},
-    ) -> None:
-        """
-        Constructor method
-        """
-        # save all of the input parameters (executable_path etc) in case they are needed later
-        cls.input_params.update({k: v for k, v in locals().items() if k != 'cls'})
+    ):
+        self.multiobs = "binocular" in wrappers
+        self.wrappers = validate_wrappers(wrappers)
+        self.record_eps = record_eps
 
-        cls.multiobs = "binocular" in wrappers
-        cls.wrappers = validate_wrappers(wrappers)
-        cls.record_eps = record_eps
-
-        cls.initialized = True
-
-    def __init__(self, env: gym.Env, task: Task) -> None:
-        if not self.initialized:
-            raise RuntimeError("Body must be initialized before use")
-
-        # set up logger
-        self.logger: logging.Logger = task.logger
+    def _load_env(self, task, validation_mode: bool, seed: Optional[int] = None) -> gym.Env:
+        env = task.env.load(task, validation_mode, seed)
 
         try:
             for wrapper in self.wrappers:
                 env = wrapper(env)
         except Exception as e:
-            self.logger.exception(f"Failed to apply wrappers to environment")
+            task.logger.getChild(seed).exception(f"Failed to apply wrappers to environment")
             raise e
 
-        env = self._record_wrapper(env, task)
+        return env
+    
+    def _validate_env(self, task):
+        try:
+            test_env = self._load_env(task, True)
+            check_env(test_env)
+        finally:
+            test_env.close()
 
-        super().__init__(env)
+    def embed(self, task: Task) -> None:
+
+        if env.multiagent:
+            env = self._zoo_wrapper(task.env)
+        else:
+            self._validate_env(task)
+            # validate
+            if task.mode == "train":
+                env = self._single_gym_wrapper(task.env)
+            else: #test
+                env = self._multi_gym_wrapper(task.env, task.brain.n_parallel_envs)
+
         self.env = env
 
-    def _record_wrapper(self, env: gym.Env, task: Task) -> gym.Env:
+    def _record_wrapper(self, env: gym.Env, task: Task, seed: int = 0) -> gym.Env:
         record_episodes = self.record_eps.get(task.mode, 0)
+        if task.mode == "test":
+            record_episodes /= task.brain.n_parallel_envs
         if record_episodes > 0:
             record_ep_cb = lambda t: t < record_episodes
             return RecordVideo(
                 env,
                 task.path / "env_recs" / "agent",
                 episode_trigger=record_ep_cb,
-                name_prefix="agent",
+                name_prefix=f"agent{seed}_",
             )
         return env
+    
+    def _zoo_wrapper(self, task: Task) -> SB3VecEnvWrapper:
+        env = self._load_env(task, False)
+        # env = Body(ZooEnvironment) TODO: Add support for wrapping ZooEnvironments
+        # TODO: Add support for recording agents in ZooEnvironments
+        env = ss.pettingzoo_env_to_vec_env_v1(env)
+        env = ConcatVecEnv([lambda: env])
+        return SB3VecEnvWrapper(env)
+    
+    def _single_gym_wrapper(self, task) -> DummyVecEnv:
+        def callback():
+            env = self._load_env(task, False)
+            return self._record_wrapper(env, task)
+
+        return DummyVecEnv([callback])
+
+    def _multi_gym_wrapper(self, task, n_envs) -> SubprocVecEnv:
+        def seed_callback(seed):
+            def callback():
+                sleep(seed)
+                env = self._load_env(task, False, seed)
+                return self._record_wrapper(env, task)
+
+            return callback
+
+        # create n_envs environments
+        return SubprocVecEnv([seed_callback(seed) for seed in range(n_envs)])
+
+    def __enter__(self):
+        return self.env
+
+    def __exit__(self, *args):
+        return self.env.close()

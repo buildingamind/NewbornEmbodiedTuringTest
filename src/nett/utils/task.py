@@ -3,6 +3,10 @@
 import logging
 from pathlib import Path
 
+from nett.body.body import Body
+from nett.brain.brain import Brain
+from nett.environment.environment import Environment
+
 
 class Task:
     """Holds information for a task
@@ -17,6 +21,9 @@ class Task:
 
     def __init__(
         self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
         mode: str,
         brain_id: int,
         condition: str,
@@ -32,3 +39,21 @@ class Task:
         self.logger: logging.Logger = logging.getLogger(
             f"nett.task-{self.condition}-{self.brain_id}-{self.mode}"
         )
+        self.brain = brain
+        self.body = body
+        self.env = env
+
+    def run(self):
+        try:
+            # create log path
+            log_path = self.path / "env_logs"
+            log_path.mkdir(exist_ok=True, parents=True)
+
+            with self.body.embed(self.env, self) as body_interface:
+                getattr(self.brain, self.mode)(body_interface, self)
+
+        except Exception as e:
+            self.logger.exception(f"{self.mode} env failed: {str(e)}")
+            raise e
+
+        self.logger.info("Environments Closed")

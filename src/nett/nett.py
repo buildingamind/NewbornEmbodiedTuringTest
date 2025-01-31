@@ -6,6 +6,7 @@ This module contains the NETT class, which is the main class for training, testi
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -17,8 +18,6 @@ from .body.body import Body
 from .environment.environment import Environment
 from .utils.executor import Executor
 from .utils.tasklist import TaskList
-from .utils.validate import validate_conditions, validate_mode
-from .utils.design import get_experiment_design
 from .utils.task import Task
 from .utils.memory import MemoryManager
 
@@ -93,19 +92,56 @@ class NETT:
             raise e
 
         # if "Run" in self.config:
-            # self.run(**self.config["Run"])
+        # self.run(**self.config["Run"])
+
+    def multi_run(
+        self,
+        output_path: Path | str = ".",
+        devices: Optional[list[int]] = None,
+        num_threads: Optional[int] = None,
+        verbose: int = True,
+    ) -> list[Future]:
+        # get the output directory
+        self.output_path = Path(output_path).resolve()
+        self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
+        self.num_threads = os.cpu_count() if num_threads is None else num_threads
+
+        # initialize NVIDIA memory management
+        self.memory_manager = MemoryManager()
+
+        # validate devices
+        self.devices: list[int] = self.memory_manager.validate_devices(devices)
+        self.logger.info(f"Devices that will be used: {devices}")
+
+        # get the free memory status for each device
+        self.free_device_memory: list[dict[str, int]] = [
+            {
+                "device": device,
+                "memory": self.memory_manager.get_free_memory(device),
+            }
+            for device in self.devices
+        ]
+
+        # save verbose setting
+        self.verbose = verbose
+
+        # initialize task sheet
+        self.task_sheet: dict[Future, int] = {}
+
+        for config in self.configs:
+
+            self.run(**config)
 
     def run(
         self,
-        output_dir: Path | str, 
-        num_threads: Optional[int] = None,
-        devices: Optional[list[int]] = None, 
-        verbose: int = True,
-
-        mode: str = "full", # mutli
-        conditions: Optional[list[str]] = None, # mutli
-        num_brains: int = 1, # multi
-        task_memory: str | int = 4, # multi
+        name: Path | str,
+        environment: dict,  # multi
+        body: dict = {},  # multi
+        brain: dict = {},  # multi
+        episodes: {str, int} = {"train": 5000, "test": 100},  # multi
+        steps_per_episode: int = 200,  # multi
+        num_brains: int = 1,  # multi
+        task_memory: str | int = "auto",  # multi
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -133,54 +169,49 @@ class NETT:
         Example:
             >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
-        input_params = {k: v for k, v in locals().items() if k != 'self'}
+        input_params = {k: v for k, v in locals().items() if k != "self"}
 
         ########## Initialization ##########
 
-        if not Brain.initialized:
-            Brain.initialize(**self.config.get("Brain", {}))
-        if not Body.initialized:
-            Body.initialize(**self.config.get("Body", {}))
-        if not Environment.initialized:
-            Environment.initialize(**self.config["Environment"])
+        base_brain = Brain(**brain)
+
+        base_body = Body(**body)
+
+        base_env = Environment(**environment)
 
         ############ Validation ############
 
-        # get experiment design
-        num_test_conditions, valid_imprinting_conditions = get_experiment_design(
-            Environment.executable_path
-        ) # multi
-
-        # validate conditions
-        self.conditions = validate_conditions(valid_imprinting_conditions, conditions) # multi
-
-        # validate mode
-        modes = validate_mode(mode) # multi
+        # check if episodes contains train and/or test only
+        if len(episodes) == 0 or not set(episodes.keys()).issubset({"train", "test"}):
+            raise ValueError(
+                "Episodes should be a dictionary with keys 'train' and/or 'test'"
+            )
 
         ############## Setup ###############
 
         # set up the output directory
-        self.output_dir = Path(output_dir)
+        output_dir: Path = self.output_path / name
         output_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Set up output directory at: {output_dir.resolve()}")
 
         # save a copy of the config
-        with open(Path.joinpath(self.output_dir, "config.yaml"), "w") as f:
-            f.write(yaml.dump({
-                "Brain": Brain.input_params,
-                "Body": Body.input_params,
-                "Environment": Environment.input_params,
-                "Run": input_params
-            }))
+        with open(output_dir / "config.yaml", "w") as f:
+            f.write(yaml.dump(input_params))
 
         # calculate run info for Brain
-        Brain.calc_run_info(num_threads, num_brains, num_test_conditions, conditions)
+        base_brain.calc_iterations(
+            num_brains,
+            self.num_threads,
+            len(base_env.conditions),
+            base_env.num_test_conditions,
+            episodes,
+            steps_per_episode,
+        )
 
         # adjust environment to agent settings
-        Environment.adjust_to_agent(
-            steps_per_episode=Brain.steps_per_episode,
-            supervised_reward=Brain.supervised,
-            multiobs=Body.multiobs,
+        base_env.adjust_to_agent(
+            steps_per_episode,
+            base_brain.supervised,
+            base_body.multiobs,
         )
 
         ############### Run ################
@@ -189,45 +220,30 @@ class NETT:
         self.logger.info("Launching...")
 
         # initialize executor
-        self.executor = Executor(verbose)
-
-        # initialize NVIDIA memory management
-        self.memory_manager = MemoryManager()
-
-        # validate devices
-        self.devices: list[int] = self.memory_manager.validate_devices(devices)
-        self.logger.info(f"Devices that will be used: {devices}")
+        self.executor = Executor(self.verbose)
 
         # estimate memory for a single task
-        self._calculate_task_memory(task_memory) # multi
+        self._calculate_task_memory(task_memory)  # multi
 
         # run tasks
-        for mode in modes:
-            # initialize task sheet
-            self.task_sheet: dict[Future, int] = {}
-
-            # get the free memory status for each device
-            free_device_memory: list[dict[str, int]] = [
-                {
-                    "device": device,
-                    "memory": self.memory_manager.get_free_memory(device),
-                }
-                for device in self.devices
-            ]
-
+        for mode, episodes in episodes.items():
             # assign devices based on memory availability
             try:
                 # assign tasks to devices and run them
-                for task in TaskList(num_brains, conditions, output_dir, mode): #multi
-                    self._assign_task(task, free_device_memory)
+                tasklist = TaskList(
+                    base_brain, base_body, base_env, num_brains, base_env.conditions, output_dir, mode
+                )
 
-                future_wait(self.task_sheet, return_when="ALL_COMPLETED") # mutli
+                for task in tasklist:  # multi
+                    self._assign_task(task)
+
+                future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
 
             except Exception as e:
-                self.logger.exception(f"Error in launching jobs: {e}") #single
+                self.logger.exception(f"Error in launching jobs: {e}")  # single
                 raise e
             finally:
-                self._close() # single
+                self._close()  # single
 
     def _close(self) -> None:
         # close memory manager
@@ -247,23 +263,23 @@ class NETT:
         task_future: Future = self.executor.submit(task, free_device)
         self.task_sheet[task_future] = free_device
 
-    def _assign_task(self, task: Task, free_device_memory: list[dict[str, int]]):
+    def _assign_task(self, task: Task):
         # waitlist remaining tasks if no free memory
-        if not free_device_memory:
+        if not self.free_device_memory:
             self._waitlist(task)
         # remove devices without enough remaining memory
-        elif free_device_memory[-1]["memory"] < self.job_memory:
-            free_device_memory.pop()
+        elif self.free_device_memory[-1]["memory"] < self.job_memory:
+            self.free_device_memory.pop()
         # run the task
         else:
             # create task
-            device = free_device_memory[-1]["device"]
-            task_future = self.executor.submit(task, free_device_memory[-1]["device"])
+            device = self.free_device_memory[-1]["device"]
+            task_future = self.executor.submit(task, self.free_device_memory[-1]["device"])
             self.task_sheet[task_future] = device
             # allocate memory
-            free_device_memory[-1]["memory"] -= self.job_memory
+            self.free_device_memory[-1]["memory"] -= self.job_memory
             # rotate devices
-            free_device_memory = [free_device_memory[-1]] + free_device_memory[:-1]
+            self.free_device_memory = [self.free_device_memory[-1]] + self.free_device_memory[:-1]
 
     def _calculate_task_memory(self, job_memory: str | int) -> None:
         most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(

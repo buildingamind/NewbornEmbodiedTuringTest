@@ -2,12 +2,25 @@
 
 from itertools import product
 from pathlib import Path
+
+from nett.body.body import Body
+from nett.brain.brain import Brain
+from nett.environment.environment import Environment
 from .task import Task
 
 
 class TaskList:
 
-    def __init__(self, num_brains: int, conditions: list[str], output_dir: Path, mode: str):
+    def __init__(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        num_brains: int,
+        conditions: list[str],
+        output_dir: Path,
+        mode: str,
+    ):
 
         self.output_dir = output_dir
         self.conditions = conditions
@@ -19,8 +32,8 @@ class TaskList:
         self.current = 0
 
         self.tasks = [
-            Task(mode, brain, condition, self.output_dir)
-            for brain, condition in self.brain_env_combinations
+            Task(brain, body, env, mode, brain_id, condition, self.output_dir)
+            for brain_id, condition in self.brain_env_combinations
         ]
 
     def __iter__(self):
@@ -32,4 +45,3 @@ class TaskList:
         current = self.current
         self.current += 1
         return self.tasks[current]
-

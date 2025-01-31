@@ -22,6 +22,7 @@ from ..rewards import ICM
 def _getMapping(
     sources: list[ModuleType], override: dict[str, type]
 ) -> dict[str, type]:
+    # creates a dictionary relating input strings to classes
     mapping: dict[str, type] = {}
     for source in sources:
         for key in dir(source):
@@ -36,20 +37,14 @@ def _getMapping(
 
 def _getValidator(
     label: str, baseclass: type, mapping: dict[str, type]
-) -> Callable[str | type, type]:
-    """
-    Validate the value.
-
-    Args:
-        label (str): The label for the value.
-        baseclass (type): The
-    """
+) -> Callable[[str | type], type]:
+    # validate the value of the input to ensure it is a valid option
 
     def validate(input: str | type):
         if type(input) == str:
-            try:
+            if input in mapping:
                 return mapping[input]
-            except KeyError:
+            else:
                 raise KeyError(
                     f"If string, {label} should be one of: {mapping.keys()}. Provided {label} {input} is not one of them."
                 )
