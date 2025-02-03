@@ -24,6 +24,7 @@ from ._version import __version__
 
 # simplify imports
 # from .nett import NETT
+from .environment.utils import list_conditions
 from .body.utils.validate import list_wrappers
 from .brain.utils.validate import (
     list_algorithms,

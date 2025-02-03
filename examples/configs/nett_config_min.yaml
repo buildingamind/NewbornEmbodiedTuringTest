@@ -1,4 +1,3 @@
-Environment:
-  executable_path: "path/to/executable.x86_64"
-Run:
-  output_dir: "path/to/output/dir/of/run/"
+name: Experiment1
+environment:
+  executable_path: path/to/executable.x86_64

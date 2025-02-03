@@ -50,7 +50,7 @@ class Task:
             log_path.mkdir(exist_ok=True, parents=True)
 
             with self.body.embed(self.env, self) as body_interface:
-                getattr(self.brain, self.mode)(body_interface, self)
+                getattr(self.brain, self.mode)(body_interface, self) # brain.train() or brain.test()
 
         except Exception as e:
             self.logger.exception(f"{self.mode} env failed: {str(e)}")

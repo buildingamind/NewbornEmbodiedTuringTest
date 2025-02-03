@@ -1,10 +1,10 @@
-name: "Experiment1"
+name: Experiment1
 episodes:
   train: 5000
   test: 20
 steps_per_episode: 200
 num_brains: 5
-task_memory: "auto"
+task_memory: auto
 brain:
   policy: CnnPolicy
   algorithm: PPO

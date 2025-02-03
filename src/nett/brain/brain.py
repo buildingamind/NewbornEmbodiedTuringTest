@@ -1,47 +1,24 @@
 """
-Module for the Brain class.
-
-policy: Any | str = "CnnPolicy",
-algorithm: str | BaseAlgorithm = "PPO",
-encoder: Any | str = "small",
-embedding_dim: Optional[int] = None,
-reward: str | type[BaseReward] = "supervised",
-batch_size: int = 512,
-buffer_size: int = 2048,
-learning_rate: float = 3e-4,
-ent_coef: float = 0,
-train_eps: int = 5000,  # 1000
-test_eps: int = 100,  # 20
-steps_per_episode: int = 200,  # 1000
-checkpoint_freq: Optional[int] = None,
-train_encoder: bool = True,
-custom_encoder_args: dict[str, Any] = {},
-custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
-reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
+Represents the brain of an agent.
 
 The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
 
 Args:
-    policy (Any | str): The network used for defining the value and action networks. Defaults to "CnnPolicy". Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `Brain.list_policies` :func:`~nett.nett.list_policies`.
-    algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model.
-    encoder (Any | str, optional): The network used to extract features from the observations. Defaults to None.
-    embedding_dim (int, optional): The dimension of the embedding space of the encoder. Defaults to None.
-    reward (str, optional): The type of reward used for training the brain. Defaults to "supervised".
-    batch_size (int, optional): The batch size used for training. Defaults to 512.
-    buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
+    encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small".
+    policy (str | BasePolicy): The network used for defining the value and action networks. Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `nett.list_policies` :func:`~nett.nett.list_policies`. Defaults to "CnnPolicy".
+    algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model. Must be either a string pointing to an already implemented algorithm or a custom algorithm class that inherits from Stable-Baselines3 BaseAlgorithm. For a list of available algorithms, run `nett.list_algorithms` :func:`~nett.nett.list_algorithms`. Defaults to "PPO".
+    reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "supervised".
+    embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
+    batch_size (int): The batch size used for training. Defaults to 512.
+    buffer_size (int): The buffer size used for training. Defaults to 2048.
+    ent_coef (int): Entropy coefficient. Defaults to 0.
+    checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
     train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
-    seed (int, optional): The random seed used for training. Defaults to 12.
     custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
-    custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
-
-Example:
-
-    >>> from nett import Brain
-    >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
+    custom_policy_arch (list[int|dict[str,list[int]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
+    reward_args (dict[str, Any]): Arguments for the encoder. Defaults to {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}.
 """
 
-import logging
-import os
 import inspect
 from math import ceil
 import torch
@@ -51,6 +28,8 @@ from tqdm import tqdm
 from typing import Any, Optional
 from pathlib import Path
 
+from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
@@ -69,16 +48,9 @@ from .utils.validate import (
     validate_policy,
 )
 
+
 def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
-    """
-    Set the encoder as evaluation mode and freeze its parameters.
-
-    Args:
-        model (BaseAlgorithm): The model containing the encoder.
-
-    Returns:
-        BaseAlgorithm: The model with the encoder set as evaluation mode.
-    """
+    """Set the encoder as evaluation mode and freeze its parameters."""
     model.policy.features_extractor.eval()
 
     for param in model.policy.features_extractor.parameters():
@@ -94,9 +66,6 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
     to the specified paths. It first checks if the model is loaded, and if not,
     it prints an error message and returns. Otherwise, it saves the policy as
     a pickle file and the feature extractor as a PyTorch state dictionary.
-
-    Returns:
-        None
     """
     ## save policy
     path.mkdir(parents=True, exist_ok=True)
@@ -113,36 +82,13 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
 
 
 class Brain:
-    """Represents the brain of an agent.
-
-    The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
-
-    Args:
-        policy (Any | str): The network used for defining the value and action networks.
-        algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model.
-        encoder (Any | str, optional): The network used to extract features from the observations. Defaults to None.
-        embedding_dim (int, optional): The dimension of the embedding space of the encoder. Defaults to None.
-        reward (str, optional): The type of reward used for training the brain. Defaults to "supervised".
-        batch_size (int, optional): The batch size used for training. Defaults to 512.
-        buffer_size (int, optional): The buffer size used for training. Defaults to 2048.
-        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
-        seed (int, optional): The random seed used for training. Defaults to 12.
-        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
-        custom_policy_arch (Optional[list[int|dict[str,list[int]]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
-
-    Example:
-
-        >>> from nett import Brain
-        >>> brain = Brain(policy='CnnPolicy', algorithm='PPO')
-    """
-
     def __init__(
         self,
-        policy: Any | str = "CnnPolicy",
-        algorithm: str | BaseAlgorithm = "PPO",
-        encoder: Any | str = "small",
-        embedding_dim: Optional[int] = None,
+        encoder: str | type[BaseFeaturesExtractor] = "small",
+        policy: str | type[BasePolicy] = "CnnPolicy",
+        algorithm: str | type[BaseAlgorithm] = "PPO",
         reward: str | type[BaseReward] = "supervised",
+        embedding_dim: Optional[int] = None,
         batch_size: int = 512,
         buffer_size: int = 2048,
         learning_rate: float = 3e-4,
@@ -154,9 +100,9 @@ class Brain:
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
         # Set attributes
-        self.algorithm = validate_algorithm(algorithm)
-        self.policy = validate_policy(policy)
         self.encoder = validate_encoder(encoder)
+        self.policy = validate_policy(policy)
+        self.algorithm = validate_algorithm(algorithm)
 
         self.supervised: bool = reward == "supervised"
         self.reward: Optional[type[BaseReward]] = validate_reward(reward)
@@ -167,7 +113,9 @@ class Brain:
         self.learning_rate = float(learning_rate)
         self.ent_coef = float(ent_coef)
 
-        self.checkpoint_freq = int(checkpoint_freq) if checkpoint_freq is not None else None
+        self.checkpoint_freq = (
+            int(checkpoint_freq) if checkpoint_freq is not None else None
+        )
         self.train_encoder = bool(train_encoder)
 
         self.custom_encoder_args = custom_encoder_args
@@ -177,18 +125,21 @@ class Brain:
     def calc_iterations(
         self,
         num_brains: int,
-        num_threads: int, # test, test_iterations
+        num_threads: int,
         num_imprinting_conditions: int,
-        num_test_conditions: int, # test_iterations
-        episodes: dict[str,int], # train_iterations
-        steps_per_episode: int, # train_iterations
+        num_test_conditions: int,
+        episodes: dict[str, int],
+        steps_per_episode: int,
     ):
+        """Calculate the total number of iterations for training and testing."""
+        # Calculate the total number of tasks to be run
         self.n_tasks = num_imprinting_conditions * num_brains
         if "train" in episodes:
-            self.train_iterations = episodes['train'] * steps_per_episode
+            self.train_iterations = episodes["train"] * steps_per_episode
         if "test" in episodes:
             # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-            n_threads_per_task = 4 # TODO: Determine the number of threads used per brain and per env
+            # TODO: Determine the number of threads used per brain and per env
+            n_threads_per_task = 4
 
             max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
@@ -200,18 +151,12 @@ class Brain:
                 self.test_iterations = num_test_conditions
             else:  # max_envs is between 1 and test_eps
                 self.n_parallel_envs = int(max_envs)
-                self.test_iterations = num_test_conditions * ceil(episodes["test"] / max_envs)
+                self.test_iterations = num_test_conditions * ceil(
+                    episodes["test"] / max_envs
+                )
 
     def train(self, envs: VecEnv, task: Task):
-        """
-        Train the brain.
-
-        Args:
-            job(Job): The job object containing the environment, paths, and training parameters.
-
-        Raises:
-            ValueError: If the environment fails the validation check.
-        """
+        """Train the brain."""
         task.logger.info(
             f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
         )
@@ -294,71 +239,58 @@ class Brain:
         _save_model(model, model_path)
         task.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, task: Task, base_env, base_body):
-        """
-        Test the brain.
-
-        Args:
-            env (gym.Env): The environment used for testing.
-            job (Job): The job object containing the environment, paths, and training parameters.
-        """
+    def test(self, envs: VecEnv, task: Task):
+        """Test the brain."""
         try:
+            task.logger.info(f"Testing with {self.algorithm.__name__}")
+
+            # progress bar
+            t = tqdm(
+                total=self.test_iterations * self.n_parallel_envs,
+                desc=f"Test Progress",
+                position=0,
+                leave=True,
+            )
+
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
                 task.path / "model" / "latest_model.zip", device=f"cuda:{task.device}"
             )
 
-            task.logger.info(f"Testing with {self.algorithm.__name__}")
+            # loop over episodes
+            for _ in range(self.test_iterations):
+                # reset environment and get initial obs
+                obs = envs.reset()
+                # reset states for recurrentPPO
+                states = None
+                # dones need to start True for episode_start for recurrentPPO
+                dones = np.ones((self.n_parallel_envs,), dtype=bool)
 
-            vec_env = ZooEnv if base_env.muliagent else MultiEnv
+                while True:
+                    # predict an action
+                    action, states = model.predict(
+                        obs,
+                        state=states,  # used only for recurrentPPO
+                        episode_start=dones,  # used only for recurrentPPO
+                        deterministic=True,
+                    )
+                    # perform the action
+                    obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
+                    # update the loading bar
+                    t.update(1)
 
-            with envs as vec_env(task, base_env, base_body, self.n_parallel_envs):
-                # progress bar
-                t = tqdm(
-                    total=self.test_iterations * self.n_parallel_envs,
-                    desc=f"Test Progress",
-                    position=0,
-                    leave=True,
-                )
-                # loop over episodes
-                for _ in range(self.test_iterations):
-                    # reset environment and get initial obs
-                    obs = envs.reset()
-                    # reset states for recurrentPPO
-                    states = None
-                    # dones need to start True for episode_start for recurrentPPO
-                    dones = np.ones((self.n_parallel_envs,), dtype=bool)
-
-                    while True:
-                        # predict an action
-                        action, states = model.predict(
-                            obs,
-                            state=states,  # used only for recurrentPPO
-                            episode_start=dones,  # used only for recurrentPPO
-                            deterministic=True,
-                        )
-                        # perform the action
-                        obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
-                        # update the loading bar
-                        t.update(1)
-
-                        if not all(dones):
-                            # episode is done
-                            break
+                    if not all(dones):
+                        # episode is done
+                        break
         except Exception as e:
             task.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
+        finally:
+            # close the loading bar
+            t.close()
 
-        t.close()
-
-    def _init_callbacks(self, envs, task: Task) -> CallbackList:
-        """Initialize the callbacks for training.
-        Args:
-            envs (VecEnv): The environments for which to initialize the callbacks.
-            task (Task): The task for which to initialize the callbacks.
-        Returns:
-            CallbackList: The list of callbacks for training.
-        """
+    def _init_callbacks(self, envs: VecEnv, task: Task) -> CallbackList:
+        """Initialize the callbacks for training."""
         callback_list = [cb.HParamCallback()]
 
         if task.estimate_memory:

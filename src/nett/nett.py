@@ -91,9 +91,6 @@ class NETT:
             self.logger.exception("Error in loading config")
             raise e
 
-        # if "Run" in self.config:
-        # self.run(**self.config["Run"])
-
     def multi_run(
         self,
         output_path: Path | str = ".",
@@ -135,13 +132,13 @@ class NETT:
     def run(
         self,
         name: Path | str,
-        environment: dict,  # multi
-        body: dict = {},  # multi
-        brain: dict = {},  # multi
-        episodes: {str, int} = {"train": 5000, "test": 100},  # multi
-        steps_per_episode: int = 200,  # multi
-        num_brains: int = 1,  # multi
-        task_memory: str | int = "auto",  # multi
+        environment: dict,
+        body: dict = {},
+        brain: dict = {},
+        episodes: {str, int} = {"train": 5000, "test": 100},
+        steps_per_episode: int = 200,
+        num_brains: int = 1,
+        task_memory: str | int = "auto",
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.

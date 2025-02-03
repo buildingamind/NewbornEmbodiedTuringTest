@@ -1,16 +1,28 @@
-"""Module for the Environment class."""
+"""
+Represents the environment where the agent lives.
 
-from __future__ import annotations
+The environment is the source of all input data streams to train the brain of the agent.
+It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment
+class from the mlagents_envs library.
 
-import logging
+It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
+
+Args:
+    executable_path (str): The path to the Unity executable file.
+    conditions (list[str]): A list of imprinting conditions to run. If None, all available imprinting conditions will be run. For a list of available imprinting condtions from an executable, run `nett.list_conditions` :func:`~nett.nett.list_conditions`. Defaults to None.
+    record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the entire chamber for each mode (train and test). Defaults to {"train": 0, "test": 0}
+    multiagent (bool): Flag to indicate if environment is a multiagent environment (beta). Defaults to False.
+    display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to None.
+"""
+
 from pathlib import Path
 import os
 import subprocess
 from typing import Optional, Any
 
 import numpy as np
+import gymnasium as gym
 
-import gymnasium as gym 
 from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
@@ -26,35 +38,15 @@ except PermissionError as _:
         "Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again."
     )
 
-
-from .utils import validate_executable_path, validate_conditions, get_experiment_design, random_port
-
-
-# Types
-SINGLE_AGENT_STEP_RETURN = tuple[np.ndarray, float, bool, bool, dict]
-MULTI_AGENT_STEP_RETURN = tuple[dict, dict, dict, dict, dict]
+from .utils import (
+    validate_executable_path,
+    validate_conditions,
+    get_experiment_design,
+    random_port,
+)
 
 
 class Environment:
-    """
-    Represents the environment where the agent lives.
-
-    The environment is the source of all input data streams to train the brain of the agent.
-    It accepts a Unity Executable and wraps it around as a Gym environment by leveraging the UnityEnvironment
-    class from the mlagents_envs library.
-
-    It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
-
-    Args:
-        executable_path (str): The path to the Unity executable file.
-        display (int, optional): The display number to use for the Unity environment. Defaults to 0.
-
-    Example:
-
-        >>> from nett import Environment
-        >>> env = Environment(executable_path="path/to/executable")
-    """
-
     # Class Variables
     executable_path: Path  # the path to the Unity executable file
     multiagent: bool  # whether the environment is multiagent
@@ -67,7 +59,7 @@ class Environment:
         conditions: Optional[list[str]] = None,
         record_eps: dict = {"train": 0, "test": 0},
         multiagent: bool = False,
-        display: Optional[int] = None, # nett
+        display: Optional[int] = None,
     ):
         self.executable_path = validate_executable_path(executable_path)
 
@@ -77,7 +69,9 @@ class Environment:
         )
 
         # validate conditions
-        self.conditions = validate_conditions(valid_imprinting_conditions, conditions) # multi
+        self.conditions = validate_conditions(
+            valid_imprinting_conditions, conditions
+        )  # multi
 
         self.multiagent = multiagent
 
@@ -179,7 +173,10 @@ class Environment:
 
         return ZooWrapper(env) if self.multiagent else GymWrapper(env)
 
+
 class BaseWrapper:
+    """Base Wrapper for Unity environment"""
+
     # converts the (c, w, h) frame returned by mlagents v1.0.0 and Unity 2022.3 to (w, h, c) as expected by gym
     # TODO: See if this is still necessary
     def render(self, mode="rgb_array") -> np.ndarray:  # pylint: disable=unused-argument
@@ -192,7 +189,10 @@ class BaseWrapper:
         # nothing to do if the wrapped env does not accept `seed`
         return self.env.reset(**kwargs)
 
+
 class GymWrapper(BaseWrapper, gym.Wrapper):
+    """Wrapper to adapt Unity environment to Gymnasium"""
+
     def __init__(self, env: UnityEnvironment):
 
         # wrap the environment for ML Agents to work with Gym
@@ -205,14 +205,15 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
         # init the Gym Wrapper instance
         gym.Wrapper.__init__(self, self.env)
 
-    def step(
-        self, action: list[Any]
-    ) -> SINGLE_AGENT_STEP_RETURN:
+    def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, bool, dict]:
         # Takes a step in the environment with the given action.
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, float(reward), terminated, truncated, info
 
+
 class ZooWrapper(BaseWrapper, BaseParallelWrapper):
+    """Wrapper to adapt Unity environment to PettingZoo"""
+
     def __init__(self, env: UnityEnvironment):
         # wrap the environment for ML Agents to work with PettingZoo
         self.env = UnityParallelEnv(env, uint8_visual=True, seed=self.seed)
