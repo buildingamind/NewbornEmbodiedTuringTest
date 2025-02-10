@@ -3,10 +3,6 @@
 import logging
 from pathlib import Path
 
-from nett.body.body import Body
-from nett.brain.brain import Brain
-from nett.environment.environment import Environment
-
 
 class Task:
     """Holds information for a task
@@ -21,9 +17,9 @@ class Task:
 
     def __init__(
         self,
-        brain: Brain,
-        body: Body,
-        env: Environment,
+        brain: "Brain",
+        body: "Body",
+        env: "Environment",
         mode: str,
         brain_id: int,
         condition: str,
@@ -50,7 +46,9 @@ class Task:
             log_path.mkdir(exist_ok=True, parents=True)
 
             with self.body.embed(self.env, self) as body_interface:
-                getattr(self.brain, self.mode)(body_interface, self) # brain.train() or brain.test()
+                getattr(self.brain, self.mode)(
+                    body_interface, self
+                )  # brain.train() or brain.test()
 
         except Exception as e:
             self.logger.exception(f"{self.mode} env failed: {str(e)}")

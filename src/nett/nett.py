@@ -42,7 +42,8 @@ class NETT:
 
     Examples:
         >>> from nett import NETT
-        >>> NETT('./config.yaml')
+        >>> benchmark = NETT('./config.yaml')
+        >>> benchmark.run(output_dir="path/to/output/directory", num_brains=2, mode="full")
 
         >>> from nett import NETT
         >>> benchmark = NETT(config={
@@ -64,18 +65,17 @@ class NETT:
         >>>         "record_eps": {"train": 10, "test": 10}
         >>>     }
         >>> })
+        >>>
         >>> # run the benchmark
         >>> benchmark.run(output_dir="path/to/output/directory", num_brains=2, mode="full")
     """
 
     logger: logging.Logger
-    configs: list[dict]
+    configs: list[dict] = []
     logger = logging.getLogger("nett.NETT")
 
     def __init__(self, config: Path | str | dict | list[Path | str | dict]) -> None:
-        """
-        Initialize the NETT class.
-        """
+        """Initialize the NETT class."""
 
         try:
             if not isinstance(config, list):
@@ -84,14 +84,16 @@ class NETT:
             for config in self.configs:
                 if isinstance(config, (str, Path)):
                     with open(config, "r") as file:
-                        self.config = yaml.safe_load(file)
+                        self.configs.append(yaml.safe_load(file))
                 elif not isinstance(config, dict):
+                    self.configs.append(config)
+                else:
                     raise TypeError("Configs should be type dict, str or Path.")
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e
 
-    def multi_run(
+    def run(
         self,
         output_path: Path | str = ".",
         devices: Optional[list[int]] = None,
@@ -127,9 +129,9 @@ class NETT:
 
         for config in self.configs:
 
-            self.run(**config)
+            self._single_run(**config)
 
-    def run(
+    def _single_run(
         self,
         name: Path | str,
         environment: dict,
@@ -228,7 +230,13 @@ class NETT:
             try:
                 # assign tasks to devices and run them
                 tasklist = TaskList(
-                    base_brain, base_body, base_env, num_brains, base_env.conditions, output_dir, mode
+                    base_brain,
+                    base_body,
+                    base_env,
+                    num_brains,
+                    base_env.conditions,
+                    output_dir,
+                    mode,
                 )
 
                 for task in tasklist:  # multi
@@ -271,12 +279,16 @@ class NETT:
         else:
             # create task
             device = self.free_device_memory[-1]["device"]
-            task_future = self.executor.submit(task, self.free_device_memory[-1]["device"])
+            task_future = self.executor.submit(
+                task, self.free_device_memory[-1]["device"]
+            )
             self.task_sheet[task_future] = device
             # allocate memory
             self.free_device_memory[-1]["memory"] -= self.job_memory
             # rotate devices
-            self.free_device_memory = [self.free_device_memory[-1]] + self.free_device_memory[:-1]
+            self.free_device_memory = [
+                self.free_device_memory[-1]
+            ] + self.free_device_memory[:-1]
 
     def _calculate_task_memory(self, job_memory: str | int) -> None:
         most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
@@ -320,7 +332,7 @@ class NETT:
 
     #####################
 
-    def update(self, supplementary_config: Path | str | dict):
+    def update(self, supplementary_config: Path | str | dict | list[Path | str | dict]):
         """
         Update the current configuration with a supplementary configuration.
 
@@ -331,16 +343,20 @@ class NETT:
             >>> benchmarks.update(supplementary_config="./supplementary_config.yaml")
         """
         try:
-            if isinstance(supplementary_config, dict):
-                supplementary_config = supplementary_config
-            elif isinstance(supplementary_config, (str, Path)):
-                with open(supplementary_config, "r") as file:
-                    supplementary_config = yaml.safe_load(file)
+
+            if not isinstance(supplementary_config, list):
+                supplementary_config = [supplementary_config]
+
+            for conf in supplementary_config:
+                if isinstance(conf, dict):
+                    self.configs.append(supplementary_config)
+                elif isinstance(supplementary_config, (str, Path)):
+                    with open(supplementary_config, "r") as file:
+                        self.configs.append(yaml.safe_load(file))
         except Exception as e:
             self.logger.exception("Error in loading supplementary config")
             raise e
 
-        self.config.update(supplementary_config)
         self.logger.info(
             "Extended the current configuration with the supplementary configuration."
         )
