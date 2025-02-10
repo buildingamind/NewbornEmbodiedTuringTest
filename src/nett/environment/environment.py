@@ -135,7 +135,7 @@ class Environment:
         recording_path.mkdir(exist_ok=True, parents=True)
 
         # create Unity args
-        args = {}.extend(self.base_args[task.mode])
+        args = {}.extend(self.base_args[task.current_mode])
 
         if validation_mode:
             args.extend(["--validation-mode", "true"])
@@ -144,7 +144,7 @@ class Environment:
         args.extend(
             [
                 "--mode",
-                f"{task.mode}-{task.condition}",  # set mode
+                f"{task.current_mode}-{task.condition}",  # set mode
                 "--log-dir",
                 str(recording_path),  # set log path
                 "-force-device-index",

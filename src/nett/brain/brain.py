@@ -230,7 +230,7 @@ class Brain:
         task.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
-        if task.estimate_memory:
+        if task.memory is None:
             return
 
         # save
@@ -293,7 +293,7 @@ class Brain:
         """Initialize the callbacks for training."""
         callback_list = [cb.HParamCallback()]
 
-        if task.estimate_memory:
+        if task.memory is None:
             callback_list.extend(
                 [
                     cb.LoadingBarCallback("Estimating Memory Usage", self.buffer_size),

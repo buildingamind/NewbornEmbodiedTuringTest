@@ -106,6 +106,13 @@ class NETT:
         self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
         self.num_threads = os.cpu_count() if num_threads is None else num_threads
 
+        test_config_count: int = 0
+        for config in self.configs:
+            if "episodes" in config:
+                test_config_count += bool(config["episodes"].get("test", 0))
+
+        self.num_threads = int(self.num_threads / test_config_count)
+
         # initialize NVIDIA memory management
         self.memory_manager = MemoryManager()
 
@@ -114,23 +121,32 @@ class NETT:
         self.logger.info(f"Devices that will be used: {devices}")
 
         # get the free memory status for each device
-        self.free_device_memory: list[dict[str, int]] = [
-            {
-                "device": device,
-                "memory": self.memory_manager.get_free_memory(device),
-            }
+        self.free_device_memory: dict[int, float] = [
+            {device: self.memory_manager.get_free_memory(device)}
             for device in self.devices
         ]
 
-        # save verbose setting
-        self.verbose = verbose
-
         # initialize task sheet
-        self.task_sheet: dict[Future, int] = {}
+        self.task_sheet: dict[Future, Task] = {}
+        self.waitlist: list[Task] = []
 
+        # initialize executor
+        self.executor = Executor(verbose)
+
+        # run tasks
+        self.logger.info("Launching...")
+
+        try:
         for config in self.configs:
-
             self._single_run(**config)
+
+            self.task_waiter()
+            future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
+        except Exception as e:
+            self.logger.exception(f"Error in launching jobs: {e}")
+            raise e
+        finally:
+            self._close()
 
     def _single_run(
         self,
@@ -216,19 +232,15 @@ class NETT:
 
         ############### Run ################
 
-        # run tasks
-        self.logger.info("Launching...")
-
-        # initialize executor
-        self.executor = Executor(self.verbose)
-
         # estimate memory for a single task
-        self._calculate_task_memory(task_memory)  # multi
+        memory = self._calculate_task_memory(
+            task_memory, base_env.conditions[0], output_dir
+        )  # multi
 
         # run tasks
-        for mode, episodes in episodes.items():
+
             # assign devices based on memory availability
-            try:
+        modes: list[str] = filter(lambda mode: episodes[mode] > 0, episodes.keys())
                 # assign tasks to devices and run them
                 tasklist = TaskList(
                     base_brain,
@@ -237,19 +249,12 @@ class NETT:
                     num_brains,
                     base_env.conditions,
                     output_dir,
-                    mode,
+            modes,
+            memory,
                 )
 
                 for task in tasklist:  # multi
                     self._assign_task(task)
-
-                future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
-
-            except Exception as e:
-                self.logger.exception(f"Error in launching jobs: {e}")  # single
-                raise e
-            finally:
-                self._close()  # single
 
     def _close(self) -> None:
         # close memory manager
@@ -258,40 +263,67 @@ class NETT:
         self.logger.info("Shutting down executor")
         self.executor.close()  # TODO: does future wait and this both need to be here?
 
-    def _waitlist(self, task):
-        # wait until there is GPU space to run task
+    """
+    waitlist = [(task, memory_use), ...]
+    executor.submit (task_waiter)
+
+    def task_waiter():
+    memory_available = {device: 0 for device in devices}
+    wait task_sheet FIRST_COMPLETED
+
+    UnLock self.task_sheet
+    free_device, free_memory = self.task_sheet.pop(done_future)
+    memory_available[free_device] += free_memory
+    complete = False
+    for task, memory_use in waitlist:
+        if memory_use <= memory_available[free_device]:
+            self.task_sheet[task_future] = (free_device, memory_use)
+            memory_available[free_device] -= memory_use
+            break
+
+    Lock self.task_sheet
+    """
+
+    def task_waiter(self):
+        if len(self.waitlist) > 0:
         self.logger.warning(
             "Insufficient GPU Memory. Waiting for running tasks to complete."
         )
+        while len(self.waitlist) > 0:
         done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
-        done_future = done[0]
-        free_device: int = self.task_sheet.pop(done_future)
-        task_future: Future = self.executor.submit(task, free_device)
-        self.task_sheet[task_future] = free_device
+            for done_future in done:
+                done_task: Task = self.task_sheet.pop(done_future)
+                free_device: int = done_task.device
+                self.free_device_memory[free_device] += done_task.memory
 
-    def _assign_task(self, task: Task):
+                for i, task in enumerate(self.waitlist):
+                    if task.memory <= self.free_device_memory[free_device]:
+                        self.free_device_memory[free_device] -= task.memory
+                        task.device = free_device
+                        task_future: Future = self.executor.submit(task.run)
+                        self.task_sheet[task_future] = task
+                        self.waitlist.pop(i)
+                        break
+
+    def _assign_task(self, task: Task) -> None:
         # waitlist remaining tasks if no free memory
-        if not self.free_device_memory:
-            self._waitlist(task)
-        # remove devices without enough remaining memory
-        elif self.free_device_memory[-1]["memory"] < self.job_memory:
-            self.free_device_memory.pop()
-        # run the task
-        else:
-            # create task
-            device = self.free_device_memory[-1]["device"]
-            task_future = self.executor.submit(
-                task, self.free_device_memory[-1]["device"]
-            )
-            self.task_sheet[task_future] = device
+        assigned = False
+        for device, memory in self.free_device_memory.items():
+            # check if enough memory is available on the device
+            if memory >= task.memory:
+                assigned = True
+                task.device = device
+                task_future = self.executor.submit(task.run)
+                self.task_sheet[task_future] = task
             # allocate memory
-            self.free_device_memory[-1]["memory"] -= self.job_memory
-            # rotate devices
-            self.free_device_memory = [
-                self.free_device_memory[-1]
-            ] + self.free_device_memory[:-1]
+                self.free_device_memory[device] -= task.memory
 
-    def _calculate_task_memory(self, job_memory: str | int) -> None:
+        if not assigned:
+            self.waitlist.append(task)
+
+    def _calculate_task_memory(
+        self, job_memory: str | int, example_condition: str, output_dir: Path
+    ) -> float:
         most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
             self.devices
         )
@@ -306,11 +338,11 @@ class NETT:
                 task = Task(
                     "train",
                     0,
-                    self.conditions[0],
-                    self.output_dir,
-                    estimate_memory=True,
+                    example_condition,
+                    output_dir,
                 )
-                task_future = self.executor.submit(task, most_free_gpu)
+                task.device = most_free_gpu
+                task_future = self.executor.submit(task.run)
                 future_wait({task_future: task}, return_when="ALL_COMPLETED")
 
                 with open(task.path / "mem.txt", "r") as file:
@@ -319,14 +351,14 @@ class NETT:
                 self.logger.exception(f"Error in estimating memory: {e}")
                 raise e
             finally:
-                if task.path.exists():
+                if "task" in locals() and task.path.exists():
                     shutil.rmtree(task.path)
 
             # estimate memory allocated
             # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
-            self.job_memory = gpu_max_capacity - post_memory
+            return gpu_max_capacity - post_memory
         else:
-            self.job_memory = job_memory * (1024**3)
+            return job_memory * (1024**3)
             # check to see if GPUs can run a single job
             if self.job_memory > gpu_max_capacity:
                 raise JobTooBigError

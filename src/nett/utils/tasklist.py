@@ -19,20 +19,16 @@ class TaskList:
         num_brains: int,
         conditions: list[str],
         output_dir: Path,
-        mode: str,
+        modes: list[str],
+        memory: float,
     ):
-
-        self.output_dir = output_dir
-        self.conditions = conditions
         self.brain_env_combinations = product(range(1, num_brains + 1), conditions)
         self.n_tasks = len(conditions) * num_brains
-
-        self.mode = mode
 
         self.current = 0
 
         self.tasks = [
-            Task(brain, body, env, mode, brain_id, condition, self.output_dir)
+            Task(brain, body, env, modes, brain_id, condition, output_dir, memory)
             for brain_id, condition in self.brain_env_combinations
         ]
 

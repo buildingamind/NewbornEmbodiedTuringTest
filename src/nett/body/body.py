@@ -74,7 +74,7 @@ class Body:
         else:
             self._validate_env(task)
             # validate
-            if task.mode == "train":
+            if task.current_mode == "train":
                 env = self._single_gym_wrapper(task.env)
             else:  # test
                 env = self._multi_gym_wrapper(task.env, task.brain.n_parallel_envs)
@@ -82,8 +82,8 @@ class Body:
         self.env = env
 
     def _record_wrapper(self, env: gym.Env, task: Task, seed: int = 0) -> gym.Env:
-        record_episodes = self.record_eps.get(task.mode, 0)
-        if task.mode == "test":
+        record_episodes = self.record_eps.get(task.current_mode, 0)
+        if task.current_mode == "test":
             record_episodes /= task.brain.n_parallel_envs
         if record_episodes > 0:
             record_ep_cb = lambda t: t < record_episodes
@@ -115,7 +115,7 @@ class Body:
             def callback():
                 sleep(seed)
                 env = self._load_env(task, False, seed)
-                return self._record_wrapper(env, task)
+                return self._record_wrapper(env, task, seed)
 
             return callback
 

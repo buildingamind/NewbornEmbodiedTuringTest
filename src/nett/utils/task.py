@@ -2,6 +2,7 @@
 
 import logging
 from pathlib import Path
+from typing import Optional
 
 
 class Task:
@@ -20,38 +21,41 @@ class Task:
         brain: "Brain",
         body: "Body",
         env: "Environment",
-        mode: str,
+        modes: list[str],
         brain_id: int,
         condition: str,
         output_dir: Path,
-        estimate_memory: bool = False,
+        memory: Optional[float] = None,
     ) -> None:
         """initialize task"""
-        self.mode: str = mode
+        self.modes: list[str] = modes
         self.brain_id: int = brain_id
         self.condition: str = condition
-        self.estimate_memory = estimate_memory
+        self.memory = memory
         self.path: Path = output_dir / self.condition / f"brain_{self.brain_id}"
         self.logger: logging.Logger = logging.getLogger(
-            f"nett.task-{self.condition}-{self.brain_id}-{self.mode}"
+            f"nett.task-{self.condition}-{self.brain_id}"
         )
         self.brain = brain
         self.body = body
         self.env = env
 
     def run(self):
-        try:
-            # create log path
-            log_path = self.path / "env_logs"
-            log_path.mkdir(exist_ok=True, parents=True)
+        for mode in self.modes:
+            self.current_mode = mode
+            try:
+                # create log path
+                log_path = self.path / "env_logs"
+                log_path.mkdir(exist_ok=True, parents=True)
 
-            with self.body.embed(self.env, self) as body_interface:
-                getattr(self.brain, self.mode)(
-                    body_interface, self
-                )  # brain.train() or brain.test()
+                with self.body.embed(self) as body_interface:
+                    # brain.train() or brain.test()
+                    getattr(self.brain, mode)(
+                        body_interface, self
+                    )
 
-        except Exception as e:
-            self.logger.exception(f"{self.mode} env failed: {str(e)}")
-            raise e
+            except Exception as e:
+                self.logger.exception(f"{mode} env failed: {str(e)}")
+                raise e
 
         self.logger.info("Environments Closed")

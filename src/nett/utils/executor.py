@@ -19,10 +19,8 @@ class Executor:
             initializer=initializer,  # TODO: too many workers
         )
 
-    def submit(self, task: Task, device: int) -> Future:
-        task.device = device
-        task_future = self.executor.submit(task.run)
-        return task_future
+    def submit(self, func: callable) -> Future:
+        return self.executor.submit(func)
 
     def close(self) -> None:
         self.executor.shutdown()

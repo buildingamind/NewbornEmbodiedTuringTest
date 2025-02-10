@@ -33,13 +33,13 @@ class MemoryManager:
     def get_memory_status(device_id: int) -> c_nvmlMemory_t | c_nvmlMemory_v2_t:
         return nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))
 
-    def get_free_memory(self, device_id: int) -> int:
+    def get_free_memory(self, device_id: int) -> float:
         return self.get_memory_status(device_id).free
 
-    def get_used_memory(self, device_id: int) -> int:
+    def get_used_memory(self, device_id: int) -> float:
         return self.get_memory_status(device_id).used
 
-    def get_most_free_gpu(self, devices: list[int]) -> tuple[int, int]:
+    def get_most_free_gpu(self, devices: list[int]) -> tuple[int, float]:
         maxMemory: int = 0
         maxMemoryDevice: int = None
         for device in devices:
