@@ -1,4 +1,3 @@
-
 from concurrent.futures import ProcessPoolExecutor, Future
 import logging
 import os
@@ -7,6 +6,7 @@ import sys
 from nett.brain.brain import Brain
 from nett.environment.environment import Environment
 from nett.utils.task import Task
+
 
 class Executor:
 

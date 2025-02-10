@@ -173,7 +173,9 @@ def analyze(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{experiment.lower()}.csv")
+    chick_data_dir = Path(analysis_dir).joinpath(
+        "ChickData", f"{experiment.lower()}.csv"
+    )
 
     if not chick_data_dir.exists():
         raise ValueError(f"'{experiment}' is not a valid experiment.")
@@ -247,7 +249,9 @@ def analyze_archive(
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chick_data_dir = Path(analysis_dir).joinpath("ChickData", f"{experiment.lower()}.csv")
+    chick_data_dir = Path(analysis_dir).joinpath(
+        "ChickData", f"{experiment.lower()}.csv"
+    )
 
     if not chick_data_dir.exists():
         raise ValueError(f"'{experiment}' is not a valid experiment.")

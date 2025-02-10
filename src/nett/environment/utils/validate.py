@@ -50,6 +50,7 @@ def validate_executable_path(executable_path: str) -> str:
 
     return executable_path
 
+
 def validate_conditions(all_conditions: list[str], conditions: Optional[list[str]]):
     # check if user-defined their own conditions
     if conditions is None:

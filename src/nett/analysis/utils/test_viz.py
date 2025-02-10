@@ -262,9 +262,7 @@ def all_cond_bar_chart(
     )
 
 
-def test_viz(
-    results_dir: Path, chick_file: Path, bar_order="default", color_bars=True
-):
+def test_viz(results_dir: Path, chick_file: Path, bar_order="default", color_bars=True):
     # Do not warn about chained assignments
     pd.options.mode.chained_assignment = None
     # Load data
@@ -288,7 +286,7 @@ def test_viz(
     )
 
     print("Adjusting bar order...")
-    test_data['test.cond'] = sort_cond(test_data, bar_order)
+    test_data["test.cond"] = sort_cond(test_data, bar_order)
 
     print("Computing statistics by agent...")
     by_test_cond = _compute_agent_stats(test_data, results_dir)

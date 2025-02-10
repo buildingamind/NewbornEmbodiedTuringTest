@@ -142,7 +142,7 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
 
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
-        self.buffer = self.model.rollout_buffer #
+        self.buffer = self.model.rollout_buffer  #
 
     def _on_step(self) -> bool:
         """
@@ -150,19 +150,21 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        observations = self.locals["obs_tensor"] #
-        device = observations.device #
+        observations = self.locals["obs_tensor"]  #
+        device = observations.device  #
         actions = th.as_tensor(self.locals["actions"], device=device)
         rewards = th.as_tensor(self.locals["rewards"], device=device)
         dones = th.as_tensor(self.locals["dones"], device=device)
-        next_observations = th.as_tensor(self.locals["new_obs"], device=device) #~
+        next_observations = th.as_tensor(self.locals["new_obs"], device=device)  # ~
 
         # ===================== watch the interaction ===================== #
-        self.irs.watch(observations, actions, rewards, dones, dones, next_observations) #~
+        self.irs.watch(
+            observations, actions, rewards, dones, dones, next_observations
+        )  # ~
         # ===================== watch the interaction ===================== #
-        return True 
+        return True
 
-    def _on_rollout_end(self) -> None: ####################################
+    def _on_rollout_end(self) -> None:  ####################################
         # ===================== compute the intrinsic rewards ===================== #
         # prepare the data samples
         obs = th.as_tensor(self.buffer.observations)
@@ -204,7 +206,7 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
 
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
-        self.buffer = self.model.replay_buffer #
+        self.buffer = self.model.replay_buffer  #
 
     def _on_step(self) -> bool:
         """
@@ -212,15 +214,15 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        device = self.irs.device #
-        obs = th.as_tensor(self.locals["self"]._last_obs, device=device) #
+        device = self.irs.device  #
+        obs = th.as_tensor(self.locals["self"]._last_obs, device=device)  #
         actions = th.as_tensor(self.locals["actions"], device=device)
         rewards = th.as_tensor(self.locals["rewards"], device=device)
         dones = th.as_tensor(self.locals["dones"], device=device)
-        next_obs = th.as_tensor(self.locals["new_obs"], device=device) #~
+        next_obs = th.as_tensor(self.locals["new_obs"], device=device)  # ~
 
         # ===================== watch the interaction ===================== #
-        self.irs.watch(obs, actions, rewards, dones, dones, next_obs) #~
+        self.irs.watch(obs, actions, rewards, dones, dones, next_obs)  # ~
         # ===================== watch the interaction ===================== #
         ####################################
         # ===================== compute the intrinsic rewards ===================== #
