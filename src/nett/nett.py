@@ -6,6 +6,7 @@ This module contains the NETT class, which is the main class for training, testi
 """
 
 import logging
+import json
 import os
 from pathlib import Path
 from typing import Optional
@@ -20,6 +21,7 @@ from .utils.executor import Executor
 from .utils.tasklist import TaskList
 from .utils.task import Task
 from .utils.memory import MemoryManager
+from .utils.validate import validate_config
 
 
 JobTooBigError = ValueError(
@@ -81,14 +83,13 @@ class NETT:
             if not isinstance(config, list):
                 self.configs = [config]
 
+            self.logger.info("Validating configs")
+            with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
+                schema: dict = json.load(file)
+
             for config in self.configs:
-                if isinstance(config, (str, Path)):
-                    with open(config, "r") as file:
-                        self.configs.append(yaml.safe_load(file))
-                elif not isinstance(config, dict):
-                    self.configs.append(config)
-                else:
-                    raise TypeError("Configs should be type dict, str or Path.")
+                valid_config = validate_config(config, schema)
+                self.configs.append(valid_config)
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e

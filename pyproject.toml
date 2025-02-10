@@ -28,6 +28,7 @@ dependencies = [
     "seaborn",
     "rllte-core",
     "supersuit",
+    "jsonschema",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
