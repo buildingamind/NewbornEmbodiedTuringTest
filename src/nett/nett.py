@@ -81,14 +81,14 @@ class NETT:
 
         try:
             if not isinstance(config, list):
-                self.configs = [config]
+                config = [config]
 
             self.logger.info("Validating configs")
             with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
                 schema: dict = json.load(file)
 
-            for config in self.configs:
-                valid_config = validate_config(config, schema)
+            for config_instance in config:
+                valid_config = validate_config(config_instance, schema)
                 self.configs.append(valid_config)
         except Exception as e:
             self.logger.exception("Error in loading config")

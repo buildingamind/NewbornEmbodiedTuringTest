@@ -56,3 +56,5 @@ for tmp_dir in [
             logger.error(
                 f"Error: '{tmp_dir}' does not have correct permissions and cannot be changed. If you have superuser access, you can run the following command to change the permissions: 'sudo chmod 1777 {tmp_dir}'. Otherwise, request {os.stat(tmp_dir).st_uid} to run 'chmod 1777 {tmp_dir}'."
             )
+
+from .nett import NETT
