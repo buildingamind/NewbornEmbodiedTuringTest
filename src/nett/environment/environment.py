@@ -65,7 +65,7 @@ class Environment:
 
         # get experiment design
         self.num_test_conditions, valid_imprinting_conditions = get_experiment_design(
-            executable_path
+            self.executable_path
         )
 
         # validate conditions

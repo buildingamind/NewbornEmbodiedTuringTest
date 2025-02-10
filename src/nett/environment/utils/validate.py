@@ -2,7 +2,7 @@ from typing import Optional
 from pathlib import Path
 
 
-def validate_executable_path(executable_path: str) -> str:
+def validate_executable_path(executable_path: str) -> Path:
     """
     Validates the Unity executable path.
 
