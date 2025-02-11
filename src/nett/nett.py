@@ -137,8 +137,8 @@ class NETT:
         self.logger.info("Launching...")
 
         try:
-        for config in self.configs:
-            self._single_run(**config)
+            for config in self.configs:
+                self._single_run(**config)
 
             self.task_waiter()
             future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
@@ -239,22 +239,22 @@ class NETT:
 
         # run tasks
 
-            # assign devices based on memory availability
+        # assign devices based on memory availability
         modes: list[str] = filter(lambda mode: episodes[mode] > 0, episodes.keys())
-                # assign tasks to devices and run them
-                tasklist = TaskList(
-                    base_brain,
-                    base_body,
-                    base_env,
-                    num_brains,
-                    base_env.conditions,
-                    output_dir,
+        # assign tasks to devices and run them
+        tasklist = TaskList(
+            base_brain,
+            base_body,
+            base_env,
+            num_brains,
+            base_env.conditions,
+            output_dir,
             modes,
             memory,
-                )
+        )
 
-                for task in tasklist:  # multi
-                    self._assign_task(task)
+        for task in tasklist:  # multi
+            self._assign_task(task)
 
     def _close(self) -> None:
         # close memory manager
@@ -286,11 +286,11 @@ class NETT:
 
     def task_waiter(self):
         if len(self.waitlist) > 0:
-        self.logger.warning(
-            "Insufficient GPU Memory. Waiting for running tasks to complete."
-        )
+            self.logger.warning(
+                "Insufficient GPU Memory. Waiting for running tasks to complete."
+            )
         while len(self.waitlist) > 0:
-        done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
+            done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
             for done_future in done:
                 done_task: Task = self.task_sheet.pop(done_future)
                 free_device: int = done_task.device
@@ -315,7 +315,7 @@ class NETT:
                 task.device = device
                 task_future = self.executor.submit(task.run)
                 self.task_sheet[task_future] = task
-            # allocate memory
+                # allocate memory
                 self.free_device_memory[device] -= task.memory
 
         if not assigned:
