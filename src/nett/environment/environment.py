@@ -109,10 +109,8 @@ class Environment:
         steps_per_episode: int,
         supervised_reward: bool,
         multiobs: bool,
-        n_parallel_envs: int,
     ):
         self.multiobs = multiobs
-        self.n_parallel_envs = n_parallel_envs
 
         args = ["--episode-steps", str(steps_per_episode)]
 

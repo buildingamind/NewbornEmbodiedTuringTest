@@ -77,7 +77,7 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
 
     print("Saved feature extractor")
 
-    save_path = path / "model" / "latest_model.zip"
+    save_path = path / "latest_model.zip"
     model.save(save_path)
 
 

@@ -45,7 +45,11 @@ class Body:
         self.record_eps = record_eps
 
     def _load_env(
-        self, env: gym.Env, config: TaskConfig, validation_mode: bool, seed: Optional[int] = None
+        self,
+        env: gym.Env,
+        config: TaskConfig,
+        validation_mode: bool,
+        seed: Optional[int] = None,
     ) -> gym.Env:
         env = env.load(config, validation_mode, seed)
 
@@ -83,10 +87,12 @@ class Body:
         self.env = wrapped_env
         return self
 
-    def _record_wrapper(self, env: gym.Env, config: TaskConfig, seed: int = 0) -> gym.Env:
+    def _record_wrapper(
+        self, env: gym.Env, config: TaskConfig, seed: int = 0
+    ) -> gym.Env:
         record_episodes = self.record_eps.get(config.current_mode, 0)
         if config.current_mode == "test":
-            record_episodes /= env.n_parallel_envs
+            record_episodes /= config.n_parallel_envs
         if record_episodes > 0:
             record_ep_cb = lambda t: t < record_episodes
             return RecordVideo(
@@ -95,7 +101,7 @@ class Body:
                 episode_trigger=record_ep_cb,
                 name_prefix=f"agent{seed}_",
             )
-        config.logger.info('Finished recording wrapper')
+        config.logger.info("Finished recording wrapper")
         return env
 
     def _zoo_wrapper(self, env: gym.Env, config: TaskConfig) -> SB3VecEnvWrapper:
@@ -123,7 +129,9 @@ class Body:
             return callback
 
         # create n_envs environments
-        return SubprocVecEnv([seed_callback(seed) for seed in range(env.n_parallel_envs)])
+        return SubprocVecEnv(
+            [seed_callback(seed) for seed in range(config.n_parallel_envs)]
+        )
 
     def __enter__(self) -> VecEnv:
         """return env at beginning of `with` statement"""

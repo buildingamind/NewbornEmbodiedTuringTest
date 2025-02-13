@@ -26,7 +26,10 @@ class Task:
         memory: Optional[float] = None,
     ) -> None:
         """initialize task"""
-        self.config = TaskConfig(brain_id, condition, output_dir, modes, memory)
+        n_parallel_envs = getattr(brain, "n_parallel_envs", 1)
+        self.config = TaskConfig(
+            brain_id, condition, output_dir, modes, n_parallel_envs, memory
+        )
         self.agent = Agent(brain, body, env)
 
     def set_device(self, device: int) -> None:
@@ -35,6 +38,7 @@ class Task:
 
 class TaskConfig:
     """TaskConfig class for holding and creating tasks"""
+
     device: int
     current_mode: str
 
@@ -44,11 +48,13 @@ class TaskConfig:
         condition: str,
         output_dir: Path,
         modes: list[str],
+        n_parallel_envs: int,
         memory: Optional[float] = None,
     ):
         self.brain_id = brain_id
         self.condition = condition
         self.modes = modes
+        self.n_parallel_envs = n_parallel_envs
         self.memory = memory
         self.path: Path = output_dir.joinpath(condition, f"brain_{brain_id}")
         self.logger: logging.Logger = logging.getLogger(
