@@ -36,9 +36,6 @@ class MemoryManager:
     def get_free_memory(self, device_id: int) -> float:
         return self.get_memory_status(device_id).free
 
-    def get_used_memory(self, device_id: int) -> float:
-        return self.get_memory_status(device_id).used
-
     def get_most_free_gpu(self, devices: list[int]) -> tuple[int, float]:
         maxMemory: int = 0
         maxMemoryDevice: int = None

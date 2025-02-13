@@ -22,7 +22,7 @@ from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 from stable_baselines3.common.env_checker import check_env
 
-from ..utils.task import Task
+from ..utils.task import TaskConfig
 
 
 import gymnasium as gym
@@ -45,82 +45,85 @@ class Body:
         self.record_eps = record_eps
 
     def _load_env(
-        self, task, validation_mode: bool, seed: Optional[int] = None
+        self, env: gym.Env, config: TaskConfig, validation_mode: bool, seed: Optional[int] = None
     ) -> gym.Env:
-        env = task.env.load(task, validation_mode, seed)
+        env = env.load(config, validation_mode, seed)
 
         try:
             for wrapper in self.wrappers:
                 env = wrapper(env)
         except Exception as e:
-            task.logger.getChild(seed).exception(
+            config.logger.getChild(seed).exception(
                 f"Failed to apply wrappers to environment"
             )
             raise e
 
         return env
 
-    def _validate_env(self, task):
+    def _validate_env(self, env: gym.Env, config: TaskConfig):
         try:
-            test_env = self._load_env(task, True)
+            test_env = self._load_env(env, config, True)
             check_env(test_env)
         finally:
-            test_env.close()
+            if "test_env" in locals() and getattr(test_env, "close", None) is not None:
+                test_env.close()
 
-    def embed(self, task: Task) -> None:
+    def embed(self, env: gym.Env, config: TaskConfig):
 
         if env.multiagent:
-            env = self._zoo_wrapper(task.env)
+            wrapped_env = self._zoo_wrapper(env, config)
         else:
-            self._validate_env(task)
+            self._validate_env(env, config)
             # validate
-            if task.current_mode == "train":
-                env = self._single_gym_wrapper(task.env)
+            if config.current_mode == "train":
+                wrapped_env = self._single_gym_wrapper(env, config)
             else:  # test
-                env = self._multi_gym_wrapper(task.env, task.brain.n_parallel_envs)
+                wrapped_env = self._multi_gym_wrapper(env, config)
 
-        self.env = env
+        self.env = wrapped_env
+        return self
 
-    def _record_wrapper(self, env: gym.Env, task: Task, seed: int = 0) -> gym.Env:
-        record_episodes = self.record_eps.get(task.current_mode, 0)
-        if task.current_mode == "test":
-            record_episodes /= task.brain.n_parallel_envs
+    def _record_wrapper(self, env: gym.Env, config: TaskConfig, seed: int = 0) -> gym.Env:
+        record_episodes = self.record_eps.get(config.current_mode, 0)
+        if config.current_mode == "test":
+            record_episodes /= env.n_parallel_envs
         if record_episodes > 0:
             record_ep_cb = lambda t: t < record_episodes
             return RecordVideo(
                 env,
-                task.path / "env_recs" / "agent",
+                config.path / "env_recs" / "agent",
                 episode_trigger=record_ep_cb,
                 name_prefix=f"agent{seed}_",
             )
+        config.logger.info('Finished recording wrapper')
         return env
 
-    def _zoo_wrapper(self, task: Task) -> SB3VecEnvWrapper:
-        env = self._load_env(task, False)
+    def _zoo_wrapper(self, env: gym.Env, config: TaskConfig) -> SB3VecEnvWrapper:
+        env = self._load_env(env, config, False)
         # TODO: Add support for wrapping ZooEnvironments
         # TODO: Add support for recording agents in ZooEnvironments
         env = ss.pettingzoo_env_to_vec_env_v1(env)
         env = ConcatVecEnv([lambda: env])
         return SB3VecEnvWrapper(env)
 
-    def _single_gym_wrapper(self, task) -> DummyVecEnv:
+    def _single_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
         def callback():
-            env = self._load_env(task, False)
-            return self._record_wrapper(env, task)
+            loaded_env = self._load_env(env, config, False)
+            return self._record_wrapper(loaded_env, config)
 
         return DummyVecEnv([callback])
 
-    def _multi_gym_wrapper(self, task, n_envs) -> SubprocVecEnv:
+    def _multi_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> SubprocVecEnv:
         def seed_callback(seed):
             def callback():
                 sleep(seed)
-                env = self._load_env(task, False, seed)
-                return self._record_wrapper(env, task, seed)
+                loaded_env = self._load_env(env, config, False, seed)
+                return self._record_wrapper(loaded_env, config, seed)
 
             return callback
 
         # create n_envs environments
-        return SubprocVecEnv([seed_callback(seed) for seed in range(n_envs)])
+        return SubprocVecEnv([seed_callback(seed) for seed in range(env.n_parallel_envs)])
 
     def __enter__(self) -> VecEnv:
         """return env at beginning of `with` statement"""

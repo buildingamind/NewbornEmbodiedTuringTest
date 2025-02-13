@@ -64,7 +64,7 @@ class BaseReward(ABC):
     def __init__(
         self,
         envs: VectorEnv,
-        device: int,
+        device: str,
         beta: float = 1.0,
         kappa: float = 0.0,
         gamma: Optional[float] = None,
@@ -84,7 +84,7 @@ class BaseReward(ABC):
         action_type = "Box"
 
         # set device and parameters
-        self.device = th.device("cuda", device)
+        self.device = device
         self.beta = beta
         self.kappa = kappa
         self.rwd_norm_type = rwd_norm_type

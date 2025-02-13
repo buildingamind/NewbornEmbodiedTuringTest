@@ -14,48 +14,81 @@ class Task:
         estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
     """
 
+    def __init__(
+        self,
+        brain: "Brain",
+        body: "Body",
+        env: "Environment",
+        brain_id: int,
+        condition: str,
+        output_dir: Path,
+        modes: list[str],
+        memory: Optional[float] = None,
+    ) -> None:
+        """initialize task"""
+        self.config = TaskConfig(brain_id, condition, output_dir, modes, memory)
+        self.agent = Agent(brain, body, env)
+
+    def set_device(self, device: int) -> None:
+        self.config.device = device
+
+
+class TaskConfig:
+    """TaskConfig class for holding and creating tasks"""
     device: int
+    current_mode: str
+
+    def __init__(
+        self,
+        brain_id: int,
+        condition: str,
+        output_dir: Path,
+        modes: list[str],
+        memory: Optional[float] = None,
+    ):
+        self.brain_id = brain_id
+        self.condition = condition
+        self.modes = modes
+        self.memory = memory
+        self.path: Path = output_dir.joinpath(condition, f"brain_{brain_id}")
+        self.logger: logging.Logger = logging.getLogger(
+            f"nett.task-{condition}-{brain_id}"
+        )
+
+
+class Agent:
+    """Agent class for running tasks in parallel"""
 
     def __init__(
         self,
         brain: "Brain",
         body: "Body",
         env: "Environment",
-        modes: list[str],
-        brain_id: int,
-        condition: str,
-        output_dir: Path,
-        memory: Optional[float] = None,
-    ) -> None:
-        """initialize task"""
-        self.modes: list[str] = modes
-        self.brain_id: int = brain_id
-        self.condition: str = condition
-        self.memory = memory
-        self.path: Path = output_dir / self.condition / f"brain_{self.brain_id}"
-        self.logger: logging.Logger = logging.getLogger(
-            f"nett.task-{self.condition}-{self.brain_id}"
-        )
+    ):
         self.brain = brain
         self.body = body
         self.env = env
 
-    def run(self):
-        for mode in self.modes:
-            self.current_mode = mode
-            try:
-                # create log path
-                log_path = self.path / "env_logs"
-                log_path.mkdir(exist_ok=True, parents=True)
 
-                with self.body.embed(self) as body_interface:
-                    # brain.train() or brain.test()
-                    getattr(self.brain, mode)(
-                        body_interface, self
-                    )
+# Split up task into BBE and else
+def run_task(task: Task) -> None:
+    config = task.config
+    agent = task.agent
+    config.logger.info(f"Running {config.current_mode} task")
 
-            except Exception as e:
-                self.logger.exception(f"{mode} env failed: {str(e)}")
-                raise e
+    for mode in config.modes:
+        config.current_mode = mode
+        try:
+            # create log path
+            log_path = config.path / "env_logs"
+            log_path.mkdir(exist_ok=True, parents=True)
 
-        self.logger.info("Environments Closed")
+            with agent.body.embed(agent.env, config) as body_interface:
+                # brain.train() or brain.test()
+                getattr(agent.brain, mode)(body_interface, config)
+
+        except Exception as e:
+            config.logger.exception(f"{mode} env failed: {str(e)}")
+            raise e
+
+    config.logger.info("Environments Closed")

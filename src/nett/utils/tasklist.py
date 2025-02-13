@@ -28,7 +28,7 @@ class TaskList:
         self.current = 0
 
         self.tasks = [
-            Task(brain, body, env, modes, brain_id, condition, output_dir, memory)
+            Task(brain, body, env, brain_id, condition, output_dir, modes, memory)
             for brain_id, condition in self.brain_env_combinations
         ]
 

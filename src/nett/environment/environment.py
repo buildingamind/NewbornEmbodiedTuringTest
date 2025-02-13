@@ -15,6 +15,7 @@ Args:
     display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to None.
 """
 
+import copy
 from pathlib import Path
 import os
 import subprocess
@@ -28,7 +29,8 @@ from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 from pettingzoo.utils.wrappers import BaseParallelWrapper
 
-from nett.utils.task import Task
+from .utils.logger import Logger
+from ..utils.task import TaskConfig
 
 # checks to see if ml-agents tmp files have the proper permissions
 try:
@@ -50,7 +52,7 @@ class Environment:
     # Class Variables
     executable_path: Path  # the path to the Unity executable file
     multiagent: bool  # whether the environment is multiagent
-    base_args: dict  # the base arguments to pass to the Unity environment
+    base_args: dict[str, list]  # the base arguments to pass to the Unity environment
     multiobs: bool  # whether the environment passes multiple observations to the agent
 
     def __init__(
@@ -84,6 +86,7 @@ class Environment:
         if display is None:
             # enable batchmode for headless servers
             args.append("-batchmode")
+            os.environ["DISPLAY"] = str(f":0")
         else:
             # set the display for Unity environment
             os.environ["DISPLAY"] = str(f":{display}")
@@ -106,8 +109,10 @@ class Environment:
         steps_per_episode: int,
         supervised_reward: bool,
         multiobs: bool,
+        n_parallel_envs: int,
     ):
         self.multiobs = multiobs
+        self.n_parallel_envs = n_parallel_envs
 
         args = ["--episode-steps", str(steps_per_episode)]
 
@@ -119,23 +124,23 @@ class Environment:
             self.base_args[mode].extend(args)
 
     def load(
-        self, task: Task, validation_mode: bool, seed: Optional[int] = None
-    ) -> gym.Env:
+        self, config: TaskConfig, validation_mode: bool, seed: Optional[int] = None
+    ) -> gym.Env:  # logger, brain_id, path, current_mode, device, condition
         # constructor method, opens the Unity environment
 
         # check if vec env is being run in parallel
         if seed is not None:
-            logger = task.logger.getChild(seed)
+            logger = config.logger.getChild(seed)
         else:
-            logger = task.logger
-            seed = task.brain_id
+            logger = config.logger
+            seed = config.brain_id
 
         # create record path
-        recording_path = task.path / "env_recs"
+        recording_path = config.path / "env_recs"
         recording_path.mkdir(exist_ok=True, parents=True)
 
         # create Unity args
-        args = {}.extend(self.base_args[task.current_mode])
+        args = copy.deepcopy(self.base_args[config.current_mode])
 
         if validation_mode:
             args.extend(["--validation-mode", "true"])
@@ -144,17 +149,28 @@ class Environment:
         args.extend(
             [
                 "--mode",
-                f"{task.current_mode}-{task.condition}",  # set mode
+                f"{config.current_mode}-{config.condition}",  # set mode
                 "--log-dir",
                 str(recording_path),  # set log path
                 "-force-device-index",
-                str(task.device),  # set GPU
+                str(config.device),  # set GPU
                 "-gpu",
-                str(task.device),  # set GPU
+                str(config.device),  # set GPU
             ]
         )
 
         # create environment and connect it to logger
+        # create logger
+        # create log path
+        log_path = config.path / "env_logs"
+        log_path.mkdir(exist_ok=True, parents=True)
+        side_channels = [
+            Logger(
+                f"{config.current_mode}_{config.condition}_{config.brain_id}_{config.current_mode}",
+                log_dir=str(log_path),
+            )
+        ]
+
         complete = False
         while not complete:
             try:
@@ -163,6 +179,7 @@ class Environment:
                     additional_args=args,
                     base_port=random_port(),
                     seed=seed,
+                    side_channels=side_channels,
                 )
                 complete = True
             except UnityWorkerInUseException as e:
@@ -171,7 +188,7 @@ class Environment:
                 logger.exception(f"Error initializing environment: {e}")
                 raise e
 
-        return ZooWrapper(env) if self.multiagent else GymWrapper(env)
+        return ZooWrapper(env, seed) if self.multiagent else GymWrapper(env, seed, self.multiobs)
 
 
 class BaseWrapper:
@@ -193,14 +210,14 @@ class BaseWrapper:
 class GymWrapper(BaseWrapper, gym.Wrapper):
     """Wrapper to adapt Unity environment to Gymnasium"""
 
-    def __init__(self, env: UnityEnvironment):
+    def __init__(self, env: UnityEnvironment, seed: int, multiobs: bool):
 
         # wrap the environment for ML Agents to work with Gym
         self.env = UnityToGymWrapper(
             env,
             uint8_visual=True,
-            allow_multiple_obs=self.multiobs,
-            action_space_seed=self.seed,
+            allow_multiple_obs=multiobs,
+            action_space_seed=seed,
         )
         # init the Gym Wrapper instance
         gym.Wrapper.__init__(self, self.env)
@@ -214,9 +231,9 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
 class ZooWrapper(BaseWrapper, BaseParallelWrapper):
     """Wrapper to adapt Unity environment to PettingZoo"""
 
-    def __init__(self, env: UnityEnvironment):
+    def __init__(self, env: UnityEnvironment, seed: int):
         # wrap the environment for ML Agents to work with PettingZoo
-        self.env = UnityParallelEnv(env, uint8_visual=True, seed=self.seed)
+        self.env = UnityParallelEnv(env, uint8_visual=True, seed=seed)
 
         # init the PettingZoo BaseParallelWrapper instance
         BaseParallelWrapper.__init__(self, self.env)

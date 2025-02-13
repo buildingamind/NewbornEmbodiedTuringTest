@@ -124,10 +124,10 @@ class MemoryCallback(BaseCallback):
         This event is triggered before exiting the `learn()` method.
         """
         # Grab the memory being used by the GPU
-        used_memory = self.memory_manager.get_used_memory(self.device)
+        free_memory = self.memory_manager.get_free_memory(self.device)
         # Write the used memory to a file
         with open(Path.joinpath(self.save_path, "mem.txt"), "w") as f:
-            f.write(str(used_memory))
+            f.write(str(free_memory))
 
 
 class IntrinsicRewardWithOnPolicyRL(BaseCallback):

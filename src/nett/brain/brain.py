@@ -38,7 +38,7 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 
 from rllte.common.prototype import BaseReward
 
-from ..utils.task import Task
+from ..utils.task import TaskConfig
 
 from .utils import callbacks as cb
 from .utils.validate import (
@@ -155,9 +155,9 @@ class Brain:
                     episodes["test"] / max_envs
                 )
 
-    def train(self, envs: VecEnv, task: Task):
+    def train(self, envs: VecEnv, config: TaskConfig): # logger, device, seed, path, memory
         """Train the brain."""
-        task.logger.info(
+        config.logger.info(
             f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
         )
 
@@ -190,28 +190,28 @@ class Brain:
                 ent_coef=self.ent_coef,
                 verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
-                device=f"cuda:{task.device}",
-                seed=task.seed,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
-                tensorboard_log=task.path / "logs",
+                device=f"cuda:{config.device}",
+                seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                tensorboard_log=config.path / "logs",
             )
 
             # set encoder as eval only if train_encoder is not True
             if not self.train_encoder:
                 model = _set_encoder_as_eval(model)
-                task.logger.warning(
+                config.logger.warning(
                     f"Encoder training is set to {str(self.train_encoder).upper()}"
                 )
 
         except Exception as e:
-            task.logger.exception(f"Failed to initialize model with error: {str(e)}")
+            config.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
 
         # initialize callbacks
-        task.logger.info("Initializing Callbacks")
-        callback_list = self._init_callbacks(envs, task)
+        config.logger.info("Initializing Callbacks")
+        callback_list = self._init_callbacks(envs, config)
 
         # train
-        task.logger.info(f"Total number of training steps: {self.train_iterations}")
+        config.logger.info(f"Total number of training steps: {self.train_iterations}")
         try:
             model.learn(
                 total_timesteps=self.train_iterations,
@@ -222,27 +222,28 @@ class Brain:
             )
         except Exception as e:
             if "CUDA out of memory" in str(e):
-                task.logger.error("CUDA out of memory. Try reducing batch size.")
+                config.logger.error("CUDA out of memory. Try reducing batch size.")
                 raise
             else:
-                task.logger.exception(f"Failed to train model with error: {str(e)}")
+                config.logger.exception(f"Failed to train model with error: {str(e)}")
                 raise e
-        task.logger.info("Training Complete")
+        config.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
-        if task.memory is None:
+        if config.memory is None:
             return
 
         # save
         ## create save directory
-        model_path = task.path / "model"
+        config.logger.info(f"Saving model...")
+        model_path = config.path / "model"
         _save_model(model, model_path)
-        task.logger.info(f"Saved model at {model_path}")
+        config.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, task: Task):
+    def test(self, envs: VecEnv, config: TaskConfig): # logger, path, device, 
         """Test the brain."""
         try:
-            task.logger.info(f"Testing with {self.algorithm.__name__}")
+            config.logger.info(f"Testing with {self.algorithm.__name__}")
 
             # progress bar
             t = tqdm(
@@ -254,7 +255,7 @@ class Brain:
 
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
-                task.path / "model" / "latest_model.zip", device=f"cuda:{task.device}"
+                config.path / "model" / "latest_model.zip", device=f"cuda:{config.device}"
             )
 
             # loop over episodes
@@ -283,21 +284,21 @@ class Brain:
                         # episode is done
                         break
         except Exception as e:
-            task.logger.exception(f"Failed to test model with error: {str(e)}")
+            config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
         finally:
             # close the loading bar
             t.close()
 
-    def _init_callbacks(self, envs: VecEnv, task: Task) -> CallbackList:
+    def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
         """Initialize the callbacks for training."""
         callback_list = [cb.HParamCallback()]
 
-        if task.memory is None:
+        if config.memory is None:
             callback_list.extend(
                 [
                     cb.LoadingBarCallback("Estimating Memory Usage", self.buffer_size),
-                    cb.MemoryCallback(task.device, save_path=task.path),
+                    cb.MemoryCallback(config.device, save_path=config.path),
                 ]
             )
         else:
@@ -312,7 +313,7 @@ class Brain:
                 callback_list.append(
                     CheckpointCallback(
                         save_freq=self.checkpoint_freq,  # defaults to 30_000 steps
-                        save_path=task.path / "checkpoints",
+                        save_path=config.path / "checkpoints",
                         save_replay_buffer=True,
                         save_vecnormalize=True,
                     )
@@ -322,18 +323,18 @@ class Brain:
         if self.reward is not None:
             reward_func: BaseReward = self.reward(
                 envs,
-                device=f"cuda:{task.device}",
+                device=f"cuda:{config.device}",
                 batch_size=self.batch_size,
                 lr=self.learning_rate,
                 **self.reward_args,
             )
-            if self.algorithm.issubclass(OnPolicyAlgorithm):
+            if issubclass(self.algorithm, OnPolicyAlgorithm):
                 # brain.algorithm is instance of OnPolicyAlgorithn
                 callback_list.append(cb.IntrinsicRewardWithOnPolicyRL(reward_func))
-            elif self.algorithm.issubclass(OffPolicyAlgorithm):
+            elif issubclass(self.algorithm, OffPolicyAlgorithm):
                 callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
             else:
-                task.logger.warning(
+                config.logger.warning(
                     f"Instrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
 

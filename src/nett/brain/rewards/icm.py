@@ -67,7 +67,7 @@ class ICM(BaseReward):
     def __init__(
         self,
         envs,
-        device: int,
+        device: str,
         beta: float = 0.2,  # 1.0,
         kappa: float = 0.0,
         gamma: float = 0.99,  # Optional[float] = None,
