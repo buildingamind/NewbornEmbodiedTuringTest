@@ -57,3 +57,9 @@ class MemoryManager:
             raise ValueError(
                 f"Custom device list lists unknown devices. Available devices are: {available_devices}"
             )
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args):
+        self.close()

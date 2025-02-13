@@ -131,4 +131,4 @@ class Body:
 
     def __exit__(self, *args):
         """close env outside of `with` statement"""
-        return self.env.close()
+        self.env.close()

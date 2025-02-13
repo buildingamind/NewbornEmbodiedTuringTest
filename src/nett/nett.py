@@ -19,7 +19,7 @@ from .body.body import Body
 from .environment.environment import Environment
 from .utils.executor import Executor
 from .utils.tasklist import TaskList
-from .utils.task import Task, TaskConfig
+from .utils.task import Task, TaskConfig, run_task
 from .utils.memory import MemoryManager
 from .utils.validate import validate_config
 
@@ -119,43 +119,42 @@ class NETT:
         self.waitlist: list[Task] = []
 
         # initialize NVIDIA memory management
-        self.memory_manager = MemoryManager()
+        # self.memory_manager = MemoryManager()
+        with MemoryManager() as self.memory_manager:
 
-        # validate devices
-        self.devices: list[int] = self.memory_manager.validate_devices(devices)
-        self.logger.info(f"Devices that will be used: {self.devices}")
+            # validate devices
+            self.devices: list[int] = self.memory_manager.validate_devices(devices)
+            self.logger.info(f"Devices that will be used: {self.devices}")
 
-        # get the free memory status for each device
-        self.free_device_memory: dict[int, float] = {
-            device: self.memory_manager.get_free_memory(device)
-            for device in self.devices
-        }
+            # get the free memory status for each device
+            self.free_device_memory: dict[int, float] = {
+                device: self.memory_manager.get_free_memory(device)
+                for device in self.devices
+            }
 
-        # initialize executor
-        self.executor = Executor(verbose)
+            # initialize executor
+            # self.executor = Executor(verbose)
+            with Executor(verbose) as self.executor:
+                # run tasks
+                self.logger.info("Launching...")
 
-        # run tasks
-        self.logger.info("Launching...")
-
-        try:
-            for config in self.configs:
-                self._single_run(**config)
-
-            self.task_waiter()
-            future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
-            for future in self.task_sheet:
                 try:
-                    result = future.result()
+                    for config in self.configs:
+                        self._single_run(**config)
+
+                    self.task_waiter()
+                    future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
+                    for future in self.task_sheet:
+                        try:
+                            result = future.result()
+                        except Exception as e:
+                            print("exception = ", e)
+                        else:
+                            print("result = ", result)
+                            print("state=", future._state)
                 except Exception as e:
-                    print("exception = ", e)
-                else:
-                    print("result = ", result)
-                    print("state=", future._state)
-        except Exception as e:
-            self.logger.exception(f"Error in launching jobs: {e}")
-            raise e
-        finally:
-            self._close()
+                    self.logger.exception(f"Error in launching jobs: {e}")
+                    raise e
 
     def _single_run(
         self,
@@ -257,7 +256,11 @@ class NETT:
 
         self.logger.info("Running tasks...")
         # assign devices based on memory availability
-        modes: list[str] = filter(lambda mode: episodes[mode] > 0, episodes.keys())
+        modes: list[str] = []
+        for mode in episodes.keys():
+            if episodes[mode] > 0:
+                modes.append(mode)
+
         # assign tasks to devices and run them
         self.logger.info("Creating tasks...")
         tasklist = TaskList(
@@ -274,12 +277,6 @@ class NETT:
         for task in tasklist:  # multi
             self._assign_task(task)
 
-    def _close(self) -> None:
-        # close memory manager
-        self.memory_manager.close()
-        # close processes and free up resources on completion
-        self.logger.info("Shutting down executor")
-        self.executor.close()  # TODO: does future wait and this both need to be here?
 
     """
     waitlist = [(task, memory_use), ...]
@@ -318,7 +315,7 @@ class NETT:
                     if task.config.memory <= self.free_device_memory[free_device]:
                         self.free_device_memory[free_device] -= task.config.memory
                         task.set_device(free_device)
-                        task_future: Future = self.executor.submit(task)
+                        task_future: Future = self.executor.submit(run_task, task)
                         self.task_sheet[task_future] = task.config
                         self.waitlist.pop(i)
                         break
@@ -332,7 +329,7 @@ class NETT:
             if memory >= task.config.memory:
                 assigned = True
                 task.set_device(device)
-                task_future = self.executor.submit(task)
+                task_future = self.executor.submit(run_task, task)
                 self.task_sheet[task_future] = task.config
                 # allocate memory
                 self.free_device_memory[device] -= task.config.memory
@@ -371,7 +368,7 @@ class NETT:
                     ["train"],
                 )
                 task.set_device(most_free_gpu)
-                task_future = self.executor.submit(task)
+                task_future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
 
                 with open(task.config.path / "mem.txt", "r") as file:
