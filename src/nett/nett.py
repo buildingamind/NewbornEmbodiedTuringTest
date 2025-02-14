@@ -12,12 +12,20 @@ from pathlib import Path
 from typing import Optional
 import yaml
 import shutil
-from concurrent.futures import Future, wait as future_wait
+from concurrent.futures import Future, as_completed, wait as future_wait
 
 from .brain import Brain
 from .body import Body
 from .environment import Environment
-from .utils import Executor, TaskList, Task, TaskConfig, run_task, MemoryManager, validate_config
+from .utils import (
+    Executor,
+    TaskList,
+    Task,
+    TaskConfig,
+    run_task,
+    MemoryManager,
+    validate_config,
+)
 
 
 JobTooBigError = ValueError(
@@ -155,15 +163,18 @@ class NETT:
             with Executor(verbose) as self.executor:
                 # run tasks
                 self.logger.info("Launching...")
-
                 try:
                     for config in self.configs:
                         self.single_run(**config)
 
                     self.task_waiter()
-                    future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
+                except ConnectionResetError as e:
+                    self.logger.error(
+                        "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
+                    )
+                    raise e
                 except Exception as e:
-                    self.logger.exception(f"Error in launching jobs: {e}")
+                    self.logger.exception(f"Error in launching tasks: {e}")
                     raise e
 
     def single_run(
@@ -243,7 +254,6 @@ class NETT:
         )
 
         ############### Run ################
-
         # estimate memory for a single task
         memory = self._calculate_task_memory(
             base_brain,
@@ -284,21 +294,21 @@ class NETT:
             self.logger.warning(
                 "Insufficient GPU Memory. Waiting for running tasks to complete."
             )
-        while len(self.waitlist) > 0:
-            done, _ = future_wait(self.task_sheet, return_when="FIRST_COMPLETED")
-            for done_future in done:
-                done_config: TaskConfig = self.task_sheet.pop(done_future)
-                free_device: int = done_config.device
-                self.free_device_memory[free_device] += done_config.memory
 
-                for i, task in enumerate(self.waitlist):
-                    if task.config.memory <= self.free_device_memory[free_device]:
-                        self.free_device_memory[free_device] -= task.config.memory
-                        task.set_device(free_device)
-                        task_future: Future = self.executor.submit(run_task, task)
-                        self.task_sheet[task_future] = task.config
-                        self.waitlist.pop(i)
-                        break
+        for done_future in as_completed(self.task_sheet):
+            done_future.result()
+            done_config: TaskConfig = self.task_sheet.pop(done_future)
+            free_device: int = done_config.device
+            self.free_device_memory[free_device] += done_config.memory
+
+            for i, task in enumerate(self.waitlist):
+                if task.config.memory <= self.free_device_memory[free_device]:
+                    self.free_device_memory[free_device] -= task.config.memory
+                    task.set_device(free_device)
+                    task_future: Future = self.executor.submit(run_task, task)
+                    self.task_sheet[task_future] = task.config
+                    self.waitlist.pop(i)
+                    break
 
     def _assign_task(self, task: Task) -> None:
         # waitlist remaining tasks if no free memory
@@ -372,5 +382,3 @@ class NETT:
             raise JobTooBigError
 
         return memory_use
-
-    #####################

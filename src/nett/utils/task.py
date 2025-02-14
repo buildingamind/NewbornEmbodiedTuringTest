@@ -89,22 +89,14 @@ def run_task(task: Task) -> None:
 
     for mode in config.modes:
         config.current_mode = mode
-        try:
-            # create log path
-            log_path = config.path / "env_logs"
-            log_path.mkdir(exist_ok=True, parents=True)
 
-            with agent.body.embed(agent.env, config) as body_interface:
-                # brain.train() or brain.test()
-                getattr(agent.brain, mode)(body_interface, config)
-                config.logger.info(f"Closing Environment...")
-        except ConnectionResetError as e:
-            config.logger.error(
-                "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
-            )
-            raise e
-        except Exception as e:
-            config.logger.exception(f"{mode} env failed: {str(e)}")
-            raise e
+        # create log path
+        log_path = config.path / "env_logs"
+        log_path.mkdir(exist_ok=True, parents=True)
+
+        with agent.body.embed(agent.env, config) as body_interface:
+            # brain.train() or brain.test()
+            getattr(agent.brain, mode)(body_interface, config)
+            config.logger.info(f"Closing Environment...")
 
     config.logger.info("Environments Closed")
