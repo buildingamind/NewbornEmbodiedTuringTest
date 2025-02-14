@@ -33,9 +33,7 @@ class TaskConfig:
         self.n_parallel_envs = n_parallel_envs
         self.memory = memory
         self.path = output_dir.joinpath(condition, f"brain_{brain_id}")
-        self.logger = logging.getLogger(
-            f"nett.task-{condition}-{brain_id}"
-        )
+        self.logger = logging.getLogger(f"nett.task-{condition}-{brain_id}")
 
 
 class Agent:
@@ -88,7 +86,6 @@ class Task:
 def run_task(task: Task) -> None:
     config = task.config
     agent = task.agent
-    config.logger.info(f"Running {config.current_mode} task")
 
     for mode in config.modes:
         config.current_mode = mode
@@ -100,7 +97,12 @@ def run_task(task: Task) -> None:
             with agent.body.embed(agent.env, config) as body_interface:
                 # brain.train() or brain.test()
                 getattr(agent.brain, mode)(body_interface, config)
-
+                config.logger.info(f"Closing Environment...")
+        except ConnectionResetError as e:
+            config.logger.error(
+                "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
+            )
+            raise e
         except Exception as e:
             config.logger.exception(f"{mode} env failed: {str(e)}")
             raise e

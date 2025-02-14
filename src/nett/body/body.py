@@ -122,13 +122,7 @@ class Body:
         wrappers = self.wrappers
         record_eps = self.record_eps
         seed_list = range(config.n_parallel_envs)
-        try:
-            return SubprocVecEnv([seed_callback(env, seed, wrappers, record_eps) for seed in seed_list])
-        except ConnectionResetError as e:
-            config.logger.error(
-                "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
-            )
-            raise e
+        return SubprocVecEnv([seed_callback(env, seed, wrappers, record_eps) for seed in seed_list])
 
     def __enter__(self) -> VecEnv:
         """return env at beginning of `with` statement"""
