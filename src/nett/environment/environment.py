@@ -51,9 +51,12 @@ from .utils import (
 class Environment:
     # Class Variables
     executable_path: Path  # the path to the Unity executable file
+    num_test_conditions: int  # the number of test conditions
+    conditions: list[str]  # the imprinting conditions to run
     multiagent: bool  # whether the environment is multiagent
     base_args: dict[str, list]  # the base arguments to pass to the Unity environment
     multiobs: bool  # whether the environment passes multiple observations to the agent
+    env: UnityEnvironment # the Unity environment
 
     def __init__(
         self,

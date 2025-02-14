@@ -23,10 +23,6 @@ from stable_baselines3.common.vec_env.base_vec_env import VecEnv
 from stable_baselines3.common.env_checker import check_env
 
 from ..utils.task import TaskConfig
-
-
-import gymnasium as gym
-
 from .utils import validate_wrappers
 
 

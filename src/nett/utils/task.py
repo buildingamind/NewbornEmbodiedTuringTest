@@ -5,14 +5,62 @@ from pathlib import Path
 from typing import Optional
 
 
-class Task:
-    """Holds information for a task
+class TaskConfig:
+    """TaskConfig class for holding and creating tasks"""
 
-    Args:
-        brain_id (int): id for the brain
-        condition (str): condition for the task
-        estimate_memory (bool, optional): whether to estimate memory usage. Defaults to False.
-    """
+    device: int
+    current_mode: str
+    brain_id: int
+    condition: str
+    modes: list[str]
+    n_parallel_envs: int
+    memory: Optional[float]
+    path: Path
+    logger: logging.Logger
+
+    def __init__(
+        self,
+        brain_id: int,
+        condition: str,
+        output_dir: Path,
+        modes: list[str],
+        n_parallel_envs: int,
+        memory: Optional[float] = None,
+    ):
+        self.brain_id = brain_id
+        self.condition = condition
+        self.modes = modes
+        self.n_parallel_envs = n_parallel_envs
+        self.memory = memory
+        self.path = output_dir.joinpath(condition, f"brain_{brain_id}")
+        self.logger = logging.getLogger(
+            f"nett.task-{condition}-{brain_id}"
+        )
+
+
+class Agent:
+    """Agent class for running tasks in parallel"""
+
+    brain: "Brain"
+    body: "Body"
+    env: "Environment"
+
+    def __init__(
+        self,
+        brain: "Brain",
+        body: "Body",
+        env: "Environment",
+    ):
+        self.brain = brain
+        self.body = body
+        self.env = env
+
+
+class Task:
+    """Holds information for a task"""
+
+    config: TaskConfig
+    agent: Agent
 
     def __init__(
         self,
@@ -34,46 +82,6 @@ class Task:
 
     def set_device(self, device: int) -> None:
         self.config.device = device
-
-
-class TaskConfig:
-    """TaskConfig class for holding and creating tasks"""
-
-    device: int
-    current_mode: str
-
-    def __init__(
-        self,
-        brain_id: int,
-        condition: str,
-        output_dir: Path,
-        modes: list[str],
-        n_parallel_envs: int,
-        memory: Optional[float] = None,
-    ):
-        self.brain_id = brain_id
-        self.condition = condition
-        self.modes = modes
-        self.n_parallel_envs = n_parallel_envs
-        self.memory = memory
-        self.path: Path = output_dir.joinpath(condition, f"brain_{brain_id}")
-        self.logger: logging.Logger = logging.getLogger(
-            f"nett.task-{condition}-{brain_id}"
-        )
-
-
-class Agent:
-    """Agent class for running tasks in parallel"""
-
-    def __init__(
-        self,
-        brain: "Brain",
-        body: "Body",
-        env: "Environment",
-    ):
-        self.brain = brain
-        self.body = body
-        self.env = env
 
 
 # Split up task into BBE and else

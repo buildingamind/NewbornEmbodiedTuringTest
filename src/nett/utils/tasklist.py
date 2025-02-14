@@ -10,6 +10,10 @@ from .task import Task
 
 
 class TaskList:
+    brain_env_combinations: product[tuple[int, str]]
+    n_tasks: int
+    current: int
+    tasks: list[Task]
 
     def __init__(
         self,

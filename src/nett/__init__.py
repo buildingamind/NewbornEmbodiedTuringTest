@@ -22,17 +22,6 @@ import logging
 # release version
 from ._version import __version__
 
-# simplify imports
-# from .nett import NETT
-from .environment.utils import list_conditions
-from .body.utils.validate import list_wrappers
-from .brain.utils.validate import (
-    list_algorithms,
-    list_encoders,
-    list_policies,
-    list_rewards,
-)
-
 # set up logging
 logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=logging.INFO)
 logger = logging.getLogger("nett")
@@ -57,4 +46,13 @@ for tmp_dir in [
                 f"Error: '{tmp_dir}' does not have correct permissions and cannot be changed. If you have superuser access, you can run the following command to change the permissions: 'sudo chmod 1777 {tmp_dir}'. Otherwise, request {os.stat(tmp_dir).st_uid} to run 'chmod 1777 {tmp_dir}'."
             )
 
+# simplify imports
 from .nett import NETT
+from .environment.utils import list_conditions
+from .body.utils.validate import list_wrappers
+from .brain.utils.validate import (
+    list_algorithms,
+    list_encoders,
+    list_policies,
+    list_rewards,
+)

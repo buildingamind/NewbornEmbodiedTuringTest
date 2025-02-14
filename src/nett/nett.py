@@ -2,7 +2,7 @@
 This module contains the NETT class, which is the main class for training, testing and analyzing brains in environments.
 
 .. module:: nett
-   :synopsis: Main class for training, testing and analyzing brains in environments.
+    :synopsis: Main class for training, testing and analyzing brains in environments.
 """
 
 import logging
@@ -14,14 +14,10 @@ import yaml
 import shutil
 from concurrent.futures import Future, wait as future_wait
 
-from .brain.brain import Brain
-from .body.body import Body
-from .environment.environment import Environment
-from .utils.executor import Executor
-from .utils.tasklist import TaskList
-from .utils.task import Task, TaskConfig, run_task
-from .utils.memory import MemoryManager
-from .utils.validate import validate_config
+from .brain import Brain
+from .body import Body
+from .environment import Environment
+from .utils import Executor, TaskList, Task, TaskConfig, run_task, MemoryManager, validate_config
 
 
 JobTooBigError = ValueError(
@@ -31,53 +27,60 @@ JobTooBigError = ValueError(
 
 class NETT:
     """
-    The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a YAML file containing the configuration.
-
-    A NETT configuration consists of the following sections:
-    - Brain: Defines the agent brain, such as the policy and encoder networks and the training/testing parameters. A valid parameters are those for :func:`~nett.brain.brain`
-    - Body: Defines the agent body.
-    - Environment: Defines the Unity environment.
-    - Run: Contains the run settings.
+    The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a JSON or YAML file containing the configuration.
 
     Args:
         config
 
-    Examples:
+    Example:
         >>> from nett import NETT
-        >>> benchmark = NETT('./config.yaml')
-        >>> benchmark.run(output_dir="path/to/output/directory", num_brains=2, mode="full")
-
-        >>> from nett import NETT
-        >>> benchmark = NETT(config={
-        >>>     "Environment": {
-        >>>         "executable_path": "path/to/executable.x86_64",
-                    "record_eps": {"train": 10, "test": 10}
-                }
-        >>> })
-        >>>
-        >>> benchmark.update({
-        >>>     "Brain": {
+        >>> experiment1_config = {
+        >>>     "name": "Experiment1",
+        >>>     "episodes": {
+        >>>         "train": 5000,
+        >>>         "test": 20
+        >>>     }
+        >>>     "steps_per_episode": 200,
+        >>>     "num_brains": 5,
+        >>>     "brain": {
         >>>         "policy": "CnnPolicy",
         >>>         "algorithm": "PPO",
         >>>         "encoder": "small",
         >>>         "reward": "supervised"
         >>>     },
-        >>>     "Body": {
+        >>>     "body": {
         >>>         "wrappers": ["dvs"],
         >>>         "record_eps": {"train": 10, "test": 10}
         >>>     }
+        >>>     "environment": {
+        >>>         "executable_path": "path/to/executable.x86_64",
+        >>>         "record_eps": {"train": 10, "test": 10}
+        >>>     }
         >>> })
+        >>> experiment2_config = './experiment2_config.json'
+        >>> experiment3_config = './experiment3_config.yaml'
         >>>
         >>> # run the benchmark
-        >>> benchmark.run(output_dir="path/to/output/directory", num_brains=2, mode="full")
+        >>> benchmark = NETT(config=[experiment1_config, experiment2_config, experiment3_config])
+        >>> benchmark.run(output_dir="path/to/output/directory", devices=[0,1,2], num_threads=32)
     """
 
-    logger: logging.Logger
+    output_path: Path
+    num_threads: int
+    devices: list[int]
+    task_sheet: dict[Future, TaskConfig]
+    waitlist: list[Task]
+    memory_manager: MemoryManager
+    free_device_memory: dict[int, float]
     configs: list[dict] = []
-    logger = logging.getLogger("nett.NETT")
+    logger: logging.Logger = logging.getLogger("nett.NETT")
 
     def __init__(self, config: Path | str | dict | list[Path | str | dict]) -> None:
-        """Initialize the NETT class."""
+        """Initialize the NETT class.
+
+        Args:
+            config (Path | str | dict): The configuration for the benchmark. It can be a path to a YAML file, a dictionary, or a list of paths to YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
+        """
 
         try:
             if not isinstance(config, list):
@@ -101,6 +104,21 @@ class NETT:
         num_threads: Optional[int] = None,
         verbose: int = True,
     ) -> list[Future]:
+        """
+        Run the training and testing of the brains in the environment.
+
+        Args:
+            output_path (Path | str, optional): The directory where the run results will be stored. Defaults to ".".
+            devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to None.
+            num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to None. If None, the number of threads is equal to the number of cpu cores.
+            verbose (int, optional): Whether or not to print info statements. Defaults to True.
+
+        Returns:
+            list[Future]: A list of futures representing the jobs that have been launched.
+
+        Example:
+            >>> task_sheet = benchmarks.run(output_dir="./test_run", devices=[0,1,2], num_threads=32, verbose=True) # benchmarks is an instance of NETT
+        """
         # get the output directory
         self.output_path = Path(output_path).resolve()
         self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
@@ -115,19 +133,19 @@ class NETT:
             self.num_threads = int(self.num_threads / test_config_count)
 
         # initialize task sheet
-        self.task_sheet: dict[Future, TaskConfig] = {}
-        self.waitlist: list[Task] = []
+        self.task_sheet = {}
+        self.waitlist = []
 
         # initialize NVIDIA memory management
         # self.memory_manager = MemoryManager()
         with MemoryManager() as self.memory_manager:
 
             # validate devices
-            self.devices: list[int] = self.memory_manager.validate_devices(devices)
+            self.devices = self.memory_manager.validate_devices(devices)
             self.logger.info(f"Devices that will be used: {self.devices}")
 
             # get the free memory status for each device
-            self.free_device_memory: dict[int, float] = {
+            self.free_device_memory = {
                 device: self.memory_manager.get_free_memory(device)
                 for device in self.devices
             }
@@ -140,7 +158,7 @@ class NETT:
 
                 try:
                     for config in self.configs:
-                        self._single_run(**config)
+                        self.single_run(**config)
 
                     self.task_waiter()
                     future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
@@ -156,7 +174,7 @@ class NETT:
                     self.logger.exception(f"Error in launching jobs: {e}")
                     raise e
 
-    def _single_run(
+    def single_run(
         self,
         name: str,
         environment: dict,
@@ -172,21 +190,14 @@ class NETT:
         Run the training and testing of the brains in the environment.
 
         Args:
-            output_dir (Path | str): The directory where the run results will be stored.
+            name (str): The name of the run. This will be used to create a directory with the same name in the output path.
+            environment (dict): The environment configuration. See :func:`~nett.environment.environment.Environment` for valid parameters.
+            body (dict, optional): The body configuration. Defaults to {}. See :func:`~nett.body.body.Body` for valid parameters.
+            brain (dict, optional): The brain configuration. Defaults to {}. See :func:`~nett.brain.brain.Brain` for valid parameters.
+            episodes (dict[str, int], optional): The number of episodes the brains are to be trained and tested for. Defaults to {"train": 5000, "test": 100}.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
             num_brains (int, optional): The number of brains to be trained and tested. Defaults to 1.
-            mode (str, optional): The mode in which the brains are to be trained and tested. It can be "train", "test", or "full". Defaults to "full".
-            train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
-            test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
-            batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            devices (list[int], optional): The list of devices to be used for training and testing. If None, all available devices will be used. Defaults to None.
-            job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
-            verbose (int, optional): Whether or not to print info statements. Defaults to True.
-            save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
-            checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
-            record_training (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
-            record_testing (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view, "chamber" for recording the top-down view of the chamber, and "state" for recording the observations, actions, and states.
-            recording_eps (int, optional): Number of episodes to record for. Defaults to 10.
+            task_memory (str | int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to "auto".
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -237,7 +248,6 @@ class NETT:
             steps_per_episode,
             base_brain.supervised,
             base_body.multiobs,
-            getattr(base_brain, "n_parallel_envs", 1),
         )
 
         ############### Run ################
@@ -276,7 +286,6 @@ class NETT:
 
         for task in tasklist:  # multi
             self._assign_task(task)
-
 
     """
     waitlist = [(task, memory_use), ...]
@@ -394,32 +403,3 @@ class NETT:
         return memory_use
 
     #####################
-
-    def update(self, supplementary_config: Path | str | dict | list[Path | str | dict]):
-        """
-        Update the current configuration with a supplementary configuration.
-
-        Args:
-            supplementary_config (Path | str | dict): The supplementary configuration to update the current configuration with.
-
-        Example:
-            >>> benchmarks.update(supplementary_config="./supplementary_config.yaml")
-        """
-        try:
-
-            if not isinstance(supplementary_config, list):
-                supplementary_config = [supplementary_config]
-
-            for conf in supplementary_config:
-                if isinstance(conf, dict):
-                    self.configs.append(supplementary_config)
-                elif isinstance(supplementary_config, (str, Path)):
-                    with open(supplementary_config, "r") as file:
-                        self.configs.append(yaml.safe_load(file))
-        except Exception as e:
-            self.logger.exception("Error in loading supplementary config")
-            raise e
-
-        self.logger.info(
-            "Extended the current configuration with the supplementary configuration."
-        )
