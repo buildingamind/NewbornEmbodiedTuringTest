@@ -131,7 +131,7 @@ class Environment:
 
         # check if vec env is being run in parallel
         if seed is not None:
-            logger = config.logger.getChild(seed)
+            logger = config.logger.getChild(str(seed))
         else:
             logger = config.logger
             seed = config.brain_id

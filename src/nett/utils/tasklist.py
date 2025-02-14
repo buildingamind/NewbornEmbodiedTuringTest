@@ -3,9 +3,9 @@
 from itertools import product
 from pathlib import Path
 
-from nett.body.body import Body
-from nett.brain.brain import Brain
-from nett.environment.environment import Environment
+from ..body import Body
+from ..brain import Brain
+from ..environment import Environment
 from .task import Task
 
 

@@ -162,14 +162,6 @@ class NETT:
 
                     self.task_waiter()
                     future_wait(self.task_sheet, return_when="ALL_COMPLETED")  # mutli
-                    for future in self.task_sheet:
-                        try:
-                            result = future.result()
-                        except Exception as e:
-                            print("exception = ", e)
-                        else:
-                            print("result = ", result)
-                            print("state=", future._state)
                 except Exception as e:
                     self.logger.exception(f"Error in launching jobs: {e}")
                     raise e
@@ -286,27 +278,6 @@ class NETT:
 
         for task in tasklist:  # multi
             self._assign_task(task)
-
-    """
-    waitlist = [(task, memory_use), ...]
-    executor.submit (task_waiter)
-
-    def task_waiter():
-    memory_available = {device: 0 for device in devices}
-    wait task_sheet FIRST_COMPLETED
-
-    UnLock self.task_sheet
-    free_device, free_memory = self.task_sheet.pop(done_future)
-    memory_available[free_device] += free_memory
-    complete = False
-    for task, memory_use in waitlist:
-        if memory_use <= memory_available[free_device]:
-            self.task_sheet[task_future] = (free_device, memory_use)
-            memory_available[free_device] -= memory_use
-            break
-
-    Lock self.task_sheet
-    """
 
     def task_waiter(self):
         if len(self.waitlist) > 0:
