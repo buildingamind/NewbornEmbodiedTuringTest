@@ -1,25 +1,23 @@
 """TaskList class for holding and creating tasks"""
 
+from typing import Iterable
 from itertools import product
 from pathlib import Path
 
-from ..body import Body
-from ..brain import Brain
-from ..environment import Environment
 from .task import Task
 
 
 class TaskList:
-    brain_env_combinations: product[tuple[int, str]]
+    brain_env_combinations: Iterable[tuple[int, str]]
     n_tasks: int
     current: int
     tasks: list[Task]
 
     def __init__(
         self,
-        brain: Brain,
-        body: Body,
-        env: Environment,
+        brain: "Brain",
+        body: "Body",
+        env: "Environment",
         num_brains: int,
         conditions: list[str],
         output_dir: Path,

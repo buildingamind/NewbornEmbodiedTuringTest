@@ -47,7 +47,6 @@ for tmp_dir in [
             )
 
 # simplify imports
-from .nett import NETT
 from .environment.utils import list_conditions
 from .body.utils.validate import list_wrappers
 from .brain.utils.validate import (
@@ -56,3 +55,4 @@ from .brain.utils.validate import (
     list_policies,
     list_rewards,
 )
+from .nett import NETT
