@@ -1,4 +1,6 @@
 Brain
 =====
 
-.. automodule:: nett.brain.brain
+.. autoclass:: nett.brain.Brain
+
+

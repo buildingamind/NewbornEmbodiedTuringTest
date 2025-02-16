@@ -3,10 +3,6 @@ Represents the body of an agent in an environment.
 
 The body determines how observations from the environment are processed before they reach the brain.
 It can apply wrappers to modify the observations and provide a different perception to the brain.
-
-Args:
-    wrappers (list[Wrapper | str], optional): List of wrappers to be applied to the environment. Defaults to [].
-    record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the agent's perspective for each mode (train and test). Defaults to {"train": 0, "test": 0}.
 """
 
 from ..environment.environment import Environment
@@ -26,8 +22,13 @@ from stable_baselines3.common.env_checker import check_env
 from ..utils.task import TaskConfig
 from .utils import validate_wrappers
 
+
 def _load_env(
-    env: Environment, config: TaskConfig, wrappers: list, validation_mode: bool, seed: Optional[int] = None
+    env: Environment,
+    config: TaskConfig,
+    wrappers: list,
+    validation_mode: bool,
+    seed: Optional[int] = None,
 ) -> gym.Env:
     loaded_env = env.load(config, validation_mode, seed)
 
@@ -42,7 +43,10 @@ def _load_env(
 
     return loaded_env
 
-def _record_wrapper(env: gym.Env, config: TaskConfig, record_eps: dict, seed: int = 0) -> gym.Env:
+
+def _record_wrapper(
+    env: gym.Env, config: TaskConfig, record_eps: dict, seed: int = 0
+) -> gym.Env:
     record_episodes = record_eps.get(config.current_mode, 0)
     if config.current_mode == "test":
         record_episodes /= config.n_parallel_envs
@@ -54,10 +58,17 @@ def _record_wrapper(env: gym.Env, config: TaskConfig, record_eps: dict, seed: in
             episode_trigger=record_ep_cb,
             name_prefix=f"agent{seed}_",
         )
-    config.logger.info('Finished recording wrapper')
+    config.logger.info("Finished recording wrapper")
     return env
 
+
 class Body:
+    """
+    Args:
+        wrappers (list[Wrapper | str], optional): List of wrappers to be applied to the environment. Defaults to `[]`.
+        record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the agent's perspective for each mode (train and test). Defaults to `{"train": 0, "test": 0}`.
+    """
+
     multiobs: bool
     wrappers: list[gym.Wrapper]
     record_eps: dict
@@ -122,7 +133,9 @@ class Body:
         wrappers = self.wrappers
         record_eps = self.record_eps
         seed_list = range(config.n_parallel_envs)
-        return SubprocVecEnv([seed_callback(env, seed, wrappers, record_eps) for seed in seed_list])
+        return SubprocVecEnv(
+            [seed_callback(env, seed, wrappers, record_eps) for seed in seed_list]
+        )
 
     def __enter__(self) -> VecEnv:
         """return env at beginning of `with` statement"""

@@ -38,7 +38,7 @@ class NETT:
     The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a JSON or YAML file containing the configuration.
 
     Args:
-        config
+        config (Path | str | dict): The configuration for the benchmark. It can be a path to a YAML file, a dictionary, or a list of paths to YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
 
     Example:
         >>> from nett import NETT
@@ -84,11 +84,7 @@ class NETT:
     logger: logging.Logger = logging.getLogger("nett.NETT")
 
     def __init__(self, config: Path | str | dict | list[Path | str | dict]) -> None:
-        """Initialize the NETT class.
-
-        Args:
-            config (Path | str | dict): The configuration for the benchmark. It can be a path to a YAML file, a dictionary, or a list of paths to YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
-        """
+        """Initialize the NETT class."""
 
         try:
             if not isinstance(config, list):
@@ -116,10 +112,10 @@ class NETT:
         Run the training and testing of the brains in the environment.
 
         Args:
-            output_path (Path | str, optional): The directory where the run results will be stored. Defaults to ".".
-            devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to None.
-            num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to None. If None, the number of threads is equal to the number of cpu cores.
-            verbose (int, optional): Whether or not to print info statements. Defaults to True.
+            output_path (Path | str, optional): The directory where the run results will be stored. Defaults to `"."`.
+            devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to `None`.
+            num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to `None`. If None, the number of threads is equal to the number of cpu cores.
+            verbose (int, optional): Whether or not to print info statements. Defaults to `True`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -194,13 +190,13 @@ class NETT:
 
         Args:
             name (str): The name of the run. This will be used to create a directory with the same name in the output path.
-            environment (dict): The environment configuration. See :func:`~nett.environment.environment.Environment` for valid parameters.
-            body (dict, optional): The body configuration. Defaults to {}. See :func:`~nett.body.body.Body` for valid parameters.
-            brain (dict, optional): The brain configuration. Defaults to {}. See :func:`~nett.brain.brain.Brain` for valid parameters.
-            episodes (dict[str, int], optional): The number of episodes the brains are to be trained and tested for. Defaults to {"train": 5000, "test": 100}.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 200.
-            num_brains (int, optional): The number of brains to be trained and tested. Defaults to 1.
-            task_memory (str | int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to "auto".
+            environment (dict): The environment configuration. See :func:`~nett.environment.Environment` for valid parameters.
+            body (dict): The body configuration. Defaults to `{}`. See :func:`~nett.body.Body` for valid parameters.
+            brain (dict): The brain configuration. Defaults to `{}`. See :func:`~nett.brain.Brain` for valid parameters.
+            episodes (dict[str, int]): The number of episodes the brains are to be trained and tested for. Defaults to `{"train": 5000, "test": 100}`.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
+            num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
+            task_memory (str | int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.

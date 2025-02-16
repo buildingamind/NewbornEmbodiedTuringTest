@@ -2,21 +2,6 @@
 Represents the brain of an agent.
 
 The brain is made up of an encoder, policy, algorithm, reward function, and the hyperparameters determined for these components such as the batch and buffer sizes. It produces a trained model based on the environment data and the inputs received by the brain through the body.
-
-Args:
-    encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small".
-    policy (str | BasePolicy): The network used for defining the value and action networks. Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `nett.list_policies` :func:`~nett.nett.list_policies`. Defaults to "CnnPolicy".
-    algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model. Must be either a string pointing to an already implemented algorithm or a custom algorithm class that inherits from Stable-Baselines3 BaseAlgorithm. For a list of available algorithms, run `nett.list_algorithms` :func:`~nett.nett.list_algorithms`. Defaults to "PPO".
-    reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "supervised".
-    embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
-    batch_size (int): The batch size used for training. Defaults to 512.
-    buffer_size (int): The buffer size used for training. Defaults to 2048.
-    ent_coef (int): Entropy coefficient. Defaults to 0.
-    checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
-    train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
-    custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
-    custom_policy_arch (list[int|dict[str,list[int]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
-    reward_args (dict[str, Any]): Arguments for the encoder. Defaults to {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}.
 """
 
 import inspect
@@ -82,6 +67,23 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
 
 
 class Brain:
+    """
+    Args:
+        encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small".
+        policy (str | BasePolicy): The network used for defining the value and action networks. Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `nett.list_policies` :func:`~nett.nett.list_policies`. Defaults to "CnnPolicy".
+        algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model. Must be either a string pointing to an already implemented algorithm or a custom algorithm class that inherits from Stable-Baselines3 BaseAlgorithm. For a list of available algorithms, run `nett.list_algorithms` :func:`~nett.nett.list_algorithms`. Defaults to "PPO".
+        reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "supervised".
+        embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
+        batch_size (int): The batch size used for training. Defaults to 512.
+        buffer_size (int): The buffer size used for training. Defaults to 2048.
+        ent_coef (int): Entropy coefficient. Defaults to 0.
+        checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
+        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
+        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
+        custom_policy_arch (list[int|dict[str,list[int]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
+        reward_args (dict[str, Any]): Arguments for the encoder. Defaults to {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}.
+    """
+
     def __init__(
         self,
         encoder: str | type[BaseFeaturesExtractor] = "small",
@@ -155,7 +157,9 @@ class Brain:
                     episodes["test"] / max_envs
                 )
 
-    def train(self, envs: VecEnv, config: TaskConfig): # logger, device, seed, path, memory
+    def train(
+        self, envs: VecEnv, config: TaskConfig
+    ):
         """Train the brain."""
         config.logger.info(
             f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
@@ -240,7 +244,7 @@ class Brain:
         _save_model(model, model_path)
         config.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, config: TaskConfig): # logger, path, device, 
+    def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
         try:
             config.logger.info(f"Testing with {self.algorithm.__name__}")
@@ -255,7 +259,8 @@ class Brain:
 
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
-                config.path / "model" / "latest_model.zip", device=f"cuda:{config.device}"
+                config.path / "model" / "latest_model.zip",
+                device=f"cuda:{config.device}",
             )
 
             # loop over episodes

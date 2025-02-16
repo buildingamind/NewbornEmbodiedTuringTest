@@ -6,13 +6,6 @@ It accepts a Unity Executable and wraps it around as a Gym environment by levera
 class from the mlagents_envs library.
 
 It provides a convenient interface for interacting with the Unity environment and includes methods for initializing the environment, rendering frames, taking steps, resetting the environment, and logging messages.
-
-Args:
-    executable_path (str): The path to the Unity executable file.
-    conditions (list[str]): A list of imprinting conditions to run. If None, all available imprinting conditions will be run. For a list of available imprinting condtions from an executable, run `nett.list_conditions` :func:`~nett.nett.list_conditions`. Defaults to None.
-    record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the entire chamber for each mode (train and test). Defaults to {"train": 0, "test": 0}
-    multiagent (bool): Flag to indicate if environment is a multiagent environment (beta). Defaults to False.
-    display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to None.
 """
 
 import copy
@@ -49,6 +42,15 @@ from .utils import (
 
 
 class Environment:
+    """
+    Args:
+        executable_path (str): The path to the Unity executable file.
+        conditions (list[str], optional): A list of imprinting conditions to run. If None, all available imprinting conditions will be run. For a list of available imprinting condtions from an executable, run `nett.list_conditions` :func:`~nett.nett.list_conditions`. Defaults to `None`.
+        record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the entire chamber for each mode (train and test). Defaults to `{"train": 0, "test": 0}`
+        multiagent (bool): Flag to indicate if environment is a multiagent environment (beta). Defaults to `False`.
+        display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to `None`.
+    """
+
     # Class Variables
     executable_path: Path  # the path to the Unity executable file
     num_test_conditions: int  # the number of test conditions
@@ -56,7 +58,7 @@ class Environment:
     multiagent: bool  # whether the environment is multiagent
     base_args: dict[str, list]  # the base arguments to pass to the Unity environment
     multiobs: bool  # whether the environment passes multiple observations to the agent
-    env: UnityEnvironment # the Unity environment
+    env: UnityEnvironment  # the Unity environment
 
     def __init__(
         self,
@@ -189,7 +191,11 @@ class Environment:
                 logger.exception(f"Error initializing environment: {e}")
                 raise e
 
-        return ZooWrapper(env, seed) if self.multiagent else GymWrapper(env, seed, self.multiobs)
+        return (
+            ZooWrapper(env, seed)
+            if self.multiagent
+            else GymWrapper(env, seed, self.multiobs)
+        )
 
 
 class BaseWrapper:
