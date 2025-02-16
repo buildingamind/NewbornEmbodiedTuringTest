@@ -38,7 +38,7 @@ class NETT:
     The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a JSON or YAML file containing the configuration.
 
     Args:
-        config (Path | str | dict): The configuration for the benchmark. It can be a path to a YAML file, a dictionary, or a list of paths to YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
+        config (Path | str | dict): The configuration for the benchmark. It can be a path to a JSON or YAML file, a dictionary, or a list of paths to JSON/YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
 
     Example:
         >>> from nett import NETT
