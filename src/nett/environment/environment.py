@@ -169,7 +169,7 @@ class Environment:
         log_path.mkdir(exist_ok=True, parents=True)
         side_channels = [
             Logger(
-                f"{config.current_mode}_{config.condition}_{config.brain_id}_{config.current_mode}",
+                f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}",
                 log_dir=str(log_path),
             )
         ]
