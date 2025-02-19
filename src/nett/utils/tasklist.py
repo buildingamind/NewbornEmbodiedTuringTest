@@ -1,5 +1,6 @@
 """TaskList class for holding and creating tasks"""
 
+from multiprocessing import SimpleQueue
 from typing import Iterable
 from itertools import product
 from pathlib import Path
@@ -22,6 +23,7 @@ class TaskList:
         conditions: list[str],
         output_dir: Path,
         modes: list[str],
+        queue: SimpleQueue,
         memory: float,
     ):
         self.brain_env_combinations = product(range(1, num_brains + 1), conditions)
@@ -30,7 +32,7 @@ class TaskList:
         self.current = 0
 
         self.tasks = [
-            Task(brain, body, env, brain_id, condition, output_dir, modes, memory)
+            Task(brain, body, env, brain_id, condition, output_dir, modes, queue, memory)
             for brain_id, condition in self.brain_env_combinations
         ]
 

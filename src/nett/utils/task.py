@@ -1,6 +1,7 @@
 """Task class for holding information for each task to run"""
 
 import logging
+from multiprocessing import SimpleQueue
 from pathlib import Path
 from typing import Optional
 
@@ -14,7 +15,9 @@ class TaskConfig:
     condition: str
     modes: list[str]
     n_parallel_envs: int
+    queue: SimpleQueue
     memory: Optional[float]
+    name: str
     path: Path
     logger: logging.Logger
 
@@ -25,13 +28,16 @@ class TaskConfig:
         output_dir: Path,
         modes: list[str],
         n_parallel_envs: int,
+        queue: SimpleQueue,
         memory: Optional[float] = None,
     ):
         self.brain_id = brain_id
         self.condition = condition
         self.modes = modes
         self.n_parallel_envs = n_parallel_envs
+        self.queue = queue
         self.memory = memory
+        self.name = output_dir.stem
         self.path = output_dir.joinpath(condition, f"brain_{brain_id}")
         self.logger = logging.getLogger(f"nett.task-{condition}-{brain_id}")
 
@@ -69,12 +75,13 @@ class Task:
         condition: str,
         output_dir: Path,
         modes: list[str],
+        queue: SimpleQueue,
         memory: Optional[float] = None,
     ) -> None:
         """initialize task"""
         n_parallel_envs = getattr(brain, "n_parallel_envs", 1)
         self.config = TaskConfig(
-            brain_id, condition, output_dir, modes, n_parallel_envs, memory
+            brain_id, condition, output_dir, modes, n_parallel_envs, queue, memory
         )
         self.agent = Agent(brain, body, env)
 

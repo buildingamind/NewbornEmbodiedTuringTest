@@ -157,9 +157,7 @@ class Brain:
                     episodes["test"] / max_envs
                 )
 
-    def train(
-        self, envs: VecEnv, config: TaskConfig
-    ):
+    def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
         config.logger.info(
             f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
@@ -215,10 +213,13 @@ class Brain:
         callback_list = self._init_callbacks(envs, config)
 
         # train
-        config.logger.info(f"Total number of training steps: {self.train_iterations}")
+        total_timesteps = (
+            self.buffer_size if config.memory is None else self.train_iterations
+        )
+        config.logger.info(f"Total number of training steps: {total_timesteps}")
         try:
             model.learn(
-                total_timesteps=self.train_iterations,
+                total_timesteps=total_timesteps,
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
                 callback=callback_list,
@@ -234,15 +235,13 @@ class Brain:
         config.logger.info("Training Complete")
 
         # nothing else is needed for memory estimation
-        if config.memory is None:
-            return
-
-        # save
-        ## create save directory
-        config.logger.info(f"Saving model...")
-        model_path = config.path / "model"
-        _save_model(model, model_path)
-        config.logger.info(f"Saved model at {model_path}")
+        if config.memory is not None:
+            # save
+            ## create save directory
+            config.logger.info(f"Saving model...")
+            model_path = config.path / "model"
+            _save_model(model, model_path)
+            config.logger.info(f"Saved model at {model_path}")
 
     def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
@@ -302,17 +301,15 @@ class Brain:
         if config.memory is None:
             callback_list.extend(
                 [
-                    cb.LoadingBarCallback("Estimating Memory Usage", self.buffer_size),
+                    cb.LoadingBarCallback(
+                        f"Estimating Memory Usage for {config.name}", config.queue
+                    ),  # , self.buffer_size),
                     cb.MemoryCallback(config.device, save_path=config.path),
                 ]
             )
         else:
             # creates the parallel progress bars
-            callback_list.append(
-                cb.LoadingBarCallback(
-                    f"Training: ", self.n_tasks * self.train_iterations
-                )
-            )
+            callback_list.append(cb.LoadingBarCallback(config.name, config.queue))
 
             if self.checkpoint_freq is not None:
                 callback_list.append(

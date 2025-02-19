@@ -5,6 +5,7 @@ Classes:
     HParamCallback(BaseCallback)
 """
 
+from multiprocessing import SimpleQueue
 from pathlib import Path
 import sys
 import torch as th
@@ -15,6 +16,7 @@ from stable_baselines3.common.logger import HParam
 from stable_baselines3.common.base_class import BaseAlgorithm
 
 from ...utils.memory import MemoryManager
+from ...utils.loading_bar_queue import LoadingBarQueue
 
 # from nett.utils.performance import compute_train_performance
 
@@ -54,40 +56,19 @@ class LoadingBarCallback(BaseCallback):
     Display a progress bar when training SB3 agent using tqdm
     """
 
-    def __init__(self, label: str, num_steps: int = None) -> None:
+    def __init__(self, label: str, queue: SimpleQueue) -> None:
         super().__init__()
         # label to prefix the progress bar
         self.label = label
-        # progress bar object
-        self.pbar = None
-        # number of steps to be done
-        self.num_steps = num_steps
 
-    def _on_training_start(self) -> None:
-        # if num_steps is None, this means that memory estimation is being done, so the length of a single rollout will be used
-        num_steps = self.num_steps
-        # Initialize progress bar
-        # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(
-            total=(num_steps),
-            position=0,
-            dynamic_ncols=True,
-            desc=self.label,
-            file=sys.stdout,
-            leave=True,
-            mininterval=1.0,
-        )
-        pass
+        # queue to communicate with the loading bar process
+        self.bar_queue = queue
 
     def _on_step(self) -> bool:
         # Update progress bar, we do num_envs steps per call to `env.step()`
-        self.pbar.update(self.training_env.num_envs)
+        # self.pbar.update(self.training_env.num_envs)
+        self.bar_queue.put((self.label, self.training_env.num_envs))
         return True
-
-    def _on_training_end(self) -> None:
-        self.pbar.refresh()
-        self.pbar.close()
-        pass
 
 
 class MemoryCallback(BaseCallback):

@@ -7,8 +7,10 @@ This module contains the NETT class, which is the main class for training, testi
 
 import logging
 import json
+from multiprocessing import Process
 import os
 from pathlib import Path
+import time
 from typing import Optional
 import yaml
 import shutil
@@ -19,6 +21,8 @@ from .body import Body
 from .environment import Environment
 from .utils import (
     Executor,
+    LoadingBarQueue,
+    updateLoadingBars,
     TaskList,
     Task,
     TaskConfig,
@@ -38,10 +42,11 @@ class NETT:
     The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a JSON or YAML file containing the configuration.
 
     Args:
-        config (Path | str | dict): The configuration for the benchmark. It can be a path to a JSON or YAML file, a dictionary, or a list of paths to JSON/YAML files or dictionaries. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
+        configs (list[Path | str | dict]): The configurations for each benchmark. Each member can be a path to a JSON or YAML file or a dictionary. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
 
     Example:
         >>> from nett import NETT
+        >>>
         >>> experiment1_config = {
         >>>     "name": "Experiment1",
         >>>     "episodes": {
@@ -65,6 +70,7 @@ class NETT:
         >>>         "record_eps": {"train": 10, "test": 10}
         >>>     }
         >>> })
+        >>>
         >>> experiment2_config = './experiment2_config.json'
         >>> experiment3_config = './experiment3_config.yaml'
         >>>
@@ -79,24 +85,21 @@ class NETT:
     task_sheet: dict[Future, TaskConfig]
     waitlist: list[Task]
     memory_manager: MemoryManager
+    loading_bar: LoadingBarQueue
     free_device_memory: dict[int, float]
     configs: list[dict] = []
     logger: logging.Logger = logging.getLogger("nett.NETT")
 
-    def __init__(self, config: Path | str | dict | list[Path | str | dict]) -> None:
+    def __init__(self, configs: list[Path | str | dict]) -> None:
         """Initialize the NETT class."""
 
         try:
-            if not isinstance(config, list):
-                config = [config]
-
-            self.logger.info("Validating configs")
+            self.logger.info("Validating configs...")
             with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
                 schema: dict = json.load(file)
 
-            for config_instance in config:
-                valid_config = validate_config(config_instance, schema)
-                self.configs.append(valid_config)
+            self.configs = [validate_config(conf, schema) for conf in configs]
+            self.logger.info("Configs validated")
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e
@@ -107,6 +110,7 @@ class NETT:
         devices: Optional[list[int]] = None,
         num_threads: Optional[int] = None,
         verbose: int = True,
+        asynchronous: bool = False,
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -159,19 +163,32 @@ class NETT:
             with Executor(verbose) as self.executor:
                 # run tasks
                 self.logger.info("Launching...")
-                try:
-                    for config in self.configs:
-                        self.single_run(**config)
-
-                    self.task_waiter()
-                except ConnectionResetError as e:
-                    self.logger.error(
-                        "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
+                with LoadingBarQueue() as self.loading_bar:
+                    loading_bar_future: Future = self.executor.submit(
+                        updateLoadingBars, self.loading_bar
                     )
-                    raise e
-                except Exception as e:
-                    self.logger.exception(f"Error in launching tasks: {e}")
-                    raise e
+                    try:
+                        for config in self.configs:
+                            self.single_run(**config)
+
+                        # if asynchronous:
+                        #     # TODO: Change to a thread?
+                        #     self.waiter = Process(target=self.task_waiter).start()
+                        # else:
+                        self.task_waiter()
+
+                    except ConnectionResetError as e:
+                        # TODO: Fix this to appear at the end of a run
+                        self.logger.error(
+                            "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
+                        )
+                        raise e
+                    except Exception as e:
+                        self.logger.exception(f"Error in launching tasks: {e}")
+                        raise e
+
+                    self.loading_bar.queue.put("close")
+            # TODO: Add an analysis stage to the run
 
     def single_run(
         self,
@@ -279,8 +296,16 @@ class NETT:
             base_env.conditions,
             output_dir,
             modes,
+            self.loading_bar.queue,
             memory,
         )
+
+        # create loading bar
+        num_steps = (
+            len(tasklist.tasks) * episodes.get("train", 0) * steps_per_episode
+            + episodes.get("test", 0) * base_env.num_test_conditions
+        )
+        self.loading_bar.add(name, num_steps)
 
         for task in tasklist:  # multi
             self._assign_task(task)
@@ -305,6 +330,9 @@ class NETT:
                     self.task_sheet[task_future] = task.config
                     self.waitlist.pop(i)
                     break
+
+    def status(self):
+        return self.task_sheet
 
     def _assign_task(self, task: Task) -> None:
         # waitlist remaining tasks if no free memory
@@ -354,8 +382,10 @@ class NETT:
                     ["train"],
                 )
                 task.set_device(most_free_gpu)
-                task_future = self.executor.submit(run_task, task)
+                self.loading_bar.add(f"Estimating Memory Usage for {task.config.name}", brain.buffer_size)
+                task_future: Future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
+                self.loading_bar.remove(f"Estimating Memory Usage for {task.config.name}")
 
                 with open(task.config.path / "mem.txt", "r") as file:
                     post_memory: int = int(file.readline())
