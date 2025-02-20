@@ -7,6 +7,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 import logging
 import json
+import threading
 from multiprocessing import Process
 import os
 from pathlib import Path
@@ -159,14 +160,15 @@ class NETT:
             }
 
             # initialize executor
-            # self.executor = Executor(verbose)
             with Executor(verbose) as self.executor:
                 # run tasks
                 self.logger.info("Launching...")
                 with LoadingBarQueue() as self.loading_bar:
-                    loading_bar_future: Future = self.executor.submit(
-                        updateLoadingBars, self.loading_bar
+                    # Start the queue processing thread # TODO: Move this into the __enter__ function?
+                    loading_bar_thread = threading.Thread(
+                        target=updateLoadingBars, args=[self.loading_bar]
                     )
+                    loading_bar_thread.start()
                     try:
                         for config in self.configs:
                             self.single_run(**config)
@@ -188,6 +190,7 @@ class NETT:
                         raise e
 
                     self.loading_bar.queue.put("close")
+                    loading_bar_thread.join()
             # TODO: Add an analysis stage to the run
 
     def single_run(

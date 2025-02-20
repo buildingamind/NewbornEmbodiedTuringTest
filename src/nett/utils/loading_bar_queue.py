@@ -1,8 +1,9 @@
 import sys
 import time
-from multiprocessing import SimpleQueue
+from multiprocessing import Manager
 
 from tqdm import tqdm
+
 
 def singleton(cls):
     instances = {}
@@ -18,7 +19,8 @@ def singleton(cls):
 @singleton
 class LoadingBarQueue:
     def __init__(self) -> None:
-        self.queue = SimpleQueue()
+        self.manager = Manager()
+        self.queue = self.manager.Queue()
         self.pbar: dict[str, int] = {}
         self.rows = 0
 
@@ -28,7 +30,7 @@ class LoadingBarQueue:
             position=self.rows,
             dynamic_ncols=True,
             desc=f"{label}: ",
-            file=sys.stdout, 
+            file=sys.stdout,
             leave=True,
             mininterval=1.0,
         )
@@ -63,8 +65,9 @@ class LoadingBarQueue:
     def __exit__(self, *args):
         self.close()
 
+
 def updateLoadingBars(loading_bar_queue: LoadingBarQueue) -> None:
     done = False
     while not done:
         done = loading_bar_queue.update()
-        time.sleep(1)
+        time.sleep(0.1)
