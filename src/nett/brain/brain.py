@@ -249,12 +249,12 @@ class Brain:
             config.logger.info(f"Testing with {self.algorithm.__name__}")
 
             # progress bar
-            t = tqdm(
-                total=self.test_iterations * self.n_parallel_envs,
-                desc=f"Test Progress",
-                position=0,
-                leave=True,
-            )
+            # t = tqdm(
+            #     total=self.test_iterations * self.n_parallel_envs,
+            #     desc=f"Test Progress",
+            #     position=0,
+            #     leave=True,
+            # )
 
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
@@ -282,7 +282,7 @@ class Brain:
                     # perform the action
                     obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
                     # update the loading bar
-                    t.update(1)
+                    config.queue.put((config.name, 1))
 
                     if not all(dones):
                         # episode is done
@@ -290,9 +290,6 @@ class Brain:
         except Exception as e:
             config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
-        finally:
-            # close the loading bar
-            t.close()
 
     def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
         """Initialize the callbacks for training."""

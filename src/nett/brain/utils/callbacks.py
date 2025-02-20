@@ -10,7 +10,6 @@ from pathlib import Path
 import sys
 import torch as th
 
-from tqdm import tqdm
 from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
 from stable_baselines3.common.base_class import BaseAlgorithm
@@ -67,7 +66,7 @@ class LoadingBarCallback(BaseCallback):
     def _on_step(self) -> bool:
         # Update progress bar, we do num_envs steps per call to `env.step()`
         # self.pbar.update(self.training_env.num_envs)
-        self.bar_queue.put((self.label, self.training_env.num_envs))
+        self.bar_queue.put((self.label, 1)) #self.training_env.num_envs
         return True
 
 

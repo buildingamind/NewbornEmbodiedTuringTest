@@ -2,7 +2,7 @@ import sys
 import time
 from multiprocessing import SimpleQueue
 
-import tqdm
+from tqdm import tqdm
 
 def singleton(cls):
     instances = {}
