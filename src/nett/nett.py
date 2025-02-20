@@ -160,37 +160,29 @@ class NETT:
             }
 
             # initialize executor
-            with Executor(verbose) as self.executor:
+            with Executor(verbose) as self.executor, self.loading_bar_queue:
                 # run tasks
                 self.logger.info("Launching...")
-                with LoadingBarQueue() as self.loading_bar:
-                    # Start the queue processing thread # TODO: Move this into the __enter__ function?
-                    loading_bar_thread = threading.Thread(
-                        target=updateLoadingBars, args=[self.loading_bar]
+                try:
+                    for config in self.configs:
+                        self.single_run(**config)
+
+                    # if asynchronous:
+                    #     # TODO: Change to a thread?
+                    #     self.waiter = Process(target=self.task_waiter).start()
+                    # else:
+                    self.task_waiter()
+
+                except ConnectionResetError as e:
+                    # TODO: Fix this to appear at the end of a run
+                    self.logger.error(
+                        "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
                     )
-                    loading_bar_thread.start()
-                    try:
-                        for config in self.configs:
-                            self.single_run(**config)
+                    raise e
+                except Exception as e:
+                    self.logger.exception(f"Error in launching tasks: {e}")
+                    raise e
 
-                        # if asynchronous:
-                        #     # TODO: Change to a thread?
-                        #     self.waiter = Process(target=self.task_waiter).start()
-                        # else:
-                        self.task_waiter()
-
-                    except ConnectionResetError as e:
-                        # TODO: Fix this to appear at the end of a run
-                        self.logger.error(
-                            "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
-                        )
-                        raise e
-                    except Exception as e:
-                        self.logger.exception(f"Error in launching tasks: {e}")
-                        raise e
-
-                    self.loading_bar.queue.put("close")
-                    loading_bar_thread.join()
             # TODO: Add an analysis stage to the run
 
     def single_run(
@@ -299,7 +291,7 @@ class NETT:
             base_env.conditions,
             output_dir,
             modes,
-            self.loading_bar.queue,
+            self.loading_bar_queue,
             memory,
         )
 
@@ -308,7 +300,7 @@ class NETT:
             len(tasklist.tasks) * episodes.get("train", 0) * steps_per_episode
             + episodes.get("test", 0) * base_env.num_test_conditions
         )
-        self.loading_bar.add(name, num_steps)
+        self.executor.loading_bar.add(name, num_steps)
 
         for task in tasklist:  # multi
             self._assign_task(task)
@@ -383,15 +375,15 @@ class NETT:
                     example_condition,
                     output_dir,
                     ["train"],
-                    self.loading_bar.queue,
+                    self.loading_bar_queue,
                 )
                 task.set_device(most_free_gpu)
-                self.loading_bar.add(
+                self.executor.loading_bar.add(
                     f"Estimating Memory Usage for {task.config.name}", brain.buffer_size
                 )
                 task_future: Future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
-                self.loading_bar.remove(
+                self.executor.loading_bar.remove(
                     f"Estimating Memory Usage for {task.config.name}"
                 )
 
