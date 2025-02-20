@@ -380,12 +380,17 @@ class NETT:
                     example_condition,
                     output_dir,
                     ["train"],
+                    self.loading_bar.queue,
                 )
                 task.set_device(most_free_gpu)
-                self.loading_bar.add(f"Estimating Memory Usage for {task.config.name}", brain.buffer_size)
+                self.loading_bar.add(
+                    f"Estimating Memory Usage for {task.config.name}", brain.buffer_size
+                )
                 task_future: Future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
-                self.loading_bar.remove(f"Estimating Memory Usage for {task.config.name}")
+                self.loading_bar.remove(
+                    f"Estimating Memory Usage for {task.config.name}"
+                )
 
                 with open(task.config.path / "mem.txt", "r") as file:
                     post_memory: int = int(file.readline())
