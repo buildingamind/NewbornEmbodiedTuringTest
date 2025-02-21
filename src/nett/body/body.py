@@ -141,6 +141,16 @@ class Body:
         """return env at beginning of `with` statement"""
         return self.env
 
-    def __exit__(self, *args):
+    def __exit__(self, exc_type, exc_val, exc_tb):
         """close env outside of `with` statement"""
         self.env.close()
+        if exc_type is None:
+            return False
+        # An exception occurred
+        print(f"Exception type: {exc_type}")
+        print(f"Exception value: {exc_val}")
+        # Optionally print traceback using traceback module
+        import traceback
+
+        traceback.print_tb(exc_tb)
+        return True  # Suppress the exception in this example
