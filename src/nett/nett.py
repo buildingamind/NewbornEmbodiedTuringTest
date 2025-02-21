@@ -312,6 +312,7 @@ class NETT:
             )
 
         for done_future in as_completed(self.task_sheet):
+            self.logger.info("Done Future: Waitlist Size: " + len(self.waitlist))
             done_future.result()
             done_config: TaskConfig = self.task_sheet.pop(done_future)
             free_device: int = done_config.device
@@ -383,6 +384,7 @@ class NETT:
                 )
                 task_future: Future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
+                self.logger.info("Finished estimating memory")
                 self.executor.loading_bar.remove(
                     f"Estimating Memory Usage for {task.config.name}"
                 )
