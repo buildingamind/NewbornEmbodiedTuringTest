@@ -160,7 +160,7 @@ class NETT:
             }
 
             # initialize executor
-            with Executor(verbose) as self.executor, self.loading_bar_queue:
+            with Executor(verbose) as (self.executor, self.loading_bar_queue):
                 # run tasks
                 self.logger.info("Launching...")
                 try:
