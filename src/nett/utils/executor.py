@@ -39,7 +39,7 @@ class Executor(ProcessPoolExecutor):
     def __enter__(self):
         return self, self.loading_bar.queue
 
-    def __exit__(self):
+    def __exit__(self, *args):
         self.loading_bar.queue.put("close")
         self.loading_bar_thread.join()
         self.loading_bar.close()
