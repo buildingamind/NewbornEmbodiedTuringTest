@@ -39,7 +39,7 @@ class TaskConfig:
         self.memory = memory
         self.name = output_dir.stem
         self.path = output_dir.joinpath(condition, f"brain_{brain_id}")
-        self.logger = logging.getLogger(f"nett.task-{condition}-{brain_id}")
+        self.logger = logging.getLogger(f"{self.name}-{condition}-{brain_id}")
 
 
 class Agent:
