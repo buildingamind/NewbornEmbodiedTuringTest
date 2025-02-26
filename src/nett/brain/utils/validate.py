@@ -80,6 +80,9 @@ reward_mapping: dict[str, Optional[type[BaseReward]]] = _getMapping(
         "ICM": ICM,
         "supervised": None,
         "unsupervised": None,
+        "closeness": None,
+        "completeness": None,
+        "closeness,completeness": None,
     },
 )  # keys = ['disagreement', 'e3b', 'fabric', 'icm', 'ngu', 'pseudocounts', 're3', 'ride', 'rnd', 'supervised', 'unsupervised']
 

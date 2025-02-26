@@ -112,16 +112,26 @@ class Environment:
     def adjust_to_agent(
         self,
         steps_per_episode: int,
-        supervised_reward: bool,
+        # supervised_reward: bool,
+        reward: str,
         multiobs: bool,
     ):
         self.multiobs = multiobs
 
         args = ["--episode-steps", str(steps_per_episode)]
 
+        if multiobs:  # TODO: Make this so it is binocular specific
+            args.extend(["--binocular", "true"])
+
         # add supervised reward
-        if supervised_reward:
-            args.extend(["--rewarded", "true"])
+        # if supervised_reward:
+        #     args.extend(["--rewarded", "true"])
+        if reward in {
+            "closeness",
+            "completeness",
+            "closeness,completeness",
+        }:  # TODO: Clean this up
+            args.extend(["--reward", reward])
 
         for mode in ["train", "test"]:
             self.base_args[mode].extend(args)
@@ -167,12 +177,14 @@ class Environment:
         # create log path
         log_path = config.path / "env_logs"
         log_path.mkdir(exist_ok=True, parents=True)
-        side_channels = [
-            Logger(
-                f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}",
-                log_dir=str(log_path),
-            )
-        ]
+        log_dir = log_path / f"{log_title}.csv"
+        args.extend(["--log-path", str(log_dir)])
+        # side_channels = [
+        #     Logger(
+        #         f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}",
+        #         log_dir=str(log_path),
+        #     )
+        # ]
 
         complete = False
         while not complete:

@@ -37,7 +37,7 @@
         "reward": {
           "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'supervised'",
           "type": "string",
-          "enum": ["supervised", "unsupervised", "ICM", "Fabric", "E3B", "Disagreement", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
+          "enum": ["supervised", "unsupervised", "closeness", "closeness,completeness", "ICM", "Fabric", "E3B", "Disagreement", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
           "default": "supervised"
         },
         "embedding_dim": {

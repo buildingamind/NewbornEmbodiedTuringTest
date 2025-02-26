@@ -257,7 +257,7 @@ class NETT:
         # adjust environment to agent settings
         base_env.adjust_to_agent(
             steps_per_episode,
-            base_brain.supervised,
+            getattr(brain, "reward", "supervised"), #TODO Clean this up
             base_body.multiobs,
         )
 
