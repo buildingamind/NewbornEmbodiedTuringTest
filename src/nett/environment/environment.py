@@ -177,7 +177,10 @@ class Environment:
         # create log path
         log_path = config.path / "env_logs"
         log_path.mkdir(exist_ok=True, parents=True)
-        log_dir = log_path / f"{log_title}.csv"
+        log_dir = (
+            log_path
+            / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}.csv"
+        )
         args.extend(["--log-path", str(log_dir)])
         # side_channels = [
         #     Logger(
@@ -194,7 +197,7 @@ class Environment:
                     additional_args=args,
                     base_port=random_port(),
                     seed=seed,
-                    side_channels=side_channels,
+                    # side_channels=side_channels,
                 )
                 complete = True
             except UnityWorkerInUseException as e:
