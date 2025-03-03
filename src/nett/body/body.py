@@ -33,7 +33,7 @@ def _load_env(
     seed: Optional[int] = None,
 ) -> gym.Env:
     loaded_env = env.load(config, validation_mode, seed)
-    if not validation_mode:
+    if not (validation_mode or config.memory is None):
         loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     try:
@@ -62,7 +62,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
             env,
             config.path / "env_recs" / "agent",
             episode_trigger=record_ep_cb,
-            name_prefix=f"agent{seed}_",
+            name_prefix=f"agent{seed}",
         )
     config.logger.info("Finished recording wrapper")
     return env
