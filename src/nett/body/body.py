@@ -64,6 +64,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
             config.path / "env_recs" / "agent",
             episode_trigger=record_ep_cb,
             name_prefix=f"agent{seed}",
+            disable_logger=True,
         )
     config.logger.info("Finished recording wrapper")
     return env
