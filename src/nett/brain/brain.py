@@ -285,20 +285,20 @@ class Brain:
 
     def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
         """Initialize the callbacks for training."""
-        callback_list = [cb.HParamCallback()]
 
         if config.memory is None:
-            callback_list.extend(
-                [
-                    cb.LoadingBarCallback(
-                        f"Estimating Memory Usage for {config.name}", config.queue
-                    ),  # , self.buffer_size),
-                    cb.MemoryCallback(config.device, save_path=config.path),
-                ]
-            )
+            callback_list = [
+                cb.LoadingBarCallback(
+                    f"Estimating Memory Usage for {config.name}", config.queue
+                ),  # , self.buffer_size),
+                cb.MemoryCallback(config.device, save_path=config.path),
+            ]
         else:
             # creates the parallel progress bars
-            callback_list.append(cb.LoadingBarCallback(config.name, config.queue))
+            callback_list = [
+                cb.HParamCallback(),
+                cb.LoadingBarCallback(config.name, config.queue),
+            ]
 
             if self.checkpoint_freq is not None:
                 callback_list.append(
