@@ -86,7 +86,7 @@ class Environment:
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
 
         # Create a list of arguments to pass to the Unity environment
-        args = []
+        args = ["-noprofilersync"]
 
         if display is None:
             # enable batchmode for headless servers
