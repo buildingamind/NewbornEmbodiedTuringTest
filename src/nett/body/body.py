@@ -5,6 +5,7 @@ The body determines how observations from the environment are processed before t
 It can apply wrappers to modify the observations and provide a different perception to the brain.
 """
 
+from math import ceil
 from ..environment.environment import Environment
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
@@ -28,13 +29,16 @@ def _load_env(
     config: TaskConfig,
     wrappers: list,
     validation_mode: bool,
+    record_eps: int = 0,
     seed: Optional[int] = None,
 ) -> gym.Env:
     loaded_env = env.load(config, validation_mode, seed)
+    if not validation_mode:
+        loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     try:
         for wrapper in wrappers:
-            loaded_env = wrapper(env)
+            loaded_env = wrapper(loaded_env)
     except Exception as e:
         config.logger.getChild(seed).exception(
             f"Failed to apply wrappers to environment"
@@ -44,13 +48,15 @@ def _load_env(
     return loaded_env
 
 
-def _record_wrapper(
-    env: gym.Env, config: TaskConfig, record_eps: dict, seed: int = 0
+def _record_wrapper(  # TODO: Capture both eyes rather than just one
+    env: gym.Env, config: TaskConfig, record_eps: dict, seed: Optional[int] = None
 ) -> gym.Env:
+    if seed is None:
+        seed = 0
     record_episodes = record_eps.get(config.current_mode, 0)
     if config.current_mode == "test":
-        record_episodes /= config.n_parallel_envs
-    if record_episodes > 0:
+        record_episodes = ceil(record_episodes / config.n_parallel_envs)
+    if record_episodes > 0:  #####TODO: Remove
         record_ep_cb = lambda t: t < record_episodes
         return RecordVideo(
             env,
@@ -82,27 +88,30 @@ class Body:
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
 
-    def _validate_env(self, env: gym.Env, config: TaskConfig):
+    def validate_env(self, env: gym.Env, config: TaskConfig):
+        test_env = _load_env(env, config, self.wrappers, True)
         try:
-            test_env = _load_env(env, config, self.wrappers, True)
             check_env(test_env)
+        except Exception as e:
+            self.logger.error("Failed to Validate Environment")
+            raise e
         finally:
-            if "test_env" in locals() and getattr(test_env, "close", None) is not None:
+            if getattr(test_env, "close", None) is not None:
                 test_env.close()
 
     def embed(self, env: gym.Env, config: TaskConfig):
+        """Embed the environment in the body."""
+        wrapper: callable
 
         if env.multiagent:
-            wrapped_env = self._zoo_wrapper(env, config)
-        else:
-            self._validate_env(env, config)
-            # validate
-            if config.current_mode == "train":
-                wrapped_env = self._single_gym_wrapper(env, config)
-            else:  # test
-                wrapped_env = self._multi_gym_wrapper(env, config)
+            wrapper = self._zoo_wrapper
+        elif config.current_mode == "train":
+            wrapper = self._single_gym_wrapper
+        else:  # test
+            wrapper = self._multi_gym_wrapper
 
-        self.env = wrapped_env
+        self.env = wrapper(env, config)
+
         return self
 
     def _zoo_wrapper(self, env: gym.Env, config: TaskConfig) -> SB3VecEnvWrapper:
@@ -115,8 +124,7 @@ class Body:
 
     def _single_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
         def callback():
-            loaded_env = _load_env(env, config, self.wrappers, False)
-            return _record_wrapper(loaded_env, config, self.record_eps)
+            return _load_env(env, config, self.wrappers, False, self.record_eps)
 
         return DummyVecEnv([callback])
 
@@ -124,8 +132,7 @@ class Body:
         def seed_callback(env, seed, wrappers, record_eps):
             def callback():
                 sleep(seed)
-                loaded_env = _load_env(env, config, wrappers, False, seed)
-                return _record_wrapper(loaded_env, config, record_eps, seed)
+                return _load_env(env, config, wrappers, False, seed, self.record_eps)
 
             return callback
 
@@ -143,6 +150,7 @@ class Body:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """close env outside of `with` statement"""
+        # TODO: Add a way to close Unity Environment after episodes are complete (in Unity)
         self.env.close()
         if exc_type is None:
             return False

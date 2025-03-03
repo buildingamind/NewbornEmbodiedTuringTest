@@ -16,6 +16,7 @@ from typing import Optional
 import yaml
 import shutil
 from concurrent.futures import Future, as_completed, wait as future_wait
+from nett.utils.tasklist import validate_tasklist
 
 from .brain import Brain
 from .body import Body
@@ -216,15 +217,6 @@ class NETT:
         Example:
             >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
-        input_params = {k: v for k, v in locals().items() if k != "self"}
-
-        ########## Initialization ##########
-
-        base_brain = Brain(**brain)
-
-        base_body = Body(**body)
-
-        base_env = Environment(**environment)
 
         ############ Validation ############
 
@@ -234,7 +226,10 @@ class NETT:
                 "Episodes should be a dictionary with keys 'train' and/or 'test'"
             )
 
-        ############## Setup ###############
+        ########### Record Input ###########
+        input_params = {
+            k: v for k, v in locals().items() if k not in {"self", "kwargs"}
+        }
 
         # set up the output directory
         output_dir: Path = self.output_path / name
@@ -243,6 +238,16 @@ class NETT:
         # save a copy of the config
         with open(output_dir / "config.yaml", "w") as f:
             f.write(yaml.dump(input_params))
+
+        ########## Initialization ##########
+
+        base_brain = Brain(**brain)
+
+        base_body = Body(**body)
+
+        base_env = Environment(**environment)
+
+        ############## Setup ###############
 
         # calculate run info for Brain
         base_brain.calc_iterations(
@@ -257,7 +262,7 @@ class NETT:
         # adjust environment to agent settings
         base_env.adjust_to_agent(
             steps_per_episode,
-            getattr(brain, "reward", "supervised"), #TODO Clean this up
+            getattr(brain, "reward", "supervised"),  # TODO Clean this up
             base_body.multiobs,
         )
 
@@ -301,6 +306,12 @@ class NETT:
             + episodes.get("test", 0) * base_env.num_test_conditions
         )
         self.executor.loading_bar.add(name, num_steps)
+        # validate tasks
+        if not base_env.multiagent:
+            self.logger.info("Validating tasks...")
+            task_future: Future = self.executor.submit(validate_tasklist, tasklist)
+            future_wait({task_future: ''}, return_when="ALL_COMPLETED")
+            self.logger.info("Tasks validated")
 
         for task in tasklist:  # multi
             self._assign_task(task)
@@ -312,7 +323,7 @@ class NETT:
             )
 
         for done_future in as_completed(self.task_sheet):
-            self.logger.info("Done Future: Waitlist Size: " + len(self.waitlist))
+            self.logger.info(f"Done Future: Waitlist Size: {len(self.waitlist)}")
             done_future.result()
             done_config: TaskConfig = self.task_sheet.pop(done_future)
             free_device: int = done_config.device

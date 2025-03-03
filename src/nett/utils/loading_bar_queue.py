@@ -2,7 +2,7 @@ import sys
 import time
 from multiprocessing import Manager
 
-from tqdm import tqdm
+from tqdm.auto import tqdm
 
 
 def singleton(cls):
@@ -52,6 +52,7 @@ class LoadingBarQueue:
         self.pbar[label].refresh()
         self.pbar[label].close()
         del self.pbar[label]
+        self.rows -= 1
 
     def close(self) -> None:
         for pbar in self.pbar.values():

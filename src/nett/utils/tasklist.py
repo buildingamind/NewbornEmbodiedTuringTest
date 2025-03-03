@@ -45,3 +45,25 @@ class TaskList:
         current = self.current
         self.current += 1
         return self.tasks[current]
+
+def validate_tasklist(tasklist: TaskList) -> None:
+    """Validate the tasklist"""
+    for task in tasklist.tasks:
+        config = task.config
+        agent = task.agent
+
+        # run only once per condition
+        if config.brain_id != 1:
+            continue
+
+        # validation only for train
+        task.config.current_mode = "train"
+
+        # create log path
+        log_path = config.path / "env_logs"
+        log_path.mkdir(exist_ok=True, parents=True)
+
+        agent.body.validate_env(agent.env, config)
+        config.logger.info("Environment Validated")
+
+    config.logger.info("Environments Closed")

@@ -9,7 +9,6 @@ from math import ceil
 import torch
 import numpy as np
 
-from tqdm import tqdm
 from typing import Any, Optional
 from pathlib import Path
 
@@ -247,14 +246,6 @@ class Brain:
         """Test the brain."""
         try:
             config.logger.info(f"Testing with {self.algorithm.__name__}")
-
-            # progress bar
-            # t = tqdm(
-            #     total=self.test_iterations * self.n_parallel_envs,
-            #     desc=f"Test Progress",
-            #     position=0,
-            #     leave=True,
-            # )
 
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(

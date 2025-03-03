@@ -106,7 +106,12 @@ class Environment:
         for mode in ["train", "test"]:
             if record_eps.get(mode, 0) > 0:
                 self.base_args[mode].extend(
-                    ["--record-chamber", "true", "--recording-steps", record_eps[mode]]
+                    [
+                        "--record-chamber",
+                        "true",
+                        "--recording-steps",
+                        str(record_eps[mode]),
+                    ]
                 )
 
     def adjust_to_agent(
@@ -179,7 +184,7 @@ class Environment:
         log_path.mkdir(exist_ok=True, parents=True)
         log_dir = (
             log_path
-            / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}.csv"
+            / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"
         )
         args.extend(["--log-path", str(log_dir)])
         # side_channels = [
@@ -199,6 +204,7 @@ class Environment:
                     seed=seed,
                     # side_channels=side_channels,
                 )
+                env.render_mode = "rgb_array_list" if self.multiobs else "rgb_array"
                 complete = True
             except UnityWorkerInUseException as e:
                 continue
@@ -243,6 +249,8 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
         )
         # init the Gym Wrapper instance
         gym.Wrapper.__init__(self, self.env)
+
+        self.env.render_mode = "rgb_array_list" if multiobs else "rgb_array"
 
     def step(self, action: list[Any]) -> tuple[np.ndarray, float, bool, bool, dict]:
         # Takes a step in the environment with the given action.
