@@ -7,8 +7,6 @@ This module contains the NETT class, which is the main class for training, testi
 
 import logging
 import json
-import threading
-from multiprocessing import Process
 import os
 from pathlib import Path
 import time
@@ -24,7 +22,6 @@ from .environment import Environment
 from .utils import (
     Executor,
     LoadingBarQueue,
-    updateLoadingBars,
     TaskList,
     Task,
     TaskConfig,
@@ -310,10 +307,11 @@ class NETT:
         if not base_env.multiagent:
             self.logger.info("Validating tasks...")
             task_future: Future = self.executor.submit(validate_tasklist, tasklist)
-            future_wait({task_future: ''}, return_when="ALL_COMPLETED")
+            future_wait({task_future: ""}, return_when="ALL_COMPLETED")
             self.logger.info("Tasks validated")
 
-        for task in tasklist:  # multi
+        for task in tasklist:
+            time.sleep(1)
             self._assign_task(task)
 
     def task_waiter(self):
