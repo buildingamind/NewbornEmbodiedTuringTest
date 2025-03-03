@@ -33,7 +33,7 @@ class Resnet10CNN(BaseFeaturesExtractor):
         n_input_channels = observation_space.shape[0]
 
         self.cnn = _resnet(BasicBlock, [2, 2, 2, 2], num_channels=n_input_channels)
-        logger.info(f"Resnet10CNN Encoder: {self.cnn}")
+        # logger.info(f"Resnet10CNN Encoder: {self.cnn}")
 
         with th.no_grad():
             n_flatten = self.cnn(

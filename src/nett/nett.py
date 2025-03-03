@@ -93,12 +93,10 @@ class NETT:
         """Initialize the NETT class."""
 
         try:
-            self.logger.info("Validating configs...")
             with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
                 schema: dict = json.load(file)
 
             self.configs = [validate_config(conf, schema) for conf in configs]
-            self.logger.info("Configs validated")
         except Exception as e:
             self.logger.exception("Error in loading config")
             raise e
@@ -275,8 +273,6 @@ class NETT:
         )  # multi
 
         # run tasks
-
-        self.logger.info("Running tasks...")
         # assign devices based on memory availability
         modes: list[str] = []
         for mode in episodes.keys():
@@ -284,7 +280,6 @@ class NETT:
                 modes.append(mode)
 
         # assign tasks to devices and run them
-        self.logger.info("Creating tasks...")
         tasklist = TaskList(
             base_brain,
             base_body,
@@ -308,8 +303,8 @@ class NETT:
             self.logger.info("Validating tasks...")
             task_future: Future = self.executor.submit(validate_tasklist, tasklist)
             future_wait({task_future: ""}, return_when="ALL_COMPLETED")
-            self.logger.info("Tasks validated")
 
+        self.logger.info(f"Assigning tasks...")
         for task in tasklist:
             time.sleep(1)
             self._assign_task(task)
@@ -317,11 +312,11 @@ class NETT:
     def task_waiter(self):
         if len(self.waitlist) > 0:
             self.logger.warning(
-                "Insufficient GPU Memory. Waiting for running tasks to complete."
+                f"Insufficient GPU Memory. Waiting for running tasks to complete. Number of Tasks in Waitlist: {len(self.waitlist)}"
             )
 
         for done_future in as_completed(self.task_sheet):
-            self.logger.info(f"Done Future: Waitlist Size: {len(self.waitlist)}")
+            self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
             done_future.result()
             done_config: TaskConfig = self.task_sheet.pop(done_future)
             free_device: int = done_config.device
@@ -341,7 +336,6 @@ class NETT:
 
     def _assign_task(self, task: Task) -> None:
         # waitlist remaining tasks if no free memory
-        self.logger.info(f"Assigning task...")
         assigned = False
         for device, memory in self.free_device_memory.items():
             # check if enough memory is available on the device
@@ -371,7 +365,6 @@ class NETT:
         )
 
         if task_memory == "auto":
-            self.logger.info("Estimating memory for a single task")
             # calculate current memory usage for baseline for comparison
 
             try:

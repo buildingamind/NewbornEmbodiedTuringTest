@@ -158,10 +158,6 @@ class Brain:
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
-        config.logger.info(
-            f"Training {self.encoder.__name__} with {self.algorithm.__name__}"
-        )
-
         # build model
         policy_kwargs = (
             {
@@ -208,14 +204,12 @@ class Brain:
             raise e
 
         # initialize callbacks
-        config.logger.info("Initializing Callbacks")
         callback_list = self._init_callbacks(envs, config)
 
         # train
         total_timesteps = (
             self.buffer_size if config.memory is None else self.train_iterations
         )
-        config.logger.info(f"Total number of training steps: {total_timesteps}")
         try:
             model.learn(
                 total_timesteps=total_timesteps,
@@ -246,8 +240,6 @@ class Brain:
     def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
         try:
-            config.logger.info(f"Testing with {self.algorithm.__name__}")
-
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
                 config.path / "model" / "latest_model.zip",

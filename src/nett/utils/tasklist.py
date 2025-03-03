@@ -68,6 +68,3 @@ def validate_tasklist(tasklist: TaskList) -> None:
         log_path.mkdir(exist_ok=True, parents=True)
 
         agent.body.validate_env(agent.env, config)
-        config.logger.info("Environment Validated")
-
-    config.logger.info("Environments Closed")

@@ -35,8 +35,8 @@ class FrozenSimCLR(BaseFeaturesExtractor):
     ) -> None:
         super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
-        logger.info("FrozenSimCLR Encoder: ")
-        logger.info(checkpoint_path)
+        # logger.info("FrozenSimCLR Encoder: ")
+        # logger.info(checkpoint_path)
         self.model = SimCLR.load_from_checkpoint(checkpoint_path)
 
     def forward(self, observations: th.Tensor) -> th.Tensor:

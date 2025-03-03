@@ -62,7 +62,6 @@ class DVS(gym.ObservationWrapper):
             self.observation_space = gym.spaces.Box(
                 shape=self.shape, low=0, high=255, dtype=np.uint8
             )
-            logger.info("In dvs wrapper")
         except Exception as e:
             raise e
 

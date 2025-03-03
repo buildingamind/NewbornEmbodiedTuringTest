@@ -56,7 +56,7 @@ class Resnet18CNN(BaseFeaturesExtractor):
         ## pretrain set false;
         # self.cnn = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT)
         n_input_channels = observation_space.shape[0]
-        logger.info("Resnet18CNN Encoder: ")
+        # logger.info("Resnet18CNN Encoder: ")
         self.cnn = ResNet_18(n_input_channels, features_dim)
         with th.no_grad():
             n_flatten = self.cnn(

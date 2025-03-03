@@ -57,7 +57,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
     record_episodes = record_eps.get(config.current_mode, 0)
     if config.current_mode == "test":
         record_episodes = ceil(record_episodes / config.n_parallel_envs)
-    if record_episodes > 0:  #####TODO: Remove
+    if record_episodes > 0:  #####TODO: Add support for recording multiple agents and multiobs
         record_ep_cb = lambda t: t < record_episodes
         return RecordVideo(
             env,
@@ -66,7 +66,6 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
             name_prefix=f"agent{seed}",
             disable_logger=True,
         )
-    config.logger.info("Finished recording wrapper")
     return env
 
 
