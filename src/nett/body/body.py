@@ -57,7 +57,9 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
     record_episodes = record_eps.get(config.current_mode, 0)
     if config.current_mode == "test":
         record_episodes = ceil(record_episodes / config.n_parallel_envs)
-    if record_episodes > 0:  #####TODO: Add support for recording multiple agents and multiobs
+    if (
+        record_episodes > 0
+    ):  #####TODO: Add support for recording multiple agents and multiobs
         record_ep_cb = lambda t: t < record_episodes
         return RecordVideo(
             env,
@@ -133,7 +135,7 @@ class Body:
         def seed_callback(env, seed, wrappers, record_eps):
             def callback():
                 sleep(seed)
-                return _load_env(env, config, wrappers, False, seed, self.record_eps)
+                return _load_env(env, config, wrappers, False, seed, record_eps)
 
             return callback
 
