@@ -107,9 +107,7 @@ class Environment:
             if record_eps.get(mode, 0) > 0:
                 self.base_args[mode].extend(
                     [
-                        "--record-chamber",
-                        "true",
-                        "--recording-steps",
+                        "--record-episodes",
                         str(record_eps[mode]),
                     ]
                 )
@@ -181,7 +179,6 @@ class Environment:
         # create logger
         # create log path
         log_path = config.path / "env_logs"
-        log_path.mkdir(exist_ok=True, parents=True)
         log_dir = (
             log_path
             / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"

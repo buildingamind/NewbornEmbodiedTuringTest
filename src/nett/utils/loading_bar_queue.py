@@ -49,12 +49,14 @@ class LoadingBarQueue:
         return False
 
     def remove(self, label: str) -> None:
+        self.update()
         self.pbar[label].refresh()
         self.pbar[label].close()
         del self.pbar[label]
         self.rows -= 1
 
     def close(self) -> None:
+        self.update()
         for pbar in self.pbar.values():
             pbar.refresh()
             pbar.close()

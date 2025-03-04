@@ -50,11 +50,11 @@ def _load_env(
 
 
 def _record_wrapper(  # TODO: Capture both eyes rather than just one
-    env: gym.Env, config: TaskConfig, record_eps: dict, seed: Optional[int] = None
+    env: gym.Env, config: TaskConfig, record_eps: int, seed: Optional[int] = None
 ) -> gym.Env:
     if seed is None:
         seed = 0
-    record_episodes = record_eps.get(config.current_mode, 0)
+    record_episodes = record_eps
     if config.current_mode == "test":
         record_episodes = ceil(record_episodes / config.n_parallel_envs)
     if (
@@ -127,7 +127,8 @@ class Body:
 
     def _single_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
         def callback():
-            return _load_env(env, config, self.wrappers, False, self.record_eps)
+            record_eps = self.record_eps.get(config.current_mode, 0)
+            return _load_env(env, config, self.wrappers, False, record_eps)
 
         return DummyVecEnv([callback])
 
@@ -135,13 +136,13 @@ class Body:
         def seed_callback(env, seed, wrappers, record_eps):
             def callback():
                 sleep(seed)
-                return _load_env(env, config, wrappers, False, seed, record_eps)
+                return _load_env(env, config, wrappers, False, record_eps, seed)
 
             return callback
 
         # create n_envs environments
         wrappers = self.wrappers
-        record_eps = self.record_eps
+        record_eps = self.record_eps.get(config.current_mode, 0)
         seed_list = range(config.n_parallel_envs)
         return SubprocVecEnv(
             [seed_callback(env, seed, wrappers, record_eps) for seed in seed_list]

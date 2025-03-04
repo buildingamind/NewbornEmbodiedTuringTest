@@ -268,7 +268,7 @@ class Brain:
                     # update the loading bar
                     config.queue.put((config.name, 1))
 
-                    if not all(dones):
+                    if all(dones):
                         # episode is done
                         break
         except Exception as e:

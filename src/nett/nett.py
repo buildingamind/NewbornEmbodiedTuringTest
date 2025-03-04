@@ -293,8 +293,8 @@ class NETT:
         )
 
         # create loading bar
-        num_steps = (
-            len(tasklist.tasks) * episodes.get("train", 0) * steps_per_episode
+        num_steps = steps_per_episode * (
+            len(tasklist.tasks) * episodes.get("train", 0)
             + episodes.get("test", 0) * base_env.num_test_conditions
         )
         self.executor.loading_bar.add(name, num_steps)
