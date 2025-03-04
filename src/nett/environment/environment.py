@@ -118,6 +118,7 @@ class Environment:
         # supervised_reward: bool,
         reward: str,
         multiobs: bool,
+        panini: bool = False,
     ):
         self.multiobs = multiobs
 
@@ -125,6 +126,8 @@ class Environment:
 
         if multiobs:  # TODO: Make this so it is binocular specific
             args.extend(["--binocular", "true"])
+        if panini:
+            args.extend(["--panini-projection", "true"])
 
         # add supervised reward
         # if supervised_reward:

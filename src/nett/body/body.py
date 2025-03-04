@@ -81,15 +81,18 @@ class Body:
     multiobs: bool
     wrappers: list[gym.Wrapper]
     record_eps: dict
+    panini_projection: bool
 
     def __init__(
         self,
         wrappers: list[gym.Wrapper | str] = [],
         record_eps: dict[str, int] = {"train": 0, "test": 0},
+        panini_projection: bool = False,
     ):
         self.multiobs = "binocular" in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
+        self.panini_projection = panini_projection
 
     def validate_env(self, env: gym.Env, config: TaskConfig):
         test_env = _load_env(env, config, self.wrappers, True)

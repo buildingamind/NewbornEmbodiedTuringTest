@@ -259,6 +259,7 @@ class NETT:
             steps_per_episode,
             getattr(brain, "reward", "supervised"),  # TODO Clean this up
             base_body.multiobs,
+            base_body.panini_projection,
         )
 
         ############### Run ################
