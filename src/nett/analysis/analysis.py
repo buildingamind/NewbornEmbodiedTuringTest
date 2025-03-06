@@ -164,15 +164,13 @@ def analyze(
     if not run_dir.exists():
         raise FileNotFoundError(f"Run directory {run_dir} does not exist.")
 
-    analysis_dir = Path(__file__).resolve().parent.joinpath("analysis")
+    analysis_dir = Path(__file__).resolve().parent
     if output_dir is None:
         output_dir = run_dir.joinpath("results")
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    chick_data_dir = Path(analysis_dir).joinpath(
-        "ChickData", f"{experiment.lower()}.csv"
-    )
+    chick_data_dir = analysis_dir / "ChickData" / f"{experiment.lower()}.csv"
 
     if not chick_data_dir.exists():
         raise ValueError(f"'{experiment}' is not a valid experiment.")
