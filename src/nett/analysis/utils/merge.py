@@ -56,7 +56,7 @@ def _read_data(filename: Path) -> pd.DataFrame:
 
 def _find_files(logs_dir: Path, mode: str) -> list[Path]:
     # Find all CSV files
-    files = list(logs_dir.glob(f"**/*{mode}.csv"))
+    files = list(logs_dir.glob(f"**/{mode}*.csv"))
 
     if not files:
         raise FileNotFoundError(f"No {mode}ing data found at {logs_dir}")
