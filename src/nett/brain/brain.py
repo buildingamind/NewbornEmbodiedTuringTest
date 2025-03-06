@@ -216,7 +216,7 @@ class Brain:
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
                 callback=callback_list,
-                log_interval=None,
+                # log_interval=None, #TODO: Reocrd to tb and not stdout
                 # tb_log_name="train",
             )
         except Exception as e:
