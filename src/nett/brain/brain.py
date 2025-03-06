@@ -189,7 +189,7 @@ class Brain:
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{config.device}",
                 seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
-                tensorboard_log=config.path / "logs",
+                tensorboard_log=config.path / "tensorboard",
             )
 
             # set encoder as eval only if train_encoder is not True

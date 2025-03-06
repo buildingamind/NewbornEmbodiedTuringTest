@@ -98,7 +98,7 @@ def run_task(task: Task) -> None:
         config.current_mode = mode
 
         # create log path
-        log_path = config.path / "env_logs"
+        log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)
 
         with agent.body.embed(agent.env, config) as body_interface:

@@ -56,3 +56,5 @@ from .brain.utils.validate import (
     list_rewards,
 )
 from .nett import NETT
+
+from .analysis import analyze

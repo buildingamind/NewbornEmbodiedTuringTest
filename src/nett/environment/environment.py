@@ -155,7 +155,7 @@ class Environment:
             seed = config.brain_id
 
         # create record path
-        recording_path = config.path / "env_recs"
+        recording_path = config.path / "recordings"
         recording_path.mkdir(exist_ok=True, parents=True)
 
         # create Unity args
@@ -181,7 +181,7 @@ class Environment:
         # create environment and connect it to logger
         # create logger
         # create log path
-        log_path = config.path / "env_logs"
+        log_path = config.path / "logs"
         log_dir = (
             log_path
             / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"

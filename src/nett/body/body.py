@@ -63,7 +63,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
         record_ep_cb = lambda t: t < record_episodes
         return RecordVideo(
             env,
-            config.path / "env_recs" / "agent",
+            config.path / "recordings" / "agent",
             episode_trigger=record_ep_cb,
             name_prefix=f"agent{seed}",
             disable_logger=True,

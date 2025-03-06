@@ -9,7 +9,6 @@ from PIL import Image, ImageChops
 from .utils import merge, train_viz, test_viz
 
 
-@staticmethod
 def dst(run_dir: str | Path, output_dir: str | Path) -> None:
     try:
         # TODO may need to clean up this file structure
@@ -21,7 +20,7 @@ def dst(run_dir: str | Path, output_dir: str | Path) -> None:
         output_dir = Path(output_dir).resolve()
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        rec_path = Path.joinpath(run_dir, "env_recs", "states")
+        rec_path = Path.joinpath(run_dir, "recordings", "states")
 
         if not rec_path.exists():
             raise FileNotFoundError(f"Recording directory {rec_path} does not exist.")
@@ -67,7 +66,6 @@ def dst(run_dir: str | Path, output_dir: str | Path) -> None:
         raise f"Error in dst: {e}"
 
 
-@staticmethod
 def timelapse(data_dir: Path | str, output_dir: Path | str):
 
     try:
@@ -84,7 +82,7 @@ def timelapse(data_dir: Path | str, output_dir: Path | str):
             if brain_dir.is_dir() and brain_dir.name.startswith("brain_"):
                 # Get a list of all PNG images in the directory
                 images = []
-                recording_dir = brain_dir / "env_recs" / "ChamberRecorder"
+                recording_dir = brain_dir / "recordings" / "chamber"
                 if not recording_dir.exists():
                     print(
                         f"Skipping {brain_dir} as it does not contain a ChamberRecorder directory"
@@ -129,7 +127,6 @@ def timelapse(data_dir: Path | str, output_dir: Path | str):
 
 
 # TODO: Add option to not have a config here either?
-@staticmethod
 def analyze(
     experiment: str,
     run_dir: str,
@@ -205,7 +202,6 @@ def analyze(
     print(f"Analysis complete. See results at {output_dir}")
 
 
-@staticmethod
 def analyze_archive(
     experiment: str,
     run_dir: str | Path,

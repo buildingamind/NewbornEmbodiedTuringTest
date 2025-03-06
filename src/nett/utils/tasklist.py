@@ -64,7 +64,7 @@ def validate_tasklist(tasklist: TaskList) -> None:
         task.config.current_mode = "train"
 
         # create log path
-        log_path = config.path / "env_logs"
+        log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)
 
         agent.body.validate_env(agent.env, config)
