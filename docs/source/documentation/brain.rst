@@ -1,6 +1,7 @@
-Brain
+brain
 =====
 
-.. autoclass:: nett.brain.Brain
+.. automodule:: nett.brain
+  :members:
 
 

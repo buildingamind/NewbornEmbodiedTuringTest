@@ -1,4 +1,5 @@
-Environment
+environment
 ===========
 
-.. autoclass:: nett.environment.Environment
+.. automodule:: nett.environment
+  :members:
