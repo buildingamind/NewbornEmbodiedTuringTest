@@ -194,13 +194,13 @@ class NETT:
         **kwargs,
     ) -> list[Future]:
         """
-        Run the training and testing of the brains in the environment.
+        Non-public function for running a single benchmark. The parameters here should match the top-level parameters of a config file input into :func:`~nett.nett.NETT.run`.
 
         Args:
             name (str): The name of the run. This will be used to create a directory with the same name in the output path.
-            environment (dict): The environment configuration. See :func:`~nett.environment.Environment` for valid parameters.
-            body (dict): The body configuration. Defaults to `{}`. See :func:`~nett.body.Body` for valid parameters.
-            brain (dict): The brain configuration. Defaults to `{}`. See :func:`~nett.brain.Brain` for valid parameters.
+            environment (dict): The environment configuration. See :func:`~nett.environment` for valid parameters.
+            body (dict): The body configuration. Defaults to `{}`. See :func:`~nett.body` for valid parameters.
+            brain (dict): The brain configuration. Defaults to `{}`. See :func:`~nett.brain` for valid parameters.
             episodes (dict[str, int]): The number of episodes the brains are to be trained and tested for. Defaults to `{"train": 5000, "test": 100}`.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
@@ -209,8 +209,6 @@ class NETT:
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
 
-        Example:
-            >>> task_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
         """
 
         ############ Validation ############

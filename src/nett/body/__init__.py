@@ -6,6 +6,7 @@ Body module for nett
 """
 
 from .body import Body
+__all__ = ["Body"]
 
 # ASCII art
 ascii_basic = """

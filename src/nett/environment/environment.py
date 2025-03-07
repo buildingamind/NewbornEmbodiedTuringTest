@@ -169,7 +169,7 @@ class Environment:
             [
                 "--mode",
                 f"{config.current_mode}-{config.condition}",  # set mode
-                "--log-dir",
+                "--record-path",
                 str(recording_path),  # set log path
                 "-force-device-index",
                 str(config.device),  # set GPU
@@ -256,6 +256,10 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
         # Takes a step in the environment with the given action.
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, float(reward), terminated, truncated, info
+    
+    def kill(self):
+        # immediately kill the environment rather than waiting
+        self.env._env._close(0)
 
 
 class ZooWrapper(BaseWrapper, BaseParallelWrapper):

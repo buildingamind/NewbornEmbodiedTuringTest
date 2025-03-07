@@ -63,7 +63,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
         record_ep_cb = lambda t: t < record_episodes
         return RecordVideo(
             env,
-            config.path / "recordings" / "agent",
+            config.path / "recordings" / "agent" / config.current_mode,
             episode_trigger=record_ep_cb,
             name_prefix=f"agent{seed}",
             disable_logger=True,
@@ -76,6 +76,7 @@ class Body:
     Args:
         wrappers (list[Wrapper | str], optional): List of wrappers to be applied to the environment. Defaults to `[]`.
         record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the agent's perspective for each mode (train and test). Defaults to `{"train": 0, "test": 0}`.
+        panini_projection (bool): Whether to apply a Panini projection to the environment observations. Defaults to `False`.
     """
 
     multiobs: bool
@@ -158,7 +159,7 @@ class Body:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """close env outside of `with` statement"""
         # TODO: Add a way to close Unity Environment after episodes are complete (in Unity)
-        self.env.close()
+        self.env.kill()
         if exc_type is None:
             return False
         # An exception occurred

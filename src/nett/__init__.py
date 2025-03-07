@@ -1,21 +1,3 @@
-# Copyright 2022 The Wood Lab, Indiana University Bloomington. All rights reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-"""
-Initialize the NETT library
-"""
-
 import os
 import logging
 from pathlib import Path
@@ -59,6 +41,7 @@ from .brain.utils import (
     rewards_list,
 )
 
+
 def list_conditions(executable_dir: str | Path) -> list[str]:
     """
     Lists the possible imprinting conditions for the experiment.
@@ -67,9 +50,10 @@ def list_conditions(executable_dir: str | Path) -> list[str]:
         executable_dir (str | Path): The path to the Unity executable directory.
 
     Returns:
-        tuple[int, list[str]]: A list of imprinting conditions for the experiment.
+        list[str]: A list of imprinting conditions for the experiment.
     """
     return get_experiment_design(Path(executable_dir))[1]
+
 
 def list_wrappers() -> list[type[gym.Wrapper]]:
     """
@@ -80,6 +64,7 @@ def list_wrappers() -> list[type[gym.Wrapper]]:
     """
     return wrapper_list
 
+
 def list_algorithms() -> list[str]:
     """
     List all available algorithms.
@@ -88,6 +73,7 @@ def list_algorithms() -> list[str]:
         list[str]: A list of all available algorithms.
     """
     return algorithms_list
+
 
 def list_encoders() -> list[str]:
     """
@@ -98,6 +84,7 @@ def list_encoders() -> list[str]:
     """
     return encoders_list
 
+
 def list_policies() -> list[str]:
     """
     List all available policies.
@@ -106,6 +93,7 @@ def list_policies() -> list[str]:
         list[str]: A list of all available policies.
     """
     return policies_list
+
 
 def list_rewards() -> list[str]:
     """
@@ -120,3 +108,14 @@ def list_rewards() -> list[str]:
 from .nett import NETT
 
 from .analysis import analyze
+
+__all__ = [
+    "NETT",
+    "analyze",
+    "list_algorithms",
+    "list_conditions",
+    "list_encoders",
+    "list_policies",
+    "list_rewards",
+    "list_wrappers",
+]
