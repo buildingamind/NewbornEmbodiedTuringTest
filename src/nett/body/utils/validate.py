@@ -9,7 +9,7 @@ wrapper_mapping: dict[str, type[gym.Wrapper]] = {
     # 'trace': trace_recording.TraceRecordingWrapper
 }
 
-list_wrappers: list[type[gym.Wrapper]] = list(wrapper_mapping.keys())
+wrapper_list: list[type[gym.Wrapper]] = list(wrapper_mapping.keys())
 
 
 def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
@@ -32,7 +32,7 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
                 wrappers[i] = wrapper_mapping[wrapper]
             except KeyError:
                 raise KeyError(
-                    f"If string, wrapper should be one of: {list_wrappers()}. Provided wrapper {wrapper} is not one of them."
+                    f"If string, wrapper should be one of: {wrapper_list}. Provided wrapper {wrapper} is not one of them."
                 )
         elif issubclass(input, gym.Wrapper):
             wrappers[i] = wrapper

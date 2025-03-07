@@ -42,5 +42,3 @@ def get_experiment_design(executable_path: Path) -> tuple[int, list[str]]:
 
     return num_test_conditions, valid_imprinting_conditions
 
-
-list_conditions = lambda executable_dir: get_experiment_design(executable_dir)[1]

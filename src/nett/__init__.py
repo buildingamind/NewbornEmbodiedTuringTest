@@ -18,6 +18,8 @@ Initialize the NETT library
 
 import os
 import logging
+from pathlib import Path
+import gymnasium as gym
 
 # release version
 from ._version import __version__
@@ -46,15 +48,75 @@ for tmp_dir in [
                 f"Error: '{tmp_dir}' does not have correct permissions and cannot be changed. If you have superuser access, you can run the following command to change the permissions: 'sudo chmod 1777 {tmp_dir}'. Otherwise, request {os.stat(tmp_dir).st_uid} to run 'chmod 1777 {tmp_dir}'."
             )
 
-# simplify imports
-from .environment.utils import list_conditions
-from .body.utils.validate import list_wrappers
-from .brain.utils.validate import (
-    list_algorithms,
-    list_encoders,
-    list_policies,
-    list_rewards,
+# Simplify Imports
+
+from .environment.utils import get_experiment_design
+from .body.utils import wrapper_list
+from .brain.utils import (
+    algorithms_list,
+    encoders_list,
+    policies_list,
+    rewards_list,
 )
+
+def list_conditions(executable_dir: str | Path) -> list[str]:
+    """
+    Lists the possible imprinting conditions for the experiment.
+
+    Args:
+        executable_dir (str | Path): The path to the Unity executable directory.
+
+    Returns:
+        tuple[int, list[str]]: A list of imprinting conditions for the experiment.
+    """
+    return get_experiment_design(Path(executable_dir))[1]
+
+def list_wrappers() -> list[type[gym.Wrapper]]:
+    """
+    List all available wrappers.
+
+    Returns:
+        list[type[gym.Wrapper]]: A list of all available wrappers.
+    """
+    return wrapper_list
+
+def list_algorithms() -> list[str]:
+    """
+    List all available algorithms.
+
+    Returns:
+        list[str]: A list of all available algorithms.
+    """
+    return algorithms_list
+
+def list_encoders() -> list[str]:
+    """
+    List all available encoders.
+
+    Returns:
+        list[str]: A list of all available encoders.
+    """
+    return encoders_list
+
+def list_policies() -> list[str]:
+    """
+    List all available policies.
+
+    Returns:
+        list[str]: A list of all available policies.
+    """
+    return policies_list
+
+def list_rewards() -> list[str]:
+    """
+    List all available rewards.
+
+    Returns:
+        list[str]: A list of all available rewards.
+    """
+    return rewards_list
+
+
 from .nett import NETT
 
 from .analysis import analyze

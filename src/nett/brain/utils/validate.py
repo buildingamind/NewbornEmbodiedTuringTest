@@ -92,10 +92,10 @@ policy_mapping: dict[str, type[BasePolicy]] = (
 )  # keys = ['CnnLstmPolicy', 'CnnPolicy', 'MlpPolicy', 'MlpLstmPolicy', 'MultiInputLstmPolicy', 'MultiInputPolicy']
 
 # list valid options
-list_algorithms = list(algorithm_mapping.keys())
-list_encoders = list(encoder_mapping.keys())
-list_policies = list(policy_mapping.keys())
-list_rewards = list(reward_mapping.keys())
+algorithms_list: list[str] = list(algorithm_mapping.keys())
+encoders_list: list[str] = list(encoder_mapping.keys())
+policies_list: list[str] = list(policy_mapping.keys())
+rewards_list: list[str] = list(reward_mapping.keys())
 
 # validators
 validate_algorithm = _getValidator("algorithm", BaseAlgorithm, algorithm_mapping)
