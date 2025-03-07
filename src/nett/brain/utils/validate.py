@@ -78,13 +78,12 @@ reward_mapping: dict[str, Optional[type[BaseReward]]] = _getMapping(
     [rl_rewards],
     {
         "ICM": ICM,
-        "supervised": None,
         "unsupervised": None,
         "closeness": None,
         "completeness": None,
         "closeness,completeness": None,
     },
-)  # keys = ['disagreement', 'e3b', 'fabric', 'icm', 'ngu', 'pseudocounts', 're3', 'ride', 'rnd', 'supervised', 'unsupervised']
+)  # keys = ['disagreement', 'e3b', 'fabric', 'icm', 'ngu', 'pseudocounts', 're3', 'ride', 'rnd', 'unsupervised', 'closeness', 'completeness', 'closeness,completeness']
 
 # grabs all encoders from ppo and recurrentPPO, which covers nearly all algorithms in SB3 and SB3-contrib
 policy_mapping: dict[str, type[BasePolicy]] = (

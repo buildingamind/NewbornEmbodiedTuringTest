@@ -115,7 +115,6 @@ class Environment:
     def adjust_to_agent(
         self,
         steps_per_episode: int,
-        # supervised_reward: bool,
         reward: str,
         multiobs: bool,
         panini: bool = False,
@@ -129,9 +128,6 @@ class Environment:
         if panini:
             args.extend(["--panini-projection", "true"])
 
-        # add supervised reward
-        # if supervised_reward:
-        #     args.extend(["--rewarded", "true"])
         if reward in {
             "closeness",
             "completeness",

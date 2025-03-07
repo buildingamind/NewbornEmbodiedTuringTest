@@ -58,7 +58,7 @@ class NETT:
         >>>         "policy": "CnnPolicy",
         >>>         "algorithm": "PPO",
         >>>         "encoder": "small",
-        >>>         "reward": "supervised"
+        >>>         "reward": "closeness"
         >>>     },
         >>>     "body": {
         >>>         "wrappers": ["dvs"],
@@ -255,7 +255,7 @@ class NETT:
         # adjust environment to agent settings
         base_env.adjust_to_agent(
             steps_per_episode,
-            getattr(brain, "reward", "supervised"),  # TODO Clean this up
+            getattr(brain, "reward", "closeness"),  # TODO Clean this up
             base_body.multiobs,
             base_body.panini_projection,
         )

@@ -71,7 +71,7 @@ class Brain:
         encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small".
         policy (str | BasePolicy): The network used for defining the value and action networks. Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `nett.list_policies` :func:`~nett.nett.list_policies`. Defaults to "CnnPolicy".
         algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model. Must be either a string pointing to an already implemented algorithm or a custom algorithm class that inherits from Stable-Baselines3 BaseAlgorithm. For a list of available algorithms, run `nett.list_algorithms` :func:`~nett.nett.list_algorithms`. Defaults to "PPO".
-        reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "supervised".
+        reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "closeness".
         embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
         batch_size (int): The batch size used for training. Defaults to 512.
         buffer_size (int): The buffer size used for training. Defaults to 2048.
@@ -88,7 +88,7 @@ class Brain:
         encoder: str | type[BaseFeaturesExtractor] = "small",
         policy: str | type[BasePolicy] = "CnnPolicy",
         algorithm: str | type[BaseAlgorithm] = "PPO",
-        reward: str | type[BaseReward] = "supervised",
+        reward: str | type[BaseReward] = "closeness",
         embedding_dim: Optional[int] = None,
         batch_size: int = 512,
         buffer_size: int = 2048,
@@ -105,7 +105,6 @@ class Brain:
         self.policy = validate_policy(policy)
         self.algorithm = validate_algorithm(algorithm)
 
-        self.supervised: bool = reward == "supervised"
         self.reward: Optional[type[BaseReward]] = validate_reward(reward)
 
         self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
