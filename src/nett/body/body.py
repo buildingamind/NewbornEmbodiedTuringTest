@@ -159,8 +159,7 @@ class Body:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """close env outside of `with` statement"""
         # TODO: Add a way to close Unity Environment after episodes are complete (in Unity)
-        for env in self.env.envs:
-            env.kill()
+        self.env.close()
         if exc_type is None:
             return False
         # An exception occurred

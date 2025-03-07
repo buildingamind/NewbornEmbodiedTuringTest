@@ -257,9 +257,9 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, float(reward), terminated, truncated, info
     
-    def kill(self):
-        # immediately kill the environment rather than waiting
-        self.env._env._close(0)
+    # def kill(self):
+    #     # immediately kill the environment rather than waiting
+    #     self.env._env._close(0)
 
 
 class ZooWrapper(BaseWrapper, BaseParallelWrapper):
