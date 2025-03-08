@@ -34,8 +34,6 @@ def _load_env(
 ) -> gym.Env:
     loaded_env = env.load(config, validation_mode, seed)
     # Record Video only if not in validation mode and not estimating memory
-    if not (validation_mode or config.memory is None):
-        loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     try:
         for wrapper in wrappers:
@@ -45,6 +43,9 @@ def _load_env(
             f"Failed to apply wrappers to environment"
         )
         raise e
+
+    if not (validation_mode or config.memory is None):
+        loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     return loaded_env
 
