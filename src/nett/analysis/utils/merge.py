@@ -49,7 +49,7 @@ def _read_data(filename: Path) -> pd.DataFrame:
 
     # Add 'filename' and 'agent' columns
     data["filename"] = filename.name
-    data["agent"] = data["filename"].str.extract("(\d+)", expand=False)
+    data["agent"] = data["filename"].str.extract("(?<=_)(\d+)", expand=False)
 
     return data
 
