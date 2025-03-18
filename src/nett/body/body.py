@@ -91,7 +91,7 @@ class Body:
         record_eps: dict[str, int] = {"train": 0, "test": 0},
         panini_projection: bool = False,
     ):
-        self.multiobs = "binocular" in wrappers
+        self.multiobs = "binocular" in wrappers or 'multiobs' in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
