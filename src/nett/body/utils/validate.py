@@ -1,11 +1,12 @@
 import gymnasium as gym
 
-from ..wrappers import Binocular, DVS
+from ..wrappers import Binocular, DVS, MultiObs
 
 # dictionary of all available wrappers. Key is the case-insensitive key for passing to Body.wrappers. Value is the resulting wrapper class.
 wrapper_mapping: dict[str, type[gym.Wrapper]] = {
     "binocular": Binocular,
     "dvs": DVS,
+    "multiobs": MultiObs,
     # 'trace': trace_recording.TraceRecordingWrapper
 }
 
