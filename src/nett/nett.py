@@ -341,12 +341,12 @@ class NETT:
                 gpu_max_capacity = memory
 
         # check if enough memory is available on the device
-        if memory >= task.config.memory:
+        if gpu_max_capacity >= task.config.memory:
             task.set_device(most_free_gpu)
             task_future = self.executor.submit(run_task, task)
             self.task_sheet[task_future] = task.config
             # allocate memory
-            self.free_device_memory[device] -= task.config.memory
+            self.free_device_memory[most_free_gpu] -= task.config.memory
         else:
             # waitlist remaining tasks if no free memory
             self.waitlist.append(task)
