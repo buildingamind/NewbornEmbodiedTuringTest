@@ -71,7 +71,7 @@ class Environment:
         self.executable_path = validate_executable_path(executable_path)
 
         # get experiment design
-        self.num_test_conditions, valid_imprinting_conditions = get_experiment_design(
+        _, self.num_test_conditions, valid_imprinting_conditions = get_experiment_design(
             self.executable_path
         )
 

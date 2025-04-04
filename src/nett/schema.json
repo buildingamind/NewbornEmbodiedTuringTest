@@ -87,6 +87,11 @@
           "type": "object",
           "default": {}
         },
+        "custom_algorithm_args": {
+          "description": "Custom Algorithm Arguments that are fed directly into the optimization algorithm",
+          "type": "object",
+          "default": {}
+        },
         "custom_policy_arch": {
           "description": "An array of integers defining the number of neurons in each layer of the policy network. If not provided, the default architecture is used as defined by Stable Baselines 3.",
           "type": ["array", "null"],

@@ -97,6 +97,7 @@ class Brain:
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         custom_encoder_args: dict[str, Any] = {},
+        custom_algorithm_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
@@ -123,6 +124,7 @@ class Brain:
             custom_encoder_args['extractor_class'] = validate_encoder(custom_encoder_args['extractor_class'] )
 
         self.custom_encoder_args = custom_encoder_args
+        self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
         self.reward_args = reward_args
 
@@ -193,6 +195,7 @@ class Brain:
                 device=f"cuda:{config.device}",
                 seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
                 tensorboard_log=config.path / "tensorboard",
+                **self.custom_algorithm_args,
             )
 
             # set encoder as eval only if train_encoder is not True
