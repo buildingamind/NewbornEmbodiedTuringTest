@@ -133,7 +133,7 @@ class Environment:
             "completeness",
             "closeness,completeness",
         }:  # TODO: Clean this up
-            args.extend(["--reward", reward])
+            args.extend(["--rewards", reward])
 
         for mode in ["train", "test"]:
             self.base_args[mode].extend(args)

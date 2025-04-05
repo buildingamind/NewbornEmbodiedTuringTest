@@ -14,6 +14,7 @@ from time import sleep
 from typing import Optional
 
 from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.monitor import Monitor
 import supersuit as ss
 from supersuit.vector.concat_vec_env import ConcatVecEnv
 from supersuit.vector.sb3_vector_wrapper import SB3VecEnvWrapper
@@ -45,6 +46,9 @@ def _load_env(
         raise e
 
     if not (validation_mode or config.memory is None):
+        if config.current_mode == "train":
+            (config.path / "monitor").mkdir(exist_ok=True)
+            loaded_env = Monitor(loaded_env, str(config.path / "monitor" / f"{config.brain_id}_{seed if seed is not None else 0}.csv"))
         loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     return loaded_env
