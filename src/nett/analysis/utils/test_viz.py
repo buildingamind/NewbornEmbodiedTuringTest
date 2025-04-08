@@ -103,7 +103,7 @@ def make_bar_charts(
         color_mapping = dict(zip(x_categories, CUSTOM_PALETTE))
         colors = data["test.cond"].map(color_mapping)
     else:
-        colors = "gray45"
+        colors = "grey"
 
     x_pos = np.arange(len(x_categories))
     ax.bar(x_pos, y, yerr=yerr, color=colors, capsize=14, width=0.7, linewidth=0)
