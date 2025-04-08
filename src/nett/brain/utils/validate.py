@@ -71,7 +71,7 @@ encoder_mapping: dict[str, type[BaseFeaturesExtractor]] = _getMapping(
         "medium": encoders.Resnet10CNN,
         "large": encoders.Resnet18CNN,
     },
-)  # keys = ['CNNLSTM', 'DinoV1', 'DinoV2', 'FrozenSimCLR', 'Resnet10CNN', 'Resnet18CNN', 'SegmentAnything', 'ViT', 'small', 'medium', 'large']
+)  # keys = ['CNNLSTM', 'DinoV1', 'DinoV2', 'FrozenSimCLR', 'Resnet10CNN', 'Resnet18CNN', 'SegmentAnything', 'SimpleViT', 'ViT', 'small', 'medium', 'large']
 
 # grabs all rewards from rllte.xplore.reward and overrrides/adds custom rewards at the end
 reward_mapping: dict[str, Optional[type[BaseReward]]] = _getMapping(

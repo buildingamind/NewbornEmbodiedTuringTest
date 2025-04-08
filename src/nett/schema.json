@@ -14,7 +14,7 @@
           "description": "Encoder Network. Defaults to 'small'",
           "type": "string",
           "enum": [
-            "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "MultiInputEncoder", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "small", "medium", "large"
+            "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "MultiInputEncoder", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "SimpleViT", "small", "medium", "large"
           ],
           "default": "small"
         },

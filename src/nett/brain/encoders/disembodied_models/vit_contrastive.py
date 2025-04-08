@@ -10,7 +10,7 @@ from torch import nn
 
 # Pytorch-Lightning
 from lightning import LightningModule
-from vit_pytorch import ViT
+from vit_pytorch import ViT, SimpleViT
 
 import math
 
@@ -19,6 +19,27 @@ class VisionTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
         self.model = ViT(pool="cls", dim_head=64, **config)
+
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, "bias") and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+
+        self.apply(_init)
+        nn.init.constant_(self.model.fc.weight, 0)
+        nn.init.constant_(self.model.fc.bias, 0)
+
+    def forward(self, x):
+        return self.model(x)
+
+
+class SimpleVisionTransformer(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.model = SimpleViT(pool="cls", dim_head=64, **config)
 
     @torch.no_grad()
     def init_weights(self):
@@ -83,7 +104,11 @@ class LitClassifier(LightningModule):
         self.hidden_depth = hidden_depth
         self.learning_rate = learning_rate
 
-        self.backbone = VisionTransformer(backbone_config)  # ViT encoder
+        self.backbone = (
+            VisionTransformer(backbone_config)
+            if "dropout" in backbone_config
+            else SimpleVisionTransformer(backbone_config)
+        )  # ViT encoder
         self.temporal_mode = temporal_mode  # type of temporal window
 
         self.projection = Projection(  # SimCLR projection head
