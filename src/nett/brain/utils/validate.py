@@ -16,7 +16,7 @@ import rllte.xplore.reward as rl_rewards
 from .. import encoders
 
 # custom reward override
-from ..rewards import ICM
+from .. import rewards
 
 
 def _getMapping(
@@ -75,9 +75,8 @@ encoder_mapping: dict[str, type[BaseFeaturesExtractor]] = _getMapping(
 
 # grabs all rewards from rllte.xplore.reward and overrrides/adds custom rewards at the end
 reward_mapping: dict[str, Optional[type[BaseReward]]] = _getMapping(
-    [rl_rewards],
+    [rl_rewards, rewards],
     {
-        "ICM": ICM,
         "unsupervised": None,
         "closeness": None,
         "completeness": None,

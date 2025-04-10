@@ -37,7 +37,7 @@
         "reward": {
           "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'closeness'",
           "type": "string",
-          "enum": ["unsupervised", "closeness", "closeness,completeness", "ICM", "Fabric", "E3B", "Disagreement", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
+          "enum": ["unsupervised", "closeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "GIRM", "ICM", "NGU", "PseudoCounts", "RE3", "REVD", "RIDE", "RISE", "RND"],
           "default": "closeness"
         },
         "embedding_dim": {
