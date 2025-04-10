@@ -190,7 +190,7 @@ class NETT:
         episodes: {str, int} = {"train": 5000, "test": 100},
         steps_per_episode: int = 200,
         num_brains: int = 1,
-        task_memory: str | int = "auto",
+        task_memory: str | float = "auto",
         **kwargs,
     ) -> list[Future]:
         """
@@ -204,7 +204,7 @@ class NETT:
             episodes (dict[str, int]): The number of episodes the brains are to be trained and tested for. Defaults to `{"train": 5000, "test": 100}`.
             steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
-            task_memory (str | int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
+            task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -360,7 +360,7 @@ class NETT:
         brain: Brain,
         body: Body,
         env: Environment,
-        task_memory: str | int,
+        task_memory: str | float,
         example_condition: str,
         output_dir: Path,
     ) -> float:
