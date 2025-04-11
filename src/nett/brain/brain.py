@@ -120,13 +120,17 @@ class Brain:
         self.train_encoder = bool(train_encoder)
 
         # used for extractors that wrap other extractors e.g. multiinput
-        if 'extractor_class' in custom_encoder_args:
-            custom_encoder_args['extractor_class'] = validate_encoder(custom_encoder_args['extractor_class'] )
+        if "extractor_class" in custom_encoder_args:
+            custom_encoder_args["extractor_class"] = validate_encoder(
+                custom_encoder_args["extractor_class"]
+            )
 
         self.custom_encoder_args = custom_encoder_args
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
         self.reward_args = reward_args
+        if reward is not "RE3":
+            self.reward_args["batch_size"] = int(batch_size)
 
     def calc_iterations(
         self,
@@ -313,7 +317,6 @@ class Brain:
             reward_func: BaseReward = self.reward(
                 envs,
                 device=f"cuda:{config.device}",
-                batch_size=self.batch_size,
                 lr=self.learning_rate,
                 **self.reward_args,
             )
