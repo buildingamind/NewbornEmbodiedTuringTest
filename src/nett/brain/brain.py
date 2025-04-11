@@ -130,7 +130,8 @@ class Brain:
         self.custom_policy_arch = custom_policy_arch
         self.reward_args = reward_args
         if reward is not "RE3":
-            self.reward_args["batch_size"] = int(batch_size)
+            self.reward_args["batch_size"] = self.batch_size
+            self.reward_args["lr"] = self.learning_rate
 
     def calc_iterations(
         self,
@@ -317,7 +318,6 @@ class Brain:
             reward_func: BaseReward = self.reward(
                 envs,
                 device=f"cuda:{config.device}",
-                lr=self.learning_rate,
                 **self.reward_args,
             )
             if issubclass(self.algorithm, OnPolicyAlgorithm):
