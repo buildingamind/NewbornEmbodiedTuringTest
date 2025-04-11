@@ -18,7 +18,7 @@ import math
 class VisionTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.model = ViT(pool="cls", dim_head=64, **config)
+        self.model = ViT(**config)
 
     @torch.no_grad()
     def init_weights(self):
@@ -39,7 +39,7 @@ class VisionTransformer(nn.Module):
 class SimpleVisionTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.model = SimpleViT(pool="cls", dim_head=64, **config)
+        self.model = SimpleViT(**config)
 
     @torch.no_grad()
     def init_weights(self):
