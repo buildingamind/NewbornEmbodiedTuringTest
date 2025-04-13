@@ -255,7 +255,7 @@ class NETT:
         # adjust environment to agent settings
         base_env.adjust_to_agent(
             steps_per_episode,
-            getattr(brain, "reward", "closeness"),  # TODO Clean this up
+            brain.get("reward", "closeness"),  # TODO Clean this up
             base_body.multiobs,
             base_body.panini_projection,
         )
