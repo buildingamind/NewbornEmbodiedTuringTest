@@ -64,7 +64,7 @@ class Environment:
         self,
         executable_path: str,
         conditions: Optional[list[str]] = None,
-        record_eps: dict = {"train": 0, "test": 0},
+        record_eps: dict = {"train": "0", "test": "0"},
         multiagent: bool = False,
         display: Optional[int] = None,
     ):
@@ -99,18 +99,14 @@ class Environment:
         # split into train and test args
         self.base_args = {"train": args[:], "test": args[:]}
 
-        # initialize as a random position in train
-        self.base_args["train"].extend(["--random-pos", "true"])
-
         # specify what to record
         for mode in ["train", "test"]:
-            if record_eps.get(mode, 0) > 0:
-                self.base_args[mode].extend(
-                    [
-                        "--record-episodes",
-                        str(record_eps[mode]),
-                    ]
-                )
+            self.base_args[mode].extend(
+                [
+                    "--record-episodes",
+                    record_eps.get(mode, "0"),
+                ]
+            )
 
     def adjust_to_agent(
         self,
@@ -124,16 +120,16 @@ class Environment:
         args = ["--episode-steps", str(steps_per_episode)]
 
         if multiobs:  # TODO: Make this so it is binocular specific
-            args.extend(["--binocular", "true"])
+            args.append("--binocular")
         if panini:
-            args.extend(["--panini-projection", "true"])
+            args.append("--panini-projection")
 
         if reward in {
             "closeness",
             "completeness",
             "closeness,completeness",
         }:  # TODO: Clean this up
-            args.extend(["--rewards", reward])
+            args.extend(["--reward", reward])
 
         for mode in ["train", "test"]:
             self.base_args[mode].extend(args)
@@ -158,13 +154,15 @@ class Environment:
         args = copy.deepcopy(self.base_args[config.current_mode])
 
         if validation_mode:
-            args.extend(["--validation-mode", "true"])
+            args.append("--validation-mode")
 
         # TODO: Figure out a way to run on multiple GPUs
         args.extend(
             [
-                "--mode",
-                f"{config.current_mode}-{config.condition}",  # set mode
+                "--phase",
+                config.current_mode,  # set mode
+                "--imprint-condition",
+                config.condition,  # set mode
                 "--record-path",
                 str(recording_path),  # set log path
                 "-force-device-index",
@@ -252,7 +250,7 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
         # Takes a step in the environment with the given action.
         next_state, reward, terminated, truncated, info = self.env.step(action)
         return next_state, float(reward), terminated, truncated, info
-    
+
     # def kill(self):
     #     # immediately kill the environment rather than waiting
     #     self.env._env._close(0)
