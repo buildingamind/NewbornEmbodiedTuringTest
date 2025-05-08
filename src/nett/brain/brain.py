@@ -330,4 +330,9 @@ class Brain:
                     f"Instrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
 
+        if config:
+            callback_list.append(
+                cb.PngToMp4Callback(config.path / "recordings" / config.current_mode)
+            )
+
         return CallbackList(callback_list)

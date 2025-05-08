@@ -16,6 +16,10 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 
 from ...utils.memory import MemoryManager
 from ...utils.loading_bar_queue import LoadingBarQueue
+import re
+import glob
+import cv2
+import numpy as np
 
 # from nett.utils.performance import compute_train_performance
 
@@ -66,7 +70,7 @@ class LoadingBarCallback(BaseCallback):
     def _on_step(self) -> bool:
         # Update progress bar, we do num_envs steps per call to `env.step()`
         # self.pbar.update(self.training_env.num_envs)
-        self.bar_queue.put((self.label, 1)) #self.training_env.num_envs
+        self.bar_queue.put((self.label, 1))  # self.training_env.num_envs
         return True
 
 
@@ -247,3 +251,61 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
 
     def _on_rollout_end(self) -> None:
         pass
+
+
+class PngToMp4Callback(BaseCallback):
+    """
+    Callback to convert episode PNG frames to MP4 videos after each rollout or episode.
+    PNGs must be named as <episode>_<frame>.png.
+    """
+
+    def __init__(self, record_path: Path, fps: int = 30, verbose: int = 0):
+        super().__init__(verbose)
+        self.record_path = record_path
+        self.fps = fps
+
+    def _on_rollout_end(self) -> None:
+        self._convert_pngs_to_mp4s()
+
+    def _on_step(self) -> bool:
+        # Optionally, you can also call conversion here if you want per-episode conversion
+        return True
+
+    def _convert_pngs_to_mp4s(self):
+        png_files = glob.glob(str(self.record_path / "*.png"))
+        if not png_files:
+            return
+
+        # Group pngs by episode number
+        episode_dict = {}
+        pattern = re.compile(r"(\d+)_(\d+)\.png$")
+        for png in png_files:
+            match = pattern.search(png)
+            if match:
+                ep, frame = int(match.group(1)), int(match.group(2))
+                episode_dict.setdefault(ep, []).append((frame, png))
+
+        for ep, frames in episode_dict.items():
+            # Sort frames by frame number
+            frames_sorted = sorted(frames, key=lambda x: x[0])
+            images = [cv2.imread(f[1]) for f in frames_sorted]
+            if not images or images[0] is None:
+                continue
+            height, width, layers = images[0].shape
+            mp4_path = self.record_path / f"{ep}.mp4"
+            out = cv2.VideoWriter(
+                str(mp4_path),
+                cv2.VideoWriter_fourcc(*"mp4v"),
+                self.fps,
+                (width, height),
+            )
+            for img in images:
+                if img is not None:
+                    out.write(img)
+            out.release()
+            # Optionally, remove PNGs after conversion
+            for _, png_path in frames_sorted:
+                try:
+                    Path(png_path).unlink()
+                except Exception:
+                    pass
