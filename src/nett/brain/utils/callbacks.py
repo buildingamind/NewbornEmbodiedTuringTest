@@ -19,7 +19,8 @@ from ...utils.loading_bar_queue import LoadingBarQueue
 import re
 import glob
 import cv2
-import numpy as np
+
+# import numpy as np
 
 # from nett.utils.performance import compute_train_performance
 
@@ -259,7 +260,7 @@ class PngToMp4Callback(BaseCallback):
     PNGs must be named as <episode>_<frame>.png.
     """
 
-    def __init__(self, record_path: Path, fps: int = 30, verbose: int = 0):
+    def __init__(self, record_path: Path, fps: int = 25, verbose: int = 0):
         super().__init__(verbose)
         self.record_path = record_path
         self.fps = fps
