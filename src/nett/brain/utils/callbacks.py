@@ -24,6 +24,46 @@ import cv2
 
 # from nett.utils.performance import compute_train_performance
 
+def img2video(record_path: Path, expected_length: int, fps: int = 25):
+    png_files = glob.glob(str(record_path / "*.png"))
+    if not png_files:
+        return
+
+    # Group pngs by episode number
+    episode_dict = {}
+    pattern = re.compile(r"(\d+)_(\d+)\.png$")
+    for png in png_files:
+        match = pattern.search(png)
+        if match:
+            ep, frame = int(match.group(1)), int(match.group(2))
+            episode_dict.setdefault(ep, []).append((frame, png))
+
+    for ep, frames in episode_dict.items():
+        # Sort frames by frame number
+        frames_sorted = sorted(frames, key=lambda x: x[0])
+        if frames_sorted[-1][0] != expected_length:
+            continue
+        images = [cv2.imread(f[1]) for f in frames_sorted]
+        if not images or images[0] is None:
+            continue
+        height, width, layers = images[0].shape
+        mp4_path = record_path / f"{ep}.mp4"
+        out = cv2.VideoWriter(
+            str(mp4_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+        for img in images:
+            if img is not None:
+                out.write(img)
+        out.release()
+        # Optionally, remove PNGs after conversion
+        for _, png_path in frames_sorted:
+            try:
+                Path(png_path).unlink()
+            except Exception:
+                pass
 
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
@@ -260,10 +300,11 @@ class PngToMp4Callback(BaseCallback):
     PNGs must be named as <episode>_<frame>.png.
     """
 
-    def __init__(self, record_path: Path, fps: int = 25, verbose: int = 0):
+    def __init__(self, record_path: Path, expected_size: int, fps: int = 25, verbose: int = 0):
         super().__init__(verbose)
         self.record_path = record_path
         self.fps = fps
+        self.expected_size = expected_size
 
     def _on_rollout_end(self) -> None:
         self._convert_pngs_to_mp4s()
@@ -273,40 +314,4 @@ class PngToMp4Callback(BaseCallback):
         return True
 
     def _convert_pngs_to_mp4s(self):
-        png_files = glob.glob(str(self.record_path / "*.png"))
-        if not png_files:
-            return
-
-        # Group pngs by episode number
-        episode_dict = {}
-        pattern = re.compile(r"(\d+)_(\d+)\.png$")
-        for png in png_files:
-            match = pattern.search(png)
-            if match:
-                ep, frame = int(match.group(1)), int(match.group(2))
-                episode_dict.setdefault(ep, []).append((frame, png))
-
-        for ep, frames in episode_dict.items():
-            # Sort frames by frame number
-            frames_sorted = sorted(frames, key=lambda x: x[0])
-            images = [cv2.imread(f[1]) for f in frames_sorted]
-            if not images or images[0] is None:
-                continue
-            height, width, layers = images[0].shape
-            mp4_path = self.record_path / f"{ep}.mp4"
-            out = cv2.VideoWriter(
-                str(mp4_path),
-                cv2.VideoWriter_fourcc(*"mp4v"),
-                self.fps,
-                (width, height),
-            )
-            for img in images:
-                if img is not None:
-                    out.write(img)
-            out.release()
-            # Optionally, remove PNGs after conversion
-            for _, png_path in frames_sorted:
-                try:
-                    Path(png_path).unlink()
-                except Exception:
-                    pass
+        return img2video(self.record_path, self.expected_size, self.fps)

@@ -143,6 +143,7 @@ class Brain:
         steps_per_episode: int,
     ):
         """Calculate the total number of iterations for training and testing."""
+        self.steps_per_episode = steps_per_episode
         # Calculate the total number of tasks to be run
         self.n_tasks = num_imprinting_conditions * num_brains
         if "train" in episodes:
@@ -282,6 +283,11 @@ class Brain:
                     if all(dones):
                         # episode is done
                         break
+
+                cb.img2video(
+                    config.path / "recordings" / "chamber" / config.current_mode,
+                    self.steps_per_episode,
+                )
         except Exception as e:
             config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
@@ -333,7 +339,8 @@ class Brain:
         # if config:
         callback_list.append(
             cb.PngToMp4Callback(
-                config.path / "recordings" / "chamber" / config.current_mode
+                config.path / "recordings" / "chamber" / config.current_mode,
+                self.steps_per_episode,
             )
         )
 
