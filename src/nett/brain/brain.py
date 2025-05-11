@@ -129,7 +129,7 @@ class Brain:
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
         self.reward_args = reward_args
-        if reward is not "RE3":
+        if reward != "RE3":
             self.reward_args["batch_size"] = self.batch_size
             self.reward_args["lr"] = self.learning_rate
 
