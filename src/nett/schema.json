@@ -185,6 +185,12 @@
           "default": {"train": "0", "test": "0"},
           "additionalProperties": false
         },
+        "timescale": {
+          "description": "Time scale of the environment. Defaults to 20.",
+          "type": "number",
+          "minimum": 0,
+          "default": 20
+        },
         "multiagent": {
           "description": "Whether the environment supports multi-agent training",
           "type": "boolean",
