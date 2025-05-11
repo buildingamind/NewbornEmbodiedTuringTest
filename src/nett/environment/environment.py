@@ -47,6 +47,7 @@ class Environment:
         executable_path (str): The path to the Unity executable file.
         conditions (list[str], optional): A list of imprinting conditions to run. If None, all available imprinting conditions will be run. For a list of available imprinting condtions from an executable, run `nett.list_conditions` :func:`~nett.nett.list_conditions`. Defaults to `None`.
         record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the entire chamber for each mode (train and test). Defaults to `{"train": 0, "test": 0}`
+        timescale (float): The timescale to run the Unity environment at. This multiplies the speed of the simulation from realtime. A value below 1 slows down the simulation. A value above 1 speeds up the simulation. Setting the value too high may result in skipping steps within Unity environment. Defaults to `20.0`.
         multiagent (bool): Flag to indicate if environment is a multiagent environment (beta). Defaults to `False`.
         display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to `None`.
     """
@@ -65,6 +66,7 @@ class Environment:
         executable_path: str,
         conditions: Optional[list[str]] = None,
         record_eps: dict = {"train": "0", "test": "0"},
+        timescale: float = 20.0,
         multiagent: bool = False,
         display: Optional[int] = None,
     ):
@@ -86,7 +88,7 @@ class Environment:
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
 
         # Create a list of arguments to pass to the Unity environment
-        args = []
+        args = ["timescale", str(timescale)]
 
         if display is None:
             # enable batchmode for headless servers
