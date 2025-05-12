@@ -82,6 +82,11 @@
           "type": "boolean",
           "default": true
         },
+        "existing_network_path": {
+          "description": "Path to an existing network to load. If not provided, a new network is created.",
+          "type": "string",
+          "default": null
+        },
         "custom_encoder_args": {
           "description": "Custom Encoder Arguments that are fed directly into the encoder network",
           "type": "object",
