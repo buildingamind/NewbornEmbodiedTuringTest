@@ -97,6 +97,7 @@ class Brain:
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         custom_encoder_args: dict[str, Any] = {},
+        existing_network_path: Optional[str] = None,  # TODO: Come up with a better name
         custom_algorithm_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
@@ -118,6 +119,11 @@ class Brain:
             int(checkpoint_freq) if checkpoint_freq is not None else None
         )
         self.train_encoder = bool(train_encoder)
+        self.existing_network_path = Path(existing_network_path)
+        if not self.existing_network_path.exists():
+            raise FileNotFoundError(
+                f"Network path {self.existing_network_path} does not exist."
+            )
 
         # used for extractors that wrap other extractors e.g. multiinput
         if "extractor_class" in custom_encoder_args:
@@ -129,7 +135,7 @@ class Brain:
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
         self.reward_args = reward_args
-        if reward != "RE3":
+        if reward != "RE3" and getattr(reward, "__name__", None) != "RE3":
             self.reward_args["batch_size"] = self.batch_size
             self.reward_args["lr"] = self.learning_rate
 
@@ -188,20 +194,36 @@ class Brain:
             policy_kwargs["net_arch"] = self.custom_policy_arch
 
         try:
-            model = self.algorithm(
-                self.policy,
-                envs,
-                batch_size=self.batch_size,
-                n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
-                learning_rate=self.learning_rate,
-                ent_coef=self.ent_coef,
-                verbose=1,  # 0,  # TODO: Incorporate this into options
-                policy_kwargs=policy_kwargs,
-                device=f"cuda:{config.device}",
-                seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
-                tensorboard_log=config.path / "tensorboard",
-                **self.custom_algorithm_args,
-            )
+            if self.existing_network_path is not None:
+                model: BaseAlgorithm = self.algorithm.load(
+                    self.existing_network_path,
+                    envs,
+                    device=f"cuda:{config.device}",
+                    batch_size=self.batch_size,
+                    n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
+                    learning_rate=self.learning_rate,
+                    ent_coef=self.ent_coef,
+                    verbose=1,  # 0,  # TODO: Incorporate this into options
+                    policy_kwargs=policy_kwargs,
+                    seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                    tensorboard_log=config.path / "tensorboard",
+                    **self.custom_algorithm_args,
+                )
+            else:
+                model = self.algorithm(
+                    self.policy,
+                    envs,
+                    batch_size=self.batch_size,
+                    n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
+                    learning_rate=self.learning_rate,
+                    ent_coef=self.ent_coef,
+                    verbose=1,  # 0,  # TODO: Incorporate this into options
+                    policy_kwargs=policy_kwargs,
+                    device=f"cuda:{config.device}",
+                    seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                    tensorboard_log=config.path / "tensorboard",
+                    **self.custom_algorithm_args,
+                )
 
             # set encoder as eval only if train_encoder is not True
             if not self.train_encoder:
@@ -282,6 +304,11 @@ class Brain:
                     if all(dones):
                         # episode is done
                         break
+
+                cb.img2video(
+                    config.path / "recordings" / "chamber" / config.current_mode,
+                    self.steps_per_episode,
+                )
         except Exception as e:
             config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
@@ -329,5 +356,13 @@ class Brain:
                 config.logger.warning(
                     f"Instrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
+
+        # if config:
+        callback_list.append(
+            cb.PngToMp4Callback(
+                config.path / "recordings" / "chamber" / config.current_mode,
+                self.steps_per_episode,
+            )
+        )
 
         return CallbackList(callback_list)
