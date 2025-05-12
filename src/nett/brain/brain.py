@@ -150,6 +150,7 @@ class Brain:
     ):
         """Calculate the total number of iterations for training and testing."""
         # Calculate the total number of tasks to be run
+        self.steps_per_episode = steps_per_episode
         self.n_tasks = num_imprinting_conditions * num_brains
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
