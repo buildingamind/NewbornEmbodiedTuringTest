@@ -130,25 +130,25 @@
           "properties": {
             "train": {
               "description": "Number of training episodes to record. Defaults to 0.",
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "default": "0"
             },
             "test": {
               "description": "Number of testing episodes to record. Defaults to 0.",
-              "type": "integer",
-              "minimum": 0,
-              "default": 0
+              "type": "string",
+              "default": "0"
             }
           },
-          "panini_projection": {
-            "description": "Apply a panini projection to the agent's vision",
-            "type": "boolean",
-            "default": false
-          },
+          "default": {"train": "0", "test": "0"},
           "additionalProperties": false
-        }
-      },
+        },
+        "panini_projection": {
+          "description": "Apply a panini projection to the agent's vision",
+          "type": "boolean",
+          "default": false
+        },
+        "additionalProperties": false
+        },
       "additionalProperties": false
     },
     "environment": {

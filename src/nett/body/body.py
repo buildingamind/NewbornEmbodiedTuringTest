@@ -30,7 +30,7 @@ def _load_env(
     config: TaskConfig,
     wrappers: list,
     validation_mode: bool,
-    record_eps: int = 0,
+    record_eps: str = "0:0:1",
     seed: Optional[int] = None,
 ) -> gym.Env:
     loaded_env = env.load(config, validation_mode, seed)
@@ -48,24 +48,41 @@ def _load_env(
     if not (validation_mode or config.memory is None):
         if config.current_mode == "train":
             (config.path / "monitor").mkdir(exist_ok=True)
-            loaded_env = Monitor(loaded_env, str(config.path / "monitor" / f"{config.brain_id}_{seed if seed is not None else 0}.csv"))
+            loaded_env = Monitor(
+                loaded_env,
+                str(
+                    config.path
+                    / "monitor"
+                    / f"{config.brain_id}_{seed if seed is not None else 0}.csv"
+                ),
+            )
         loaded_env = _record_wrapper(loaded_env, config, record_eps, seed)
 
     return loaded_env
 
 
 def _record_wrapper(  # TODO: Capture both eyes rather than just one
-    env: gym.Env, config: TaskConfig, record_eps: int, seed: Optional[int] = None
+    env: gym.Env, config: TaskConfig, record_eps: str, seed: Optional[int] = None
 ) -> gym.Env:
     if seed is None:
         seed = 0
-    record_episodes = record_eps
+    record_episodes = record_eps.split(":")
+    record_start = 0
+    record_step = 1
+    if len(record_episodes) == 1:
+        record_stop = int(record_episodes[0] or 0)
+    else:
+        record_start = int(record_episodes[0] or 0)
+        record_stop = int(record_episodes[1] or int.max)
+        if len(record_episodes) == 3:
+            record_step = int(record_episodes[2] or 1)
+
     if config.current_mode == "test":
-        record_episodes = ceil(record_episodes / config.n_parallel_envs)
+        record_stop = ceil(record_stop / config.n_parallel_envs)
     if (
-        record_episodes > 0
+        record_stop > 0 and record_step > 0
     ):  #####TODO: Add support for recording multiple agents and multiobs
-        record_ep_cb = lambda t: t < record_episodes
+        record_ep_cb = lambda t: t >= record_start and t < record_stop and (t - record_start) % record_step == 0
         return RecordVideo(
             env,
             config.path / "recordings" / "agent" / config.current_mode,
@@ -92,10 +109,10 @@ class Body:
     def __init__(
         self,
         wrappers: list[gym.Wrapper | str] = [],
-        record_eps: dict[str, int] = {"train": 0, "test": 0},
+        record_eps: dict[str, int] = {"train": "0:0:1", "test": "0:0:1"},
         panini_projection: bool = False,
     ):
-        self.multiobs = "binocular" in wrappers or 'multiobs' in wrappers
+        self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -136,7 +153,7 @@ class Body:
 
     def _single_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
         def callback():
-            record_eps = self.record_eps.get(config.current_mode, 0)
+            record_eps = self.record_eps.get(config.current_mode, "0:0:1")
             return _load_env(env, config, self.wrappers, False, record_eps)
 
         return DummyVecEnv([callback])
@@ -151,7 +168,7 @@ class Body:
 
         # create n_envs environments
         wrappers = self.wrappers
-        record_eps = self.record_eps.get(config.current_mode, 0)
+        record_eps = self.record_eps.get(config.current_mode, "0:0:1")
         seed_list = range(config.n_parallel_envs)
         return SubprocVecEnv(
             [seed_callback(env, seed, wrappers, record_eps) for seed in seed_list]
