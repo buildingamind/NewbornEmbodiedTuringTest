@@ -237,7 +237,6 @@ def stats_overall(data: pd.DataFrame, results_dir: Path):
         data[data["test.cond"] != "Rest"]
         .groupby("test.cond")
         .apply(lambda g: _stats(g, column="avgs"))
-        .drop("Rest")
         .reset_index()
     )
     across_imp_cond.to_csv(results_dir / "stats_across_all_agents.csv", index=False)
