@@ -300,8 +300,11 @@ class PngToMp4Callback(BaseCallback):
     PNGs must be named as <episode>_<frame>.png.
     """
 
-    def __init__(self, record_path: Path, expected_size: int, fps: int = 25, verbose: int = 0):
+    def __init__(self, record_path: Path, expected_size: int, fps: int = 24, verbose: int = 0):
         super().__init__(verbose)
+        if not record_path.exists():
+            record_path.mkdir(parents=True)
+
         self.record_path = record_path
         self.fps = fps
         self.expected_size = expected_size
