@@ -10,6 +10,5 @@ from .sam import SegmentAnything
 from .simplevit import SimpleViT
 from .vit import ViT
 from .cnnlstm import CNNLSTM
-from .sam import SegmentAnything
 from .frozensimclr import FrozenSimCLR
 from .multiinput import MultiInputEncoder
