@@ -333,7 +333,7 @@ class Brain:
                 callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
             else:
                 config.logger.warning(
-                    f"Instrinsic rewards do not support selected algorithm {self.algorithm}"
+                    f"Intrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
 
         # if config:
