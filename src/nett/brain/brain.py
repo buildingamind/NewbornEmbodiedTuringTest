@@ -164,7 +164,7 @@ class Brain:
             else:  # max_envs is between 1 and test_eps
                 self.n_parallel_envs = int(max_envs)
                 self.test_iterations = num_test_conditions * ceil(
-                    episodes["test"] / max_envs
+                    episodes["test"] / self.n_parallel_envs
                 )
 
     def train(self, envs: VecEnv, config: TaskConfig):
