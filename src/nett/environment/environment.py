@@ -66,7 +66,7 @@ class Environment:
         executable_path: str,
         conditions: Optional[list[str]] = None,
         record_eps: dict = {"train": "0", "test": "0"},
-        timescale: float = 20.0,
+        timescale: float = 20.0, # TODO Change this to decision period
         multiagent: bool = False,
         display: Optional[int] = None,
     ):

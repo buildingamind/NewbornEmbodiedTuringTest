@@ -101,17 +101,9 @@ def run_task(task: Task) -> None:
     for mode in config.modes:
         config.current_mode = mode
 
-        if mode == 'test':
-            for i in range(agent.brain.test_episodes):
-                seed: int = 1000+i
-                with agent.body.embed(agent.env, config, seed) as body_interface:
-                    # brain.train() or brain.test()
-                    getattr(agent.brain, mode)(body_interface, config, seed)
-                    config.logger.info(f"Closing Environment...")
-        else:
-            with agent.body.embed(agent.env, config) as body_interface:
-                # brain.train() or brain.test()
-                getattr(agent.brain, mode)(body_interface, config)
-                config.logger.info(f"Closing Environment...")
+        with agent.body.embed(agent.env, config) as body_interface:
+            # brain.train() or brain.test()
+            getattr(agent.brain, mode)(body_interface, config)
+            config.logger.info(f"Closing Environment...")
 
     config.logger.info("Environments Closed")

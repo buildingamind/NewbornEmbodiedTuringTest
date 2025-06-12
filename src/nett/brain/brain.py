@@ -156,8 +156,7 @@ class Brain:
             max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
             self.n_parallel_envs = 1
-            self.test_iterations = num_test_conditions
-            self.test_episodes = episodes["test"]
+            self.test_iterations = num_test_conditions * episodes["test"]
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
@@ -241,7 +240,7 @@ class Brain:
             _save_model(model, model_path)
             config.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, config: TaskConfig, seed: int):
+    def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
         try:
             # load previously trained model from save_dir, if it exists
@@ -249,11 +248,11 @@ class Brain:
                 config.path / "model" / "latest_model.zip",
                 device=f"cuda:{config.device}",
             )
-            model.set_random_seed(seed)
 
             # loop over episodes
-            for _ in range(self.test_iterations):
+            for i in range(self.test_iterations):
                 # reset environment and get initial obs
+                model.set_random_seed(i)
                 obs = envs.reset()
                 # reset states for recurrentPPO
                 states = None

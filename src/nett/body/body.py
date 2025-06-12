@@ -132,7 +132,7 @@ class Body:
             if getattr(test_env, "close", None) is not None:
                 test_env.close()
 
-    def embed(self, env: gym.Env, config: TaskConfig, seed: Optional[int] = None) -> "Body":
+    def embed(self, env: gym.Env, config: TaskConfig):
         """Embed the environment in the body."""
         wrapper: callable = self._zoo_wrapper if env.multiagent else self._gym_wrapper
 
@@ -149,11 +149,11 @@ class Body:
         return SB3VecEnvWrapper(env)
 
     def _gym_wrapper(
-        self, env: gym.Env, config: TaskConfig, seed: Optional[int] = None
+        self, env: gym.Env, config: TaskConfig
     ) -> DummyVecEnv:
         def callback():
             record_eps = self.record_eps.get(config.current_mode, "0:0:1")
-            return _load_env(env, config, self.wrappers, False, record_eps, seed)
+            return _load_env(env, config, self.wrappers, False, record_eps)
 
         return DummyVecEnv([callback])
 
