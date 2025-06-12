@@ -155,17 +155,9 @@ class Brain:
 
             max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
-            if max_envs <= 1:
-                self.n_parallel_envs = 1
-                self.test_iterations = num_test_conditions * episodes["test"]
-            elif max_envs >= episodes["test"]:
-                self.n_parallel_envs = episodes["test"]
-                self.test_iterations = num_test_conditions
-            else:  # max_envs is between 1 and test_eps
-                self.n_parallel_envs = int(max_envs)
-                self.test_iterations = num_test_conditions * ceil(
-                    episodes["test"] / self.n_parallel_envs
-                )
+            self.n_parallel_envs = 1
+            self.test_iterations = num_test_conditions
+            self.test_episodes = episodes["test"]
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
@@ -249,7 +241,7 @@ class Brain:
             _save_model(model, model_path)
             config.logger.info(f"Saved model at {model_path}")
 
-    def test(self, envs: VecEnv, config: TaskConfig):
+    def test(self, envs: VecEnv, config: TaskConfig, seed: int):
         """Test the brain."""
         try:
             # load previously trained model from save_dir, if it exists
@@ -257,6 +249,7 @@ class Brain:
                 config.path / "model" / "latest_model.zip",
                 device=f"cuda:{config.device}",
             )
+            model.set_random_seed(seed)
 
             # loop over episodes
             for _ in range(self.test_iterations):

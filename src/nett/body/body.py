@@ -82,7 +82,11 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
     if (
         record_stop > 0 and record_step > 0
     ):  #####TODO: Add support for recording multiple agents and multiobs
-        record_ep_cb = lambda t: t >= record_start and t < record_stop and (t - record_start) % record_step == 0
+        record_ep_cb = (
+            lambda t: t >= record_start
+            and t < record_stop
+            and (t - record_start) % record_step == 0
+        )
         return RecordVideo(
             env,
             config.path / "recordings" / "agent" / config.current_mode,
@@ -128,16 +132,9 @@ class Body:
             if getattr(test_env, "close", None) is not None:
                 test_env.close()
 
-    def embed(self, env: gym.Env, config: TaskConfig):
+    def embed(self, env: gym.Env, config: TaskConfig, seed: Optional[int] = None) -> "Body":
         """Embed the environment in the body."""
-        wrapper: callable
-
-        if env.multiagent:
-            wrapper = self._zoo_wrapper
-        elif config.current_mode == "train":
-            wrapper = self._single_gym_wrapper
-        else:  # test
-            wrapper = self._multi_gym_wrapper
+        wrapper: callable = self._zoo_wrapper if env.multiagent else self._gym_wrapper
 
         self.env = wrapper(env, config)
 
@@ -151,28 +148,14 @@ class Body:
         env = ConcatVecEnv([lambda: env])
         return SB3VecEnvWrapper(env)
 
-    def _single_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
+    def _gym_wrapper(
+        self, env: gym.Env, config: TaskConfig, seed: Optional[int] = None
+    ) -> DummyVecEnv:
         def callback():
             record_eps = self.record_eps.get(config.current_mode, "0:0:1")
-            return _load_env(env, config, self.wrappers, False, record_eps)
+            return _load_env(env, config, self.wrappers, False, record_eps, seed)
 
         return DummyVecEnv([callback])
-
-    def _multi_gym_wrapper(self, env: gym.Env, config: TaskConfig) -> SubprocVecEnv:
-        def seed_callback(env, seed, wrappers, record_eps):
-            def callback():
-                sleep(seed)
-                return _load_env(env, config, wrappers, False, record_eps, seed)
-
-            return callback
-
-        # create n_envs environments
-        wrappers = self.wrappers
-        record_eps = self.record_eps.get(config.current_mode, "0:0:1")
-        seed_list = range(config.n_parallel_envs)
-        return SubprocVecEnv(
-            [seed_callback(env, seed, wrappers, record_eps) for seed in seed_list]
-        )
 
     def __enter__(self) -> VecEnv:
         """return env at beginning of `with` statement"""
