@@ -250,9 +250,8 @@ class Brain:
             )
 
             # loop over episodes
-            for i in range(self.test_iterations):
+            for _ in range(self.test_iterations):
                 # reset environment and get initial obs
-                model.set_random_seed(i)
                 obs = envs.reset()
                 # reset states for recurrentPPO
                 states = None
