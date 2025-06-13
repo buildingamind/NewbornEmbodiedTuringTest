@@ -251,7 +251,7 @@ def all_cond_bar_chart(
     dot_data = by_test_cond[by_test_cond["test.cond"] != "Rest"]
     img_name = results_dir / "all_imprinting_conds_test.png"
     make_bar_charts(
-        data=across_imp_cond,
+        data=across_imp_cond[across_imp_cond["test.cond"] != "Rest"],
         dots=dot_data,
         y_col="avgs",
         error_min_col="error_min",
