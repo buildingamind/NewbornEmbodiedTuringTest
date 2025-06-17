@@ -23,11 +23,18 @@ flowchart TB
         tasklist.py:::file
         subgraph tasklist.py
             TaskList:::clss
+            validate_tasklist
         end
 
         task.py:::file
         subgraph task.py
             Task:::clss
+            subgraph Task
+                set_device:::func
+            end
+            run_task:::func
+            TaskConfig:::clss
+            Agent:::clss
         end
 
         memory.py:::file
@@ -43,35 +50,35 @@ flowchart TB
             end
         end
 
-        vec_env.py:::file
-        subgraph vec_env.py
-            SafeEnv:::clss
-            MultiEnv:::clss
-            SingleEnv:::clss
-            TestEnv:::clss
-            ZooEnv:::clss
-        end
-
         executor.py:::file
         subgraph executor.py
-            _validate_env:::func
             Executor:::clss
             subgraph Executor
                 executor.submit[submit]:::func
                 executor.close[close]:::func
-                _run_task:::func
             end
         end
 
         validate.py:::file
         subgraph validate.py
             validate_conditions:::func
-            validate_mode:::func
         end
 
         design.py:::file
         subgraph design.py
             get_experiment_design:::func
+        end
+
+        loading_bar_queue.py:::file
+        subgraph loading_bar_queue.py
+            LoadingBarQueue:::clss
+            subgraph LoadingBarQueue
+                LoadingBarQueue.add[add]:::func
+                LoadingBarQueue.update[update]:::func
+                LoadingBarQueue.remove[remove]:::func
+                LoadingBarQueue.close[close]:::func
+            end
+            updateLoadingBars:::func
         end
     end
 
@@ -80,11 +87,10 @@ flowchart TB
         NETT:::clss
         subgraph NETT
             nett.run[run]:::func
-            update:::func
-            nett._close[_close]:::func
+            single_run:::func
             _assign_task:::func
             _calculate_task_memory:::func
-            _waitlist:::func
+            task_waiter:::func
         end
     end
     brain:::dir
@@ -93,8 +99,7 @@ flowchart TB
         subgraph brain.py
             Brain:::clss
             subgraph Brain
-                Brain.initialize[initialize]:::func
-                calc_run_info:::func
+                calc_iterations:::func
                 train:::func
                 test:::func
                 _init_callbacks:::func
@@ -116,6 +121,7 @@ flowchart TB
                 MemoryCallback:::func
                 IntrinsicRewardWithOnPolicyRL:::func
                 IntrinsicRewardWithOffPolicyRL:::func
+                PngToMp4Callback:::func
             end
         end
         brain.encoders:::subdir
@@ -139,9 +145,13 @@ flowchart TB
         subgraph body.py
             Body:::clss
             subgraph Body
-                Body.initialize[initialize]:::func
-                _record_wrapper:::func
+                embed:::func
+                validate_env:::func
+                _zoo_wrapper:::func
+                _gym_wrapper:::func
             end
+            _record_wrapper:::func
+            _load_env:::func
         end
         body.utils:::subdir
         subgraph body.utils[utils]
@@ -164,17 +174,20 @@ flowchart TB
         subgraph environment.py
             Environment:::clss
             subgraph Environment
-                Environment.initialize[initialize]:::func
+                Environment.load[load]:::func
                 adjust_to_agent:::func
-                render:::func
-                reset:::func
                 Environment.step[step]:::func
             end
-            GymEnvironment:::clss
-            subgraph GymEnvironment
-                GymEnvironment.step[step]:::func
+            BaseWrapper:::clss
+            subgraph BaseWrapper
+                BaseWrapper.render[render]:::func
+                BaseWrapper.reset[reset]:::func
             end
-            ZooEnvironment:::clss
+            ZooWrapper:::clss
+            GymWrapper:::clss
+            subgraph GymWrapper
+                GymWrapper.step[step]:::func
+            end
         end
         environment.utils:::subdir
         subgraph environment.utils[utils]
@@ -223,51 +236,58 @@ flowchart TB
     class Encoder,Wrapper,Reward stack
     style experiment fill:#eee,stroke:#bbb,font-size:16pt
 
-    nett.run --> Brain.initialize & Body.initialize & Environment.initialize & get_experiment_design & validate_mode & calc_run_info & adjust_to_agent & MemoryManager & validate_conditions & validate_devices & TaskList & nett._close
-    Brain.initialize --> validate_algorithm & validate_encoder & validate_policy & validate_reward
-    Body.initialize --> validate_wrappers
+    nett.run --> MemoryManager & MemoryManager.close & validate_devices & single_run & get_free_memory & task_waiter & Executor & executor.close
+    single_run --> Brain & Body & Environment & calc_iterations & adjust_to_agent & _calculate_task_memory & TaskList & LoadingBarQueue.add & executor.submit & validate_tasklist & _assign_task
+
+    Brain --> validate_algorithm & validate_encoder & validate_policy & validate_reward
+    Body --> validate_wrappers
     validate_wrappers --> Wrapper
 
-    Environment.initialize --> validate_executable_path
+    embed --> _gym_wrapper & _zoo_wrapper
+    validate_tasklist --> validate_env
 
-    _calculate_task_memory --> get_most_free_gpu
-    nett.run --> get_free_memory & _calculate_task_memory & _assign_task & Executor
-    _validate_env --> TestEnv
-    _run_task --> Brain & ZooEnv & SingleEnv & MultiEnv & train & test & _validate_env
-    ZooEnv --> ZooEnvironment
-    SingleEnv & MultiEnv & TestEnv --> GymEnvironment & Body
+    Environment --> validate_conditions & validate_executable_path & get_experiment_design
 
-    TaskList & _calculate_task_memory --> Task
+    _calculate_task_memory --> get_most_free_gpu & Task & set_device & LoadingBarQueue.add & LoadingBarQueue.remove
+    validate_env & _zoo_wrapper & _gym_wrapper --> _load_env
+    run_task --> embed & train & test
+    Environment.load --> GymWrapper & ZooWrapper
 
-    _assign_task --> _waitlist
-    _assign_task & _waitlist & _calculate_task_memory --> executor.submit
+    TaskList --> Task
 
-    nett._close --> MemoryManager.close & executor.close
-    executor.submit --> _run_task
+    LoadingBarQueue.remove & LoadingBarQueue.close & updateLoadingBars --> LoadingBarQueue.update
+
+    _calculate_task_memory & task_waiter & _assign_task --> executor.submit & run_task
 
     get_free_memory & get_used_memory--> get_memory_status
 
-    train & test --> GymEnvironment.step & Environment.step
-    GymEnvironment & ZooEnvironment -.-> Environment
-    ZooEnvironment -.-> zoo
-
-    MultiEnv & SingleEnv & TestEnv & ZooEnv-.-> SafeEnv
+    train & test --> GymWrapper.step & Environment.step
+    GymWrapper & ZooWrapper -.-> BaseWrapper
+    ZooWrapper -.-> zoo
 
     train --> _init_callbacks
 
     validate_algorithm & validate_encoder & validate_policy --> sb3
     Encoder -.-> sb3
     validate_algorithm --> sb3_contrib
-    validate_reward & Reward --> rllte
+    validate_reward --> rllte
+    Reward -.-> rllte
 
     validate_encoder --> Encoder
     validate_reward --> Reward
 
-    Wrapper & GymEnvironment & validate_wrappers -.-> gym
+    Wrapper & GymWrapper & validate_wrappers -.-> gym
 
     analyze --> experiment & merge & train_viz & test_viz
 
-    _init_callbacks --> MemoryCallback & HParamCallback & LoadingBarCallback & IntrinsicRewardWithOnPolicyRL & IntrinsicRewardWithOffPolicyRL --> sb3
-    MemoryCallback --> MemoryManager
+    _init_callbacks --> MemoryCallback & HParamCallback & LoadingBarCallback & IntrinsicRewardWithOnPolicyRL & IntrinsicRewardWithOffPolicyRL & PngToMp4Callback -.-> sb3
+    MemoryCallback --> MemoryManager & MemoryManager.close
     MemoryCallback --> get_used_memory
+
+    Body--> _record_wrapper
+
+    _load_env --> Environment.load
+
+    Task --> TaskConfig & Agent
+
 ```

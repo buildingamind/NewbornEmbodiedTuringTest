@@ -8,14 +8,11 @@ config:
   layout: elk
 ---
 
-
 flowchart LR
 
-NETT -- initialize --> Brain & Body & Environment
+NETT -- initialize --> Brain & Body & Environment 
 NETT -- run tasks in parallel --> Executor
-Executor -- safely wrap environment --> vec_env
-vec_env -- start environment -->  Environment
-vec_env -- wrap environment -->  Body
+Executor -- wrap environment -->  Body
+Body -- start environment --> Environment
 Executor -- run environment --> Brain
-
 ```
