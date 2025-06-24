@@ -73,9 +73,9 @@ def _stats(group, column="percent_correct", mu=0.5):
 
 def compute_stats(data: pd.DataFrame, results_dir: Path) -> pd.DataFrame:
     grouped = data.groupby(["imprint.cond", "agent", "test.cond"])
-    by_test_cond = grouped.apply(_stats).reset_index()
+    by_test_cond = grouped.apply(_stats).reset_index()  # keep group columns as columns
     by_test_cond["imp_agent"] = (
-        by_test_cond["imprint.cond"] + "_" + by_test_cond["agent"].astype(str)
+        by_test_cond["imprint.cond"].astype(str) + "_" + by_test_cond["agent"].astype(str)
     )
     by_test_cond.to_csv(results_dir / "stats_by_agent.csv", index=False)
     return by_test_cond

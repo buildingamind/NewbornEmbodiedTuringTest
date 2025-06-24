@@ -20,20 +20,26 @@ GROUP_COLUMNS: list[str] = [
 
 def _read_data(filename: Path) -> pd.DataFrame:
     print(f"Reading {filename}")
-    data: pd.DataFrame = pd.read_csv(filename, skipinitialspace=True).fillna("NA")
+    data: pd.DataFrame = pd.read_csv(
+        filename, skipinitialspace=True, on_bad_lines="skip"
+    ).fillna("NA")
 
     ###################################
-    # Convert 'Episode' and 'Step' to numeric types, coercing errors.
+    # Convert columns ["Episode", "Step", "agent.x", "agent.y", "agent.z"] to numeric types, coercing errors.
     # This handles cases where these columns might contain 'NA' strings (due to prior fillna)
     # or other non-numeric values.
-    if "Episode" in data.columns:
-        data["Episode"] = pd.to_numeric(data["Episode"], errors="coerce")
-    if "Step" in data.columns:
-        data["Step"] = pd.to_numeric(data["Step"], errors="coerce")
+    for column in ["Episode", "Step", "agent.x", "agent.y", "agent.z"]:
+        if column in data.columns:
+            data[column] = pd.to_numeric(data[column], errors="coerce")
 
     # Proceed with the logic only if 'Episode' and 'Step' columns exist
     # and have at least some non-NaN values after conversion.
-    if "Episode" in data.columns and data["Episode"].notna().any() and "Step" in data.columns and data["Step"].notna().any():
+    if (
+        "Episode" in data.columns
+        and data["Episode"].notna().any()
+        and "Step" in data.columns
+        and data["Step"].notna().any()
+    ):
 
         # Filter for rows where Episode is 0
         # .loc is used for clarity and to avoid potential SettingWithCopyWarning on chained indexing
@@ -60,8 +66,9 @@ def _read_data(filename: Path) -> pd.DataFrame:
                         # Check if the max_step_episode_0 exists in any 'Step' of the last episode.
                         # (Series == value).any() correctly handles potential NaNs in last_episode_data["Step"],
                         # as NaN compared to any value (including NaN) results in False.
-                        found_max_step_in_last_episode = \
-                            (last_episode_data["Step"] == max_step_episode_0).any()
+                        found_max_step_in_last_episode = (
+                            last_episode_data["Step"] == max_step_episode_0
+                        ).any()
 
                         if not found_max_step_in_last_episode:
                             # If not found, remove all rows belonging to the last episode.
