@@ -66,7 +66,7 @@ class Environment:
         executable_path: str,
         conditions: Optional[list[str]] = None,
         record_eps: dict = {"train": "0", "test": "0"},
-        timescale: float = 20.0, # TODO Change this to decision period
+        timescale: float = 20.0,  # TODO Change this to decision period
         multiagent: bool = False,
         display: Optional[int] = None,
     ):
@@ -88,7 +88,7 @@ class Environment:
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
 
         # Create a list of arguments to pass to the Unity environment
-        args = ["timescale", str(timescale)]
+        args = []
 
         if display is None:
             # enable batchmode for headless servers
@@ -103,12 +103,15 @@ class Environment:
 
         # specify what to record
         for mode in ["train", "test"]:
-            self.base_args[mode].extend(
-                [
-                    "--record-episodes",
-                    record_eps.get(mode, "0"),
-                ]
-            )
+            if record_eps.get(mode, "0") != "0":
+                self.base_args[mode].extend(
+                    [
+                        "--recording-eps",
+                        record_eps.get(mode, "0"),
+                        "--record-chamber",
+                        "true",
+                    ]
+                )
 
     def adjust_to_agent(
         self,
@@ -121,17 +124,12 @@ class Environment:
 
         args = ["--episode-steps", str(steps_per_episode)]
 
-        if multiobs:  # TODO: Make this so it is binocular specific
-            args.append("--binocular")
-        if panini:
-            args.append("--panini-projection")
-
         if reward in {
             "closeness",
             "completeness",
             "closeness,completeness",
         }:  # TODO: Clean this up
-            args.extend(["--reward", reward])
+            args.extend(["--rewarded", "true"])
 
         for mode in ["train", "test"]:
             self.base_args[mode].extend(args)
@@ -161,11 +159,9 @@ class Environment:
         # TODO: Figure out a way to run on multiple GPUs
         args.extend(
             [
-                "--phase",
-                config.current_mode,  # set mode
-                "--imprint-condition",
-                config.condition,  # set mode
-                "--record-path",
+                "--mode",
+                f"{config.current_mode}-{config.condition}",  # set mode
+                "--log-dir",
                 str(recording_path),  # set log path
                 "-force-device-index",
                 str(config.device),  # set GPU
@@ -178,17 +174,18 @@ class Environment:
         # create logger
         # create log path
         log_path = config.path / "logs"
-        log_dir = (
-            log_path
-            / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"
-        )
-        args.extend(["--log-path", str(log_dir)])
-        # side_channels = [
-        #     Logger(
-        #         f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}",
-        #         log_dir=str(log_path),
-        #     )
-        # ]
+        # log_dir = (
+        #     log_path
+        #     / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"
+        # )
+        # args.extend(["--log-path", str(log_dir)])
+
+        side_channels = [
+            Logger(
+                f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}",
+                log_dir=str(log_path),
+            )
+        ]
 
         complete = False
         while not complete:
@@ -198,7 +195,7 @@ class Environment:
                     additional_args=args,
                     base_port=random_port(),
                     seed=seed,
-                    # side_channels=side_channels,
+                    side_channels=side_channels,
                 )
                 env.render_mode = "rgb_array_list" if self.multiobs else "rgb_array"
                 complete = True
