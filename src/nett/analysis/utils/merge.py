@@ -2,7 +2,8 @@ from pathlib import Path
 import pandas as pd
 
 # Define x_limits and calculate BOUNDS of chamber
-X_LIMITS: tuple[int, int] = (-30.15, 30.15)
+X_LIMITS: tuple[int, int] = (-10, 10)
+# X_LIMITS: tuple[int, int] = (-30.15, 30.15)
 ONE_THIRD: float = (X_LIMITS[1] - X_LIMITS[0]) / 3
 BOUNDS: list[float] = [X_LIMITS[0] + ONE_THIRD, X_LIMITS[1] - ONE_THIRD]
 
