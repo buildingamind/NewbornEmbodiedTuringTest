@@ -100,6 +100,7 @@ class Environment:
 
         # split into train and test args
         self.base_args = {"train": args[:], "test": args[:]}
+        self.base_args["train"].extend(["--random-pos", "true"])
 
         # specify what to record
         for mode in ["train", "test"]:
