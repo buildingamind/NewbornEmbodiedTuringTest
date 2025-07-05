@@ -2,9 +2,14 @@ from pathlib import Path
 import pandas as pd
 
 # Define x_limits and calculate BOUNDS of chamber
-X_LIMITS: tuple[int, int] = (-33.15, 33.15)
-ONE_THIRD: float = (X_LIMITS[1] - X_LIMITS[0]) / 3
-BOUNDS: list[float] = [X_LIMITS[0] + ONE_THIRD, X_LIMITS[1] - ONE_THIRD]
+X_LIMITS: tuple[float, float] = (-33.15, 33.15)
+AGENT_RADIUS: float = 3.0  # Radius of the agent in meters
+AGENT_LIMITS: tuple[float, float] = (
+    X_LIMITS[0] + AGENT_RADIUS,
+    X_LIMITS[1] - AGENT_RADIUS,
+)
+ONE_THIRD: float = (AGENT_LIMITS[1] - AGENT_LIMITS[0]) / 3
+BOUNDS: list[float] = [AGENT_LIMITS[0] + ONE_THIRD, AGENT_LIMITS[1] - ONE_THIRD]
 
 # Define the grouping columns
 GROUP_COLUMNS: list[str] = [
