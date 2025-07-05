@@ -27,6 +27,7 @@ class Executor(ProcessPoolExecutor):
 
         super().__init__(
             initializer=initializer,  # TODO: too many workers
+            max_tasks_per_child=1  # Ensure each task runs in a fresh process
         )
 
         self.loading_bar = LoadingBarQueue()
