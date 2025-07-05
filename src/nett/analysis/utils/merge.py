@@ -32,56 +32,6 @@ def _read_data(filename: Path) -> pd.DataFrame:
         if column in data.columns:
             data[column] = pd.to_numeric(data[column], errors="coerce")
 
-    # Proceed with the logic only if 'Episode' and 'Step' columns exist
-    # and have at least some non-NaN values after conversion.
-    if (
-        "Episode" in data.columns
-        and data["Episode"].notna().any()
-        and "Step" in data.columns
-        and data["Step"].notna().any()
-    ):
-
-        # Filter for rows where Episode is 0
-        # .loc is used for clarity and to avoid potential SettingWithCopyWarning on chained indexing
-        episode_0_data = data.loc[data["Episode"] == 0]
-
-        # Check if there's any data for Episode 0 and if it has any valid (non-NaN) Step values
-        if not episode_0_data.empty and episode_0_data["Step"].notna().any():
-            max_step_episode_0 = episode_0_data["Step"].max()
-
-            # Ensure max_step_episode_0 is a valid number (not NaN).
-            # This check is important if all "Step" values in episode_0_data were NaN.
-            if pd.notna(max_step_episode_0):
-                # Find the maximum episode number in the entire dataset.
-                # .max() on a pandas Series with NaNs will ignore NaNs by default.
-                max_episode = data["Episode"].max()
-
-                # Proceed only if max_episode is a valid number and is greater than 0
-                # (i.e., there are episodes beyond Episode 0).
-                if pd.notna(max_episode) and max_episode > 0:
-                    # Filter for rows belonging to the last episode
-                    last_episode_data = data.loc[data["Episode"] == max_episode]
-
-                    if not last_episode_data.empty:
-                        # Check if the max_step_episode_0 exists in any 'Step' of the last episode.
-                        # (Series == value).any() correctly handles potential NaNs in last_episode_data["Step"],
-                        # as NaN compared to any value (including NaN) results in False.
-                        found_max_step_in_last_episode = (
-                            last_episode_data["Step"] == max_step_episode_0
-                        ).any()
-
-                        if not found_max_step_in_last_episode:
-                            # If not found, remove all rows belonging to the last episode.
-                            # A .copy() is used to ensure 'data' becomes a new DataFrame,
-                            # avoiding potential views and SettingWithCopyWarning.
-                            data = data.loc[data["Episode"] != max_episode].copy()
-    # If the conditions for this logic block were not met (e.g., missing columns,
-    # no Episode 0 data, no valid Steps in Episode 0, no max_episode > 0, etc.),
-    # 'data' remains as it was (potentially with 'Episode'/'Step' columns
-    # converted to numeric types by the initial part of this block).
-
-    ######################
-
     # Add 'left', 'right', 'middle' columns based on 'agent.x' and 'BOUNDS'
     data["left"] = (data["agent.x"] < BOUNDS[0]).astype(int)
     data["right"] = (data["agent.x"] > BOUNDS[1]).astype(int)
