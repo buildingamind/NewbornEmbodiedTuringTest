@@ -19,7 +19,7 @@ Install the required packages using the typical methods listed on the [README](.
 You are not able to run the code locally on MacOS. However, you can install the necessary packages for building the documentation locally. First, you need to create a python environment using the following command:
 
 ```bash
-conda create -y -n nett_docs python=3.10.8
+conda create -y -n nett_docs python=3.11
 ```
 
 Then, activate the environment:
