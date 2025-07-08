@@ -30,10 +30,10 @@ def _read_data(filename: Path) -> pd.DataFrame:
     ).fillna("NA")
 
     ###################################
-    # Convert columns ["Episode", "Step", "agent.x", "agent.y", "agent.z"] to numeric types, coercing errors.
+    # Convert columns ["Episode", "Step", "agent.x", "agent.z"] to numeric types, coercing errors.
     # This handles cases where these columns might contain 'NA' strings (due to prior fillna)
     # or other non-numeric values.
-    for column in ["Episode", "Step", "agent.x", "agent.y", "agent.z"]:
+    for column in ["Episode", "Step", "agent.x", "agent.z", "agent.angle", "head.angle"]:
         if column in data.columns:
             data[column] = pd.to_numeric(data[column], errors="coerce")
 
