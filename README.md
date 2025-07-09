@@ -72,7 +72,7 @@ To begin benchmarking your first embodied agent with NETT, please be aware:
 
    Create a virtual environment to avoid dependency conflicts. You only need to create the virtual environment once (i.e., you do not need to create the virtual environment again for future work with this pipeline as long as you are using the same machine).
    ```bash
-   conda create -y -n nett_env python=3.11
+   conda create -y -n nett_env python=3.10.12
    ```
 
    Activate the virtual environment (you **do** need to activate the virtual environment every time you run through this pipeline.)
