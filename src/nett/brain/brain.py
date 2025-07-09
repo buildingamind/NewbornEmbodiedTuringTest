@@ -240,6 +240,8 @@ class Brain:
             _save_model(model, model_path)
             config.logger.info(f"Saved model at {model_path}")
 
+        del model  # free memory
+
     def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
         try:
@@ -279,6 +281,8 @@ class Brain:
                     config.path / "recordings" / "chamber" / config.current_mode,
                     self.steps_per_episode,
                 )
+
+            del model  # free memory
         except Exception as e:
             config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e

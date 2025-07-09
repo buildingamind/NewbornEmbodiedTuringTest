@@ -148,9 +148,7 @@ class Body:
         env = ConcatVecEnv([lambda: env])
         return SB3VecEnvWrapper(env)
 
-    def _gym_wrapper(
-        self, env: gym.Env, config: TaskConfig
-    ) -> DummyVecEnv:
+    def _gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
         def callback():
             record_eps = self.record_eps.get(config.current_mode, "0:0:1")
             return _load_env(env, config, self.wrappers, False, record_eps)
@@ -165,6 +163,7 @@ class Body:
         """close env outside of `with` statement"""
         # TODO: Add a way to close Unity Environment after episodes are complete (in Unity)
         self.env.close()
+        del self.env  # free memory
         if exc_type is None:
             return False
         # An exception occurred
