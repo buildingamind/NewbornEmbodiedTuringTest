@@ -112,6 +112,9 @@ from .analysis import analyze, map_trajectories
 __all__ = [
     "NETT",
     "analyze",
+    "map_trajectories",
+    "feature_visualization",
+    "generate_tSNEs",
     "list_algorithms",
     "list_conditions",
     "list_encoders",
