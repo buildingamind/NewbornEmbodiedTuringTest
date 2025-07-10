@@ -208,6 +208,10 @@ def map_trajectories(input_dir, output_dir, arrow_freq=100):
                 csv_path = os.path.join(logs_path, filename)
                 try:
                     df = pd.read_csv(csv_path)
+                    # Trim whitespace from headers and all string columns
+                    df.columns = df.columns.str.strip()
+                    for col in df.select_dtypes(['object']).columns:
+                        df[col] = df[col].str.strip()
                     # Drop rows that are missing any of the essential values
                     df.dropna(subset=required_cols, inplace=True)
                     # Ensure numeric types, coercing errors to NaN, then dropping again
