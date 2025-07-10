@@ -84,7 +84,7 @@ def compute_stats(data: pd.DataFrame, results_dir: Path) -> pd.DataFrame:
 
 
 def make_bar_charts(
-    data, dots, y_col, error_min_col, error_max_col, img_name, chick_data, color_bars
+    data, dots, y_col, error_min_col, error_max_col, img_name, color_bars, chick_data=None
 ):
     plt.figure(figsize=(6, 6))
     sns.set_style("white")
@@ -115,39 +115,40 @@ def make_bar_charts(
         x_categories, rotation=0, ha="center", fontsize=7.5, fontweight="bold"
     )
 
-    chick_data_filtered = chick_data[chick_data["test.cond"].isin(x_categories)]
-    if not chick_data_filtered.empty:
-        chick_data_filtered["test.cond"] = pd.Categorical(
-            chick_data_filtered["test.cond"], categories=x_categories, ordered=True
-        )
-        chick_x_pos = chick_data_filtered["test.cond"].cat.codes - 1
+    if chick_data is not None:
+        chick_data_filtered = chick_data[chick_data["test.cond"].isin(x_categories)]
+        if not chick_data_filtered.empty:
+            chick_data_filtered["test.cond"] = pd.Categorical(
+                chick_data_filtered["test.cond"], categories=x_categories, ordered=True
+            )
+            chick_x_pos = chick_data_filtered["test.cond"].cat.codes - 1
 
-        shift = 0
-        for xi, yi, yerr, i in zip(
-            chick_x_pos,
-            chick_data_filtered["avg"],
-            chick_data_filtered["avg_dev"],
-            range(len(chick_x_pos)),
-        ):
-            if x_categories[i] == "Rest":
-                shift = 1
-            rect = plt.Rectangle(
-                (xi + shift - 0.35, yi - yerr),
-                0.7,
-                2 * yerr,
-                color=CHICK_RED,
-                alpha=0.2,
-            )
-            ax.add_patch(rect)
-            # Calculate the y-coordinate for the horizontal line
-            y_center = rect.get_y() + rect.get_height() / 2
-            # Add the horizontal line
-            line = Line2D(
-                [rect.get_x(), rect.get_x() + rect.get_width()],
-                [y_center, y_center],
-                c=CHICK_RED,
-            )
-            ax.add_line(line)
+            shift = 0
+            for xi, yi, yerr, i in zip(
+                chick_x_pos,
+                chick_data_filtered["avg"],
+                chick_data_filtered["avg_dev"],
+                range(len(chick_x_pos)),
+            ):
+                if x_categories[i] == "Rest":
+                    shift = 1
+                rect = plt.Rectangle(
+                    (xi + shift - 0.35, yi - yerr),
+                    0.7,
+                    2 * yerr,
+                    color=CHICK_RED,
+                    alpha=0.2,
+                )
+                ax.add_patch(rect)
+                # Calculate the y-coordinate for the horizontal line
+                y_center = rect.get_y() + rect.get_height() / 2
+                # Add the horizontal line
+                line = Line2D(
+                    [rect.get_x(), rect.get_x() + rect.get_width()],
+                    [y_center, y_center],
+                    c=CHICK_RED,
+                )
+                ax.add_line(line)
 
     if dots is not None and "test.cond" in dots.columns:
         dots["test.cond"] = pd.Categorical(
@@ -180,7 +181,7 @@ def make_bar_charts(
 
 
 def agent_bar_charts(
-    data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFrame, color_bars: bool
+    data: pd.DataFrame, results_dir: Path, color_bars: bool, chick_data: pd.DataFrame = None
 ):
     for imp_agent in data["imp_agent"].unique():
         bar_data = data[data["imp_agent"] == imp_agent]
@@ -193,8 +194,8 @@ def agent_bar_charts(
             error_min_col="error_min",
             error_max_col="error_max",
             img_name=results_dir / f"{imp_agent}_test.png",
-            chick_data=chick_data,
             color_bars=color_bars,
+            chick_data=chick_data,
         )
 
 
@@ -206,7 +207,7 @@ def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
 
 
 def imprint_cond_bar_charts(
-    by_imp_cond, by_test_cond, results_dir, chick_data, color_bars
+    by_imp_cond, by_test_cond, results_dir, color_bars, chick_data=None
 ):
     for imp_cond in by_imp_cond["imprint.cond"].unique():
         bar_data = by_imp_cond[
@@ -229,8 +230,8 @@ def imprint_cond_bar_charts(
             error_min_col="error_min",
             error_max_col="error_max",
             img_name=img_name,
-            chick_data=chick_data,
             color_bars=color_bars,
+            chick_data=chick_data,
         )
 
 
@@ -246,7 +247,7 @@ def stats_overall(data: pd.DataFrame, results_dir: Path):
 
 
 def all_cond_bar_chart(
-    by_test_cond, across_imp_cond, results_dir, chick_data, color_bars
+    by_test_cond, across_imp_cond, results_dir, color_bars, chick_data=None
 ):
     across_imp_cond["error_min"] = across_imp_cond["avgs"] - across_imp_cond["se"]
     across_imp_cond["error_max"] = across_imp_cond["avgs"] + across_imp_cond["se"]
@@ -259,18 +260,18 @@ def all_cond_bar_chart(
         error_min_col="error_min",
         error_max_col="error_max",
         img_name=img_name,
-        chick_data=chick_data,
         color_bars=color_bars,
+        chick_data=chick_data,
     )
 
 
 def test_viz(
-    results_dir: Path, chick_file: Path, bar_order="default", color_bars=False
+    results_dir: Path, chick_file: Path = None, bar_order="default", color_bars=False
 ):
     # Do not warn about chained assignments
     pd.options.mode.chained_assignment = None
     # Load data
-    chick_data = pd.read_csv(chick_file)
+    chick_data = pd.read_csv(chick_file) if chick_file else None
     test_data = pd.read_csv(results_dir / "test_results.csv")
 
     # calculate correct steps, incorrect steps, and percent correct
@@ -320,14 +321,14 @@ def test_viz(
     by_test_cond = compute_stats(test_data, results_dir)
 
     print("Creating bar charts by agent...")
-    agent_bar_charts(by_test_cond, results_dir, chick_data, color_bars)
+    agent_bar_charts(by_test_cond, results_dir, color_bars, chick_data)
 
     print("Computing statistics by imprinting condition...")
     by_imp_cond = stats_by_imprint_cond(by_test_cond, results_dir)
 
     print("Creating bar charts by imprinting condition...")
     imprint_cond_bar_charts(
-        by_imp_cond, by_test_cond, results_dir, chick_data, color_bars
+        by_imp_cond, by_test_cond, results_dir, color_bars, chick_data
     )
 
     print("Computing statistics across all imprinting conditions...")
@@ -336,5 +337,5 @@ def test_viz(
 
     print("Creating bar chart for all imprinting conditions...")
     all_cond_bar_chart(
-        by_test_cond, across_imp_cond, results_dir, chick_data, color_bars
+        by_test_cond, across_imp_cond, results_dir, color_bars, chick_data
     )

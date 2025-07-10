@@ -173,7 +173,8 @@ def analyze(
     chick_data_dir = analysis_dir / "ChickData" / f"{experiment.lower()}.csv"
 
     if not chick_data_dir.exists():
-        raise ValueError(f"'{experiment}' is not a valid experiment.")
+        chick_data_dir = None
+        print(f"Warning: No chick data exists for '{experiment}'.")
     elif not run_dir.exists():
         raise ValueError(f"'{run_dir}' is not a valid run directory.")
     elif not analysis_dir.exists():
