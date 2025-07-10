@@ -142,7 +142,7 @@ def analyze(
     This method is a static method and does not require an instance of the NETT class to be called.
 
     Args:
-        experiment (str): The  experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facedifferentiation", "biomotion", or "statisticallearning".
+        experiment (str): The  experiment to be analyzed. It can be "parsing", "binding", "viewinvariant", "facerecognition", "biomotion", or "statisticallearning".
         run_dir (str | Path): The directory where the run results are stored.
         output_dir (str | Path, optional): The directory where the analysis results will be stored.
             If None, the analysis results will be stored in the run directory.
