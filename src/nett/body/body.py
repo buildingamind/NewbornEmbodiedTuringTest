@@ -13,7 +13,7 @@ from gymnasium.wrappers import RecordVideo
 from time import sleep
 from typing import Optional
 
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv
+from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecFrameStack
 from stable_baselines3.common.monitor import Monitor
 import supersuit as ss
 from supersuit.vector.concat_vec_env import ConcatVecEnv
@@ -117,6 +117,7 @@ class Body:
         panini_projection: bool = False,
     ):
         self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
+        self.stack_frames = "dvs" in wrappers or "retina" in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -137,6 +138,9 @@ class Body:
         wrapper: callable = self._zoo_wrapper if env.multiagent else self._gym_wrapper
 
         self.env = wrapper(env, config)
+
+        if self.stack_frames:
+            self.env = VecFrameStack(self.env, 2)
 
         return self
 
