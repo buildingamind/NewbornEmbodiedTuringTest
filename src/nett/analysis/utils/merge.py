@@ -75,7 +75,7 @@ def _read_data(filename: Path) -> pd.DataFrame:
 
     # Add 'filename' and 'agent' columns
     data["filename"] = filename.name
-    data["agent"] = data["filename"].str.extract("(?<=_)(\d+)(?=[_.])", expand=False)
+    data["agent"] = data["filename"].str.extract("(\d+)(?=_\d+\.csv)", expand=False)
 
     return data
 
