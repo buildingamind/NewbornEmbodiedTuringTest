@@ -27,13 +27,24 @@ def _read_data(filename: Path) -> pd.DataFrame:
     print(f"Reading {filename}")
     data: pd.DataFrame = pd.read_csv(
         filename, skipinitialspace=True, on_bad_lines="skip"
-    ).fillna("NA")
+    )
+    # Check if last row is incomplete
+    if pd.isna(data.loc[data.index[-1], "test.cond"]):
+        # Drop the last row
+        data = data.drop(data.index[-1])
 
     ###################################
     # Convert columns ["Episode", "Step", "agent.x", "agent.z"] to numeric types, coercing errors.
     # This handles cases where these columns might contain 'NA' strings (due to prior fillna)
     # or other non-numeric values.
-    for column in ["Episode", "Step", "agent.x", "agent.z", "agent.angle", "head.angle"]:
+    for column in [
+        "Episode",
+        "Step",
+        "agent.x",
+        "agent.z",
+        "agent.angle",
+        "head.angle",
+    ]:
         if column in data.columns:
             data[column] = pd.to_numeric(data[column], errors="coerce")
 
@@ -64,7 +75,7 @@ def _read_data(filename: Path) -> pd.DataFrame:
 
     # Add 'filename' and 'agent' columns
     data["filename"] = filename.name
-    data["agent"] = data["filename"].str.extract("(?<=_)(\d+)", expand=False)
+    data["agent"] = data["filename"].str.extract("(?<=_)(\d+)(?=[_.])", expand=False)
 
     return data
 
