@@ -150,7 +150,7 @@ def make_bar_charts(
                 chick_data_filtered["avg_dev"],
                 range(len(chick_x_pos)),
             ):
-                if x_categories[i] == "Rest":
+                if x_categories[i].lower() == "rest":
                     shift = 1
                 rect = plt.Rectangle(
                     (xi + shift - 0.35, yi - yerr),
@@ -257,7 +257,7 @@ def imprint_cond_bar_charts(
 
 def stats_overall(data: pd.DataFrame, results_dir: Path):
     across_imp_cond = (
-        data[data["test.cond"] != "Rest"]
+        data[~data["test.cond"].str.lower().eq("rest")]
         .groupby("test.cond")
         .apply(lambda g: _stats(g, column="avgs"))
         .reset_index()
@@ -271,10 +271,11 @@ def all_cond_bar_chart(
 ):
     across_imp_cond["error_min"] = across_imp_cond["avgs"] - across_imp_cond["se"]
     across_imp_cond["error_max"] = across_imp_cond["avgs"] + across_imp_cond["se"]
-    dot_data = by_test_cond[by_test_cond["test.cond"] != "Rest"]
+    dot_data = by_test_cond[~by_test_cond["test.cond"].str.lower().eq("rest")]
+    bar_data = across_imp_cond[~across_imp_cond["test.cond"].str.lower().eq("rest")]
     img_name = results_dir / "all_imprinting_conds_test.png"
     make_bar_charts(
-        data=across_imp_cond[across_imp_cond["test.cond"] != "Rest"],
+        data=bar_data,
         dots=dot_data,
         y_col="avgs",
         error_min_col="error_min",
