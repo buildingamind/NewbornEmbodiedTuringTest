@@ -115,9 +115,11 @@ class Environment:
         steps_per_episode: int,
         reward: str,
         multiobs: bool,
+        stack_frames: bool,
         panini: bool = False,
     ):
         self.multiobs = multiobs
+        self.stack_frames = stack_frames
 
         args = ["--episode-steps", str(steps_per_episode)]
 
@@ -125,6 +127,8 @@ class Environment:
             args.append("--binocular")
         if panini:
             args.append("--panini-projection")
+        if stack_frames:
+            args.append("--stack-frames")
 
         if reward in {
             "closeness",
