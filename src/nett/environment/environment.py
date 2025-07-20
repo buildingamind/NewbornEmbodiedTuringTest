@@ -241,7 +241,7 @@ class GymWrapper(BaseWrapper, gym.Wrapper):
             env,
             uint8_visual=True,
             allow_multiple_obs=multiobs,
-            action_space_seed=seed,
+            seed=seed,
         )
         # init the Gym Wrapper instance
         gym.Wrapper.__init__(self, self.env)
