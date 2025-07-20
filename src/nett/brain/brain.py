@@ -75,7 +75,7 @@ class Brain:
         embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
         batch_size (int): The batch size used for training. Defaults to 512.
         buffer_size (int): The buffer size used for training. Defaults to 2048.
-        ent_coef (int): Entropy coefficient. Defaults to 0.
+        ent_coef (float): Entropy coefficient. Defaults to 0.
         checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
