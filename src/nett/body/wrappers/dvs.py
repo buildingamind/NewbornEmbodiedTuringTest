@@ -52,7 +52,7 @@ class DVS(gym.ObservationWrapper):
         self.kernel_size = kernel_size
         self.sigma = sigma
         self.num_stack = 2  ## default
-        self.env = gym.wrappers.FrameStack(env, self.num_stack)
+        self.env = gym.wrappers.FrameStackObservation(env, self.num_stack)
         self.stack = collections.deque(maxlen=self.num_stack)
         self.is_color = is_color
 
