@@ -40,7 +40,7 @@ def _load_env(
         for wrapper in wrappers:
             loaded_env = wrapper(loaded_env)
     except Exception as e:
-        config.logger.getChild(seed).exception(
+        config.logger.getChild(str(seed)).exception(
             f"Failed to apply wrappers to environment"
         )
         raise e
