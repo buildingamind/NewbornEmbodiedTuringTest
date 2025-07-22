@@ -126,7 +126,7 @@ def _plot_and_save_trajectory(
             norm = mcolors.Normalize(vmin=min_step, vmax=min_step + 1)
         else:
             norm = mcolors.Normalize(vmin=min_step, vmax=max_step)
-        cmap = plt.get_cmap("rainbow")
+        cmap = plt.get_cmap("gist_rainbow")
 
         # Determine a dynamic arrow size based on the plot's axis range
         x_axis_range = ax.get_xlim()[1] - ax.get_xlim()[0]
@@ -141,8 +141,9 @@ def _plot_and_save_trajectory(
             x, z = row["agent.x"], row["agent.z"]
             agent_angle = row["agent.angle"]
             head_angle = (
-                (row["head.angle"] + 20) // 360
+                (row["head.angle"] + 20) % 360
             ) - 20  # Normalize to [-20, 20]
+
             step = row["Step"]
 
             # --- Calculate Squish Factor and Arrow Dimensions ---
@@ -196,7 +197,11 @@ def _plot_and_save_trajectory(
 
 
 def map_trajectories(
-    input_dir, output_dir, arrow_freq=100, path_arrow_freq=10, range=None
+    input_dir,
+    output_dir,
+    arrow_freq=100,
+    path_arrow_freq=10,
+    episode_range={"train": None, "test": None},
 ):
     """
     Processes experiment logs to generate and save agent trajectory plots.
@@ -216,7 +221,8 @@ def map_trajectories(
                                     a directional arrow. Defaults to 100.
         path_arrow_freq (int, optional): The frequency of steps at which to draw
                                         path direction arrows. Defaults to 10.
-        range (str, optional): Range of episodes to plot in format "start:stop:step".
+        episode_range (dict, optional): Range of episodes to plot for train and test.
+                                       Format: {"train": "start:stop:step", "test": "start:stop:step"}
                               If None, all episodes are plotted. Defaults to None.
     """
     print(f"Starting trajectory mapping from '{input_dir}' to '{output_dir}'...")
@@ -323,27 +329,28 @@ def map_trajectories(
                 # --- Generate Plot for Each Episode ---
                 unique_episodes = df["Episode"].unique()
 
-                # Filter episodes based on range parameter
-                if range is not None:
+                # Filter episodes based on episode_range parameter
+                if episode_range[subfolder_type] is not None:
                     try:
-                        parts = range.split(":")
+                        parts = episode_range[subfolder_type].split(":")
                         if len(parts) == 3:
                             start, stop, step = map(int, parts)
-                            episode_range = list(range(start, stop, step))
                             unique_episodes = [
-                                ep for ep in unique_episodes if ep in episode_range
+                                ep
+                                for ep in range(start, stop, step)
+                                if ep in unique_episodes
                             ]
                         else:
                             print(
-                                f"    - WARNING: Invalid range format '{range}'. Expected 'start:stop:step'. Using all episodes."
+                                f"    - WARNING: Invalid episode_range format '{episode_range[subfolder_type]}'. Expected 'start:stop:step'. Using all episodes."
                             )
                     except ValueError:
                         print(
-                            f"    - WARNING: Invalid range format '{range}'. Expected numeric values. Using all episodes."
+                            f"    - WARNING: Invalid episode_range format '{episode_range[subfolder_type]}'. Expected numeric values. Using all episodes."
                         )
 
                 print(
-                    f"    - Found {len(unique_episodes)} episodes to plot{' (filtered by range)' if range else ''}..."
+                    f"    - Found {len(unique_episodes)} episodes to plot{' (filtered by episode_range)' if episode_range[subfolder_type] else ''}..."
                 )
                 for episode_id in unique_episodes:
                     episode_df = df[df["Episode"] == episode_id]
