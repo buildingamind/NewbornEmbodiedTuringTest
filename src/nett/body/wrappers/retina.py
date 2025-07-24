@@ -2,12 +2,11 @@
 Dynamic Vision Sensor (DVS) transformation for gym environments.
 """
 
-import collections
 import gymnasium as gym
 import numpy as np
-import cv2
 import logging
-from stable_baselines3.common.vec_env import VecFrameStack
+import torch
+import torchvision as tv
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -88,12 +87,14 @@ class Retina(gym.ObservationWrapper):
         """
 
         # grab the last 2 images from the stack
-        prev = np.transpose(obs[-2], (1, 2, 0)) #move channels to last dimension
-        current = np.transpose(obs[-1], (1, 2, 0)) #move channels to last dimension
+        prev: np.ndarray = obs[-2]  # move channels to last dimension
+        current: np.ndarray = obs[-1]  # move channels to last dimension
+        # prev = np.transpose(obs[-2], (1, 2, 0))  # move channels to last dimension
+        # current = np.transpose(obs[-1], (1, 2, 0))  # move channels to last dimension
         out = self.retina.process(image=prev, next_image=current)
 
         # change to channel first, w, h
-        out = np.transpose(out, (2, 0, 1))
+        # out = np.transpose(out, (2, 0, 1))
 
         return out.astype(np.uint8)
 
@@ -122,7 +123,13 @@ class ArtificialRetina:
     fovea_active_rods - x% of active rods (non-color cells) on the fovea,
     peripheral_gaussianBlur - enable/disable Gaussian Blur on the peripheral region,
     peripheral_gaussianBlur_kernel - Gaussian Blur kernal size,
+    grad_blur - (91, 91),  # (121,121),
+    visual_clutter - True,
+    clutter_intensity - 0.5,
     peripheral_grayscale - apply grayscale on the peripheral region if True,
+    cortical_magnifi - False,
+    magnifi_strength - 0.5,
+    magnifi_radius - 0.3,
     """
 
     def __init__(
@@ -163,23 +170,25 @@ class ArtificialRetina:
         self.magnifi_strength = magnifi_strength
         self.magnifi_radius = magnifi_radius
 
-    def process(self, image, next_image):
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    def process(self, image: np.ndarray, next_image: np.ndarray):
+        prev_tensor = torch.from_numpy(image).to(self.device)
+        current_tensor = torch.from_numpy(next_image).to(self.device)
+
         # dynamically adjust the fovea location based on optic flow magnitude
         if self.foveation_type == "dynamic":
             # pass t and t+1 frames to get coordinates for dynamic foveation
-            fovea_x, fovea_y = self.dynamic_fovea(
-                prev_frame=image,
-                current_frame=next_image,
+            self.fovea_center = self.dynamic_fovea(
+                prev_frame=prev_tensor,
+                current_frame=current_tensor,
                 grid_size=self.dynamic_foveation_grid_size,
             )
-
-            # update self.center
-            self.fovea_center = (fovea_x, fovea_y)
 
         # create retina_filter and generate parts of the retina
         self.fovea, self.peripheral_mask = self.create_retina_filter()
         # apply retinal filter on image
-        retina_image = self.apply_retina_filter(image)
+        retina_image = self.apply_retina_filter(current_tensor)
 
         # activate cones and rods in peripheral and fovea respectively
         # randomly select x% of pixels in the fovea and make them grayscale
@@ -187,7 +196,7 @@ class ArtificialRetina:
             percentage=self.fovea_active_rods, mask=self.fovea
         )
 
-        self.__apply_random_pixel_effect(
+        retina_image = self.__apply_random_pixel_effect(
             retina_image=retina_image,
             selected_indices=self.fovea_selected_indices,
             effect="grayscale",
@@ -195,62 +204,68 @@ class ArtificialRetina:
 
         # randomly select y% of pixels in the peripheral and remove grayscale effect
         self.peripheral_selected_indices = self.__select_random_pixels(
-            percentage=self.peripheral_active_cones, mask=self.peripheral_mask
+            percentage=self.peripheral_active_cones,
+            mask=self.peripheral_mask,
         )
 
-        self.__apply_random_pixel_effect(
+        retina_image = self.__apply_random_pixel_effect(
             retina_image=retina_image,
             selected_indices=self.peripheral_selected_indices,
             effect="color",
+            original_image=current_tensor,
         )
 
         if self.cortical_magnifi == True:
             retina_image = self.cortical_magnification(
                 image=retina_image,
-                center=self.fovea_center,
                 strength=self.magnifi_strength,
                 radius=self.magnifi_radius,
             )
-        return retina_image
+        # Permute back to (H, W, C) and convert to numpy
+        return retina_image.permute(1, 2, 0).cpu().numpy()
 
     def create_retina_filter(self):
-        # create a 2D mask for the circular fovea region
-        mask = np.zeros(
-            (self.P, self.P), dtype=np.float32
-        )  # changed from Uint8 for smooth gradient effect
+        x: torch.Tensor
+        y: torch.Tensor
+        # Create a grid of coordinates
+        y, x = torch.meshgrid(
+            torch.arange(self.P, device=self.device),
+            torch.arange(self.P, device=self.device),
+            indexing="ij",
+        )
 
-        # plot the fovea on the 2D mask
-        """
-        args:
-        mask - background on which the circle will be created
-        center - coordinates for the circle
-        radius - radius of the circle
-        (1,1,1) - value inside the circle
-        -1 - outline of the circle, -1 means no outline
-        """
+        # Get fovea center and radius
+        center_y, center_x = self.fovea_center
+        radius = self.fovea_radius
 
-        fovea = cv2.circle(mask, self.fovea_center, self.fovea_radius, (1, 1, 1), -1)
+        # Calculate the distance from the center
+        dist_sq = (x - center_x) ** 2 + (y - center_y) ** 2
 
-        # create mask for the peripheral region of the retina
-        peripheral_mask = cv2.bitwise_not(fovea)
+        # Create the fovea mask
+        fovea = (dist_sq <= radius**2).int()
+
+        # Create the peripheral mask
+        peripheral_mask = 1 - fovea
 
         return fovea, peripheral_mask
 
-    def apply_retina_filter(self, preprocessed_image):
-
+    def apply_retina_filter(self, preprocessed_image: torch.Tensor):
         # Initialize `img` with the original image
-        img = preprocessed_image.copy()
+        img = preprocessed_image.clone()
 
         # define kernel
         ker = self.grad_blur if self.peripheral_gaussianBlur else (1, 1)
 
         # Initialize the mask with the original fovea
-        mask = cv2.GaussianBlur(self.fovea, ker, 0)
-        mask = np.dstack([mask] * 3)
+        mask = self.fovea.unsqueeze(0).float()  # Add channel dim
+        mask = tv.transforms.functional.gaussian_blur(mask, ker)
+        mask = mask.repeat(3, 1, 1)  # Repeat for 3 channels
 
         # Apply Gaussian blur to the entire image if enabled
         if self.peripheral_gaussianBlur:
-            img = cv2.GaussianBlur(img, self.peripheral_gaussianBlur_kernel, 0)
+            img = tv.transforms.functional.gaussian_blur(
+                img, self.peripheral_gaussianBlur_kernel
+            )
 
         # apply visual clutter to the entire image
         if self.visual_clutter == True:
@@ -260,8 +275,7 @@ class ArtificialRetina:
 
         # Convert the entire image to grayscale if enabled
         if self.peripheral_grayscale:
-            img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-            img = cv2.merge([img] * 3)  # Convert to 3-channel grayscale
+            img = tv.transforms.functional.rgb_to_grayscale(img, num_output_channels=3)
 
         # Combine the foveal and peripheral regions
         combined_image = preprocessed_image * mask + img * (1 - mask)
@@ -269,133 +283,178 @@ class ArtificialRetina:
         return combined_image
 
     def radial_pixel_distortion(
-        self, image, max_distortion=10, distortion_intensity=1.0
+        self, image: torch.Tensor, max_distortion=10, distortion_intensity=1.0
     ):
-        rows, cols, _ = image.shape
-        distorted_image = np.copy(image)
+        c, rows, cols = image.shape
+        distorted_image = image.clone()
 
         adjusted_max_distortion = max_distortion * distortion_intensity
 
-        for y in range(rows):
-            for x in range(cols):
-                # Generate a random radius and angle for radial distortion
-                radius = np.random.uniform(0, adjusted_max_distortion)
-                angle = np.random.uniform(0, 2 * np.pi)
+        # Generate random radii and angles for all pixels at once
+        radius = torch.rand(rows, cols, device=self.device) * adjusted_max_distortion
+        angle = torch.rand(rows, cols, device=self.device) * 2 * torch.pi
 
-                # Convert polar to Cartesian
-                dx = int(radius * np.cos(angle))
-                dy = int(radius * np.sin(angle))
+        # Convert polar to Cartesian
+        dx = (radius * torch.cos(angle)).long()
+        dy = (radius * torch.sin(angle)).long()
 
-                # Calculate new pixel location
-                x_new = np.clip(x + dx, 0, cols - 1)
-                y_new = np.clip(y + dy, 0, rows - 1)
+        # Create coordinate grids
+        x = torch.arange(cols, device=self.device)
+        y = torch.arange(rows, device=self.device)
+        y_grid, x_grid = torch.meshgrid(y, x, indexing="ij")
 
-                # Set the new pixel value
-                distorted_image[y, x] = image[y_new, x_new]
+        # Calculate new pixel locations
+        x_new = torch.clamp(x_grid + dx, 0, cols - 1)
+        y_new = torch.clamp(y_grid + dy, 0, rows - 1)
+
+        # Apply distortion
+        distorted_image[:, y_grid, x_grid] = image[:, y_new, x_new]
 
         return distorted_image
 
     # Function to calculate optical flow and dynamically determine new fovea position
-    def dynamic_fovea(self, prev_frame, current_frame, grid_size=(10, 10)):
-        # Convert frames to grayscale
-        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_RGB2GRAY)
-        current_gray = cv2.cvtColor(current_frame, cv2.COLOR_RGB2GRAY)
-        # Calculate optical flow (only accepts single channel images) at timestamps t and t+1
-        flow = cv2.calcOpticalFlowFarneback(
-            prev_gray, current_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
-        )
+    def dynamic_fovea(
+        self, prev_frame: torch.Tensor, current_frame: torch.Tensor, grid_size=(10, 10)
+    ):
+        # Convert to grayscale
+        prev_gray = tv.transforms.functional.rgb_to_grayscale(prev_frame)
+        current_gray = tv.transforms.functional.rgb_to_grayscale(current_frame)
 
-        # Calculate magnitude and angle of 2D vectors (flow vector in this case)
-        mag, ang = cv2.cartToPolar(flow[..., 0], flow[..., 1])
+        # Stack images
+        images = torch.stack([prev_gray, current_gray], dim=1).squeeze(2)
+
+        # Calculate optical flow
+        flow = tv.ops.optical_flow_farneback(
+            images,
+            num_iters=3,
+            pyr_scale=0.5,
+            poly_exp=5,
+            poly_sigma=1.2,
+            fast_pyramids=False,
+            num_warps=3,
+            window_size=15,
+        )
+        flow = flow.squeeze(0)  # Remove batch dimension
+
+        # Calculate magnitude
+        mag = torch.norm(flow, dim=0)
+
         # Initialize grid for average magnitude calculation
         h, w = mag.shape
         grid_h, grid_w = grid_size
-        avg_magnitude = np.zeros((grid_h, grid_w))
 
-        # Calculate average magnitude for each grid cell
-        for i in range(grid_h):
-            for j in range(grid_w):
-                y0, y1 = i * h // grid_h, (i + 1) * h // grid_h
-                x0, x1 = j * w // grid_w, (j + 1) * w // grid_w
+        # Reshape magnitude tensor and compute mean over blocks
+        mag_unfolded = mag.unfold(0, h // grid_h, h // grid_h).unfold(
+            1, w // grid_w, w // grid_w
+        )
+        avg_magnitude = mag_unfolded.mean(dim=[2, 3])
 
-                # after knowing what pixels are in each cell, we take the average of those pixels
-                avg_magnitude[i, j] = np.mean(mag[y0:y1, x0:x1])
+        # Find the index of the maximum average magnitude
+        max_idx_flat = torch.argmax(avg_magnitude)
+        max_idx = torch.unravel_index(max_idx_flat, avg_magnitude.shape)
 
-        max_idx = np.unravel_index(np.argmax(avg_magnitude), avg_magnitude.shape)
-        fovea_y, fovea_x = max_idx[0] * h // grid_h + h // (2 * grid_h), max_idx[
-            1
-        ] * w // grid_w + w // (2 * grid_w)
+        # Calculate fovea coordinates
+        fovea_y: torch.Tensor = max_idx[0] * (h // grid_h) + (h // (2 * grid_h))
+        fovea_x: torch.Tensor = max_idx[1] * (w // grid_w) + (w // (2 * grid_w))
 
-        return fovea_x, fovea_y
+        return fovea_x.item(), fovea_y.item()
 
     # private function to randomly select x% of cones and rods cells
-    def __select_random_pixels(self, percentage, mask):
+    def __select_random_pixels(self, percentage: int, mask: torch.Tensor):
         # determine the number of pixels to select based on the percentage
-        num_pixels = int(
-            percentage / 100 * np.count_nonzero(mask)
-        )  # total pixels = HxW
+        num_pixels = int(percentage / 100 * torch.count_nonzero(mask))
 
         # get the indices of non-zero pixels in the image mask
-        nonzero_indices = np.transpose(np.nonzero(mask))
+        nonzero_indices = torch.nonzero(mask, as_tuple=False)
 
         # randomly select pixel coordinates
-        random_indices = np.random.choice(
-            len(nonzero_indices), num_pixels, replace=False
-        )
-        selected_indices = nonzero_indices[random_indices]
+        if len(nonzero_indices) > 0:
+            random_indices = torch.randperm(len(nonzero_indices))[:num_pixels]
+            selected_indices = nonzero_indices[random_indices]
+        else:
+            selected_indices = torch.empty(0, 2, dtype=torch.long, device=self.device)
 
         return selected_indices
 
     # private function to activate rods and cones at specified coordinates
-    def __apply_random_pixel_effect(self, retina_image, selected_indices, effect):
+    def __apply_random_pixel_effect(
+        self,
+        retina_image: torch.Tensor,
+        selected_indices,
+        effect,
+        original_image: torch.Tensor = None,
+    ):
         # apply the specified effect to the randomly selected pixels
-        for y, x in selected_indices:
-            if effect == "grayscale":
-                retina_image[y, x] = np.mean(retina_image[y, x])
-            elif effect == "color":
-                retina_image[y, x] = self.preprocessed_image[y, x]
-            else:
-                raise ValueError(
-                    "Unsupported effect type. Supported types are 'grayscale' and 'color'."
-                )
+        # check if length is none
+        if selected_indices.shape[0] == 0:
+            return retina_image
+
+        y, x = selected_indices[:, 0], selected_indices[:, 1]
+
+        if effect == "grayscale":
+            # Calculate mean over the channel dimension
+            retina_image[:, y, x] = (
+                torch.mean(retina_image[:, y, x], dim=0).unsqueeze(0).expand(3)
+            )
+        elif effect == "color":
+            if original_image is None:
+                raise ValueError("Original image must be provided for color effect.")
+            retina_image[:, y, x] = original_image[:, y, x]
+        else:
+            raise ValueError(
+                "Unsupported effect type. Supported types are 'grayscale' and 'color'."
+            )
+        return retina_image
 
     def cortical_magnification(
-        self, image, center, strength: float = 0.5, radius: float = 0.3
+        self, image: torch.Tensor, strength: float = 0.5, radius: float = 0.3
     ):
+        # If a GPU is available, use it. Otherwise, use the CPU.
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        height, width = image.shape[:2]
-        min_dim = min(height, width)
+        _, height, width = image.shape
 
         # Normalize coordinates to [-1, 1] space
-        x = np.linspace(-1, 1, width)
-        y = np.linspace(-1, 1, height)
-        xv, yv = np.meshgrid(x, y)
+        x = torch.linspace(-1, 1, width, device=device)
+        y = torch.linspace(-1, 1, height, device=device)
+        xv, yv = torch.meshgrid(x, y, indexing="xy")
 
         # Normalize the focal center to [-1, 1]
-        center_x = (center[0] / width) * 2 - 1
-        center_y = (center[1] / height) * 2 - 1
+        center_x = (self.fovea_center[0] / width) * 2 - 1
+        center_y = (self.fovea_center[1] / height) * 2 - 1
 
         # Shift grid based on the focal point
         xv -= center_x
         yv -= center_y
 
         # Calculate distance from the center
-        distance = np.sqrt(xv**2 + yv**2)
-        distance = np.clip(distance, 1e-6, 1.0)
+        distance = torch.sqrt(xv**2 + yv**2)
+        distance = torch.clamp(distance, 1e-6, 1.0)
 
         # Define outward magnification using a smooth falloff function
-        falloff = np.exp(-((distance / radius) ** 2))
+        falloff = torch.exp(-((distance / radius) ** 2))
         magnification = 1 + strength * falloff
 
         # Invert the distortion effect (scale outward)
-        xv = xv / magnification + center_x
-        yv = yv / magnification + center_y
+        xv /= magnification
+        yv /= magnification
 
-        # Map back to pixel coordinates
-        map_x = ((xv + 1) * 0.5 * width).astype(np.float32)
-        map_y = ((yv + 1) * 0.5 * height).astype(np.float32)
+        # Create the grid for remap
+        grid = torch.stack([xv, yv], dim=-1).unsqueeze(0)  # Add batch dimension
+
+        # Add center back to grid
+        grid += torch.tensor([center_x, center_y], device=device)
 
         # Remap image using the distortion map
-        magnified_image = cv2.remap(image, map_x, map_y, interpolation=cv2.INTER_LINEAR)
+        magnified_image_tensor = torch.nn.functional.grid_sample(
+            image.unsqueeze(0),  # (C, H, W)
+            grid,
+            mode="bilinear",
+            padding_mode="border",
+            align_corners=True,
+        )
+
+        # Convert back to numpy array
+        magnified_image = magnified_image_tensor.squeeze(0)
 
         return magnified_image
