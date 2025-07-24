@@ -140,9 +140,9 @@ class Body:
 
         self.env = wrapper(env, config)
 
-        if self.stack_frames:
-            # Ensure the environment is wrapped with FrameStack if it supports stacking
-            self.env = VecFrameStack(self.env, 2)
+        # if self.stack_frames:
+        #     # Ensure the environment is wrapped with FrameStack if it supports stacking
+        #     self.env = VecFrameStack(self.env, 2)
 
         return self
 

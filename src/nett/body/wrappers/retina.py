@@ -52,11 +52,16 @@ class Retina(gym.ObservationWrapper):
         # self.stack = collections.deque(maxlen=self.num_stack)
 
         try:
-            _, channels, width, height = self.env.observation_space.shape
-
-            # if stack < 2:
-            # self.env = gym.wrappers.FrameStackObservation(env, 2)
-            # self.env = VecFrameStack(self.env, 2)
+            shape = self.env.observation_space.shape
+            if len(shape) == 4:
+                _, channels, width, height = shape
+            elif len(shape) == 3:
+                channels, width, height = shape
+                self.env = gym.wrappers.FrameStackObservation(env, 2)
+            else:
+                raise ValueError(
+                    "Unsupported observation space shape: {}".format(shape)
+                )
 
             self.retina = ArtificialRetina(
                 P=width,
@@ -82,15 +87,10 @@ class Retina(gym.ObservationWrapper):
 
         """
 
-        if len(obs) > 1:
-            prev = np.transpose(obs[0], (1, 2, 0))
-            current = np.transpose(obs[1], (1, 2, 0))
-            out = self.retina.process(image=prev, next_image=current)
-
-        else:
-            obs = np.transpose(obs, (1, 2, 0))
-
-            out = self.retina.process(image=obs)
+        # grab the last 2 images from the stack
+        prev = np.transpose(obs[-2], (1, 2, 0))
+        current = np.transpose(obs[-1], (1, 2, 0))
+        out = self.retina.process(image=prev, next_image=current)
 
         # change to channel first, w, h
         out = np.transpose(out, (2, 0, 1))
@@ -163,7 +163,7 @@ class ArtificialRetina:
         self.magnifi_strength = magnifi_strength
         self.magnifi_radius = magnifi_radius
 
-    def process(self, image, next_image=None):
+    def process(self, image, next_image):
 
         # open and pre-process RGB image
         preprocessed_image = image
