@@ -52,11 +52,11 @@ class Retina(gym.ObservationWrapper):
         # self.stack = collections.deque(maxlen=self.num_stack)
 
         try:
-            stack, channels, width, height = self.env.observation_space.shape
+            _, channels, width, height = self.env.observation_space.shape
 
-            if stack < 2:
-                # self.env = gym.wrappers.FrameStackObservation(env, 2)
-                self.env = VecFrameStack(self.env, 2)
+            # if stack < 2:
+            # self.env = gym.wrappers.FrameStackObservation(env, 2)
+            # self.env = VecFrameStack(self.env, 2)
 
             self.retina = ArtificialRetina(
                 P=width,
@@ -363,7 +363,9 @@ class ArtificialRetina:
                     "Unsupported effect type. Supported types are 'grayscale' and 'color'."
                 )
 
-    def cortical_magnification(self, image, center, strength: float = 0.5, radius: float = 0.3):
+    def cortical_magnification(
+        self, image, center, strength: float = 0.5, radius: float = 0.3
+    ):
 
         height, width = image.shape[:2]
         min_dim = min(height, width)
@@ -401,4 +403,3 @@ class ArtificialRetina:
         magnified_image = cv2.remap(image, map_x, map_y, interpolation=cv2.INTER_LINEAR)
 
         return magnified_image
-

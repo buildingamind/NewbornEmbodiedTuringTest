@@ -116,7 +116,9 @@ class Body:
         record_eps: dict[str, int] = {"train": "0:0:1", "test": "0:0:1"},
         panini_projection: bool = False,
     ):
+        #TODO: Add support for custom wrappers to do this
         self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
+        self.stack_frames = "retina" in wrappers or "dvs" in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -137,6 +139,10 @@ class Body:
         wrapper: callable = self._zoo_wrapper if env.multiagent else self._gym_wrapper
 
         self.env = wrapper(env, config)
+
+        if self.stack_frames:
+            # Ensure the environment is wrapped with FrameStack if it supports stacking
+            self.env = VecFrameStack(self.env, 2)
 
         return self
 
