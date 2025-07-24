@@ -7,6 +7,7 @@ import numpy as np
 import logging
 import torch
 import torchvision as tv
+import cv2
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -173,15 +174,15 @@ class ArtificialRetina:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     def process(self, image: np.ndarray, next_image: np.ndarray):
-        prev_tensor = torch.from_numpy(image).to(self.device)
+        # prev_tensor = torch.from_numpy(image).to(self.device)
         current_tensor = torch.from_numpy(next_image).to(self.device)
 
         # dynamically adjust the fovea location based on optic flow magnitude
         if self.foveation_type == "dynamic":
             # pass t and t+1 frames to get coordinates for dynamic foveation
             self.fovea_center = self.dynamic_fovea(
-                prev_frame=prev_tensor,
-                current_frame=current_tensor,
+                prev_frame=image,  # prev_tensor,
+                current_frame=next_image,  # current_tensor,
                 grid_size=self.dynamic_foveation_grid_size,
             )
 
@@ -222,7 +223,7 @@ class ArtificialRetina:
                 radius=self.magnifi_radius,
             )
         # Permute back to (H, W, C) and convert to numpy
-        return retina_image.permute(1, 2, 0).cpu().numpy()
+        return retina_image.cpu().numpy()
 
     def create_retina_filter(self):
         x: torch.Tensor
@@ -314,26 +315,34 @@ class ArtificialRetina:
 
     # Function to calculate optical flow and dynamically determine new fovea position
     def dynamic_fovea(
-        self, prev_frame: torch.Tensor, current_frame: torch.Tensor, grid_size=(10, 10)
+        self, prev_frame: np.ndarray, current_frame: np.ndarray, grid_size=(10, 10)
     ):
         # Convert to grayscale
-        prev_gray = tv.transforms.functional.rgb_to_grayscale(prev_frame)
-        current_gray = tv.transforms.functional.rgb_to_grayscale(current_frame)
-
-        # Stack images
-        images = torch.stack([prev_gray, current_gray], dim=1).squeeze(2)
+        # prev_gray = (
+        #     tv.transforms.functional.rgb_to_grayscale(prev_frame)
+        #     .permute(1, 2, 0)
+        #     .cpu()
+        #     .numpy()
+        # )
+        # current_gray = (
+        #     tv.transforms.functional.rgb_to_grayscale(current_frame)
+        #     .permute(1, 2, 0)
+        #     .cpu()
+        #     .numpy()
+        # )
+        prev_gray = cv2.cvtColor(
+            np.transpose(prev_frame, (1, 2, 0)), cv2.COLOR_RGB2GRAY
+        )
+        current_gray = cv2.cvtColor(
+            np.transpose(current_frame, (1, 2, 0)), cv2.COLOR_RGB2GRAY
+        )
 
         # Calculate optical flow
-        flow = tv.ops.optical_flow_farneback(
-            images,
-            num_iters=3,
-            pyr_scale=0.5,
-            poly_exp=5,
-            poly_sigma=1.2,
-            fast_pyramids=False,
-            num_warps=3,
-            window_size=15,
+        flow = cv2.calcOpticalFlowFarneback(
+            prev_gray, current_gray, None, 0.5, 3, 15, 3, 5, 1.2, 0
         )
+
+        flow = torch.from_numpy(flow).to(self.device).permute(2, 0, 1)
         flow = flow.squeeze(0)  # Remove batch dimension
 
         # Calculate magnitude
