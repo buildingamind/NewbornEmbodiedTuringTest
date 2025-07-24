@@ -88,8 +88,8 @@ class Retina(gym.ObservationWrapper):
         """
 
         # grab the last 2 images from the stack
-        prev = np.transpose(obs[-2], (1, 2, 0))
-        current = np.transpose(obs[-1], (1, 2, 0))
+        prev = np.transpose(obs[-2], (1, 2, 0)) #move channels to last dimension
+        current = np.transpose(obs[-1], (1, 2, 0)) #move channels to last dimension
         out = self.retina.process(image=prev, next_image=current)
 
         # change to channel first, w, h
@@ -164,15 +164,11 @@ class ArtificialRetina:
         self.magnifi_radius = magnifi_radius
 
     def process(self, image, next_image):
-
-        # open and pre-process RGB image
-        preprocessed_image = image
-
         # dynamically adjust the fovea location based on optic flow magnitude
         if self.foveation_type == "dynamic":
             # pass t and t+1 frames to get coordinates for dynamic foveation
             fovea_x, fovea_y = self.dynamic_fovea(
-                prev_frame=preprocessed_image,
+                prev_frame=image,
                 current_frame=next_image,
                 grid_size=self.dynamic_foveation_grid_size,
             )
@@ -183,7 +179,7 @@ class ArtificialRetina:
         # create retina_filter and generate parts of the retina
         self.fovea, self.peripheral_mask = self.create_retina_filter()
         # apply retinal filter on image
-        retina_image = self.apply_retina_filter(preprocessed_image)
+        retina_image = self.apply_retina_filter(image)
 
         # activate cones and rods in peripheral and fovea respectively
         # randomly select x% of pixels in the fovea and make them grayscale
@@ -300,7 +296,7 @@ class ArtificialRetina:
         return distorted_image
 
     # Function to calculate optical flow and dynamically determine new fovea position
-    def dynamic_fovea(self, prev_frame=None, current_frame=None, grid_size=(10, 10)):
+    def dynamic_fovea(self, prev_frame, current_frame, grid_size=(10, 10)):
         # Convert frames to grayscale
         prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_RGB2GRAY)
         current_gray = cv2.cvtColor(current_frame, cv2.COLOR_RGB2GRAY)
