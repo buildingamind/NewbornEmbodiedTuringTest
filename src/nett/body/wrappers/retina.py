@@ -7,6 +7,7 @@ import gymnasium as gym
 import numpy as np
 import cv2
 import logging
+from stable_baselines3.common.vec_env import VecFrameStack
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -46,12 +47,17 @@ class Retina(gym.ObservationWrapper):
     def __init__(self, env):
         super().__init__(env)
 
-        self.num_stack = 2  ## default
-        self.env = gym.wrappers.FrameStackObservation(env, self.num_stack)
-        self.stack = collections.deque(maxlen=self.num_stack)
+        # self.num_stack = 2  ## default
+        # self.env = gym.wrappers.FrameStackObservation(env, self.num_stack)
+        # self.stack = collections.deque(maxlen=self.num_stack)
 
         try:
-            _, channels, width, height = self.env.observation_space.shape  # stack,
+            stack, channels, width, height = self.env.observation_space.shape
+
+            if stack < 2:
+                # self.env = gym.wrappers.FrameStackObservation(env, 2)
+                self.env = VecFrameStack(self.env, 2)
+
             self.retina = ArtificialRetina(
                 P=width,
                 fovea_center=(height // 2, width // 2),
@@ -117,7 +123,6 @@ class ArtificialRetina:
     peripheral_gaussianBlur - enable/disable Gaussian Blur on the peripheral region,
     peripheral_gaussianBlur_kernel - Gaussian Blur kernal size,
     peripheral_grayscale - apply grayscale on the peripheral region if True,
-    verbose - emable/disable to display selected settings,
     """
 
     def __init__(
@@ -178,7 +183,7 @@ class ArtificialRetina:
         # create retina_filter and generate parts of the retina
         self.fovea, self.peripheral_mask = self.create_retina_filter()
         # apply retinal filter on image
-        retina_image = self.apply_retina_filter()
+        retina_image = self.apply_retina_filter(preprocessed_image)
 
         # activate cones and rods in peripheral and fovea respectively
         # randomly select x% of pixels in the fovea and make them grayscale
@@ -232,9 +237,6 @@ class ArtificialRetina:
 
         # create mask for the peripheral region of the retina
         peripheral_mask = cv2.bitwise_not(fovea)
-
-        if self.verbose:
-            print("[INFO] Retina filter created")
 
         return fovea, peripheral_mask
 
@@ -361,7 +363,7 @@ class ArtificialRetina:
                     "Unsupported effect type. Supported types are 'grayscale' and 'color'."
                 )
 
-    def cortical_magnification(self, image, center, strength=0.5, radius=0.3):
+    def cortical_magnification(self, image, center, strength: float = 0.5, radius: float = 0.3):
 
         height, width = image.shape[:2]
         min_dim = min(height, width)
@@ -400,71 +402,3 @@ class ArtificialRetina:
 
         return magnified_image
 
-
-############################################## SINGLE INSTANCE RUN
-
-# # DRIVER CODE -
-# P = 256 # output image resolution
-# center = (P // 2 + 40 , P // 2)  # Center of the fovea region
-
-# # creating instance -
-# retina = ArtificialRetina(
-#          image='/data/lpandey/DATASETS/042MB_0060055.jpg',
-#          P=P,
-#          foveation_type='static', #['dynamic', 'static']
-#          dynamic_foveation_grid_size=(5,5),
-#          fovea_center=center,
-#          fovea_radius=50,
-#          peripheral_active_cones=0,
-#          fovea_active_rods=0,
-#          peripheral_gaussianBlur=True, # always keep this True
-#          peripheral_gaussianBlur_kernel=(1,1),
-#          grad_blur=(91,91),
-#          visual_clutter=True,
-#          clutter_intensity=0.5,
-#          peripheral_grayscale=True,
-#          cortical_magnifi=True,
-#          magnifi_strength=2.5,
-#          magnifi_radius=0.4,
-#          verbose=False,
-#          save_output=False,
-#          output_dir=None,
-# )
-
-# ####################### MULTI INSTANCE RUN (For collecting a dataset)
-
-# # DRIVER CODE -
-# P = 720 # output image resolution
-# center = (P // 2, P // 2)  # Center of the fovea region
-
-# # generating and saving sequences of images
-# input_dir = '/data/lpandey/DATASETS/tennis_samples/' # train1_x.png
-# TOTAL_SAMPLES = 258
-# for i in tqdm(range(1,TOTAL_SAMPLES)):
-#     input_img = input_dir+'tennis_{}.png'.format(i)
-#     # creating instance -
-#     retina = ArtificialRetina(
-#              image=input_img,
-#              P=P,
-#              foveation_type='static',
-#              dynamic_foveation_grid_size=(2,2),
-#              fovea_center=center,
-#              fovea_radius=80,
-#              peripheral_active_cones=0,
-#              fovea_active_rods=0,
-#              peripheral_gaussianBlur=True, # always keep this True
-#              peripheral_gaussianBlur_kernel=(21,21),
-#              grad_blur=(91,91),
-#              visual_clutter=True,
-#              clutter_intensity=0.5,
-#              peripheral_grayscale=True,
-#              cortical_magnifi=True,
-#              magnifi_strength=0.3,
-#              magnifi_radius=0.5,
-#              verbose=False,
-#              save_output=False,
-#              output_dir=None,
-#     )
-#     # Save the image to the drive
-#     plt.imsave('/data/lpandey/DATASETS/tennis_samples/outputs/output_6/output_{}.png'.format(i), retina.retina_image.astype(np.uint8))
-# ###################### End of Eyeball Class ##########################
