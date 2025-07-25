@@ -35,7 +35,7 @@ class MultiObs(gym.ObservationWrapper):
 
     """
 
-    def __init__(self, env):
+    def __init__(self, env, *args, **kwargs):
         super().__init__(env)
         # convert Tuple to Dict
         self.observation_space = gym.spaces.Dict(_tuple_to_dict(env.observation_space))

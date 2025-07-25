@@ -44,7 +44,7 @@ class Retina(gym.ObservationWrapper):
 
     """
 
-    def __init__(self, env):
+    def __init__(self, env, device: int, *args, **kwargs):
         super().__init__(env)
 
         # self.num_stack = 2  ## default
@@ -67,6 +67,7 @@ class Retina(gym.ObservationWrapper):
                 P=width,
                 fovea_center=(height // 2, width // 2),
                 fovea_radius=height // 4,
+                device=device,
             )
             self.shape = (channels, width, height)
             self.observation_space = gym.spaces.Box(
@@ -152,6 +153,7 @@ class ArtificialRetina:
         cortical_magnifi=False,
         magnifi_strength=0.5,
         magnifi_radius=0.3,
+        device: int = 0,  # GPU device ID
     ):
         self.image = image
         self.P = P
@@ -171,7 +173,7 @@ class ArtificialRetina:
         self.magnifi_strength = magnifi_strength
         self.magnifi_radius = magnifi_radius
 
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(f"cuda:{device}" if torch.cuda.is_available() else "cpu")
 
     def process(self, image: np.ndarray, next_image: np.ndarray):
         # prev_tensor = torch.from_numpy(image).to(self.device)

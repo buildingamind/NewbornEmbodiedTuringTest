@@ -44,7 +44,7 @@ class DVS(gym.ObservationWrapper):
     """
 
     def __init__(
-        self, env, change_threshold=60, kernel_size=(3, 3), sigma=1, is_color=True
+        self, env, change_threshold=60, kernel_size=(3, 3), sigma=1, is_color=True, *args, **kwargs
     ):
         super().__init__(env)
 

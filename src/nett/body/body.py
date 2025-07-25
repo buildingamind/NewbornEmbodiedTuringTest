@@ -38,7 +38,7 @@ def _load_env(
 
     try:
         for wrapper in wrappers:
-            loaded_env = wrapper(loaded_env)
+            loaded_env = wrapper(loaded_env, device=config.device)
     except Exception as e:
         config.logger.getChild(str(seed)).exception(
             f"Failed to apply wrappers to environment"
@@ -116,7 +116,7 @@ class Body:
         record_eps: dict[str, int] = {"train": "0:0:1", "test": "0:0:1"},
         panini_projection: bool = False,
     ):
-        #TODO: Add support for custom wrappers to do this
+        # TODO: Add support for custom wrappers to do this
         self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
         self.stack_frames = "retina" in wrappers or "dvs" in wrappers
         self.wrappers = validate_wrappers(wrappers)
