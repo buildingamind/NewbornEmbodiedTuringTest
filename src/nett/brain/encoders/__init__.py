@@ -9,6 +9,6 @@ from .dinov2 import DinoV2
 from .sam import SegmentAnything
 from .simplevit import SimpleViT
 from .vit import ViT
-from .cnnlstm import CNNLSTM
 from .frozensimclr import FrozenSimCLR
 from .multiinput import MultiInputEncoder
+from .dreamerv3 import DreamerV3

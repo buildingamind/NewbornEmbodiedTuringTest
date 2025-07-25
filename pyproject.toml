@@ -29,11 +29,15 @@ dependencies = [
     "rllte-core",
     "supersuit",
     "jsonschema",
+    "jax[cuda12]==0.4.33",
+    "ninjax>=3.5.1",
+    "optax",
+    "chex",
+    "elements>=0.2.0",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
   "Programming Language :: Python :: 3.10",
-  "Programming Language :: R",
   "Environment :: GPU :: NVIDIA CUDA"
 ]
 
