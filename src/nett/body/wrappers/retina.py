@@ -173,7 +173,9 @@ class ArtificialRetina:
         self.magnifi_strength = magnifi_strength
         self.magnifi_radius = magnifi_radius
 
-        self.device = torch.device(f"cuda:{device}" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(
+            f"cuda:{device}" if torch.cuda.is_available() else "cpu"
+        )
 
     def process(self, image: np.ndarray, next_image: np.ndarray):
         # prev_tensor = torch.from_numpy(image).to(self.device)
@@ -224,25 +226,25 @@ class ArtificialRetina:
                 strength=self.magnifi_strength,
                 radius=self.magnifi_radius,
             )
-        # Permute back to (H, W, C) and convert to numpy
+        # convert to numpy
         return retina_image.cpu().numpy()
 
     def create_retina_filter(self):
         x: torch.Tensor
         y: torch.Tensor
         # Create a grid of coordinates
-        y, x = torch.meshgrid(
+        x, y = torch.meshgrid(
             torch.arange(self.P, device=self.device),
             torch.arange(self.P, device=self.device),
-            indexing="ij",
+            indexing="xy",
         )
 
         # Get fovea center and radius
-        center_y, center_x = self.fovea_center
+        center_x, center_y = self.fovea_center
         radius = self.fovea_radius
 
         # Calculate the distance from the center
-        dist_sq = (x - center_x) ** 2 + (y - center_y) ** 2
+        dist_sq: torch.Tensor = (x - center_x) ** 2 + (y - center_y) ** 2
 
         # Create the fovea mask
         fovea = (dist_sq <= radius**2).int()
@@ -252,7 +254,7 @@ class ArtificialRetina:
 
         return fovea, peripheral_mask
 
-    def apply_retina_filter(self, preprocessed_image: torch.Tensor):
+    def apply_retina_filter(self, preprocessed_image: torch.Tensor) -> torch.Tensor:
         # Initialize `img` with the original image
         img = preprocessed_image.clone()
 
@@ -260,7 +262,7 @@ class ArtificialRetina:
         ker = self.grad_blur if self.peripheral_gaussianBlur else (1, 1)
 
         # Initialize the mask with the original fovea
-        mask = self.fovea.unsqueeze(0).float()  # Add channel dim
+        mask: torch.Tensor = self.fovea.unsqueeze(0).float()  # Add channel dim
         mask = tv.transforms.functional.gaussian_blur(mask, ker)
         mask = mask.repeat(3, 1, 1)  # Repeat for 3 channels
 
@@ -320,18 +322,6 @@ class ArtificialRetina:
         self, prev_frame: np.ndarray, current_frame: np.ndarray, grid_size=(10, 10)
     ):
         # Convert to grayscale
-        # prev_gray = (
-        #     tv.transforms.functional.rgb_to_grayscale(prev_frame)
-        #     .permute(1, 2, 0)
-        #     .cpu()
-        #     .numpy()
-        # )
-        # current_gray = (
-        #     tv.transforms.functional.rgb_to_grayscale(current_frame)
-        #     .permute(1, 2, 0)
-        #     .cpu()
-        #     .numpy()
-        # )
         prev_gray = cv2.cvtColor(
             np.transpose(prev_frame, (1, 2, 0)), cv2.COLOR_RGB2GRAY
         )
@@ -435,8 +425,8 @@ class ArtificialRetina:
         center_y = (self.fovea_center[1] / height) * 2 - 1
 
         # Shift grid based on the focal point
-        xv -= center_x
-        yv -= center_y
+        xv = xv - center_x
+        yv = yv - center_y
 
         # Calculate distance from the center
         distance = torch.sqrt(xv**2 + yv**2)
@@ -447,8 +437,8 @@ class ArtificialRetina:
         magnification = 1 + strength * falloff
 
         # Invert the distortion effect (scale outward)
-        xv /= magnification
-        yv /= magnification
+        xv = xv / magnification
+        yv = yv / magnification
 
         # Create the grid for remap
         grid = torch.stack([xv, yv], dim=-1).unsqueeze(0)  # Add batch dimension
@@ -458,14 +448,13 @@ class ArtificialRetina:
 
         # Remap image using the distortion map
         magnified_image_tensor = torch.nn.functional.grid_sample(
-            image.unsqueeze(0),  # (C, H, W)
+            image.unsqueeze(0),  # (Batch, C, H, W)
             grid,
             mode="bilinear",
             padding_mode="border",
             align_corners=True,
-        )
+        ).squeeze(
+            0
+        )  # removed batch dim
 
-        # Convert back to numpy array
-        magnified_image = magnified_image_tensor.squeeze(0)
-
-        return magnified_image
+        return magnified_image_tensor
