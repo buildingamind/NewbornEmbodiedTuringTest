@@ -2,6 +2,7 @@
 Dynamic Vision Sensor (DVS) transformation for gym environments.
 """
 
+from typing import Optional
 import gymnasium as gym
 import numpy as np
 import logging
@@ -252,7 +253,6 @@ class ArtificialRetina:
         # create mask for the peripheral region of the retina
         peripheral_mask: torch.Tensor = 1 - fovea
 
-
         return fovea, peripheral_mask
 
     def apply_retina_filter(self, preprocessed_image: torch.Tensor) -> torch.Tensor:
@@ -363,7 +363,9 @@ class ArtificialRetina:
         return fovea_x.item(), fovea_y.item()
 
     # private function to randomly select x% of cones and rods cells
-    def __select_random_pixels(self, percentage: int, mask: torch.Tensor) -> torch.Tensor:
+    def __select_random_pixels(
+        self, percentage: int, mask: torch.Tensor
+    ) -> torch.Tensor:
         # determine the number of pixels to select based on the percentage
         num_pixels = int(percentage / 100 * torch.count_nonzero(mask))
 
@@ -380,7 +382,13 @@ class ArtificialRetina:
         return selected_indices
 
     # private function to activate rods and cones at specified coordinates
-    def __apply_random_pixel_effect(self, retina_image: torch.Tensor, selected_indices: torch.Tensor, effect: str) -> torch.Tensor:
+    def __apply_random_pixel_effect(
+        self,
+        retina_image: torch.Tensor,
+        selected_indices: torch.Tensor,
+        effect: str,
+        original_image: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         # apply the specified effect to the randomly selected pixels
         # check if length is none
         if selected_indices.shape[0] == 0:
@@ -403,8 +411,13 @@ class ArtificialRetina:
             )
         return retina_image
 
-
-    def cortical_magnification(self, image: torch.Tensor, center: tuple[int, int], strength: float = 0.5, radius: float = 0.3) -> torch.Tensor:
+    def cortical_magnification(
+        self,
+        image: torch.Tensor,
+        center: tuple[int, int],
+        strength: float = 0.5,
+        radius: float = 0.3,
+    ) -> torch.Tensor:
         _, height, width = image.shape
 
         # Normalize coordinates to [-1, 1] space
@@ -433,7 +446,9 @@ class ArtificialRetina:
         yv = yv / magnification
 
         # Create the grid for remap
-        grid = torch.stack([xv, yv], dim=-1).unsqueeze(0)  # Add batch dimension for grid_sample
+        grid = torch.stack([xv, yv], dim=-1).unsqueeze(
+            0
+        )  # Add batch dimension for grid_sample
 
         # Add center back to grid
         grid += torch.tensor([center_x, center_y], device=self.device)
@@ -445,6 +460,8 @@ class ArtificialRetina:
             mode="bilinear",
             padding_mode="border",
             align_corners=True,
-        ).squeeze(0) # remove batch dimension
+        ).squeeze(
+            0
+        )  # remove batch dimension
 
         return magnified_image_tensor
