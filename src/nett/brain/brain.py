@@ -96,6 +96,7 @@ class Brain:
         ent_coef: float = 0,
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
+        deterministic: bool = True,
         custom_encoder_args: dict[str, Any] = {},
         custom_algorithm_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
@@ -119,6 +120,7 @@ class Brain:
             int(checkpoint_freq) if checkpoint_freq is not None else None
         )
         self.train_encoder = bool(train_encoder)
+        self.deterministic = bool(deterministic)
 
         # used for extractors that wrap other extractors e.g. multiinput
         if "extractor_class" in custom_encoder_args:
@@ -270,7 +272,7 @@ class Brain:
                         obs,
                         state=states,  # used only for recurrentPPO
                         episode_start=dones,  # used only for recurrentPPO
-                        deterministic=True,
+                        deterministic=self.deterministic,
                     )
                     # perform the action
                     obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
