@@ -65,22 +65,21 @@ class Retina(gym.ObservationWrapper):
                         "Unsupported observation space shape: {}".format(shape)
                     )
             elif isinstance(self.env.observation_space, gym.spaces.Dict):
-                for key in self.env.observation_space.keys():
-                    if isinstance(self.env.observation_space[key], gym.spaces.Box):
-                        shape = self.env.observation_space[key].shape
-                        if len(shape) == 4:
-                            _, channels, width, height = shape
-                        elif len(shape) == 3:
-                            channels, width, height = shape
-                            self.env.observation_space[key] = (
-                                gym.wrappers.FrameStackObservation(
-                                    self.env.observation_space[key], 2
-                                )
-                            )
-                        else:
-                            raise ValueError(
-                                "Unsupported observation space shape: {}".format(shape)
-                            )
+                key = list(self.env.observation_space.spaces.keys())[0]
+                shape = self.env.observation_space.spaces[key].shape
+                if len(shape) == 4:
+                    _, channels, width, height = shape
+                elif len(shape) == 3:
+                    channels, width, height = shape
+                    self.env.observation_space[key] = (
+                        gym.wrappers.FrameStackObservation(
+                            self.env.observation_space[key], 2
+                        )
+                    )
+                else:
+                    raise ValueError(
+                        "Unsupported observation space shape: {}".format(shape)
+                    )
 
             self.retina = ArtificialRetina(
                 P=width,
