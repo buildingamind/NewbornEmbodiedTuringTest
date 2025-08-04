@@ -414,7 +414,6 @@ class ArtificialRetina:
     def cortical_magnification(
         self,
         image: torch.Tensor,
-        center: tuple[int, int],
         strength: float = 0.5,
         radius: float = 0.3,
     ) -> torch.Tensor:
@@ -426,8 +425,8 @@ class ArtificialRetina:
         xv, yv = torch.meshgrid(x, y, indexing="xy")
 
         # Normalize the focal center to [-1, 1]
-        center_x = (center[0] / width) * 2 - 1
-        center_y = (center[1] / height) * 2 - 1
+        center_x = (self.fovea_center[0] / width) * 2 - 1
+        center_y = (self.fovea_center[1] / height) * 2 - 1
 
         # Shift grid based on the focal point
         xv = xv - center_x
