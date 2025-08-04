@@ -99,6 +99,7 @@ class Brain:
         custom_encoder_args: dict[str, Any] = {},
         custom_algorithm_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
+        custom_policy_args: Optional[dict[str, Any]] = {},
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
         # Set attributes
@@ -128,6 +129,7 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
+        self.custom_policy_args = custom_policy_args
         self.reward_args = reward_args
         if reward != "RE3":
             self.reward_args["batch_size"] = self.batch_size
@@ -178,6 +180,8 @@ class Brain:
 
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
+
+        policy_kwargs.update(self.custom_policy_args)
 
         try:
             model = self.algorithm(
