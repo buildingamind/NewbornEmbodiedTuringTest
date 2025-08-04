@@ -53,18 +53,7 @@ class Retina(gym.ObservationWrapper):
         # self.stack = collections.deque(maxlen=self.num_stack)
 
         try:
-            if isinstance(self.env.observation_space, gym.spaces.Box):
-                shape = self.env.observation_space.shape
-                if len(shape) == 4:
-                    _, channels, width, height = shape
-                elif len(shape) == 3:
-                    channels, width, height = shape
-                    self.env = gym.wrappers.FrameStackObservation(env, 2)
-                else:
-                    raise ValueError(
-                        "Unsupported observation space shape: {}".format(shape)
-                    )
-            elif isinstance(self.env.observation_space, gym.spaces.Dict):
+            if isinstance(self.env.observation_space, gym.spaces.Dict):
                 key = list(self.env.observation_space.spaces.keys())[0]
                 shape = self.env.observation_space.spaces[key].shape
                 if len(shape) == 4:
@@ -76,6 +65,17 @@ class Retina(gym.ObservationWrapper):
                             self.env.observation_space[key], 2
                         )
                     )
+                else:
+                    raise ValueError(
+                        "Unsupported observation space shape: {}".format(shape)
+                    )
+            else:
+                shape = self.env.observation_space.shape
+                if len(shape) == 4:
+                    _, channels, width, height = shape
+                elif len(shape) == 3:
+                    channels, width, height = shape
+                    self.env = gym.wrappers.FrameStackObservation(env, 2)
                 else:
                     raise ValueError(
                         "Unsupported observation space shape: {}".format(shape)
@@ -106,7 +106,15 @@ class Retina(gym.ObservationWrapper):
 
         """
 
-        if isinstance(self.env.observation_space, gym.spaces.Box):
+        if isinstance(self.env.observation_space, gym.spaces.Dict):
+            out = {}
+            for key in obs.keys():
+                prev: np.ndarray = obs[key][-2]
+                current: np.ndarray = obs[key][-1]
+                # prev = np.transpose(obs[key][-2], (1, 2, 0))  # move channels to last dimension
+                # current = np.transpose(obs[key][-1], (1, 2, 0))  # move channels to last dimension
+                out[key] = self.retina.process(image=prev, next_image=current)
+        else:
             # grab the last 2 images from the stack
             prev: np.ndarray = obs[-2]  # move channels to last dimension
             current: np.ndarray = obs[-1]  # move channels to last dimension
@@ -116,14 +124,6 @@ class Retina(gym.ObservationWrapper):
 
             # change to channel first, w, h
             # out = np.transpose(out, (2, 0, 1))
-        elif isinstance(self.env.observation_space, gym.spaces.Dict):
-            out = {}
-            for key in obs.keys():
-                prev: np.ndarray = obs[key][-2]
-                current: np.ndarray = obs[key][-1]
-                # prev = np.transpose(obs[key][-2], (1, 2, 0))  # move channels to last dimension
-                # current = np.transpose(obs[key][-1], (1, 2, 0))  # move channels to last dimension
-                out[key] = self.retina.process(image=prev, next_image=current)
 
         return out.astype(np.uint8)
 
