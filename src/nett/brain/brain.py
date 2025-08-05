@@ -96,9 +96,11 @@ class Brain:
         ent_coef: float = 0,
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
+        deterministic: bool = True,
         custom_encoder_args: dict[str, Any] = {},
         custom_algorithm_args: dict[str, Any] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
+        custom_policy_args: Optional[dict[str, Any]] = {},
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
         # Set attributes
@@ -118,6 +120,7 @@ class Brain:
             int(checkpoint_freq) if checkpoint_freq is not None else None
         )
         self.train_encoder = bool(train_encoder)
+        self.deterministic = bool(deterministic)
 
         # used for extractors that wrap other extractors e.g. multiinput
         if "extractor_class" in custom_encoder_args:
@@ -128,6 +131,7 @@ class Brain:
         self.custom_encoder_args = custom_encoder_args
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
+        self.custom_policy_args = custom_policy_args
         self.reward_args = reward_args
         if reward != "RE3":
             self.reward_args["batch_size"] = self.batch_size
@@ -178,6 +182,8 @@ class Brain:
 
         if self.custom_policy_arch:
             policy_kwargs["net_arch"] = self.custom_policy_arch
+
+        policy_kwargs.update(self.custom_policy_args)
 
         try:
             model = self.algorithm(
@@ -266,7 +272,7 @@ class Brain:
                         obs,
                         state=states,  # used only for recurrentPPO
                         episode_start=dones,  # used only for recurrentPPO
-                        deterministic=True,
+                        deterministic=self.deterministic,
                     )
                     # perform the action
                     obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info

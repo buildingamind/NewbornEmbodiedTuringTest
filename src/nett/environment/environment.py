@@ -21,6 +21,7 @@ from mlagents_envs.exception import UnityWorkerInUseException
 from mlagents_envs.environment import UnityEnvironment
 from mlagents_envs.envs.unity_parallel_env import UnityParallelEnv
 from pettingzoo.utils.wrappers import BaseParallelWrapper
+import torch
 
 from .utils.logger import Logger
 from ..utils.task import TaskConfig
@@ -147,6 +148,8 @@ class Environment:
         else:
             logger = config.logger
             seed = config.brain_id
+
+        torch.manual_seed(seed)
 
         # create record path
         recording_path = config.path / "recordings"

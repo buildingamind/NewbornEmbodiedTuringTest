@@ -53,16 +53,33 @@ class Retina(gym.ObservationWrapper):
         # self.stack = collections.deque(maxlen=self.num_stack)
 
         try:
-            shape = self.env.observation_space.shape
-            if len(shape) == 4:
-                _, channels, width, height = shape
-            elif len(shape) == 3:
-                channels, width, height = shape
-                self.env = gym.wrappers.FrameStackObservation(env, 2)
+            if isinstance(self.env.observation_space, gym.spaces.Dict):
+                key = list(self.env.observation_space.spaces.keys())[0]
+                shape = self.env.observation_space.spaces[key].shape
+                if len(shape) == 4:
+                    _, channels, width, height = shape
+                elif len(shape) == 3:
+                    channels, width, height = shape
+                    self.env.observation_space[key] = (
+                        gym.wrappers.FrameStackObservation(
+                            self.env.observation_space[key], 2
+                        )
+                    )
+                else:
+                    raise ValueError(
+                        "Unsupported observation space shape: {}".format(shape)
+                    )
             else:
-                raise ValueError(
-                    "Unsupported observation space shape: {}".format(shape)
-                )
+                shape = self.env.observation_space.shape
+                if len(shape) == 4:
+                    _, channels, width, height = shape
+                elif len(shape) == 3:
+                    channels, width, height = shape
+                    self.env = gym.wrappers.FrameStackObservation(env, 2)
+                else:
+                    raise ValueError(
+                        "Unsupported observation space shape: {}".format(shape)
+                    )
 
             self.retina = ArtificialRetina(
                 P=width,
@@ -89,15 +106,24 @@ class Retina(gym.ObservationWrapper):
 
         """
 
-        # grab the last 2 images from the stack
-        prev: np.ndarray = obs[-2]  # move channels to last dimension
-        current: np.ndarray = obs[-1]  # move channels to last dimension
-        # prev = np.transpose(obs[-2], (1, 2, 0))  # move channels to last dimension
-        # current = np.transpose(obs[-1], (1, 2, 0))  # move channels to last dimension
-        out = self.retina.process(image=prev, next_image=current)
+        if isinstance(self.env.observation_space, gym.spaces.Dict):
+            out = {}
+            for key in obs.keys():
+                prev: np.ndarray = obs[key][-2]
+                current: np.ndarray = obs[key][-1]
+                # prev = np.transpose(obs[key][-2], (1, 2, 0))  # move channels to last dimension
+                # current = np.transpose(obs[key][-1], (1, 2, 0))  # move channels to last dimension
+                out[key] = self.retina.process(image=prev, next_image=current)
+        else:
+            # grab the last 2 images from the stack
+            prev: np.ndarray = obs[-2]  # move channels to last dimension
+            current: np.ndarray = obs[-1]  # move channels to last dimension
+            # prev = np.transpose(obs[-2], (1, 2, 0))  # move channels to last dimension
+            # current = np.transpose(obs[-1], (1, 2, 0))  # move channels to last dimension
+            out = self.retina.process(image=prev, next_image=current)
 
-        # change to channel first, w, h
-        # out = np.transpose(out, (2, 0, 1))
+            # change to channel first, w, h
+            # out = np.transpose(out, (2, 0, 1))
 
         return out.astype(np.uint8)
 
@@ -414,7 +440,6 @@ class ArtificialRetina:
     def cortical_magnification(
         self,
         image: torch.Tensor,
-        center: tuple[int, int],
         strength: float = 0.5,
         radius: float = 0.3,
     ) -> torch.Tensor:
@@ -426,8 +451,8 @@ class ArtificialRetina:
         xv, yv = torch.meshgrid(x, y, indexing="xy")
 
         # Normalize the focal center to [-1, 1]
-        center_x = (center[0] / width) * 2 - 1
-        center_y = (center[1] / height) * 2 - 1
+        center_x = (self.fovea_center[0] / width) * 2 - 1
+        center_y = (self.fovea_center[1] / height) * 2 - 1
 
         # Shift grid based on the focal point
         xv = xv - center_x

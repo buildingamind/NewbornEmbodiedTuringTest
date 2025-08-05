@@ -27,7 +27,7 @@ class Binocular(gym.ObservationWrapper):
 
     """
 
-    def __init__(self, env):
+    def __init__(self, env, *args, **kwargs):
         super().__init__(env)
 
         try:
