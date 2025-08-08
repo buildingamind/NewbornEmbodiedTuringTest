@@ -225,6 +225,7 @@ class Brain:
                 tb_log_name=self.algorithm.__name__,
                 progress_bar=False,
                 callback=callback_list,
+                # reset_num_timesteps=True,
                 # log_interval=None, #TODO: Reocrd to tb and not stdout
                 # tb_log_name="train",
             )
@@ -257,15 +258,15 @@ class Brain:
                 device=f"cuda:{config.device}",
             )
 
+            # reset environment and get initial obs
+            obs = envs.reset()
+            # reset states for recurrentPPO
+            states = None
+            # dones need to start True for episode_start for recurrentPPO
+            dones = np.ones((self.n_parallel_envs,), dtype=bool)
+
             # loop over episodes
             for _ in range(self.test_iterations):
-                # reset environment and get initial obs
-                obs = envs.reset()
-                # reset states for recurrentPPO
-                states = None
-                # dones need to start True for episode_start for recurrentPPO
-                dones = np.ones((self.n_parallel_envs,), dtype=bool)
-
                 while True:
                     # predict an action
                     action, states = model.predict(
