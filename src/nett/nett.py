@@ -294,8 +294,9 @@ class NETT:
             steps_per_episode
             * num_brains
             * (
-                episodes.get("train", 0) * len(base_env.conditions) +
-                episodes.get("test", 0) * sum(base_env.iterations_per_test_episode.values())
+                episodes.get("train", 0) * len(base_env.conditions)
+                + episodes.get("test", 0)
+                * sum(base_env.iterations_per_test_episode.values())
             )
         )
 
@@ -308,7 +309,7 @@ class NETT:
 
         self.logger.info(f"Assigning tasks...")
         for task in tasklist:
-            time.sleep(1)
+            time.sleep(2)
             self._assign_task(task)
 
     def task_waiter(self):
