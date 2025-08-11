@@ -52,7 +52,7 @@ def list_conditions(executable_dir: str | Path) -> list[str]:
     Returns:
         list[str]: A list of imprinting conditions for the experiment.
     """
-    return get_experiment_design(Path(executable_dir))[1]
+    return list(get_experiment_design(Path(executable_dir)).keys())
 
 
 def list_wrappers() -> list[type[gym.Wrapper]]:

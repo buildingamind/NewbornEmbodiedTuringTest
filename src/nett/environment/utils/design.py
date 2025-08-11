@@ -3,7 +3,7 @@ from pathlib import Path
 import yaml
 
 
-def get_experiment_design(executable_path: Path) -> tuple[int, list[str]]:
+def get_experiment_design(executable_path: Path) -> dict[str, int]:
     """
     Gets the experiment design from the executable directory.
 
@@ -28,17 +28,15 @@ def get_experiment_design(executable_path: Path) -> tuple[int, list[str]]:
 
     yaml_file: Path = yaml_files[0]
 
-    # read the yaml file
-    with open(yaml_file, "r") as file:
-        yaml_data = yaml.safe_load(file)
 
     try:
-        num_test_conditions: int = yaml_data["num_test_conditions"]
-        valid_imprinting_conditions: list[str] = yaml_data["imprinting_conditions"]
+        # read the yaml file
+        with open(yaml_file, "r") as file:
+            valid_imprinting_conditions: dict[str, int] = yaml.safe_load(file)
     except KeyError:
         raise KeyError(
             "Experiment configuration file is not properly formatted. It should contain 'num_test_conditions' and 'imprinting_conditions' keys."
         )
 
-    return num_test_conditions, valid_imprinting_conditions
+    return valid_imprinting_conditions
 

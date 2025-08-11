@@ -246,8 +246,7 @@ class NETT:
         base_brain.calc_iterations(
             num_brains,
             self.num_threads,
-            len(base_env.conditions),
-            base_env.num_test_conditions,
+            base_env.iterations_per_test_episode,
             episodes,
             steps_per_episode,
         )
@@ -267,7 +266,6 @@ class NETT:
             base_body,
             base_env,
             task_memory,
-            base_env.conditions[0],
             output_dir,
         )  # multi
 
@@ -294,12 +292,13 @@ class NETT:
         # create loading bar
         num_steps = (
             steps_per_episode
-            * len(tasklist.tasks)
+            * num_brains
             * (
-                episodes.get("train", 0)
-                + episodes.get("test", 0) * base_env.num_test_conditions
+                episodes.get("train", 0) * len(base_env.conditions) +
+                episodes.get("test", 0) * sum(base_env.iterations_per_test_episode.values())
             )
         )
+
         self.executor.loading_bar.add(name, num_steps)
         # validate tasks
         if not base_env.multiagent:
@@ -361,7 +360,6 @@ class NETT:
         body: Body,
         env: Environment,
         task_memory: str | float,
-        example_condition: str,
         output_dir: Path,
     ) -> float:
         most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
@@ -379,7 +377,7 @@ class NETT:
                     body,
                     env,
                     0,
-                    example_condition,
+                    env.conditions[0], # example condition
                     output_dir,
                     ["train"],
                     self.loading_bar_queue,

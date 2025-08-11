@@ -51,7 +51,10 @@ def validate_executable_path(executable_path: str) -> Path:
     return executable_path
 
 
-def validate_conditions(all_conditions: list[str], conditions: Optional[list[str]]):
+def validate_conditions(all_conditions: list[str] | dict[str, int], conditions: Optional[list[str]]):
+    if isinstance(all_conditions, dict):
+        all_conditions = list(all_conditions.keys())
+
     # check if user-defined their own conditions
     if conditions is None:
         # default to all conditions

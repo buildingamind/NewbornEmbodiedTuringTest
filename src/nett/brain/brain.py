@@ -141,15 +141,14 @@ class Brain:
         self,
         num_brains: int,
         num_threads: int,
-        num_imprinting_conditions: int,
-        num_test_conditions: int,
+        iterations_per_episode: dict[str, int],
         episodes: dict[str, int],
         steps_per_episode: int,
     ):
         """Calculate the total number of iterations for training and testing."""
         self.steps_per_episode = steps_per_episode
         # Calculate the total number of tasks to be run
-        self.n_tasks = num_imprinting_conditions * num_brains
+        self.n_tasks = len(iterations_per_episode) * num_brains
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
         if "test" in episodes:
@@ -160,7 +159,7 @@ class Brain:
             max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
             self.n_parallel_envs = 1
-            self.test_iterations = num_test_conditions * episodes["test"]
+            self.test_iterations = {k: v * episodes["test"] for k, v in iterations_per_episode.items()}
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
@@ -266,7 +265,7 @@ class Brain:
             dones = np.ones((self.n_parallel_envs,), dtype=bool)
 
             # loop over episodes
-            for _ in range(self.test_iterations):
+            for _ in range(self.test_iterations[config.condition]):
                 while True:
                     # predict an action
                     action, states = model.predict(

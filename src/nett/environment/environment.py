@@ -74,14 +74,17 @@ class Environment:
         self.executable_path = validate_executable_path(executable_path)
 
         # get experiment design
-        self.num_test_conditions, valid_imprinting_conditions = get_experiment_design(
+        # self.num_test_conditions, valid_imprinting_conditions = get_experiment_design(
+        valid_imprinting_conditions = get_experiment_design(
             self.executable_path
         )
 
         # validate conditions
-        self.conditions = validate_conditions(
+        self.conditions: list[str] = validate_conditions(
             valid_imprinting_conditions, conditions
         )  # multi
+
+        self.iterations_per_test_episode: dict[str, int] = {k: v for k, v in valid_imprinting_conditions.items() if k in self.conditions}
 
         self.multiagent = multiagent
 
