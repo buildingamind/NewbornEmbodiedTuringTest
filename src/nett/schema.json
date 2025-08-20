@@ -147,6 +147,11 @@
           "type": "boolean",
           "default": false
         },
+"input_resolution": {
+          "description": "Resolution of the input images. Defaults to None. If None, the environment's default resolution is used.",
+          "type": ["integer", "null"],
+          "default": null
+        },
         "additionalProperties": false
         },
       "additionalProperties": false

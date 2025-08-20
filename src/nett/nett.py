@@ -257,6 +257,7 @@ class NETT:
             brain.get("reward", "closeness"),  # TODO Clean this up
             base_body.multiobs,
             base_body.panini_projection,
+            base_body.input_resolution,
         )
 
         ############### Run ################

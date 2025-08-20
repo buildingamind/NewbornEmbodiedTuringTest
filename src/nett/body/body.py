@@ -109,18 +109,21 @@ class Body:
     wrappers: list[gym.Wrapper]
     record_eps: dict
     panini_projection: bool
+    input_resolution: Optional[int]
 
     def __init__(
         self,
         wrappers: list[gym.Wrapper | str] = [],
         record_eps: dict[str, int] = {"train": "0:0:1", "test": "0:0:1"},
         panini_projection: bool = False,
+        input_resolution: Optional[int] = None,
     ):
         # TODO: Add support for custom wrappers to do this
         self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
+        self.input_resolution = input_resolution
 
     def validate_env(self, env: gym.Env, config: TaskConfig):
         test_env = _load_env(env, config, self.wrappers, True)

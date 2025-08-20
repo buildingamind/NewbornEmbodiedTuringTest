@@ -120,10 +120,14 @@ class Environment:
         reward: str,
         multiobs: bool,
         panini: bool = False,
+        input_resolution: Optional[int] = None,
     ):
         self.multiobs = multiobs
 
         args = ["--episode-steps", str(steps_per_episode)]
+
+        if input_resolution is not None:
+            args.extend(["--input-resolution", str(input_resolution)])
 
         if multiobs:  # TODO: Make this so it is binocular specific
             args.append("--binocular")
