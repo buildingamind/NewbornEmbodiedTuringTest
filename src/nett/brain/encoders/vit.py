@@ -42,9 +42,11 @@ class ViT(BaseFeaturesExtractor):
             heads=heads,
             mlp_dim=intermediate_size,
             channels=self.n_input_channels,
-            dropout=hidden_dropout_prob,
             emb_dropout=attention_probs_dropout_prob,
         )
+
+        if hidden_dropout_prob > 0.0:
+            configuration["dropout"] = hidden_dropout_prob
 
         self.model = LitClassifier(configuration, learning_rate=learning_rate)
         self.model.fc = nn.Identity()
