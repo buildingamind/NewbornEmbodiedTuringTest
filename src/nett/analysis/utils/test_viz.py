@@ -134,6 +134,53 @@ def make_bar_charts(
         x_categories, rotation=0, ha="center", fontsize=7.5, fontweight="bold"
     )
 
+    # Add significance asterisks
+    pvals = data["pval"]
+    used_symbols = set()
+    for i, pval in enumerate(pvals):
+        symbol = ""
+        if pval <= 0.001:
+            symbol = "***"
+            used_symbols.add("***")
+        elif pval <= 0.01:
+            symbol = "**"
+            used_symbols.add("**")
+        elif pval <= 0.05:
+            symbol = "*"
+            used_symbols.add("*")
+
+        if symbol:
+            # Adjust y position to be below the x-axis line
+            ax.text(
+                x_pos[i],
+                -0.05,
+                symbol,
+                ha="center",
+                va="top",
+                fontsize=14,
+                fontweight="bold",
+                transform=ax.get_xaxis_transform(),
+            )
+
+    if used_symbols:
+        significance_texts = []
+        if "***" in used_symbols:
+            significance_texts.append("*** p \u2264 0.001")
+        if "**" in used_symbols:
+            significance_texts.append("** p \u2264 0.01")
+        if "*" in used_symbols:
+            significance_texts.append("* p \u2264 0.05")
+
+        if significance_texts:
+            plt.figtext(
+                0.5,
+                0.01,
+                ", ".join(significance_texts),
+                ha="center",
+                fontsize=10,
+                fontweight="bold",
+            )
+
     if chick_data is not None:
         chick_data_filtered = chick_data[chick_data["test.cond"].isin(x_categories)]
         if not chick_data_filtered.empty:
@@ -185,16 +232,16 @@ def make_bar_charts(
             print("All values were none. No dots to add.")
 
     ax.axhline(0.5, linestyle="--", color="grey")
-    ax.set_xlabel("Test Condition", fontweight="bold", fontsize=14)
+    ax.set_xlabel("Test Condition", fontweight="bold", fontsize=14, labelpad=15)
     ax.set_ylabel("Percent Correct", fontweight="bold", fontsize=14)
-    ax.set_ylim(0, 1)
+    ax.set_ylim(0, 1.04)
     ax.set_yticks(np.linspace(0, 1, 11))
     ax.set_yticklabels(
         ["{:.0%}".format(t) for t in np.linspace(0, 1, 11)],
         fontsize=7.5,
         fontweight="bold",
     )
-    plt.tight_layout()
+    plt.tight_layout(pad=2.0)
     plt.savefig(img_name)
     plt.close()
 
