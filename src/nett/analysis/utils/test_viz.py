@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy import stats
 from matplotlib.lines import Line2D
+import textwrap
 
 # bar chart colors
 CUSTOM_PALETTE = [
@@ -130,9 +131,8 @@ def make_bar_charts(
     ax.bar(x_pos, y, yerr=yerr, color=colors, capsize=14, width=0.7, linewidth=0)
 
     ax.set_xticks(x_pos)
-    ax.set_xticklabels(
-        x_categories, rotation=0, ha="center", fontsize=7.5, fontweight="bold"
-    )
+    labels = ["\n".join(textwrap.wrap(str(l), 10)) for l in x_categories]
+    ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=7.5, fontweight="bold")
 
     # Add significance asterisks
     pvals = data["pval"]

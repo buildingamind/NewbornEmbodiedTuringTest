@@ -131,8 +131,6 @@ def analyze(
     experiment: str,
     run_dir: str,
     output_dir: Optional[str] = None,
-    ep_bucket: int = 100,
-    num_episodes: int = 1000,
     bar_order: str | list[int] = "default",
     color_bars: bool = True,
 ) -> None:
@@ -146,8 +144,6 @@ def analyze(
         run_dir (str | Path): The directory where the run results are stored.
         output_dir (str | Path, optional): The directory where the analysis results will be stored.
             If None, the analysis results will be stored in the run directory.
-        ep_bucket (int, optional): The number of episodes to be grouped together for analysis.
-        num_episodes (int, optional): The number of episodes to be analyzed.
         bar_order (str | list[int], optional): The order in which the bars are to be displayed in the analysis plots.
             Default is "default". Can be "default", "asc", "desc", or a list of bar numbers (e.g. [3,1,2,4]).
         color_bars (bool, optional): Whether to color the bars in the analysis plots by condition. Default is True.
@@ -192,7 +188,7 @@ def analyze(
     merge(run_dir, output_dir)
 
     print("Running analysis for [train]")
-    train_viz(output_dir, output_dir, ep_bucket, num_episodes)
+    train_viz(output_dir, output_dir)
 
     # test
     print("Running analysis for [test]")
