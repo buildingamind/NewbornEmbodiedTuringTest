@@ -44,30 +44,6 @@ CUSTOM_PALETTE = [
 CHICK_RED = "#AF264A"
 
 
-def sort_cond(data, bar_order: str) -> list[str]:
-    match bar_order:
-        case "desc":
-            order = (
-                data.groupby("test.cond")["percent_correct"]
-                .mean()
-                .sort_values(ascending=False)
-                .index.tolist()
-            )
-        case "asc":
-            order = (
-                data.groupby("test.cond")["percent_correct"]
-                .mean()
-                .sort_values()
-                .index.tolist()
-            )
-        case "default":
-            order = [x.strip() for x in bar_order.split(",")]
-        case _:
-            order = data["test.cond"].unique().tolist()
-
-    return pd.Categorical(data["test.cond"], categories=order, ordered=True)
-
-
 def _stats(group, column="percent_correct", mu=0.5):
     data = group[column]
     avgs = data.mean()
@@ -341,7 +317,6 @@ def test_viz(
     )
 
     print("Adjusting bar order...")
-    # test_data['test.cond'] = sort_cond(test_data, bar_order)
     if bar_order == "desc":
         order = (
             test_data.groupby("test.cond")["percent_correct"]
@@ -358,6 +333,8 @@ def test_viz(
         )
     elif bar_order != "default":
         order = [x.strip() for x in bar_order.split(",")]
+    elif chick_data is not None:
+        order = chick_data["test.cond"].unique().tolist()
     else:
         order = test_data["test.cond"].unique().tolist()
     test_data["test.cond"] = pd.Categorical(
