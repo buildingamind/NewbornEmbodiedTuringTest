@@ -104,7 +104,14 @@ def compute_stats(data: pd.DataFrame, results_dir: Path) -> pd.DataFrame:
 
 
 def make_bar_charts(
-    data, dots, y_col, error_min_col, error_max_col, img_name, color_bars, chick_data=None
+    data,
+    dots,
+    y_col,
+    error_min_col,
+    error_max_col,
+    img_name,
+    color_bars,
+    chick_data=None,
 ):
     plt.figure(figsize=(6, 6))
     sns.set_style("white")
@@ -122,7 +129,23 @@ def make_bar_charts(
     )
 
     if color_bars:
-        color_mapping = dict(zip(x_categories, CUSTOM_PALETTE))
+        color_mapping = {}
+        color_iterator = iter(CUSTOM_PALETTE)  # Use an iterator for the color list
+
+        for x in x_categories:
+            # Check for the special case, ignoring case.
+            if str(x).lower() == "rest":
+                color_mapping[x] = "darkgrey"
+            else:
+                # Try to get the next color from the iterator.
+                try:
+                    color_mapping[x] = next(color_iterator)
+                except StopIteration:
+                    # This block runs if we run out of colors in the y list.
+                    # You can decide what to do here. For now, we'll assign None.
+                    print(f"Warning: Ran out of colors. Assigning None to '{x}'.")
+                    color_mapping[x] = None
+
         colors = data["test.cond"].map(color_mapping)
     else:
         colors = "grey"
@@ -201,7 +224,10 @@ def make_bar_charts(
 
 
 def agent_bar_charts(
-    data: pd.DataFrame, results_dir: Path, color_bars: bool, chick_data: pd.DataFrame = None
+    data: pd.DataFrame,
+    results_dir: Path,
+    color_bars: bool,
+    chick_data: pd.DataFrame = None,
 ):
     for imp_agent in data["imp_agent"].unique():
         bar_data = data[data["imp_agent"] == imp_agent]

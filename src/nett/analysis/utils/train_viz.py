@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 
-def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
+def train_viz(data_loc, results_wd):
     """
     Analyze and visualize training data from the Newborn Embodied Turing Tests.
 
@@ -18,8 +18,6 @@ def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
 
     # Load data and filter episodes
     train_data = pd.read_csv(data_loc / "train_results.csv", skipinitialspace=True)
-    print(f"Collating data for {num_episodes} training episodes...")
-    train_data = train_data[train_data["Episode"] < num_episodes]
 
     # Clean 'correct.monitor' and compute correct/incorrect steps
     train_data["correct.monitor"] = train_data["correct.monitor"].str.strip()
@@ -35,6 +33,8 @@ def train_viz(data_loc, results_wd, ep_bucket_size, num_episodes):
     )
 
     # Create episode blocks
+    # Define bucket size for grouping episodes
+    ep_bucket_size = train_data["Episode"].max() / 10
     train_data["episode_block"] = (train_data["Episode"] // ep_bucket_size) + 1
 
     # Group data and calculate summary statistics
