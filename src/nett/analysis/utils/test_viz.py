@@ -187,6 +187,28 @@ def make_bar_charts(
 
     if chick_data is not None:
         chick_data_filtered = chick_data[chick_data["test.cond"].isin(x_categories)]
+        if "experiment" in data.columns:
+            # Get the value from the first row of 'experiment'
+            experiment = data["experiment"].iloc[0]  # Remove the "Exp" from beginning
+            # Filter the DataFrame
+            chick_data_filtered = chick_data_filtered[
+                chick_data_filtered["experiment"].apply(lambda x: experiment == x)
+            ]
+
+        if "exp.cond" in data.columns:
+            # Get the value from the first row of 'exp.cond'
+            imprint_cond = data["exp.cond"].iloc[0]
+            # Filter the DataFrame
+            chick_data_filtered = chick_data_filtered[
+                chick_data_filtered["imprint.cond"].apply(lambda x: imprint_cond == x)
+            ]
+
+        if "imprint.cond" in data.columns:
+            imprints = data["imprint.cond"].unique()
+            chick_data_filtered = chick_data_filtered[
+                chick_data_filtered["imprint.cond"].apply(lambda x: x in imprints)
+            ]
+
         if not chick_data_filtered.empty:
             chick_data_filtered["test.cond"] = pd.Categorical(
                 chick_data_filtered["test.cond"], categories=x_categories, ordered=True
@@ -344,16 +366,15 @@ def stats_overall(
             data["exp.cond"] = data["imprint.cond"].apply(match_imprint_cond)
             data.dropna(subset=["exp.cond"], inplace=True)
     group_by_cols = ["test.cond"]
-    if "experiment" in data.columns:
-        group_by_cols.append("experiment")
     if "exp.cond" in data.columns:
         group_by_cols.append("exp.cond")
+    if "experiment" in data.columns:
+        group_by_cols.append("experiment")
 
     across_imp_cond = (
         data[~data["test.cond"].str.lower().eq("rest")]
-        .groupby(group_by_cols)
+        .groupby(group_by_cols, as_index=False)
         .apply(lambda g: _stats(g, column="avgs"))
-        .reset_index()
     )
     across_imp_cond.to_csv(results_dir / "stats_across_all_agents.csv", index=False)
     return across_imp_cond
@@ -365,8 +386,9 @@ def exp_cond_bar_charts(
     if "experiment" in across_imp_cond.columns:
         if "exp.cond" in across_imp_cond.columns:
             combinations = zip(
-                across_imp_cond["experiment"], across_imp_cond["exp.cond"]
-            ).unique()
+                across_imp_cond["experiment"].unique(),
+                across_imp_cond["exp.cond"].unique(),
+            )
         else:
             combinations = [
                 (exp, None) for exp in across_imp_cond["experiment"].unique()
@@ -381,8 +403,8 @@ def exp_cond_bar_charts(
     for exp, expCond in set(combinations):
         if exp is None and expCond is None:
             # Skip if both are None
-            dot_data = by_test_cond
             bar_data = across_imp_cond
+            dot_data = by_test_cond
         elif exp is None:
             bar_data = across_imp_cond[across_imp_cond["exp.cond"] == expCond]
             dot_data = by_test_cond[by_test_cond["imprint.cond"].str.endswith(expCond)]
@@ -397,12 +419,15 @@ def exp_cond_bar_charts(
                 and across_imp_cond["exp.cond"] == expCond
             ]
             dot_data = by_test_cond[
-                by_test_cond["imprint.cond"].str.endswith(expCond)
-                and by_test_cond["experiment"] == exp
+                by_test_cond["imprint.cond"].str.startswith(f"Exp{exp}")
+                and by_test_cond["imprint.cond"].str.endswith(expCond)
             ]
 
         dot_data = dot_data[~dot_data["test.cond"].str.lower().eq("rest")]
         bar_data = bar_data[~bar_data["test.cond"].str.lower().eq("rest")]
+
+        dot_data = dot_data.reset_index(drop=True)
+        bar_data = bar_data.reset_index(drop=True)
 
         bar_data["error_min"] = bar_data["avgs"] - bar_data["se"]
         bar_data["error_max"] = bar_data["avgs"] + bar_data["se"]
@@ -519,12 +544,12 @@ def test_viz(
         data=by_test_cond, results_dir=results_dir, chick_data=chick_data
     )
 
+    print("Creating bar chart for all imprinting conditions...")
     if "experiment" in across_imp_cond.columns or "exp.cond" in across_imp_cond.columns:
         exp_cond_bar_charts(
-            across_imp_cond, by_test_cond, results_dir, color_bars, chick_data
+            by_test_cond, across_imp_cond, results_dir, color_bars, chick_data
         )
-
-    print("Creating bar chart for all imprinting conditions...")
-    all_cond_bar_chart(
-        by_test_cond, across_imp_cond, results_dir, color_bars, chick_data
-    )
+    else:
+        all_cond_bar_chart(
+            by_test_cond, across_imp_cond, results_dir, color_bars, chick_data
+        )
