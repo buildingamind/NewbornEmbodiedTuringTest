@@ -308,19 +308,21 @@ def imprint_cond_bar_charts(
         )
 
 
-def stats_overall(data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFrame = None):
+def stats_overall(
+    data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFrame = None
+):
     if chick_data is not None:
         if "experiment" in chick_data.columns:
             valid_experiments = set(chick_data["experiment"].unique())
-            
+
             def get_experiment(cond):
                 try:
                     # First attempt
-                    exp_val = cond.split('_')[0][3:]
+                    exp_val = cond.split("_")[0][3:]
                     if exp_val in valid_experiments:
                         return exp_val
                     # Second attempt
-                    exp_val = cond.split('_')[0]
+                    exp_val = cond.split("_")[0]
                     if exp_val in valid_experiments:
                         return exp_val
                 except IndexError:
@@ -330,8 +332,8 @@ def stats_overall(data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFram
             data["experiment"] = data["imprint.cond"].apply(get_experiment)
             data.dropna(subset=["experiment"], inplace=True)
 
-        if "imprint_cond" in chick_data.columns:
-            chick_imprint_conds = set(chick_data["imprint_cond"].unique())
+        if "imprint.cond" in chick_data.columns:
+            chick_imprint_conds = set(chick_data["imprint.cond"].unique())
 
             def match_imprint_cond(agent_cond):
                 for chick_cond in chick_imprint_conds:
@@ -356,16 +358,23 @@ def stats_overall(data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFram
     across_imp_cond.to_csv(results_dir / "stats_across_all_agents.csv", index=False)
     return across_imp_cond
 
+
 def exp_cond_bar_charts(
     by_test_cond, across_imp_cond, results_dir, color_bars, chick_data=None
 ):
     if "experiment" in across_imp_cond.columns:
         if "exp.cond" in across_imp_cond.columns:
-            combinations = zip(across_imp_cond["experiment"], across_imp_cond["exp.cond"]).unique()
+            combinations = zip(
+                across_imp_cond["experiment"], across_imp_cond["exp.cond"]
+            ).unique()
         else:
-            combinations = [(exp, None) for exp in across_imp_cond["experiment"].unique()]
+            combinations = [
+                (exp, None) for exp in across_imp_cond["experiment"].unique()
+            ]
     elif "exp.cond" in across_imp_cond.columns:
-        combinations = [(None, exp_cond) for exp_cond in across_imp_cond["exp.cond"].unique()]
+        combinations = [
+            (None, exp_cond) for exp_cond in across_imp_cond["exp.cond"].unique()
+        ]
     else:
         combinations = [(None, None)]
 
@@ -379,10 +388,18 @@ def exp_cond_bar_charts(
             dot_data = by_test_cond[by_test_cond["imprint.cond"].str.endswith(expCond)]
         elif expCond is None:
             bar_data = across_imp_cond[across_imp_cond["experiment"] == exp]
-            dot_data = by_test_cond[by_test_cond["imprint.cond"].str.startswith(f"Exp{exp}")]
+            dot_data = by_test_cond[
+                by_test_cond["imprint.cond"].str.startswith(f"Exp{exp}")
+            ]
         else:
-            bar_data = across_imp_cond[across_imp_cond["experiment"] == exp and across_imp_cond["exp.cond"] == expCond]
-            dot_data = by_test_cond[by_test_cond["imprint.cond"].str.endswith(expCond) and by_test_cond["experiment"] == exp]
+            bar_data = across_imp_cond[
+                across_imp_cond["experiment"] == exp
+                and across_imp_cond["exp.cond"] == expCond
+            ]
+            dot_data = by_test_cond[
+                by_test_cond["imprint.cond"].str.endswith(expCond)
+                and by_test_cond["experiment"] == exp
+            ]
 
         dot_data = dot_data[~dot_data["test.cond"].str.lower().eq("rest")]
         bar_data = bar_data[~bar_data["test.cond"].str.lower().eq("rest")]
@@ -402,6 +419,7 @@ def exp_cond_bar_charts(
             color_bars=color_bars,
             chick_data=chick_data,
         )
+
 
 def all_cond_bar_chart(
     by_test_cond, across_imp_cond, results_dir, color_bars, chick_data=None
@@ -497,10 +515,14 @@ def test_viz(
 
     print("Computing statistics across all imprinting conditions...")
 
-    across_imp_cond = stats_overall(data=by_test_cond, results_dir=results_dir, chick_data=chick_data)
+    across_imp_cond = stats_overall(
+        data=by_test_cond, results_dir=results_dir, chick_data=chick_data
+    )
 
     if "experiment" in across_imp_cond.columns or "exp.cond" in across_imp_cond.columns:
-        exp_cond_bar_charts(across_imp_cond, by_test_cond, results_dir, color_bars, chick_data)
+        exp_cond_bar_charts(
+            across_imp_cond, by_test_cond, results_dir, color_bars, chick_data
+        )
 
     print("Creating bar chart for all imprinting conditions...")
     all_cond_bar_chart(
