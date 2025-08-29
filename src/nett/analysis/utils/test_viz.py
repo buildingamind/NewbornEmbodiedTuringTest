@@ -153,7 +153,11 @@ def make_bar_charts(
             # Adjust y position to be below the x-axis line
             ax.text(
                 x_pos[i],
-                -0.05,
+                # -0.15,  # Adjust vertical position based on number of unique symbols
+                -0.035
+                * (
+                    labels[i].count("\n") + 1
+                ),  # Adjust vertical position based on number of unique symbols
                 symbol,
                 ha="center",
                 va="top",
@@ -187,7 +191,7 @@ def make_bar_charts(
             chick_data_filtered["test.cond"] = pd.Categorical(
                 chick_data_filtered["test.cond"], categories=x_categories, ordered=True
             )
-            chick_x_pos = chick_data_filtered["test.cond"].cat.codes - 1
+            chick_x_pos = chick_data_filtered["test.cond"].cat.codes  # - 1
 
             shift = 0
             for xi, yi, yerr, i in zip(
@@ -381,7 +385,12 @@ def test_viz(
     elif bar_order != "default":
         order = [x.strip() for x in bar_order.split(",")]
     elif chick_data is not None:
-        order = chick_data["test.cond"].unique().tolist()
+        conditions = test_data["test.cond"].unique().tolist()
+        order = (
+            chick_data[chick_data["test.cond"].isin(conditions)]["test.cond"]
+            .unique()
+            .tolist()
+        )
     else:
         order = test_data["test.cond"].unique().tolist()
     test_data["test.cond"] = pd.Categorical(
