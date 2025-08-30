@@ -203,7 +203,7 @@ def make_bar_charts(
                 chick_data_filtered["imprint.cond"].apply(lambda x: imprint_cond == x)
             ]
 
-        if "imprint.cond" in data.columns:
+        elif "imprint.cond" in chick_data_filtered.columns:
             imprints = data["imprint.cond"].unique()
             chick_data_filtered = chick_data_filtered[
                 chick_data_filtered["imprint.cond"].apply(lambda x: x in imprints)
@@ -335,7 +335,7 @@ def stats_overall(
 ):
     if chick_data is not None:
         if "experiment" in chick_data.columns:
-            valid_experiments = set(chick_data["experiment"].unique())
+            valid_experiments = set(str(x) for x in chick_data["experiment"].unique())
 
             def get_experiment(cond):
                 try:
@@ -354,7 +354,10 @@ def stats_overall(
             data["experiment"] = data["imprint.cond"].apply(get_experiment)
             data.dropna(subset=["experiment"], inplace=True)
 
-        if "imprint.cond" in chick_data.columns:
+        if (
+            "imprint.cond" in chick_data.columns
+            and len(data["imprint.cond"].unique()) > 1
+        ):
             chick_imprint_conds = set(chick_data["imprint.cond"].unique())
 
             def match_imprint_cond(agent_cond):
@@ -368,8 +371,8 @@ def stats_overall(
     group_by_cols = ["test.cond"]
     if "exp.cond" in data.columns:
         group_by_cols.append("exp.cond")
-    if "experiment" in data.columns:
-        group_by_cols.append("experiment")
+    # if "experiment" in data.columns:
+    #     group_by_cols.append("experiment")
 
     across_imp_cond = (
         data[~data["test.cond"].str.lower().eq("rest")]
@@ -394,6 +397,7 @@ def exp_cond_bar_charts(
                 (exp, None) for exp in across_imp_cond["experiment"].unique()
             ]
     elif "exp.cond" in across_imp_cond.columns:
+    # if "exp.cond" in across_imp_cond.columns:
         combinations = [
             (None, exp_cond) for exp_cond in across_imp_cond["exp.cond"].unique()
         ]
