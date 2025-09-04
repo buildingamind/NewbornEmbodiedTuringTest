@@ -262,7 +262,7 @@ class NETT:
         base_env.adjust_to_agent(
             steps_per_episode,
             brain.get("reward", "closeness"),  # TODO Clean this up
-            base_body.multiobs,
+            base_body.binocular_vision,
             base_body.panini_projection,
             base_body.input_resolution,
         )

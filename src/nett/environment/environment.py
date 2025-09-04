@@ -55,7 +55,7 @@ class Environment:
     conditions: list[str]  # the imprinting conditions to run
     multiagent: bool  # whether the environment is multiagent
     base_args: dict[str, list]  # the base arguments to pass to the Unity environment
-    multiobs: bool  # whether the environment passes multiple observations to the agent
+    binocular_vision: bool  # whether the environment passes multiple observations to the agent
     env: UnityEnvironment  # the Unity environment
 
     def __init__(
@@ -118,14 +118,14 @@ class Environment:
         self,
         steps_per_episode: int,
         reward: str,
-        multiobs: bool,
+        binocular_vision: bool,
         panini: bool = False,
         input_resolution: Optional[int] = None,
     ):
         """
         Adjusts the environment settings based on the agent's configuration.
         """
-        self.multiobs = multiobs
+        self.binocular_vision = binocular_vision
 
         # Add arguments based on agent configuration
         args = ["--episode-steps", str(steps_per_episode)]
@@ -133,7 +133,7 @@ class Environment:
         if input_resolution is not None:
             args.extend(["--input-resolution", str(input_resolution)])
 
-        if multiobs:  # TODO: Make this so it is binocular specific
+        if binocular_vision:
             args.append("--binocular")
         if panini:
             args.append("--panini-projection")
@@ -224,7 +224,7 @@ class Environment:
                     # side_channels=side_channels,
                 )
                 # Set render mode based on whether multiple observations are expected
-                env.render_mode = "rgb_array_list" if self.multiobs else "rgb_array"
+                env.render_mode = "rgb_array_list" if self.binocular_vision else "rgb_array"
                 complete = True
             except UnityWorkerInUseException as e:
                 # If the worker is in use, try again
@@ -237,5 +237,5 @@ class Environment:
         return (
             ZooWrapper(env, seed)
             if self.multiagent
-            else GymWrapper(env, seed, self.multiobs)
+            else GymWrapper(env, seed, self.binocular_vision)
         )

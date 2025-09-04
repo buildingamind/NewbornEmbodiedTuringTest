@@ -152,8 +152,8 @@
           "type": ["integer", "null"],
           "default": null
         },
-        "multiobs": {
-          "description": "Whether the environment provides multiple observations. If the 'binocular' or 'multiobs' wrapper is included, this will be overridden to `True`. This is useful for implementing custom wrappers that handle multiple observations. Defaults to `False`.",
+        "binocular_vision": {
+          "description": "Whether the body has binocular vision. If the 'binocular' or 'multiobs' wrapper is included, this will be overridden to `True`. This is useful for implementing custom wrappers that use binocular vision. Defaults to `False`.",
           "type": "boolean",
           "default": false
         },
