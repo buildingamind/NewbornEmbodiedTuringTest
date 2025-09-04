@@ -128,6 +128,8 @@ class Body:
             environment observations. Defaults to `False`.
         input_resolution (Optional[int]): The resolution to which the
             observations should be resized. Defaults to `None`.
+        multiobs (bool): Whether the environment provides multiple observations.
+            If the "binocular" or "multiobs" wrapper is included, this will be overridden to `True`. This is useful for implementing custom wrappers that handle multiple observations. Defaults to `False`.
     """
 
     multiobs: bool
@@ -142,9 +144,9 @@ class Body:
         record_eps: dict[str, str] = {"train": "0:0:1", "test": "0:0:1"},
         panini_projection: bool = False,
         input_resolution: Optional[int] = None,
+        multiobs: bool = False,
     ):
-        # TODO: Add support for custom wrappers to do this
-        self.multiobs = "binocular" in wrappers or "multiobs" in wrappers
+        self.multiobs = "binocular" in wrappers or "multiobs" in wrappers or multiobs
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection

@@ -152,8 +152,13 @@
           "type": ["integer", "null"],
           "default": null
         },
-        "additionalProperties": false
+        "multiobs": {
+          "description": "Whether the environment provides multiple observations. If the 'binocular' or 'multiobs' wrapper is included, this will be overridden to `True`. This is useful for implementing custom wrappers that handle multiple observations. Defaults to `False`.",
+          "type": "boolean",
+          "default": false
         },
+        "additionalProperties": false
+      },
       "additionalProperties": false
     },
     "environment": {
