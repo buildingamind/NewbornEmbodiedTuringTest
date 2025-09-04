@@ -93,9 +93,11 @@ class NETT:
         """Initialize the NETT class."""
 
         try:
+            # Load the schema for validation
             with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
                 schema: dict = json.load(file)
 
+            # Validate the configurations against the schema
             self.configs = [validate_config(conf, schema) for conf in configs]
         except Exception as e:
             self.logger.exception("Error in loading config")
@@ -117,6 +119,7 @@ class NETT:
             devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to `None`.
             num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to `None`. If None, the number of threads is equal to the number of cpu cores.
             verbose (int, optional): Whether or not to print info statements. Defaults to `True`.
+            asynchronous (bool, optional): Whether or not to run the tasks asynchronously. Defaults to `False`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -127,22 +130,25 @@ class NETT:
         # get the output directory
         self.output_path = Path(output_path).resolve()
         self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
+
+        # Set the number of threads
         self.num_threads = os.cpu_count() if num_threads is None else num_threads
 
+        # Count the number of test configurations
         test_config_count: int = 0
         for config in self.configs:
             if "episodes" in config:
                 test_config_count += bool(config["episodes"].get("test", 0))
 
+        # Adjust the number of threads based on the number of test configurations
         if test_config_count > 0:
             self.num_threads = int(self.num_threads / test_config_count)
 
-        # initialize task sheet
+        # initialize task sheet and waitlist
         self.task_sheet = {}
         self.waitlist = []
 
         # initialize NVIDIA memory management
-        # self.memory_manager = MemoryManager()
         with MemoryManager() as self.memory_manager:
 
             # validate devices
@@ -160,6 +166,7 @@ class NETT:
                 # run tasks
                 self.logger.info("Launching...")
                 try:
+                    # Run each configuration
                     for config in self.configs:
                         self.single_run(**config)
 
@@ -205,6 +212,7 @@ class NETT:
             steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
             task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -234,10 +242,9 @@ class NETT:
 
         ########## Initialization ##########
 
+        # Initialize the brain, body, and environment
         base_brain = Brain(**brain)
-
         base_body = Body(**body)
-
         base_env = Environment(**environment)
 
         ############## Setup ###############
@@ -268,16 +275,15 @@ class NETT:
             base_env,
             task_memory,
             output_dir,
-        )  # multi
+        )
 
-        # run tasks
-        # assign devices based on memory availability
+        # Determine which modes to run (train, test)
         modes: list[str] = []
         for mode in episodes.keys():
             if episodes[mode] > 0:
                 modes.append(mode)
 
-        # assign tasks to devices and run them
+        # Create a list of tasks to run
         tasklist = TaskList(
             base_brain,
             base_body,
@@ -300,34 +306,44 @@ class NETT:
                 * sum(base_env.iterations_per_test_episode.values())
             )
         )
-
         self.executor.loading_bar.add(name, num_steps)
+
         # validate tasks
         if not base_env.multiagent:
             self.logger.info("Validating tasks...")
             task_future: Future = self.executor.submit(validate_tasklist, tasklist)
             future_wait({task_future: ""}, return_when="ALL_COMPLETED")
 
+        # Assign tasks to devices
         self.logger.info(f"Assigning tasks...")
         for task in tasklist:
             time.sleep(2)
             self._assign_task(task)
 
     def task_waiter(self):
+        """
+        Waits for tasks to complete and assigns new tasks from the waitlist.
+        """
+        # Log if there are tasks in the waitlist
         if len(self.waitlist) > 0:
             self.logger.warning(
                 f"Insufficient GPU Memory. Waiting for running tasks to complete. Number of Tasks in Waitlist: {len(self.waitlist)}"
             )
 
+        # Wait for tasks to complete
         for done_future in as_completed(self.task_sheet):
             self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
             done_future.result()
+
+            # Free up memory from the completed task
             done_config: TaskConfig = self.task_sheet.pop(done_future)
             free_device: int = done_config.device
             self.free_device_memory[free_device] += done_config.memory
 
+            # Check if any tasks in the waitlist can be run
             for i, task in enumerate(self.waitlist):
                 if task.config.memory <= self.free_device_memory[free_device]:
+                    # Allocate memory and run the task
                     self.free_device_memory[free_device] -= task.config.memory
                     task.set_device(free_device)
                     task_future: Future = self.executor.submit(run_task, task)
@@ -336,9 +352,22 @@ class NETT:
                     break
 
     def status(self):
+        """
+        Returns the status of the tasks.
+
+        Returns:
+            dict[Future, TaskConfig]: A dictionary of futures representing the jobs that have been launched.
+        """
         return self.task_sheet
 
     def _assign_task(self, task: Task) -> None:
+        """
+        Assigns a task to the most free GPU.
+
+        Args:
+            task (Task): The task to be assigned.
+        """
+        # Find the GPU with the most free memory
         most_free_gpu, gpu_max_capacity = (None, 0)
         for device, memory in self.free_device_memory.items():
             if memory > gpu_max_capacity:
@@ -347,6 +376,7 @@ class NETT:
 
         # check if enough memory is available on the device
         if gpu_max_capacity >= task.config.memory:
+            # Assign the task to the device
             task.set_device(most_free_gpu)
             task_future = self.executor.submit(run_task, task)
             self.task_sheet[task_future] = task.config
@@ -364,13 +394,26 @@ class NETT:
         task_memory: str | float,
         output_dir: Path,
     ) -> float:
+        """
+        Calculates the memory required for a single task.
+
+        Args:
+            brain (Brain): The brain configuration.
+            body (Body): The body configuration.
+            env (Environment): The environment configuration.
+            task_memory (str | float): The memory allocated, in Gigabytes, for a single job.
+            output_dir (Path): The output directory for the task.
+
+        Returns:
+            float: The memory required for a single task in bytes.
+        """
+        # Get the GPU with the most free memory
         most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
             self.devices
         )
 
         if task_memory == "auto":
             # calculate current memory usage for baseline for comparison
-
             try:
                 # create a test task to estimate memory
                 # TODO: Allow mem estimation to accurately estimate for test
@@ -379,28 +422,36 @@ class NETT:
                     body,
                     env,
                     0,
-                    env.conditions[0], # example condition
+                    env.conditions[0],  # example condition
                     output_dir,
                     ["train"],
                     self.loading_bar_queue,
                 )
                 task.set_device(most_free_gpu)
+
+                # Add a loading bar for the memory estimation
                 self.executor.loading_bar.add(
                     f"Estimating Memory Usage for {task.config.name}", brain.buffer_size
                 )
+
+                # Run the task and wait for it to complete
                 task_future: Future = self.executor.submit(run_task, task)
                 future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
                 self.logger.info("Finished estimating memory")
+
+                # Remove the loading bar
                 self.executor.loading_bar.remove(
                     f"Estimating Memory Usage for {task.config.name}"
                 )
 
+                # Read the memory usage from the file
                 with open(task.config.path / "mem.txt", "r") as file:
                     post_memory: int = int(file.readline())
             except Exception as e:
                 self.logger.exception(f"Error in estimating memory: {e}")
                 raise e
             finally:
+                # Clean up the test task directory
                 if "task" in locals() and task.config.path.exists():
                     shutil.rmtree(task.config.path)
 
@@ -409,6 +460,7 @@ class NETT:
             memory_use = gpu_max_capacity - post_memory
             self.logger.info("Estimated Memory: " + str(memory_use / 1024**3) + " GB")
         else:
+            # Convert the task memory to bytes
             memory_use = task_memory * (1024**3)
 
         # check to see if GPUs can run a single job

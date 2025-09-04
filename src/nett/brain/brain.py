@@ -34,33 +34,37 @@ from .utils.validate import (
 
 
 def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
-    """Set the encoder as evaluation mode and freeze its parameters."""
+    # Set the encoder as evaluation mode and freeze its parameters.
+
+    # Set the feature extractor to evaluation mode
     model.policy.features_extractor.eval()
 
+    # Freeze the parameters of the feature extractor
     for param in model.policy.features_extractor.parameters():
         param.requires_grad = False
     return model
 
 
 def _save_model(model: BaseAlgorithm, path: Path) -> None:
-    """
-    Saves the policy and feature extractor of the agent's model.
+    # Saves the policy and feature extractor of the agent's model.
 
-    This method saves the policy and feature extractor of the agent's model
-    to the specified paths. It first checks if the model is loaded, and if not,
-    it prints an error message and returns. Otherwise, it saves the policy as
-    a pickle file and the feature extractor as a PyTorch state dictionary.
-    """
-    ## save policy
+    # This method saves the policy and feature extractor of the agent's model
+    # to the specified paths. It first checks if the model is loaded, and if not,
+    # it prints an error message and returns. Otherwise, it saves the policy as
+    # a pickle file and the feature extractor as a PyTorch state dictionary.
+
+    # Create the directory if it doesn't exist
     path.mkdir(parents=True, exist_ok=True)
+    # Save the policy
     model.policy.save(path / "policy.pkl")
 
-    ## save encoder
+    # Save the feature extractor's state dictionary
     encoder = model.policy.features_extractor.state_dict()
     torch.save(encoder, path / "feature_extractor.pth")
 
     print("Saved feature extractor")
 
+    # Save the full model
     save_path = path / "latest_model.zip"
     model.save(save_path)
 
@@ -99,29 +103,31 @@ class Brain:
         deterministic: bool = True,
         custom_encoder_args: dict[str, Any] = {},
         custom_algorithm_args: dict[str, Any] = {},
-        custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         custom_policy_args: Optional[dict[str, Any]] = {},
+        custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
     ):
-        # Set attributes
+        # --- Validate and set attributes ---
         self.encoder = validate_encoder(encoder)
         self.policy = validate_policy(policy)
         self.algorithm = validate_algorithm(algorithm)
-
         self.reward: Optional[type[BaseReward]] = validate_reward(reward)
 
+        # --- Hyperparameters ---
         self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
         self.batch_size = int(batch_size)
         self.buffer_size = int(buffer_size)
         self.learning_rate = float(learning_rate)
         self.ent_coef = float(ent_coef)
 
+        # --- Training configuration ---
         self.checkpoint_freq = (
             int(checkpoint_freq) if checkpoint_freq is not None else None
         )
         self.train_encoder = bool(train_encoder)
         self.deterministic = bool(deterministic)
 
+        # --- Custom arguments ---
         # used for extractors that wrap other extractors e.g. multiinput
         if "extractor_class" in custom_encoder_args:
             custom_encoder_args["extractor_class"] = validate_encoder(
@@ -133,6 +139,8 @@ class Brain:
         self.custom_policy_arch = custom_policy_arch
         self.custom_policy_args = custom_policy_args
         self.reward_args = reward_args
+
+        # --- Reward arguments ---
         if reward != "RE3":
             self.reward_args["batch_size"] = self.batch_size
             self.reward_args["lr"] = self.learning_rate
@@ -149,8 +157,12 @@ class Brain:
         self.steps_per_episode = steps_per_episode
         # Calculate the total number of tasks to be run
         self.n_tasks = len(iterations_per_episode) * num_brains
+
+        # Calculate total training iterations if in 'train' mode
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
+
+        # Calculate testing iterations if in 'test' mode
         if "test" in episodes:
             # calculate number of environments that can be run at once per job (using SubProcVecEnv)
             # TODO: Determine the number of threads used per brain and per env
@@ -159,11 +171,13 @@ class Brain:
             max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
             self.n_parallel_envs = 1
-            self.test_iterations = {k: v * episodes["test"] for k, v in iterations_per_episode.items()}
+            self.test_iterations = {
+                k: v * episodes["test"] for k, v in iterations_per_episode.items()
+            }
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
-        # build model
+        # --- Build model ---
         policy_kwargs = (
             {
                 "features_extractor_class": self.encoder,
@@ -211,10 +225,10 @@ class Brain:
             config.logger.exception(f"Failed to initialize model with error: {str(e)}")
             raise e
 
-        # initialize callbacks
+        # --- Initialize callbacks ---
         callback_list = self._init_callbacks(envs, config)
 
-        # train
+        # --- Train model ---
         total_timesteps = (
             self.buffer_size if config.memory is None else self.train_iterations
         )
@@ -237,7 +251,7 @@ class Brain:
                 raise e
         config.logger.info("Training Complete")
 
-        # nothing else is needed for memory estimation
+        # --- Save model if not estimating memory ---
         if config.memory is not None:
             # save
             ## create save directory
@@ -259,9 +273,9 @@ class Brain:
 
             # reset environment and get initial obs
             obs = envs.reset()
-            # reset states for recurrentPPO
+            # reset states for recurrent policies
             states = None
-            # dones need to start True for episode_start for recurrentPPO
+            # dones need to start True for episode_start for recurrent policies
             dones = np.ones((self.n_parallel_envs,), dtype=bool)
 
             # loop over episodes
@@ -270,8 +284,8 @@ class Brain:
                     # predict an action
                     action, states = model.predict(
                         obs,
-                        state=states,  # used only for recurrentPPO
-                        episode_start=dones,  # used only for recurrentPPO
+                        state=states,  # used only for recurrent policies
+                        episode_start=dones,  # used only for recurrent policies
                         deterministic=self.deterministic,
                     )
                     # perform the action
@@ -283,6 +297,7 @@ class Brain:
                         # episode is done
                         break
 
+                # Convert recorded frames to video
                 cb.img2video(
                     config.path / "recordings" / "chamber" / config.current_mode,
                     self.steps_per_episode,
@@ -294,8 +309,9 @@ class Brain:
             raise e
 
     def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
-        """Initialize the callbacks for training."""
+        # Initialize the callbacks for training.
 
+        # Callbacks for memory estimation mode
         if config.memory is None:
             callback_list = [
                 cb.LoadingBarCallback(
@@ -304,12 +320,14 @@ class Brain:
                 cb.MemoryCallback(config.device, save_path=config.path),
             ]
         else:
+            # Callbacks for regular training
             # creates the parallel progress bars
             callback_list = [
                 cb.HParamCallback(),
                 cb.LoadingBarCallback(config.name, config.queue),
             ]
 
+            # Add checkpoint callback if specified
             if self.checkpoint_freq is not None:
                 callback_list.append(
                     CheckpointCallback(
@@ -320,7 +338,7 @@ class Brain:
                     )
                 )
 
-        # create reward function
+        # create and add intrinsic reward callback
         if self.reward is not None:
             reward_func: BaseReward = self.reward(
                 envs,
@@ -337,7 +355,7 @@ class Brain:
                     f"Intrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
 
-        # if config:
+        # Add video recording callback
         callback_list.append(
             cb.PngToMp4Callback(
                 config.path / "recordings" / "chamber" / config.current_mode,

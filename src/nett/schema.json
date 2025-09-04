@@ -147,7 +147,7 @@
           "type": "boolean",
           "default": false
         },
-"input_resolution": {
+        "input_resolution": {
           "description": "Resolution of the input images. Defaults to None. If None, the environment's default resolution is used.",
           "type": ["integer", "null"],
           "default": null
@@ -195,6 +195,12 @@
           "type": "number",
           "minimum": 0,
           "default": 20
+        },
+        "input_resolution": {
+          "description": "Resolution of the input images. Defaults to 64.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 64
         },
         "multiagent": {
           "description": "Whether the environment supports multi-agent training",
