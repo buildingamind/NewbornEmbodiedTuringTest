@@ -48,10 +48,6 @@ class Retina(gym.ObservationWrapper):
     def __init__(self, env, device: int, *args, **kwargs):
         super().__init__(env)
 
-        # self.num_stack = 2  ## default
-        # self.env = gym.wrappers.FrameStackObservation(env, self.num_stack)
-        # self.stack = collections.deque(maxlen=self.num_stack)
-
         try:
             if isinstance(self.env.observation_space, gym.spaces.Dict):
                 key = list(self.env.observation_space.spaces.keys())[0]
