@@ -2,7 +2,7 @@ from types import ModuleType
 from typing import Optional, Callable
 
 from .rllib_compat import BaseAlgorithm, BaseFeaturesExtractor, BasePolicy, NatureCNN
-from .rllib_compat import PPO, SAC, DQN, A2C
+from .rllib_compat import PPO, SAC, DQN
 
 from rllte.common.prototype import BaseReward
 import rllte.xplore.reward as rl_rewards
@@ -57,7 +57,6 @@ algorithm_mapping: dict[str, type[BaseAlgorithm]] = {
     'PPO': PPO,
     'SAC': SAC, 
     'DQN': DQN,
-    'A2C': A2C,
 }  # RLlib compatible algorithms
 
 # grabs all encoders from encoders and adds custom encoders at the end
