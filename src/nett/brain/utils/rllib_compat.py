@@ -300,18 +300,6 @@ class DQN(BaseAlgorithm):
         return DQNConfig()
 
 
-class A2C(BaseAlgorithm):
-    """A2C algorithm wrapper for RLlib."""
-    
-    def _get_algorithm_class(self):
-        from ray.rllib.algorithms.a2c import A2C as RLlibA2C
-        return RLlibA2C
-    
-    def _get_default_config(self):
-        from ray.rllib.algorithms.a2c import A2CConfig
-        return A2CConfig()
-
-
 # Policy aliases for compatibility
 POLICY_ALIASES = {
     'CnnPolicy': 'CNN_POLICY',
