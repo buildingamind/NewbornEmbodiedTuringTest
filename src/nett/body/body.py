@@ -13,7 +13,7 @@ from gymnasium.wrappers import RecordVideo
 from time import sleep
 from typing import Optional
 
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecFrameStack
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 import supersuit as ss
 from supersuit.vector.concat_vec_env import ConcatVecEnv
