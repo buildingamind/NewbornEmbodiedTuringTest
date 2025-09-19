@@ -1,6 +1,6 @@
 """Simplifies imports for encoders"""
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, NatureCNN
+from ..utils.rllib_compat import BaseFeaturesExtractor, NatureCNN
 
 from .resnet18 import Resnet18CNN
 from .resnet10 import Resnet10CNN

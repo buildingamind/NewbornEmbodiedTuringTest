@@ -11,7 +11,7 @@ from torchvision.transforms import (
     Normalize,
     InterpolationMode,
 )
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from ..utils.rllib_compat import BaseFeaturesExtractor
 
 
 class DinoV1(BaseFeaturesExtractor):

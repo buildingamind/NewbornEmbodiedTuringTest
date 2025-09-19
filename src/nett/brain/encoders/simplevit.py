@@ -4,7 +4,7 @@ import gymnasium as gym
 import torch as th
 from torch import nn
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from ..utils.rllib_compat import BaseFeaturesExtractor
 
 from .disembodied_models.vit_contrastive import LitClassifier
 

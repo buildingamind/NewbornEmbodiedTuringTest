@@ -7,7 +7,7 @@ This module provides a feature extractor based on the SimCLR model. It takes in 
 import torch as th
 import gymnasium as gym
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from ..utils.rllib_compat import BaseFeaturesExtractor
 from .disembodied_models.simclr import SimCLR
 
 import logging

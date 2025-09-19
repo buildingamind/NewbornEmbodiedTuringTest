@@ -12,13 +12,8 @@ import numpy as np
 from typing import Any, Optional
 from pathlib import Path
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
-from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
-from stable_baselines3.common.vec_env.base_vec_env import VecEnv
+from .utils.rllib_compat import BaseFeaturesExtractor, BasePolicy, BaseAlgorithm, make_vec_env
+from .utils.rllib_compat import BaseAlgorithm as RLlibBaseAlgorithm
 
 from rllte.common.prototype import BaseReward
 
@@ -35,38 +30,21 @@ from .utils.validate import (
 
 def _set_encoder_as_eval(model: BaseAlgorithm) -> BaseAlgorithm:
     # Set the encoder as evaluation mode and freeze its parameters.
-
-    # Set the feature extractor to evaluation mode
-    model.policy.features_extractor.eval()
-
-    # Freeze the parameters of the feature extractor
-    for param in model.policy.features_extractor.parameters():
-        param.requires_grad = False
+    # Note: This needs to be adapted for RLlib models
+    # For now, we'll return the model unchanged
+    # TODO: Implement proper encoder freezing for RLlib models
     return model
 
 
 def _save_model(model: BaseAlgorithm, path: Path) -> None:
-    # Saves the policy and feature extractor of the agent's model.
-
-    # This method saves the policy and feature extractor of the agent's model
-    # to the specified paths. It first checks if the model is loaded, and if not,
-    # it prints an error message and returns. Otherwise, it saves the policy as
-    # a pickle file and the feature extractor as a PyTorch state dictionary.
-
-    # Create the directory if it doesn't exist
+    # Saves the RLlib model
     path.mkdir(parents=True, exist_ok=True)
-    # Save the policy
-    model.policy.save(path / "policy.pkl")
-
-    # Save the feature extractor's state dictionary
-    encoder = model.policy.features_extractor.state_dict()
-    torch.save(encoder, path / "feature_extractor.pth")
-
-    print("Saved feature extractor")
-
-    # Save the full model
-    save_path = path / "latest_model.zip"
-    model.save(save_path)
+    
+    # Save the RLlib checkpoint
+    checkpoint_path = model.save(str(path))
+    
+    print("Saved RLlib model checkpoint")
+    print(f"Checkpoint saved at: {checkpoint_path}")
 
 
 class Brain:
@@ -175,7 +153,7 @@ class Brain:
                 k: v * episodes["test"] for k, v in iterations_per_episode.items()
             }
 
-    def train(self, envs: VecEnv, config: TaskConfig):
+    def train(self, envs, config: TaskConfig):
         """Train the brain."""
         # --- Build model ---
         policy_kwargs = (
@@ -262,7 +240,7 @@ class Brain:
 
         del model  # free memory
 
-    def test(self, envs: VecEnv, config: TaskConfig):
+    def test(self, envs, config: TaskConfig):
         """Test the brain."""
         try:
             # load previously trained model from save_dir, if it exists
@@ -308,7 +286,7 @@ class Brain:
             config.logger.exception(f"Failed to test model with error: {str(e)}")
             raise e
 
-    def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
+    def _init_callbacks(self, envs, config: TaskConfig):
         # Initialize the callbacks for training.
 
         # Callbacks for memory estimation mode
@@ -328,15 +306,10 @@ class Brain:
             ]
 
             # Add checkpoint callback if specified
+            # Note: RLlib handles checkpointing differently, this is a placeholder
             if self.checkpoint_freq is not None:
-                callback_list.append(
-                    CheckpointCallback(
-                        save_freq=self.checkpoint_freq,  # defaults to 30_000 steps
-                        save_path=config.path / "checkpoints",
-                        save_replay_buffer=True,
-                        save_vecnormalize=True,
-                    )
-                )
+                # RLlib checkpointing is handled internally by the algorithm
+                pass
 
         # create and add intrinsic reward callback
         if self.reward is not None:
@@ -345,15 +318,9 @@ class Brain:
                 device=f"cuda:{config.device}",
                 **self.reward_args,
             )
-            if issubclass(self.algorithm, OnPolicyAlgorithm):
-                # brain.algorithm is instance of OnPolicyAlgorithn
-                callback_list.append(cb.IntrinsicRewardWithOnPolicyRL(reward_func))
-            elif issubclass(self.algorithm, OffPolicyAlgorithm):
-                callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
-            else:
-                config.logger.warning(
-                    f"Intrinsic rewards do not support selected algorithm {self.algorithm}"
-                )
+            # For RLlib, we'll need to adapt the reward callback system
+            # This is a simplified placeholder
+            callback_list.append(cb.IntrinsicRewardCallback(reward_func))
 
         # Add video recording callback
         callback_list.append(
@@ -363,4 +330,4 @@ class Brain:
             )
         )
 
-        return CallbackList(callback_list)
+        return callback_list

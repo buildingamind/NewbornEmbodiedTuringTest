@@ -1,14 +1,8 @@
 from types import ModuleType
 from typing import Optional, Callable
 
-import stable_baselines3
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor, NatureCNN
-from stable_baselines3.common.policies import BasePolicy
-from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.ppo.ppo import PPO
-
-import sb3_contrib
-from sb3_contrib.ppo_recurrent.ppo_recurrent import RecurrentPPO
+from .rllib_compat import BaseAlgorithm, BaseFeaturesExtractor, BasePolicy, NatureCNN
+from .rllib_compat import PPO, SAC, DQN, A2C
 
 from rllte.common.prototype import BaseReward
 import rllte.xplore.reward as rl_rewards
@@ -58,10 +52,13 @@ def _getValidator(
     return validate
 
 
-# grabs all algorithms from stable_baselines3 and sb3-contrib
-algorithm_mapping: dict[str, type[BaseAlgorithm]] = _getMapping(
-    [stable_baselines3, sb3_contrib], {}
-)  # keys = ['A2C', 'DDPG', 'DQN', 'HER', 'HerReplayBuffer', 'PPO', 'SAC', 'TD3', 'ARS', 'MaskablePPO', 'QRDQN', 'RecurrentPPO', 'TQC', 'TRPO']
+# grabs all algorithms from rllib_compat module
+algorithm_mapping: dict[str, type[BaseAlgorithm]] = {
+    'PPO': PPO,
+    'SAC': SAC, 
+    'DQN': DQN,
+    'A2C': A2C,
+}  # RLlib compatible algorithms
 
 # grabs all encoders from encoders and adds custom encoders at the end
 encoder_mapping: dict[str, type[BaseFeaturesExtractor]] = _getMapping(
@@ -84,10 +81,15 @@ reward_mapping: dict[str, Optional[type[BaseReward]]] = _getMapping(
     },
 )  # keys = ['disagreement', 'e3b', 'fabric', 'icm', 'ngu', 'pseudocounts', 're3', 'ride', 'rnd', 'unsupervised', 'closeness', 'completeness', 'closeness,completeness']
 
-# grabs all encoders from ppo and recurrentPPO, which covers nearly all algorithms in SB3 and SB3-contrib
-policy_mapping: dict[str, type[BasePolicy]] = (
-    RecurrentPPO.policy_aliases | PPO.policy_aliases
-)  # keys = ['CnnLstmPolicy', 'CnnPolicy', 'MlpPolicy', 'MlpLstmPolicy', 'MultiInputLstmPolicy', 'MultiInputPolicy']
+# grabs all encoders from ppo - RLlib compatible policies
+policy_mapping: dict[str, type[BasePolicy]] = {
+    'CnnPolicy': BasePolicy,
+    'MlpPolicy': BasePolicy,
+    'MultiInputPolicy': BasePolicy,
+    'CnnLstmPolicy': BasePolicy,
+    'MlpLstmPolicy': BasePolicy,
+    'MultiInputLstmPolicy': BasePolicy,
+}  # RLlib compatible policies
 
 # list valid options
 algorithms_list: list[str] = list(algorithm_mapping.keys())

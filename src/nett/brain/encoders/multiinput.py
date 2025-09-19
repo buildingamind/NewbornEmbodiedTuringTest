@@ -5,9 +5,10 @@ import gymnasium as gym
 import torch as th
 from torch import nn
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
-from stable_baselines3.common.type_aliases import TensorDict
-from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
+from ..utils.rllib_compat import BaseFeaturesExtractor
+from typing import Dict as TensorDict
+# from stable_baselines3.common.preprocessing import get_flattened_obs_dim, is_image_space
+from ..utils.rllib_compat import get_flattened_obs_dim, is_image_space
 
 class MultiInputEncoder(BaseFeaturesExtractor):
     """

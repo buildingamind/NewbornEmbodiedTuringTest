@@ -11,7 +11,7 @@ import timm
 from torchvision.transforms import Compose
 from torchvision.transforms import Resize, CenterCrop, Normalize, InterpolationMode
 
-from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+from ..utils.rllib_compat import BaseFeaturesExtractor
 
 
 class SegmentAnything(BaseFeaturesExtractor):
