@@ -211,3 +211,6 @@ rsconnect/
 .DS_Store
 # Remove .vscode folder
 .vscode/
+
+# Testing and development files
+test_rllib_conversion.py

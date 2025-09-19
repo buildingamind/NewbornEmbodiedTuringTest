@@ -17,6 +17,7 @@ requires-python = "==3.10.12"
 dependencies = [
     "mlagents_envs @ git+https://github.com/Zach-Attach/ml-agents.git@gym-plus#subdirectory=ml-agents-envs",
     "ray[rllib]>=2.30.0",
+    "gymnasium>=0.26.0",
     "torchvision",
     "timm",
     "nvidia-ml-py",
