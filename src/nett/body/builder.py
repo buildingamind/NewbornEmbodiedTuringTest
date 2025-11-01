@@ -68,12 +68,12 @@ class Body:
         Raises:
             ValueError: If any wrapper is not an instance of gym.Wrapper.
         """
-        for wrapper in wrappers:
-             # for when wrapper is a string
+        for i, wrapper in enumerate(wrappers):
+            # for when wrapper is a string
             if isinstance(wrapper, str):
                 if wrapper not in wrapper_dict.keys():
                     raise ValueError(f"If a string, should be one of: {wrapper_dict.keys()}")
-                wrapper = getattr(globals()['wrappers'], wrapper_dict[wrapper])
+                wrappers[i] = getattr(globals()['wrappers'], wrapper_dict[wrapper])
 
             # for when wrapper is a custom gym wrapper
             if not issubclass(wrapper, Wrapper):
