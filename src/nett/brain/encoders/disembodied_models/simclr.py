@@ -2,6 +2,7 @@
 This file contains the implementation of SimCLR model.
 SimCLR is a contrastive learning technique that learns representations by maximizing agreement between differently augmented views of the same data instance via a contrastive loss in the latent space.
 """
+
 import math
 from argparse import ArgumentParser
 from typing import Callable, Optional
@@ -21,6 +22,7 @@ from .archs import resnets
 from .archs import resnet_3b
 from .archs import resnet_2b
 from .archs import resnet_1b
+
 
 class Projection(nn.Module):
     """
@@ -59,15 +61,16 @@ class Projection(nn.Module):
     def forward(self, x) -> torch.Tensor:
         """
         Forward pass of the projection head
-        
+
         Args:
             x (torch.Tensor): input tensor
-        
+
         Returns:
             torch.Tensor: projected features
         """
         x = self.model(x)
         return F.normalize(x, dim=1)
+
 
 class SimCLR(L.LightningModule):
     """
@@ -104,23 +107,23 @@ class SimCLR(L.LightningModule):
         batch_size: int,
         num_nodes: int = 1,
         arch: str = "resnet18",
-        window_size:int = 3,
+        window_size: int = 3,
         hidden_mlp: int = 512,
         hidden_depth: int = 1,
         feat_dim: int = 128,
         warmup_epochs: int = 5,
         max_epochs: int = 100,
         temperature: float = 0.1,
-        first_conv: bool = True, # changed from True to False
-        maxpool1: bool = True, # changed from True to False
+        first_conv: bool = True,  # changed from True to False
+        maxpool1: bool = True,  # changed from True to False
         optimizer: str = "adam",
         lars_wrapper: bool = True,
         exclude_bn_bias: bool = False,
-        start_lr: float = 0.,
+        start_lr: float = 0.0,
         learning_rate: float = 1e-3,
-        final_lr: float = 0.,
+        final_lr: float = 0.0,
         weight_decay: float = 1e-6,
-        **kwargs
+        **kwargs,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -162,19 +165,41 @@ class SimCLR(L.LightningModule):
         # compute iters per epoch
         nb_gpus = len(self.gpus) if isinstance(gpus, (list, tuple)) else self.gpus
         assert isinstance(nb_gpus, int)
-        global_batch_size = self.num_nodes * nb_gpus * self.batch_size if nb_gpus > 0 else self.batch_size
+        global_batch_size = (
+            self.num_nodes * nb_gpus * self.batch_size
+            if nb_gpus > 0
+            else self.batch_size
+        )
         self.train_iters_per_epoch = self.num_samples // global_batch_size
 
         # define LR schedule
         warmup_lr_schedule = np.linspace(
-            self.start_lr, self.learning_rate, self.train_iters_per_epoch * self.warmup_epochs
+            self.start_lr,
+            self.learning_rate,
+            self.train_iters_per_epoch * self.warmup_epochs,
         )
-        iters = np.arange(self.train_iters_per_epoch * (self.max_epochs - self.warmup_epochs))
-        cosine_lr_schedule = np.array([
-            self.final_lr + 0.5 * (self.learning_rate - self.final_lr) *
-            (1 + math.cos(math.pi * t / (self.train_iters_per_epoch * (self.max_epochs - self.warmup_epochs))))
-            for t in iters
-        ])
+        iters = np.arange(
+            self.train_iters_per_epoch * (self.max_epochs - self.warmup_epochs)
+        )
+        cosine_lr_schedule = np.array(
+            [
+                self.final_lr
+                + 0.5
+                * (self.learning_rate - self.final_lr)
+                * (
+                    1
+                    + math.cos(
+                        math.pi
+                        * t
+                        / (
+                            self.train_iters_per_epoch
+                            * (self.max_epochs - self.warmup_epochs)
+                        )
+                    )
+                )
+                for t in iters
+            ]
+        )
 
         self.lr_schedule = np.concatenate((warmup_lr_schedule, cosine_lr_schedule))
 
@@ -202,20 +227,24 @@ class SimCLR(L.LightningModule):
             elif self.arch == "resnet_1block":
                 resnet = getattr(resnet_1b, self.arch)
                 print("Architecture selected - Resnet18_1Block")
-            encoder = resnet(first_conv=self.first_conv, maxpool1=self.maxpool1, return_all_feature_maps=False)
+            encoder = resnet(
+                first_conv=self.first_conv,
+                maxpool1=self.maxpool1,
+                return_all_feature_maps=False,
+            )
         else:
             NotImplementedError("Encoder not implemented.")
 
         return encoder
 
+    """
+    this forward function is required for inference purposes,
+    sometimes, the code will not validate without a forward function,
+    therefore, in forward function, only include the part of network through which
+    the embedding will be taken out. For instance, below has only resnet encoder.
+    The shared step is the one which will have the logic for training and validation.
+    """
 
-    """
-     this forward function is required for inference purposes,
-     sometimes, the code will not validate without a forward function,
-     therefore, in forward function, only include the part of network through which
-     the embedding will be taken out. For instance, below has only resnet encoder.
-     The shared step is the one which will have the logic for training and validation.
-    """
     def forward(self, x) -> torch.Tensor:
         """
         Forward pass of the model
@@ -242,7 +271,7 @@ class SimCLR(L.LightningModule):
         # PUSH TWO IMAGES TOGETHER IN THE EMBEDDING SPACE
         if self.window_size < 3:
             if len(batch) == 3:
-                img1, img2, _ = batch   # returns img1, img2, index
+                img1, img2, _ = batch  # returns img1, img2, index
 
             else:
                 # final image in tuple is for online eval
@@ -257,51 +286,49 @@ class SimCLR(L.LightningModule):
             z2 = self.projection(h2)
 
             loss = self.nt_xent_loss(z1, z2, self.temperature)
-        
-        # PUSH MORE THAN TWO IMAGES TOGETHER IN THE EMBEDDING SPACE 
+
+        # PUSH MORE THAN TWO IMAGES TOGETHER IN THE EMBEDDING SPACE
         else:
 
             # if window_size = 3
             if len(batch) == 4:
                 flag = 0
-                img1, img2, img3, _ = batch # [img1, img2, img3, index]
+                img1, img2, img3, _ = batch  # [img1, img2, img3, index]
 
             # if window_size = 4
             else:
                 flag = 1
-                img1, img2, img3, img4, _ = batch # [img1, img2, img3, img4, index]
-                
+                img1, img2, img3, img4, _ = batch  # [img1, img2, img3, img4, index]
+
             # get h representations, bolts resnet returns a list
             h1, h2, h3 = self.backbone(img1), self.backbone(img2), self.backbone(img3)
 
-                
             if flag == 1:
                 h4 = self.backbone(img4)
                 z4 = self.projection(h4)
-                    
 
             # get z representations
             z1, z2, z3 = self.projection(h1), self.projection(h2), self.projection(h3)
 
             # push z1 and z2 together
-            l1 = self.nt_xent_loss(z1,z2, self.temperature)
+            l1 = self.nt_xent_loss(z1, z2, self.temperature)
             # push z1 and z3 together
-            l2 = self.nt_xent_loss(z1,z3, self.temperature)
+            l2 = self.nt_xent_loss(z1, z3, self.temperature)
             if flag == 1:
-                l3 = self.nt_xent_loss(z1,z4, self.temperature)
-                    
-                # gather losses - 
-                loss = (l1+l2+l3)
+                l3 = self.nt_xent_loss(z1, z4, self.temperature)
+
+                # gather losses -
+                loss = l1 + l2 + l3
             else:
-                # gather losses - 
-                loss = (l1+l2)
+                # gather losses -
+                loss = l1 + l2
 
         return loss
 
     def training_step(self, batch) -> torch.Tensor:
         """
         Training step
-        
+
         Args:
             batch: input batch
 
@@ -309,7 +336,12 @@ class SimCLR(L.LightningModule):
             torch.Tensor: loss
         """
         loss = self.shared_step(batch)
-        self.log("learning_rate", self.lr_schedule[self.trainer.global_step], on_step=True, on_epoch=False)
+        self.log(
+            "learning_rate",
+            self.lr_schedule[self.trainer.global_step],
+            on_step=True,
+            on_epoch=False,
+        )
 
         self.log("train_loss", loss, on_step=True, on_epoch=False)
         return loss
@@ -330,7 +362,9 @@ class SimCLR(L.LightningModule):
         self.log("val_loss", loss, on_step=False, on_epoch=True, sync_dist=True)
         return loss
 
-    def exclude_from_wt_decay(self, named_params, weight_decay, skip_list=["bias", "bn"]) -> list[dict]:
+    def exclude_from_wt_decay(
+        self, named_params, weight_decay, skip_list=["bias", "bn"]
+    ) -> list[dict]:
         """
         Exclude parameters from weight decay
 
@@ -353,13 +387,13 @@ class SimCLR(L.LightningModule):
             else:
                 params.append(param)
 
-        return [{
-            "params": params,
-            "weight_decay": weight_decay
-        }, {
-            "params": excluded_params,
-            "weight_decay": 0.,
-        }]
+        return [
+            {"params": params, "weight_decay": weight_decay},
+            {
+                "params": excluded_params,
+                "weight_decay": 0.0,
+            },
+        ]
 
     def configure_optimizers(self) -> Optimizer:
         """
@@ -369,22 +403,31 @@ class SimCLR(L.LightningModule):
             Optimizer: optimizer
         """
         if self.exclude_bn_bias:
-            params = self.exclude_from_wt_decay(self.named_parameters(), weight_decay=self.weight_decay)
+            params = self.exclude_from_wt_decay(
+                self.named_parameters(), weight_decay=self.weight_decay
+            )
         else:
             params = self.parameters()
 
         if self.optim == "sgd":
-            optimizer = torch.optim.SGD(params, lr=self.learning_rate, momentum=0.9, weight_decay=self.weight_decay)
+            optimizer = torch.optim.SGD(
+                params,
+                lr=self.learning_rate,
+                momentum=0.9,
+                weight_decay=self.weight_decay,
+            )
         elif self.optim == "adam":
-            optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
+            optimizer = torch.optim.Adam(
+                params, lr=self.learning_rate, weight_decay=self.weight_decay
+            )
 
         return optimizer
 
     # TODO: check if these unused arguments can be removed. Keeping for now to not disrupt any potential side effects.
     def optimizer_step(
         self,
-        epoch: int = None, # pylint: disable=unused-argument
-        batch_idx: int = None, # pylint: disable=unused-argument
+        epoch: int = None,  # pylint: disable=unused-argument
+        batch_idx: int = None,  # pylint: disable=unused-argument
         optimizer: Optimizer = None,
         optimizer_closure: Optional[Callable] = None,
     ) -> None:
@@ -409,7 +452,9 @@ class SimCLR(L.LightningModule):
         # from lightning
         if not isinstance(optimizer, LightningOptimizer):
             # wraps into LightingOptimizer only for running step
-            optimizer = LightningOptimizer._to_lightning_optimizer(optimizer, self.trainer)
+            optimizer = LightningOptimizer._to_lightning_optimizer(
+                optimizer, self.trainer
+            )
         optimizer.step(closure=optimizer_closure)
 
     def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6) -> torch.Tensor:
@@ -441,25 +486,28 @@ class SimCLR(L.LightningModule):
         # out: [2 * batch_size, dim] -> [1024, 128]
         # out_dist: [2 * batch_size * world_size, dim] -> [1024, 128]
         out = torch.cat([out_1, out_2], dim=0)
-        
+
         out_dist = torch.cat([out_1_dist, out_2_dist], dim=0)
 
         # cov and sim: [2 * batch_size, 2 * batch_size * world_size]
         # neg: [2 * batch_size]
-        cov = torch.mm(out, out_dist.t().contiguous())  
-        sim = torch.exp(cov / temperature) # denominator part of the loss function, since out_1 and out_2 is a batch that is passed, and not a single image.
-        neg = sim.sum(dim=-1) # refer RM notes for understanding dimensionality
-
+        cov = torch.mm(out, out_dist.t().contiguous())
+        sim = torch.exp(
+            cov / temperature
+        )  # denominator part of the loss function, since out_1 and out_2 is a batch that is passed, and not a single image.
+        neg = sim.sum(dim=-1)  # refer RM notes for understanding dimensionality
 
         # from each row, subtract e^1 to remove similarity measure for x1.x1
         row_sub = torch.Tensor(neg.shape).fill_(math.e).to(neg.device)
         neg = torch.clamp(neg - row_sub, min=eps)  # clamp for numerical stability
 
         # Positive similarity, pos becomes [2 * batch_size] -> numerator part of the loss function
-        pos = torch.exp(torch.sum(out_1 * out_2, dim=-1) / temperature) # only mat_mul requires the column and rows to be similar. This is element by element multiplication
-        pos = torch.cat([pos, pos], dim=0) 
+        pos = torch.exp(
+            torch.sum(out_1 * out_2, dim=-1) / temperature
+        )  # only mat_mul requires the column and rows to be similar. This is element by element multiplication
+        pos = torch.cat([pos, pos], dim=0)
 
-        loss = -torch.log(pos / (neg + eps)).mean() # num/den
+        loss = -torch.log(pos / (neg + eps)).mean()  # num/den
 
         return loss
 
@@ -475,33 +523,82 @@ class SimCLR(L.LightningModule):
             ArgumentParser: parser with model specific arguments
         """
         parser = ArgumentParser(parents=[parent_parser], add_help=False)
-        
+
         # model arch params
-        parser.add_argument("--arch", default="resnet18", type=str, help="convnet architecture") 
+        parser.add_argument(
+            "--arch", default="resnet18", type=str, help="convnet architecture"
+        )
         # specify flags to store false
         parser.add_argument("--first_conv", action="store_false")
         parser.add_argument("--maxpool1", action="store_false")
-        parser.add_argument("--hidden_mlp", default=512, type=int, help="hidden layer dimension in projection head")
-        parser.add_argument("--hidden_depth", default=1, type=int, help="number of hidden layers in projection head")
-        parser.add_argument("--feat_dim", default=128, type=int, help="feature dimension")
+        parser.add_argument(
+            "--hidden_mlp",
+            default=512,
+            type=int,
+            help="hidden layer dimension in projection head",
+        )
+        parser.add_argument(
+            "--hidden_depth",
+            default=1,
+            type=int,
+            help="number of hidden layers in projection head",
+        )
+        parser.add_argument(
+            "--feat_dim", default=128, type=int, help="feature dimension"
+        )
 
         # transform params
-        parser.add_argument("--gaussian_blur", action="store_true", help="add gaussian blur")
-        parser.add_argument("--jitter_strength", type=float, default=0.5, help="jitter strength")
-        parser.add_argument("--data_dir", type=str, default=".", help="directory containing dataset")
+        parser.add_argument(
+            "--gaussian_blur", action="store_true", help="add gaussian blur"
+        )
+        parser.add_argument(
+            "--jitter_strength", type=float, default=0.5, help="jitter strength"
+        )
+        parser.add_argument(
+            "--data_dir", type=str, default=".", help="directory containing dataset"
+        )
 
         # training params
-        parser.add_argument("--num_workers", default=8, type=int, help="num of workers per GPU")
-        parser.add_argument("--optimizer", default="adam", type=str, help="choose between adam/sgd")
-        parser.add_argument("--lars_wrapper", action="store_true", help="apple lars wrapper over optimizer used")
-        parser.add_argument("--exclude_bn_bias", action="store_true", help="exclude bn/bias from weight decay")
-        parser.add_argument("--warmup_epochs", default=5, type=int, help="number of warmup epochs")
-        parser.add_argument("--batch_size", default=512, type=int, help="batch size per gpu")
+        parser.add_argument(
+            "--num_workers", default=8, type=int, help="num of workers per GPU"
+        )
+        parser.add_argument(
+            "--optimizer", default="adam", type=str, help="choose between adam/sgd"
+        )
+        parser.add_argument(
+            "--lars_wrapper",
+            action="store_true",
+            help="apple lars wrapper over optimizer used",
+        )
+        parser.add_argument(
+            "--exclude_bn_bias",
+            action="store_true",
+            help="exclude bn/bias from weight decay",
+        )
+        parser.add_argument(
+            "--warmup_epochs", default=5, type=int, help="number of warmup epochs"
+        )
+        parser.add_argument(
+            "--batch_size", default=512, type=int, help="batch size per gpu"
+        )
 
-        parser.add_argument("--temperature", default=0.5, type=float, help="temperature parameter in training loss")
-        parser.add_argument("--weight_decay", default=1e-6, type=float, help="weight decay")
-        parser.add_argument("--learning_rate", default=1.0, type=float, help="base learning rate")
-        parser.add_argument("--start_lr", default=0, type=float, help="initial warmup learning rate")
-        parser.add_argument("--final_lr", type=float, default=1e-6, help="final learning rate")
+        parser.add_argument(
+            "--temperature",
+            default=0.5,
+            type=float,
+            help="temperature parameter in training loss",
+        )
+        parser.add_argument(
+            "--weight_decay", default=1e-6, type=float, help="weight decay"
+        )
+        parser.add_argument(
+            "--learning_rate", default=1.0, type=float, help="base learning rate"
+        )
+        parser.add_argument(
+            "--start_lr", default=0, type=float, help="initial warmup learning rate"
+        )
+        parser.add_argument(
+            "--final_lr", type=float, default=1e-6, help="final learning rate"
+        )
 
         return parser

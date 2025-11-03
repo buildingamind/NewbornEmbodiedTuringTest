@@ -1,5 +1,6 @@
 # LIBRARIES
 from argparse import ArgumentParser
+
 # from pytorch_lightning.metrics import Accuracy
 # Pytorch modules
 import torch
@@ -9,33 +10,52 @@ from torch import nn
 
 # Pytorch-Lightning
 from lightning import LightningModule
-from vit_pytorch import ViT
+from vit_pytorch import ViT, SimpleViT
 
 import math
+
 
 class VisionTransformer(nn.Module):
     def __init__(self, config):
         super().__init__()
-        self.model = ViT(
-            pool='cls',
-            dim_head=64,
-            **config
-        )
+        self.model = ViT(**config)
 
     @torch.no_grad()
     def init_weights(self):
         def _init(m):
             if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
                 nn.init.xavier_uniform_(m.weight)
-                if hasattr(m, 'bias') and m.bias is not None:
+                if hasattr(m, "bias") and m.bias is not None:
                     nn.init.normal_(m.bias, std=1e-6)
-            
+
         self.apply(_init)
         nn.init.constant_(self.model.fc.weight, 0)
         nn.init.constant_(self.model.fc.bias, 0)
-    
+
     def forward(self, x):
         return self.model(x)
+
+
+class SimpleVisionTransformer(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.model = SimpleViT(**config)
+
+    @torch.no_grad()
+    def init_weights(self):
+        def _init(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if hasattr(m, "bias") and m.bias is not None:
+                    nn.init.normal_(m.bias, std=1e-6)
+
+        self.apply(_init)
+        nn.init.constant_(self.model.fc.weight, 0)
+        nn.init.constant_(self.model.fc.bias, 0)
+
+    def forward(self, x):
+        return self.model(x)
+
 
 class Projection(nn.Module):
 
@@ -66,15 +86,16 @@ class Projection(nn.Module):
         x = self.model(x)
         return F.normalize(x, dim=1)
 
+
 class LitClassifier(LightningModule):
     def __init__(
         self,
         backbone_config: dict,
         temporal_mode: str = None,
         learning_rate: float = 1e-3,
-        hidden_mlp = 512,
-        feat_dim = 128,
-        hidden_depth = 1,
+        hidden_mlp=512,
+        feat_dim=128,
+        hidden_depth=1,
     ):
         super().__init__()
         self.save_hyperparameters()
@@ -82,31 +103,35 @@ class LitClassifier(LightningModule):
         self.feat_dim = feat_dim
         self.hidden_depth = hidden_depth
         self.learning_rate = learning_rate
-        
-        self.backbone = VisionTransformer(backbone_config)   # ViT encoder
-        self.temporal_mode = temporal_mode # type of temporal window
-        
-        self.projection = Projection(    # SimCLR projection head
-            input_dim=self.hidden_mlp, # 512
-            hidden_dim=self.hidden_mlp, # 512
-            output_dim=self.feat_dim, # 128
-            depth=self.hidden_depth, #1
+
+        self.backbone = (
+            VisionTransformer(backbone_config)
+            if "dropout" in backbone_config
+            else SimpleVisionTransformer(backbone_config)
+        )  # ViT encoder
+        self.temporal_mode = temporal_mode  # type of temporal window
+
+        self.projection = Projection(  # SimCLR projection head
+            input_dim=self.hidden_mlp,  # 512
+            hidden_dim=self.hidden_mlp,  # 512
+            output_dim=self.feat_dim,  # 128
+            depth=self.hidden_depth,  # 1
         )
 
         self.temperature = 0.5  # default from SimCLR contrastive model
-        
+
     def forward(self, x):
         # SimCLR proposes to take the embeddings from the learned encoder
         feats = self.backbone(x)
         return feats
 
     def shared_step(self, batch):
-        # push two images together in a temporal window - 
+        # push two images together in a temporal window -
 
-        if self.temporal_mode == '2images':
+        if self.temporal_mode == "2images":
             # len(batch) = 3 for temporal model, not confirmed for non-temporal
             if len(batch) == 3:
-                img1, img2, _ = batch # (img1, img2, index)
+                img1, img2, _ = batch  # (img1, img2, index)
             else:
                 # final image in tuple is for online eval
                 (img1, img2, _), _ = batch
@@ -120,12 +145,12 @@ class LitClassifier(LightningModule):
             z2 = self.projection(h2)
 
             loss = self.nt_xent_loss(z1, z2, self.temperature)
-        
-        # push 2+ images in a temporal window - 
+
+        # push 2+ images in a temporal window -
         else:
-            z_list = [] # list of z representations
+            z_list = []  # list of z representations
             # len = 4 for window_size = 3 because 3 images, and 1 index value
-            for i in range(len(batch)-1): # last element is index
+            for i in range(len(batch) - 1):  # last element is index
                 # get h representation, bolts resnet returns a list
                 h = self.backbone(batch[i])
                 # get z representation
@@ -138,17 +163,17 @@ class LitClassifier(LightningModule):
             for i in range(1, len(z_list)):
                 loss += self.nt_xent_loss(z_list[0], z_list[i], self.temperature)
         return loss
-    
+
     def nt_xent_loss(self, out_1, out_2, temperature, eps=1e-6):
         """
-            assume out_1 and out_2 are normalized
-            out_1: [batch_size, dim]
-            out_2: [batch_size, dim]
+        assume out_1 and out_2 are normalized
+        out_1: [batch_size, dim]
+        out_2: [batch_size, dim]
         """
         # gather representations in case of distributed training
         # out_1_dist: [batch_size * world_size, dim]
         # out_2_dist: [batch_size * world_size, dim]
-        
+
         out_1_dist = out_1
         out_2_dist = out_2
 
@@ -176,17 +201,17 @@ class LitClassifier(LightningModule):
         return loss
 
     def training_step(self, batch, batch_idx):
-        #loss = self.step(batch, batch_idx)
+        # loss = self.step(batch, batch_idx)
         loss = self.shared_step(batch)
-        self.log('train_loss', loss, on_epoch=True, on_step=True) # training_loss
+        self.log("train_loss", loss, on_epoch=True, on_step=True)  # training_loss
         return loss
 
     def validation_step(self, batch, batch_idx):
-        #loss = self.step(batch, batch_idx)
+        # loss = self.step(batch, batch_idx)
         loss = self.shared_step(batch)
-        
+
         # TODO: log val_acc
-        self.log('val_loss', loss, on_step=False, on_epoch=True) # for val_loss
+        self.log("val_loss", loss, on_step=False, on_epoch=True)  # for val_loss
         return loss
 
     def configure_optimizers(self):

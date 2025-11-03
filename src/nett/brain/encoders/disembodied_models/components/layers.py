@@ -1,5 +1,5 @@
-
 from torch.nn import Conv2d
+
 
 def conv1x1(in_planes, out_planes, stride=1) -> Conv2d:
     """
@@ -13,6 +13,7 @@ def conv1x1(in_planes, out_planes, stride=1) -> Conv2d:
     Returns:
         nn.Conv2d: 1x1 convolution layer"""
     return Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)
+
 
 def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> Conv2d:
     """
@@ -36,5 +37,5 @@ def conv3x3(in_planes, out_planes, stride=1, groups=1, dilation=1) -> Conv2d:
         padding=dilation,
         groups=groups,
         bias=False,
-        dilation=dilation
+        dilation=dilation,
     )
