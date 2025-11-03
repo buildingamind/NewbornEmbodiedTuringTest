@@ -33,7 +33,6 @@ dependencies = [
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
   "Programming Language :: Python :: 3.10",
-  "Programming Language :: R",
   "Environment :: GPU :: NVIDIA CUDA"
 ]
 

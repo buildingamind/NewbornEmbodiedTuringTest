@@ -28,6 +28,8 @@ from nett.nett import NETT
 
 from nett.brain import list_encoders, list_algorithms, list_policies
 
+from .analysis import analyze
+
 # release version
 from ._version import __version__
 
