@@ -12,6 +12,7 @@ import numpy as np
 # range of all of the ports that can are user accessible
 LEGAL_PORTS = np.arange(1024, 49151)
 
+
 def _port_in_use(port) -> bool:
     """This function checks if a port is in use. It returns True if the port is in use and False if it is not."""
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -20,6 +21,7 @@ def _port_in_use(port) -> bool:
     except socket.error:
         return True
     return False
+
 
 def random_port():
     """Returns a random port that is not in use."""

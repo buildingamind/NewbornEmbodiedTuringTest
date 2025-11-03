@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+"""A wrapper for interfacing binocular vision"""
 
 import gymnasium as gym
 import numpy as np
@@ -6,6 +6,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
+
 
 class Binocular(gym.ObservationWrapper):
     """
@@ -21,24 +22,26 @@ class Binocular(gym.ObservationWrapper):
         observation_space (gym.spaces.Box): The modified observation space.
 
     Methods:
-        observation(obs): Performs the DVS transformation on the observation.
+        observation(obs): Performs the concatenation of the left and right observations.
         reset(**kwargs): Resets the environment and returns the initial observation.
 
     """
 
-    def __init__(self, env):
+    def __init__(self, env, *args, **kwargs):
         super().__init__(env)
 
         try:
             channels, width, height = self.env.observation_space[0].shape
-            self.shape=(2*channels, width, height)
-            self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
+            self.shape = (2 * channels, width, height)
+            self.observation_space = gym.spaces.Box(
+                shape=self.shape, low=0, high=255, dtype=np.uint8
+            )
         except Exception as e:
             raise e
-    
+
     def observation(self, obs):
         """
-        Performs the DVS transformation on the observation.
+        Performs the concatenation of the left and right observations.
 
         Args:
             obs (list): The list of stacked frames.
@@ -53,7 +56,7 @@ class Binocular(gym.ObservationWrapper):
         combined_obs = np.concatenate([left, right])
 
         return combined_obs
-    
+
     def reset(self, **kwargs):
         initial_obs, initial_info = self.env.reset(**kwargs)
-        return self.observation(initial_obs), initial_info 
+        return self.observation(initial_obs), initial_info

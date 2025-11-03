@@ -2,458 +2,469 @@
 This module contains the NETT class, which is the main class for training, testing and analyzing brains in environments.
 
 .. module:: nett
-   :synopsis: Main class for training, testing and analyzing brains in environments.
-
+    :synopsis: Main class for training, testing and analyzing brains in environments.
 """
-from math import ceil
-import sys
+
+import logging
+import json
 import os
-import time
-import subprocess
-import shutil
-import pandas as pd
-
 from pathlib import Path
-from typing import Any, Callable, Optional
-from copy import deepcopy
-from itertools import product
-from concurrent.futures import ProcessPoolExecutor, Future, wait as future_wait, FIRST_COMPLETED
-from sb3_contrib import RecurrentPPO
-from stable_baselines3.common.env_checker import check_env
-from pynvml import nvmlInit, nvmlDeviceGetCount, nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo
-import gymnasium as gym
-from pettingzoo.utils.wrappers import BaseParallelWrapper
+import time
+from typing import Optional
+import yaml
+import shutil
+from concurrent.futures import Future, as_completed, wait as future_wait
+from nett.utils.tasklist import validate_tasklist
 
-from .utils import Job, VecEnv
+from .brain import Brain
+from .body import Body
+from .environment import Environment
+from .utils import (
+    Executor,
+    LoadingBarQueue,
+    TaskList,
+    Task,
+    TaskConfig,
+    run_task,
+    MemoryManager,
+    validate_config,
+)
+
+
+JobTooBigError = ValueError(
+    "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
+)
+
 
 class NETT:
     """
-    The NETT class is the main class for training, testing, and analyzing brains in environments.
+    The NETT class is the main class for training, testing, and analyzing brains in environments. It provides an interface for running the training and testing of the brains in the environment. A configuration is needed prior to running the benchmark. The configuration can be provided as a dictionary or as a path to a JSON or YAML file containing the configuration.
 
     Args:
-        brain (Brain): The brain to be trained and tested.
-        body (Body): The body to be used for training and testing the brain.
-        environment (Env): The environment in which the brain is to be trained and tested.
+        configs (list[Path | str | dict]): The configurations for each benchmark. Each member can be a path to a JSON or YAML file or a dictionary. The configuration should match the arguments for :func:`~nett.nett.NETT.single_run`.
 
     Example:
         >>> from nett import NETT
-        >>> # create a brain, body, and environment
-        >>> benchmarks = NETT(brain, body, environment)
+        >>>
+        >>> experiment1_config = {
+        >>>     "name": "Experiment1",
+        >>>     "episodes": {
+        >>>         "train": 5000,
+        >>>         "test": 20
+        >>>     }
+        >>>     "steps_per_episode": 200,
+        >>>     "num_brains": 5,
+        >>>     "brain": {
+        >>>         "policy": "CnnPolicy",
+        >>>         "algorithm": "PPO",
+        >>>         "encoder": "small",
+        >>>         "reward": "closeness"
+        >>>     },
+        >>>     "body": {
+        >>>         "wrappers": ["dvs"],
+        >>>         "record_eps": {"train": 10, "test": 10}
+        >>>     }
+        >>>     "environment": {
+        >>>         "executable_path": "path/to/executable.x86_64",
+        >>>         "record_eps": {"train": 10, "test": 10}
+        >>>     }
+        >>> })
+        >>>
+        >>> experiment2_config = './experiment2_config.json'
+        >>> experiment3_config = './experiment3_config.yaml'
+        >>>
+        >>> # run the benchmark
+        >>> benchmark = NETT(config=[experiment1_config, experiment2_config, experiment3_config])
+        >>> benchmark.run(output_dir="path/to/output/directory", devices=[0,1,2], num_threads=32)
     """
 
-    def __init__(self, brain: "nett.Brain", body: "nett.Body", environment: "nett.Environment") -> None:
-        """
-        Initialize the NETT class.
-        """
-        from nett import logger
-        self.logger = logger.getChild(__class__.__name__)
-        self.brain = brain
-        self.body = body
-        self.environment = environment        
-        # for NVIDIA memory management
-        nvmlInit()
+    output_path: Path
+    num_threads: int
+    devices: list[int]
+    task_sheet: dict[Future, TaskConfig]
+    waitlist: list[Task]
+    memory_manager: MemoryManager
+    loading_bar: LoadingBarQueue
+    free_device_memory: dict[int, float]
+    configs: list[dict] = []
+    logger: logging.Logger = logging.getLogger("nett.NETT")
 
-    def run(self,
-            output_dir: Path | str,
-            num_brains: int = 1,
-            mode: str = "full",
-            train_eps: int = 1000,
-            test_eps: int = 20,
-            batch_mode: bool = True,
-            devices: Optional[list[int]] =  None,
-            job_memory: str | int = 4,
-            buffer: float = 1.2,
-            steps_per_episode: int = 1000,
-            conditions: Optional[list[str]] = None,
-            verbose: int = True,
-            synchronous: bool = False,
-            save_checkpoints: bool = False,
-            checkpoint_freq: int = 30_000,
-            record_training: Optional[list[str]] = [],
-            record_testing: Optional[list[str]] = [],
-            recording_eps: int = 10) -> list[Future]:
+    def __init__(self, configs: list[Path | str | dict]) -> None:
+        """Initialize the NETT class."""
+
+        try:
+            # Load the schema for validation
+            with open(Path(__file__).resolve().parent / "schema.json", "r") as file:
+                schema: dict = json.load(file)
+
+            # Validate the configurations against the schema
+            self.configs = [validate_config(conf, schema) for conf in configs]
+        except Exception as e:
+            self.logger.exception("Error in loading config")
+            raise e
+
+    def run(
+        self,
+        output_path: Path | str = ".",
+        devices: Optional[list[int]] = None,
+        num_threads: Optional[int] = None,
+        verbose: int = True,
+        asynchronous: bool = False,
+    ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
 
         Args:
-            output_dir (Path | str): The directory where the run results will be stored.
-            num_brains (int, optional): The number of brains to be trained and tested. Defaults to 1.
-            mode (str, optional): The mode in which the brains are to be trained and tested. It can be "train", "test", or "full". Defaults to "full".
-            train_eps (int, optional): The number of episodes the brains are to be trained for. Defaults to 1000.
-            test_eps (int, optional): The number of episodes the brains are to be tested for. Defaults to 20.
-            batch_mode (bool, optional): Whether to run in batch mode, which will not display Unity windows. Good for headless servers. Defaults to True.
-            devices (list[int], optional): The list of devices to be used for training and testing. If None, all available devices will be used. Defaults to None.
-            job_memory (int, optional): The memory allocated, in Gigabytes, for a single job. Defaults to 4.
-            buffer (float, optional): The buffer for memory allocation. Defaults to 1.2.
-            steps_per_episode (int, optional): The number of steps per episode. Defaults to 1000.
-            verbose (int, optional): Whether or not to print info statements. Defaults to True.
-            synchronous (bool, optional): Whether to keep code running in the foreground until completion. Defaults to False.
-            save_checkpoints (bool, optional): Whether to save checkpoints during training. Defaults to False.
-            checkpoint_freq (int, optional): The frequency at which checkpoints are saved. Defaults to 30_000.
-            record_training (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view and/or "chamber" for recording the top-down view of the chamber.
-            record_testing (list[str], optional): The list of what record options to use for training. Can include "agent" for recording the agent's view and/or "chamber" for recording the top-down view of the chamber.
-            recording_eps (int, optional): Number of episodes to record for. Defaults to 10.
+            output_path (Path | str, optional): The directory where the run results will be stored. Defaults to `"."`.
+            devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to `None`.
+            num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to `None`. If None, the number of threads is equal to the number of cpu cores.
+            verbose (int, optional): Whether or not to print info statements. Defaults to `True`.
+            asynchronous (bool, optional): Whether or not to run the tasks asynchronously. Defaults to `False`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
 
         Example:
-            >>> job_sheet = benchmarks.run(output_dir="./test_run", num_brains=2, train_eps=100, test_eps=10) # benchmarks is an instance of NETT
+            >>> task_sheet = benchmarks.run(output_dir="./test_run", devices=[0,1,2], num_threads=32, verbose=True) # benchmarks is an instance of NETT
         """
-        # set up the output_dir (wherever the user specifies, REQUIRED, NO DEFAULT)
-        output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-        self.logger.info(f"Set up run directory at: {output_dir.resolve()}")
+        # get the output directory
+        self.output_path = Path(output_path).resolve()
+        self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
 
-        # calculate iterations
-        iterations: dict[str, int] = {}
-        if mode in ["train", "full"] or job_memory == "auto": #TODO: auto job_memory runs a train job, requiring iterations["train"] to run:
-            iterations["train"] = steps_per_episode * train_eps
-        if mode in ["test", "full"]:
-            iterations["test"] = self.environment.num_test_conditions
-            if not issubclass(self.brain.algorithm, RecurrentPPO):
-                iterations["test"] *= steps_per_episode
+        # Set the number of threads
+        self.num_threads = os.cpu_count() if num_threads is None else num_threads
 
-        # get task set
-        task_set: set[tuple[str,int]] = self._get_task_set(num_brains, self.environment.imprinting_conditions, conditions)
-        self.n_tasks = len(task_set)
+        # Count the number of test configurations
+        test_config_count: int = 0
+        for config in self.configs:
+            if "episodes" in config:
+                test_config_count += bool(config["episodes"].get("test", 0))
 
-        if mode == "test":
-            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-            max_envs = os.cpu_count() / (2*self.n_tasks)
-            if (max_envs <= 1):
-                self.num_parallel_envs = 1
-                iterations["test"] *= test_eps
-            elif test_eps <= max_envs:
-                self.num_parallel_envs = test_eps # reduced to just the number of test_eps for this for now #TODO: Prevent this from crashing from too many episodes, might make sense to wrap subprocvecenv and callback and close in a while loop and create a new subprocvecenv from the each subset of all num_parallel_envs over a limit of 50? workers
-            else:
-                eps_per_env = ceil(test_eps / max_envs)
-                iterations["test"] *= eps_per_env # this will do a little more than what is defined in the config file, but it effectively comes for free #TODO: Add either a way of defining different number of iterations between jobs OR notify user that this is happening
-                self.num_parallel_envs = ceil(test_eps / eps_per_env)
+        # Adjust the number of threads based on the number of test configurations
+        if test_config_count > 0:
+            self.num_threads = int(self.num_threads / test_config_count)
 
-        # initialize job object
-        Job.initialize(
-            mode=mode,
-            output_dir=output_dir,
-            save_checkpoints=save_checkpoints, 
-            steps_per_episode=steps_per_episode,
-            checkpoint_freq=checkpoint_freq,
-            reward=self.brain.reward,
-            batch_mode=batch_mode, 
-            iterations=iterations,
-            record_training=record_training,
-            record_testing=record_testing,
-            recording_eps=recording_eps
-            )
+        # initialize task sheet and waitlist
+        self.task_sheet = {}
+        self.waitlist = []
 
-        # validate devices
-        devices = self._validate_devices(devices)
-        self.logger.info(f"Devices that will be used: {devices}")
+        # initialize NVIDIA memory management
+        with MemoryManager() as self.memory_manager:
 
-        # estimate memory for a single job
-        if job_memory == "auto":
-            self.logger.info("Estimating Job Memory...")
-            job_memory = int(buffer * self._estimate_job_memory(devices))
-            self.logger.info(f"Estimated Job Memory: {job_memory / (1024**3)} GiB")
-        else:
-            job_memory *= buffer * 1024 * 1024 * 1024 # set memory to be in GiB
-        
-        # schedule jobs
-        jobs, waitlist = self._schedule_jobs(task_set, devices, job_memory, self.logger)
-        self.logger.info("Scheduled jobs")
+            # validate devices
+            self.devices = self.memory_manager.validate_devices(devices)
+            self.logger.info(f"Devices that will be used: {self.devices}")
 
-        # launch jobs
-        self.logger.info("Launching")
-        job_sheet = self._launch_jobs(jobs, synchronous, waitlist, verbose)
+            # get the free memory status for each device
+            self.free_device_memory = {
+                device: self.memory_manager.get_free_memory(device)
+                for device in self.devices
+            }
 
-        # return control back to the user after launching jobs, do not block
-        return job_sheet
+            # initialize executor
+            with Executor(verbose) as (self.executor, self.loading_bar_queue):
+                # run tasks
+                self.logger.info("Launching...")
+                try:
+                    # Run each configuration
+                    for config in self.configs:
+                        self.single_run(**config)
 
-    def status(self, job_sheet: dict[Future, Job]) -> pd.DataFrame:
+                    # if asynchronous:
+                    #     # TODO: Change to a thread?
+                    #     self.waiter = Process(target=self.task_waiter).start()
+                    # else:
+                    self.task_waiter()
+
+                except ConnectionResetError as e:
+                    # TODO: Fix this to appear at the end of a run
+                    self.logger.error(
+                        "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
+                    )
+                    raise e
+                except Exception as e:
+                    self.logger.exception(f"Error in launching tasks: {e}")
+                    raise e
+
+            # TODO: Add an analysis stage to the run
+
+    def single_run(
+        self,
+        name: str,
+        environment: dict,
+        body: dict = {},
+        brain: dict = {},
+        episodes: {str, int} = {"train": 5000, "test": 100},
+        steps_per_episode: int = 200,
+        num_brains: int = 1,
+        task_memory: str | float = "auto",
+        **kwargs,
+    ) -> list[Future]:
         """
-        Get the status of the jobs in the job sheet.
+        Non-public function for running a single benchmark. The parameters here should match the top-level parameters of a config file input into :func:`~nett.nett.NETT.run`.
 
         Args:
-            job_sheet (dict[Future, Job]): The job sheet returned by the .launch_jobs() method.
+            name (str): The name of the run. This will be used to create a directory with the same name in the output path.
+            environment (dict): The environment configuration. See :func:`~nett.environment` for valid parameters.
+            body (dict): The body configuration. Defaults to `{}`. See :func:`~nett.body` for valid parameters.
+            brain (dict): The brain configuration. Defaults to `{}`. See :func:`~nett.brain` for valid parameters.
+            episodes (dict[str, int]): The number of episodes the brains are to be trained and tested for. Defaults to `{"train": 5000, "test": 100}`.
+            steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
+            num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
+            task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
+            **kwargs: Additional keyword arguments.
 
         Returns:
-            pd.DataFrame: A dataframe containing the status of the jobs in the job sheet.
+            list[Future]: A list of futures representing the jobs that have been launched.
 
-        Example:
-            >>> status = benchmarks.status(job_sheet)
-            >>> # benchmarks is an instance of NETT, job_sheet is the job sheet returned by the .run() method
         """
-        selected_columns = ["brain_id", "condition", "device"]
-        filtered_job_sheet = self._filter_job_sheet(job_sheet, selected_columns)
-        return pd.json_normalize(filtered_job_sheet)
 
-    def _execute_job(self, job: Job) -> Future:
-        brain: "nett.Brain" = deepcopy(self.brain)
-        brain.seed = job.brain_id
-        
-        if job.estimate_memory: # estimate memory uses train env for estimation
-            modes = ["train"]
-        elif job.mode == "full":
-            modes = ["train", "test"]
-        else: # test or train
-            modes = [job.mode]
+        ############ Validation ############
 
-        # loop over modes to validate then run the environment
-        for mode in modes:
-            # validation run
-            if isinstance(self.environment, gym.Wrapper):
-            self._run_env(
-                mode=mode, 
-                kwargs = job.validation_kwargs(), 
-                    callback = lambda envs: check_env(envs.envs[0])
-            )   
-            # actual run
-            self._run_env(
-                mode=mode, 
-                kwargs = job.env_kwargs(mode), 
-                callback = lambda envs: getattr(brain, mode)(envs, job) # grabs brain.train or brain.test based on mode
+        # check if episodes contains train and/or test only
+        if len(episodes) == 0 or not set(episodes.keys()).issubset({"train", "test"}):
+            raise ValueError(
+                "Episodes should be a dictionary with keys 'train' and/or 'test'"
             )
-            elif isinstance(self.environment, BaseParallelWrapper):
-                # actual run
-                self._run_env(
-                    mode=mode, 
-                    kwargs = job.env_kwargs(mode), 
-                    callback = lambda envs: getattr(brain, mode)(envs, job), # grabs brain.train or brain.test based on mode
-                    zoo=True
-                )
-            else:
-                raise TypeError("Environment must be a gym.Wrapper or a BaseParallelWrapper")
 
-        return f"Job Completed Successfully for Brain #{job.brain_id} with Condition: {job.condition}"
-
-    def _estimate_job_memory(self, devices: list[int]) -> int:
-        self.logger.info("Estimating memory for a single job")
-        try:
-            # find the GPU with the most free memory
-            free_memory = [nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device)).free for device in devices]
-            most_free_gpu = free_memory.index(max(free_memory))
-
-            # create a test job to estimate memory
-            job = Job(
-                brain_id=0, 
-                condition=self.environment.imprinting_conditions[0], 
-                device=most_free_gpu, 
-                index=0,
-                estimate_memory=True)
-
-            job.save_checkpoints = False
-
-            # calculate current memory usage for baseline for comparison
-            pre_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(job.device)).used
-
-            # initializer = mute if not verbose else None
-            # executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-            executor = ProcessPoolExecutor(max_workers=1, initializer=None)
-            job_sheet: dict[Future, dict[str, Job]] = {}
-
-            # run job with estimate_memory set to True
-            job_future = executor.submit(self._execute_job, job)
-            job_sheet[job_future] = job
-
-            future_wait(job_sheet, return_when=FIRST_COMPLETED)
-
-            with open(Path.joinpath(job.paths["base"], "mem.txt").resolve(), "r") as file:
-                post_memory = int(file.readline())
-        except Exception as e:
-            self.logger.exception(f"Error in estimating memory: {e}")
-            raise e
-        finally:
-            if job.paths["base"].exists():
-                shutil.rmtree(job.paths["base"])
-        
-        # estimate memory allocated
-        return post_memory - pre_memory
-
-    @staticmethod
-    def _filter_job_sheet(job_sheet: dict[Future, dict[str,Any]], selected_columns: list[str]) -> list[dict[str,bool|str]]:
-        # TODO include waitlisted jobs
-        runStatus = lambda job_future: {'running': job_future.running()}
-        jobInfo = lambda job: {k: getattr(job, k) for k in selected_columns}
-
-        return [runStatus(job_future) | jobInfo(job) for job_future, job in job_sheet.items()]
-
-    @staticmethod
-    def _get_memory_status(devices: list[int]) -> dict[int, dict[str, int]]:
-        unpack = lambda memory_status: {"free": memory_status.free, "used": memory_status.used, "total": memory_status.total}
-        memory_status = {
-            device_id : unpack(nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(device_id))) 
-            for device_id in devices
+        ########### Record Input ###########
+        input_params = {
+            k: v for k, v in locals().items() if k not in {"self", "kwargs"}
         }
-        return memory_status
-    
-    def _launch_jobs(self, jobs: list[Job], synchronous: bool, waitlist: list[Job], verbose: bool) -> dict[Future, Job]:
-        """
-        Launch the jobs in the job sheet.
 
-        Args:
-            jobs (list[Job]): The jobs to be launched.
-            waitlist (list[Job], optional): The jobs that are to be queued until memory is available.
+        # set up the output directory
+        output_dir: Path = self.output_path / name
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # save a copy of the config
+        with open(output_dir / "config.yaml", "w") as f:
+            f.write(yaml.dump(input_params))
+
+        ########## Initialization ##########
+
+        # Initialize the brain, body, and environment
+        base_brain = Brain(**brain)
+        base_body = Body(**body)
+        base_env = Environment(**environment)
+
+        ############## Setup ###############
+
+        # calculate run info for Brain
+        base_brain.calc_iterations(
+            num_brains,
+            self.num_threads,
+            base_env.iterations_per_test_episode,
+            episodes,
+            steps_per_episode,
+        )
+
+        # adjust environment to agent settings
+        base_env.adjust_to_agent(
+            steps_per_episode,
+            brain.get("reward", "closeness"),  # TODO Clean this up
+            base_body.binocular_vision,
+            base_body.panini_projection,
+            base_body.input_resolution,
+        )
+
+        ############### Run ################
+        # estimate memory for a single task
+        memory = self._calculate_task_memory(
+            base_brain,
+            base_body,
+            base_env,
+            task_memory,
+            output_dir,
+        )
+
+        # Determine which modes to run (train, test)
+        modes: list[str] = []
+        for mode in episodes.keys():
+            if episodes[mode] > 0:
+                modes.append(mode)
+
+        # Create a list of tasks to run
+        tasklist = TaskList(
+            base_brain,
+            base_body,
+            base_env,
+            num_brains,
+            base_env.conditions,
+            output_dir,
+            modes,
+            self.loading_bar_queue,
+            memory,
+        )
+
+        # create loading bar
+        num_steps = (
+            steps_per_episode
+            * num_brains
+            * (
+                episodes.get("train", 0) * len(base_env.conditions)
+                + episodes.get("test", 0)
+                * sum(base_env.iterations_per_test_episode.values())
+            )
+        )
+        self.executor.loading_bar.add(name, num_steps)
+
+        # validate tasks
+        if not base_env.multiagent:
+            self.logger.info("Validating tasks...")
+            task_future: Future = self.executor.submit(validate_tasklist, tasklist)
+            future_wait({task_future: ""}, return_when="ALL_COMPLETED")
+
+        # Assign tasks to devices
+        self.logger.info(f"Assigning tasks...")
+        for task in tasklist:
+            time.sleep(2)
+            self._assign_task(task)
+
+    def task_waiter(self):
+        """
+        Waits for tasks to complete and assigns new tasks from the waitlist.
+        """
+        # Log if there are tasks in the waitlist
+        if len(self.waitlist) > 0:
+            self.logger.warning(
+                f"Insufficient GPU Memory. Waiting for running tasks to complete. Number of Tasks in Waitlist: {len(self.waitlist)}"
+            )
+
+        # Wait for tasks to complete
+        for done_future in as_completed(self.task_sheet):
+            self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
+            done_future.result()
+
+            # Free up memory from the completed task
+            done_config: TaskConfig = self.task_sheet.pop(done_future)
+            free_device: int = done_config.device
+            self.free_device_memory[free_device] += done_config.memory
+
+            # Check if any tasks in the waitlist can be run
+            for i, task in enumerate(self.waitlist):
+                if task.config.memory <= self.free_device_memory[free_device]:
+                    # Allocate memory and run the task
+                    self.free_device_memory[free_device] -= task.config.memory
+                    task.set_device(free_device)
+                    task_future: Future = self.executor.submit(run_task, task)
+                    self.task_sheet[task_future] = task.config
+                    self.waitlist.pop(i)
+                    break
+
+    def status(self):
+        """
+        Returns the status of the tasks.
 
         Returns:
-            dict[Future, Job]: A dictionary of futures corresponding to the jobs that were launched from them.
+            dict[Future, TaskConfig]: A dictionary of futures representing the jobs that have been launched.
         """
-        try:
-            max_workers = 1 if len(jobs) == 1 else os.cpu_count()
+        return self.task_sheet
 
-            mute = lambda: setattr(sys, 'stdout', open(os.devnull, "w"))
-            initializer = mute if not verbose else None
-            executor = ProcessPoolExecutor(max_workers=max_workers, initializer=initializer)
-            job_sheet: dict[Future, dict[str, Job]] = {}
+    def _assign_task(self, task: Task) -> None:
+        """
+        Assigns a task to the most free GPU.
 
-            for job in jobs:
-                job_future = executor.submit(self._execute_job, job)
-                job_sheet[job_future] = job
-                time.sleep(1)
+        Args:
+            task (Task): The task to be assigned.
+        """
+        # Find the GPU with the most free memory
+        most_free_gpu, gpu_max_capacity = (None, 0)
+        for device, memory in self.free_device_memory.items():
+            if memory > gpu_max_capacity:
+                most_free_gpu = device
+                gpu_max_capacity = memory
 
-            while waitlist:
-                done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                for done_future in done:
-                    done_job: Job = job_sheet.pop(done_future)
-                    free_device: int = done_job.device
-                    job = waitlist.pop()
-                    job.device = free_device
-                    job_future = executor.submit(self._execute_job, job)
-                    job_sheet[job_future] = job
-                    time.sleep(1)
-
-            if synchronous:
-                while job_sheet:
-                    done, _ = future_wait(job_sheet, return_when=FIRST_COMPLETED)
-                    for doneFuture in done:
-                        job_sheet.pop(doneFuture)
-                    time.sleep(1)
-            
-            # close processes and free up resources on completion
-            self.logger.info("Shutting down executor")
-            executor.shutdown()
-
-            return job_sheet
-        except Exception as e:
-            self.logger.exception(f"Error in launching jobs: {e}")
-            raise e
-
-    @staticmethod
-    def _get_task_set(num_brains: int, all_conditions: list[str], conditions: Optional[list[str]]) -> set[tuple[str,int]]: #TODO: Create a better name for this method
-        # create set of all conditions
-        all_conditions_set: set[str] = set(all_conditions)
-    
-        # check if user-defined their own conditions
-        if (conditions is not None):
-            # create a set of user-defined conditions
-            condition_set: set[str] = set(conditions)
-
-            if not condition_set.issubset(all_conditions_set):
-                raise ValueError(f"Unknown conditions: {conditions}. Available conditions are: {all_conditions}")
-        # default to all conditions
+        # check if enough memory is available on the device
+        if gpu_max_capacity >= task.config.memory:
+            # Assign the task to the device
+            task.set_device(most_free_gpu)
+            task_future = self.executor.submit(run_task, task)
+            self.task_sheet[task_future] = task.config
+            # allocate memory
+            self.free_device_memory[most_free_gpu] -= task.config.memory
         else:
-            condition_set: set[str] = all_conditions_set
+            # waitlist remaining tasks if no free memory
+            self.waitlist.append(task)
 
-        # create set of all brain-environment combinations
-        return set(product(condition_set, set(range(1, num_brains + 1))))
+    def _calculate_task_memory(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        task_memory: str | float,
+        output_dir: Path,
+    ) -> float:
+        """
+        Calculates the memory required for a single task.
 
-    def _schedule_jobs(self, task_set: set[tuple[str,int]], devices: list[int], job_memory: int, logger: "Logger") -> tuple[list[Job], list[Job]]:
-        # create jobs
-        jobs: list[Job] = []
-        waitlist: list[Job] = []
+        Args:
+            brain (Brain): The brain configuration.
+            body (Body): The body configuration.
+            env (Environment): The environment configuration.
+            task_memory (str | float): The memory allocated, in Gigabytes, for a single job.
+            output_dir (Path): The output directory for the task.
 
-        # assign devices based on memory availability
-        # get the list of devices
-        free_devices: list[int] = devices.copy()
+        Returns:
+            float: The memory required for a single task in bytes.
+        """
+        # Get the GPU with the most free memory
+        most_free_gpu, gpu_max_capacity = self.memory_manager.get_most_free_gpu(
+            self.devices
+        )
 
-        # get the free memory status for each device
-        free_device_memory: dict[int, int] = {device: memory_status["free"] for device, memory_status in self._get_memory_status(devices).items()}
+        if task_memory == "auto":
+            # calculate current memory usage for baseline for comparison
+            try:
+                # create a test task to estimate memory
+                # TODO: Allow mem estimation to accurately estimate for test
+                task = Task(
+                    brain,
+                    body,
+                    env,
+                    0,
+                    env.conditions[0],  # example condition
+                    output_dir,
+                    ["train"],
+                    self.loading_bar_queue,
+                )
+                task.set_device(most_free_gpu)
 
-        while task_set:
-            # if there are no free devices, add jobs to the waitlist
-            if not free_devices:
-                if not jobs:
-                    raise ValueError("No jobs could be scheduled. Job size too large for GPUs. If job_memory='auto', consider setting buffer to 1. Otherwise, consider setting job_memory to a value less than or equal to total free GPU memory / buffer.")
-                logger.info("No free devices. Jobs will be queued until a device is available.")
-                waitlist = [
-                    Job(brain_id, condition, device=-1, index=len(jobs)+i) 
-                    for i, (condition, brain_id) in enumerate(task_set)
-                ]
-                logger.warning("Insufficient GPU Memory. Jobs will be queued until memory is available. This may take a while.")
-                break
+                # Add a loading bar for the memory estimation
+                self.executor.loading_bar.add(
+                    f"Estimating Memory Usage for {task.config.name}", brain.buffer_size
+                )
 
-            # remove devices that don't have enough memory
-            if free_device_memory[free_devices[-1]] < job_memory:
-                logger.info(f"Device {free_devices[-1]} does not have enough memory. Removing from list of available devices.")
-                free_devices.pop()
-            # assign device to job
-            else:
-                logger.info(f"Assigning device {free_devices[-1]} to job")
-                # create job
-                condition, brain_id = task_set.pop()
+                # Run the task and wait for it to complete
+                task_future: Future = self.executor.submit(run_task, task)
+                future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
+                self.logger.info("Finished estimating memory")
 
-                job = Job(
-                    brain_id=brain_id, 
-                    condition=condition, 
-                    device=free_devices[-1], 
-                    index=len(jobs))
-                jobs.append(job)
+                # Remove the loading bar
+                self.executor.loading_bar.remove(
+                    f"Estimating Memory Usage for {task.config.name}"
+                )
 
-                # allocate memory
-                free_device_memory[free_devices[-1]] -= job_memory
-                # rotate devices
-                free_devices = [free_devices[-1]] + free_devices[:-1]
-        
-        return jobs, waitlist
-
-    @staticmethod
-    def _validate_devices(devices: Optional[list[int]]) -> list[int]:
-        # check if the devices are available and return the list of devices to be used
-        available_devices: list[int] = list(range(nvmlDeviceGetCount()))
-
-        if devices is None:
-            devices = available_devices
-        elif isinstance(devices, list) and not set(devices).issubset(set(available_devices)):
-            raise ValueError("Custom device list lists unknown devices. Available devices are: {available_devices}")
-
-        return devices
-
-    def _run_env(self, mode: str, kwargs: dict[str,Any], callback, zoo: Optional[bool] = False) -> None:
-        # run environment
-        # can be train or test mode and can be for validation or actual run
-        try:
-            if zoo:
-                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
-
-                make_env = lambda: self._wrap_env(mode, kwargs)
-                with VecEnv(make_env, zoo=True) as envs:
-                    callback(envs)
-            elif "validation-mode" in kwargs:
-                with self._wrap_env(mode, kwargs) as environment:
-                    check_env(environment)
-            elif mode == "train":
-                kwargs["log_path"].mkdir(exist_ok=True, parents=True)
-
-                make_env = lambda: self._wrap_env(mode, kwargs)
-                with VecEnv(make_env) as envs:
-                    callback(envs)
-            else:
-                make_env = lambda rank: self._wrap_env(mode, kwargs, rank)
-                with VecEnv(make_env, self.num_parallel_envs) as envs:
-                    callback(envs)
-
-            self.logger.info("Environments Closed")
-        except Exception as e:
-                if kwargs["validation-mode"]:
-                    self.logger.exception(f"{mode} env validation failed: {str(e)}")
-                else:
-                    self.logger.exception(f"{mode} env failed: {str(e)}")  
+                # Read the memory usage from the file
+                with open(task.config.path / "mem.txt", "r") as file:
+                    post_memory: int = int(file.readline())
+            except Exception as e:
+                self.logger.exception(f"Error in estimating memory: {e}")
                 raise e
+            finally:
+                # Clean up the test task directory
+                if "task" in locals() and task.config.path.exists():
+                    shutil.rmtree(task.config.path)
 
-    def _wrap_env(self, mode: str, kwargs: dict[str,Any], rank: Optional[int] = None) -> "nett.Body":
-        if rank is not None:
-            time.sleep(rank)
-        copy_environment = deepcopy(self.environment)
-        copy_environment.initialize(mode, rank=rank, **kwargs)
-        copy_body = deepcopy(self.body)
-        # apply wrappers (body)
-        return copy_body(copy_environment)    
+            # estimate memory allocated
+            # TODO: Mem size can be larger than GPU allows but not big enough to cause problems when running it
+            memory_use = gpu_max_capacity - post_memory
+            self.logger.info("Estimated Memory: " + str(memory_use / 1024**3) + " GB")
+        else:
+            # Convert the task memory to bytes
+            memory_use = task_memory * (1024**3)
+
+        # check to see if GPUs can run a single job
+        if memory_use > gpu_max_capacity:
+            raise JobTooBigError
+
+        return memory_use

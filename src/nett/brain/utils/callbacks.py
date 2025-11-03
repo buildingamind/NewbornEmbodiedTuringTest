@@ -4,72 +4,78 @@ Callbacks for training the agents.
 Classes:
     HParamCallback(BaseCallback)
 """
+
+from multiprocessing import SimpleQueue
 from pathlib import Path
-import sys
 import torch as th
 
-from tqdm import tqdm
-from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback, CallbackList
+from stable_baselines3.common.callbacks import BaseCallback
 from stable_baselines3.common.logger import HParam
-
-# from nett.utils.train import compute_train_performance
-from nett.utils import Job
-
 from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 
-from pynvml import nvmlDeviceGetHandleByIndex, nvmlDeviceGetMemoryInfo, nvmlInit
+from ...utils.memory import MemoryManager
+import re
+import glob
+import cv2
 
-def initialize_callbacks(job: Job) -> CallbackList:
-    """
-    Initialize the callbacks for training.
+# import numpy as np
 
-    Args:
-        job (Job): The job for which to initialize the callbacks.
-    
-    Returns:
-        CallbackList: The list of callbacks for training.
-    """
-    hparam_callback = HParamCallback() # TODO: Are we using the tensorboard that this creates? See https://www.tensorflow.org/tensorboard Appears to be responsible for logs/events.out.. files
+# from nett.utils.performance import compute_train_performance
 
-    callback_list = [hparam_callback]
+def img2video(record_path: Path, expected_length: int, fps: int = 25):
+    png_files = glob.glob(str(record_path / "*.png"))
+    if not png_files:
+        return
 
-    if job.estimate_memory:
-        callback_list.extend([
-            # creates the parallel progress bars
-            multiBarCallback(job.index, "Estimating Memory Usage"), # TODO: Add progress bars to test aswell
-            # creates the memory callback for estimation of memory for a single job
-            MemoryCallback(job.device, save_path=job.paths["base"])
-            ])
-    else:
-        # creates the parallel progress bars
-        callback_list.append(multiBarCallback(job.index, f"{job.condition}-{job.brain_id}", job.iterations["train"])) # TODO: Add progress bars to test aswell
+    # Group pngs by episode number
+    episode_dict = {}
+    pattern = re.compile(r"(\d+)_(\d+)\.png$")
+    for png in png_files:
+        match = pattern.search(png)
+        if match:
+            ep, frame = int(match.group(1)), int(match.group(2))
+            episode_dict.setdefault(ep, []).append((frame, png))
 
-    if job.save_checkpoints:
-        callback_list.append(CheckpointCallback(
-            save_freq=job.checkpoint_freq, # defaults to 30_000 steps
-            save_path=job.paths["checkpoints"],
-            save_replay_buffer=True,
-            save_vecnormalize=True))
-    
-    if hasattr(job, "reward_func"):
-        callback_list.append(IntrinsicRewardWithOnPolicyRL(job.reward_func))
-        # callback_list.append(IntrinsicRewardWithOffPolicyRL(job.reward_func))
-
-    return CallbackList(callback_list)
+    for ep, frames in episode_dict.items():
+        # Sort frames by frame number
+        frames_sorted = sorted(frames, key=lambda x: x[0])
+        if frames_sorted[-1][0] != expected_length:
+            continue
+        images = [cv2.imread(f[1]) for f in frames_sorted]
+        if not images or images[0] is None:
+            continue
+        height, width, layers = images[0].shape
+        mp4_path = record_path / f"{ep}.mp4"
+        out = cv2.VideoWriter(
+            str(mp4_path),
+            cv2.VideoWriter_fourcc(*"mp4v"),
+            fps,
+            (width, height),
+        )
+        for img in images:
+            if img is not None:
+                out.write(img)
+        out.release()
+        # Optionally, remove PNGs after conversion
+        for _, png_path in frames_sorted:
+            try:
+                Path(png_path).unlink()
+            except Exception:
+                pass
 
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
     """
     Saves the hyperparameters and metrics at the start of the training, and logs them to TensorBoard.
     """
+
     def _on_training_start(self) -> None:
         hparam_dict = {
             "algorithm": self.model.__class__.__name__,
             "learning rate": self.model.learning_rate,
             "gamma": self.model.gamma,
             "batch_size": self.model.batch_size,
-            "n_steps": self.model.n_steps
+            "n_steps": self.model.n_steps,
         }
         # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
         # Tensorbaord will find & display metrics from the `SCALARS` tab
@@ -86,50 +92,38 @@ class HParamCallback(BaseCallback):
     def _on_step(self) -> bool:
         return True
 
-class multiBarCallback(BaseCallback):
+
+class LoadingBarCallback(BaseCallback):
     """
     Display a progress bar when training SB3 agent using tqdm
     """
 
-    def __init__(self, index: int, label: str, num_steps: int = None) -> None:
+    def __init__(self, label: str, queue: SimpleQueue) -> None:
         super().__init__()
-        # where on the screen the progress bar will be displayed
-        self.index = index
         # label to prefix the progress bar
         self.label = label
-        # progress bar object
-        self.pbar = None
-        # number of steps to be done
-        self.num_steps = num_steps
 
-    def _on_training_start(self) -> None:
-        # if num_steps is None, this means that memory estimation is being done, so the length of a single rollout will be used
-        num_steps = self.num_steps if self.num_steps is not None else self.model.n_steps
-        # Initialize progress bar
-        # Remove timesteps that were done in previous training sessions
-        self.pbar = tqdm(total=(num_steps), position=self.index, dynamic_ncols=True, desc=self.label, file=sys.stdout, leave=True, mininterval=1.0)
-        pass
+        # queue to communicate with the loading bar process
+        self.bar_queue = queue
 
     def _on_step(self) -> bool:
         # Update progress bar, we do num_envs steps per call to `env.step()`
-        self.pbar.update(self.training_env.num_envs)
+        # self.pbar.update(self.training_env.num_envs)
+        self.bar_queue.put((self.label, 1))  # self.training_env.num_envs
         return True
 
-    def _on_training_end(self) -> None:
-        self.pbar.refresh()
-        self.pbar.close()
-        pass
 
 class MemoryCallback(BaseCallback):
     """
     A custom callback that derives from ``BaseCallback``.
     """
+
     def __init__(self, device: int, save_path: str) -> None:
         super().__init__()
         self.device = device
         self.save_path = save_path
         self.closeEnv = False
-        nvmlInit()
+        self.memory_manager = MemoryManager()
 
     def _on_step(self) -> bool:
         """
@@ -140,33 +134,30 @@ class MemoryCallback(BaseCallback):
 
         :return: If the callback returns False, training is aborted early.
         """
-        if self.closeEnv:
-            # Close the callback
-            return False
-        return True
+        return not self.closeEnv
 
     def _on_rollout_end(self) -> None:
         """
         This event is triggered before updating the policy.
         """
         self.closeEnv = True
-        pass
 
     def _on_training_end(self) -> None:
         """
         This event is triggered before exiting the `learn()` method.
         """
         # Grab the memory being used by the GPU
-        used_memory = nvmlDeviceGetMemoryInfo(nvmlDeviceGetHandleByIndex(self.device)).used
+        free_memory = self.memory_manager.get_free_memory(self.device)
         # Write the used memory to a file
         with open(Path.joinpath(self.save_path, "mem.txt"), "w") as f:
-            f.write(str(used_memory))
-        pass
+            f.write(str(free_memory))
+
 
 class IntrinsicRewardWithOnPolicyRL(BaseCallback):
     """
     A custom callback for combining RLeXplore and on-policy algorithms from SB3.
     """
+
     def __init__(self, irs, verbose=0):
         super().__init__(verbose)
         self.irs = irs
@@ -174,7 +165,7 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
 
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
-        self.buffer = self.model.rollout_buffer
+        self.buffer = self.model.rollout_buffer  #
 
     def _on_step(self) -> bool:
         """
@@ -182,19 +173,21 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        observations = self.locals["obs_tensor"]
-        device = observations.device
+        observations = self.locals["obs_tensor"]  #
+        device = observations.device  #
         actions = th.as_tensor(self.locals["actions"], device=device)
         rewards = th.as_tensor(self.locals["rewards"], device=device)
         dones = th.as_tensor(self.locals["dones"], device=device)
-        next_observations = th.as_tensor(self.locals["new_obs"], device=device)
+        next_observations = th.as_tensor(self.locals["new_obs"], device=device)  # ~
 
         # ===================== watch the interaction ===================== #
-        self.irs.watch(observations, actions, rewards, dones, dones, next_observations)
+        self.irs.watch(
+            observations, actions, rewards, dones, dones, next_observations
+        )  # ~
         # ===================== watch the interaction ===================== #
         return True
 
-    def _on_rollout_end(self) -> None:
+    def _on_rollout_end(self) -> None:  ####################################
         # ===================== compute the intrinsic rewards ===================== #
         # prepare the data samples
         obs = th.as_tensor(self.buffer.observations)
@@ -208,19 +201,27 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
         print(obs.shape, actions.shape, rewards.shape, dones.shape, obs.shape)
         # compute the intrinsic rewards
         intrinsic_rewards = self.irs.compute(
-            samples=dict(observations=obs, actions=actions, 
-                         rewards=rewards, terminateds=dones, 
-                         truncateds=dones, next_observations=new_obs),
-            sync=True)
+            samples=dict(
+                observations=obs,
+                actions=actions,
+                rewards=rewards,
+                terminateds=dones,
+                truncateds=dones,
+                next_observations=new_obs,
+            ),
+            sync=True,
+        )
         # add the intrinsic rewards to the buffer
         self.buffer.advantages += intrinsic_rewards.cpu().numpy()
         self.buffer.returns += intrinsic_rewards.cpu().numpy()
         # ===================== compute the intrinsic rewards ===================== #
 
+
 class IntrinsicRewardWithOffPolicyRL(BaseCallback):
     """
-    A custom callback for combining RLeXplore and off-policy algorithms from SB3. 
+    A custom callback for combining RLeXplore and off-policy algorithms from SB3.
     """
+
     def __init__(self, irs, verbose=0):
         super().__init__(verbose)
         self.irs = irs
@@ -228,8 +229,7 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
 
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
-        self.buffer = self.model.replay_buffer
-        
+        self.buffer = self.model.replay_buffer  #
 
     def _on_step(self) -> bool:
         """
@@ -237,43 +237,82 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
 
         :return: (bool) If the callback returns False, training is aborted early.
         """
-        device = self.irs.device
-        obs = th.as_tensor(self.locals['self']._last_obs, device=device)
+        device = self.irs.device  #
+        obs = th.as_tensor(self.locals["self"]._last_obs, device=device)  #
         actions = th.as_tensor(self.locals["actions"], device=device)
         rewards = th.as_tensor(self.locals["rewards"], device=device)
         dones = th.as_tensor(self.locals["dones"], device=device)
-        next_obs = th.as_tensor(self.locals["new_obs"], device=device)
+        next_obs = th.as_tensor(self.locals["new_obs"], device=device)  # ~
 
         # ===================== watch the interaction ===================== #
-        self.irs.watch(obs, actions, rewards, dones, dones, next_obs)
+        self.irs.watch(obs, actions, rewards, dones, dones, next_obs)  # ~
         # ===================== watch the interaction ===================== #
-        
+        ####################################
         # ===================== compute the intrinsic rewards ===================== #
-        intrinsic_rewards = self.irs.compute(samples={'observations':obs.unsqueeze(0), 
-                                            'actions':actions.unsqueeze(0), 
-                                            'rewards':rewards.unsqueeze(0),
-                                            'terminateds':dones.unsqueeze(0),
-                                            'truncateds':dones.unsqueeze(0),
-                                            'next_observations':next_obs.unsqueeze(0)}, 
-                                            sync=False)
+        intrinsic_rewards = self.irs.compute(
+            samples={
+                "observations": obs.unsqueeze(0),
+                "actions": actions.unsqueeze(0),
+                "rewards": rewards.unsqueeze(0),
+                "terminateds": dones.unsqueeze(0),
+                "truncateds": dones.unsqueeze(0),
+                "next_observations": next_obs.unsqueeze(0),
+            },
+            sync=False,
+        )
         # ===================== compute the intrinsic rewards ===================== #
 
         try:
             # add the intrinsic rewards to the original rewards
-            self.locals['rewards'] += intrinsic_rewards.cpu().numpy().squeeze()
+            self.locals["rewards"] += intrinsic_rewards.cpu().numpy().squeeze()
             # update the intrinsic reward module
             replay_data = self.buffer.sample(batch_size=self.irs.batch_size)
-            self.irs.update(samples={'observations': th.as_tensor(replay_data.observations).unsqueeze(1).to(device), # (n_steps, n_envs, *obs_shape)
-                                     'actions': th.as_tensor(replay_data.actions).unsqueeze(1).to(device),
-                                     'rewards': th.as_tensor(replay_data.rewards).to(device),
-                                     'terminateds': th.as_tensor(replay_data.dones).to(device),
-                                     'truncateds': th.as_tensor(replay_data.dones).to(device),
-                                     'next_observations': th.as_tensor(replay_data.next_observations).unsqueeze(1).to(device)
-                                     })
+            self.irs.update(
+                samples={
+                    "observations": th.as_tensor(replay_data.observations)
+                    .unsqueeze(1)
+                    .to(device),  # (n_steps, n_envs, *obs_shape)
+                    "actions": th.as_tensor(replay_data.actions)
+                    .unsqueeze(1)
+                    .to(device),
+                    "rewards": th.as_tensor(replay_data.rewards).to(device),
+                    "terminateds": th.as_tensor(replay_data.dones).to(device),
+                    "truncateds": th.as_tensor(replay_data.dones).to(device),
+                    "next_observations": th.as_tensor(replay_data.next_observations)
+                    .unsqueeze(1)
+                    .to(device),
+                }
+            )
         except:
             pass
-
+        ####################################
         return True
 
     def _on_rollout_end(self) -> None:
         pass
+
+
+class PngToMp4Callback(BaseCallback):
+    """
+    Callback to convert episode PNG frames to MP4 videos after each rollout or episode.
+    PNGs must be named as <episode>_<frame>.png.
+    """
+
+    def __init__(self, record_path: Path, expected_size: int, fps: int = 24, verbose: int = 0):
+        super().__init__(verbose)
+        if not record_path.exists():
+            record_path.mkdir(parents=True)
+
+        self.record_path = record_path
+        self.fps = fps
+        self.expected_size = expected_size
+
+    def _on_rollout_end(self) -> None:
+        self._convert_pngs_to_mp4s()
+
+    def _on_step(self) -> bool:
+        # Optionally, you can also call conversion here if you want per-episode conversion
+        return True
+
+    def _convert_pngs_to_mp4s(self):
+        return img2video(self.record_path, self.expected_size, self.fps)
