@@ -213,7 +213,7 @@ def make_bar_charts(
             chick_data_filtered["test.cond"] = pd.Categorical(
                 chick_data_filtered["test.cond"], categories=x_categories, ordered=True
             )
-            chick_x_pos = chick_data_filtered["test.cond"].cat.codes  # - 1
+            chick_x_pos = chick_data_filtered["test.cond"].cat.codes - 1
 
             shift = 0
             for xi, yi, yerr, i in zip(
