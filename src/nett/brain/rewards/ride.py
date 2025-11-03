@@ -31,12 +31,12 @@ import torch.nn.functional as F
 
 from torch.utils.data import DataLoader, TensorDataset
 
-from rllte.xplore.reward import ICM as BaseICM
+from rllte.xplore.reward import RIDE as BaseRIDE
 
 
-class ICM(BaseICM):
-    """Curiosity-driven Exploration by Self-supervised Prediction.
-        See paper: http://proceedings.mlr.press/v70/pathak17a/pathak17a.pdf
+class RIDE(BaseRIDE):
+    """RIDE: Rewarding Impact-Driven Exploration for Procedurally-Generated Environments.
+        See paper: https://arxiv.org/pdf/2002.12292
 
     Args:
         envs (VectorEnv): The vectorized environments.
@@ -50,34 +50,41 @@ class ICM(BaseICM):
         latent_dim (int): The dimension of encoding vectors.
         lr (float): The learning rate.
         batch_size (int): The batch size for training.
+        k (int): Number of neighbors.
+        kernel_cluster_distance (float): The kernel cluster distance.
+        kernel_epsilon (float): The kernel constant.
+        c (float): The pseudo-counts constant.
+        sm (float): The kernel maximum similarity.
         update_proportion (float): The proportion of the training data used for updating the forward dynamics models.
         encoder_model (str): The network architecture of the encoder from ['mnih', 'pathak'].
         weight_init (str): The weight initialization method from ['default', 'orthogonal'].
 
     Returns:
-        Instance of ICM.
+        Instance of RIDE.
     """
 
     def update(self, samples: Dict[str, th.Tensor]) -> None:
         """Update the reward module if necessary.
+
         Args:
             samples (Dict[str, th.Tensor]): The collected samples same as the `compute` function.
+
         Returns:
             None.
         """
         # get the number of steps and environments
         (n_steps, n_envs) = samples.get("next_observations").size()[:2]
-        # get the observations and next observations
+        # get the observations, actions and next observations
         obs_tensor = (
             samples.get("observations").to(self.device).view(-1, *self.obs_shape)
         )
         next_obs_tensor = (
             samples.get("next_observations").to(self.device).view(-1, *self.obs_shape)
         )
-        # normalize the observations
+        # normalize the observations and next observations
         obs_tensor = self.normalize(obs_tensor)
         next_obs_tensor = self.normalize(next_obs_tensor)
-        # transform the actions to one-hot vectors if the action space is discrete
+        # apply one-hot encoding if the action type is discrete
         if self.action_type == "Discrete":
             actions_tensor = samples.get("actions").view(n_steps * n_envs)
             actions_tensor = F.one_hot(
@@ -85,9 +92,10 @@ class ICM(BaseICM):
             ).float()
         else:
             actions_tensor = samples.get("actions").view(n_steps * n_envs, -1)
-        # build the dataset and dataloader
+        # create the dataset and loader
         dataset = TensorDataset(obs_tensor, actions_tensor, next_obs_tensor)
         loader = DataLoader(dataset=dataset, batch_size=self.batch_size, shuffle=True)
+
         avg_im_loss = []
         avg_fm_loss = []
         # update the encoder, inverse dynamics model and forward dynamics model
@@ -106,10 +114,9 @@ class ICM(BaseICM):
             # encode the observations and next observations
             encoded_obs = self.encoder(obs)
             encoded_next_obs = self.encoder(next_obs)
-            # compute the inverse dynamics loss
+            # get the predicted actions and next observations
             pred_actions = self.im(encoded_obs, encoded_next_obs)
             im_loss = self.im_loss(pred_actions, actions)
-            # compute the forward dynamics loss
             pred_next_obs = self.fm(encoded_obs, actions)
             fm_loss = F.mse_loss(
                 pred_next_obs, encoded_next_obs, reduction="none"
@@ -133,7 +140,7 @@ class ICM(BaseICM):
             self.fm_opt.step()
             avg_im_loss.append(im_loss.item())
             avg_fm_loss.append(fm_loss.item())
-        # save the loss
+
         self.metrics["loss"].append(
             [self.global_step, np.mean(avg_im_loss) + np.mean(avg_fm_loss)]
         )
