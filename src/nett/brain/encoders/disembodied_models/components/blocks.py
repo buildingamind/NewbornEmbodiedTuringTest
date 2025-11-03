@@ -1,3 +1,4 @@
+"""Blocks for ResNet architectures."""
 import torch as th
 from torch import nn
 from .layers import conv1x1, conv3x3

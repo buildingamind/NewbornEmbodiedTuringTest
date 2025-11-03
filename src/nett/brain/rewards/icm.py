@@ -1,3 +1,4 @@
+"""Intrinsic Curiosity Module (ICM) reward implementation from RLLTE with bug fix for multi-dimensional action space."""
 # =============================================================================
 # MIT License
 

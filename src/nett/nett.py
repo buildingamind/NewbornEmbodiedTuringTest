@@ -109,7 +109,6 @@ class NETT:
         devices: Optional[list[int]] = None,
         num_threads: Optional[int] = None,
         verbose: int = True,
-        asynchronous: bool = False,
     ) -> list[Future]:
         """
         Run the training and testing of the brains in the environment.
@@ -119,7 +118,7 @@ class NETT:
             devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to `None`.
             num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to `None`. If None, the number of threads is equal to the number of cpu cores.
             verbose (int, optional): Whether or not to print info statements. Defaults to `True`.
-            asynchronous (bool, optional): Whether or not to run the tasks asynchronously. Defaults to `False`.
+            Defaults to `False`.
 
         Returns:
             list[Future]: A list of futures representing the jobs that have been launched.
@@ -198,7 +197,7 @@ class NETT:
         steps_per_episode: int = 200,
         num_brains: int = 1,
         task_memory: str | float = "auto",
-        **kwargs,
+        **kwargs, # pylint: disable=unused-argument
     ) -> list[Future]:
         """
         Non-public function for running a single benchmark. The parameters here should match the top-level parameters of a config file input into :func:`~nett.nett.NETT.run`.

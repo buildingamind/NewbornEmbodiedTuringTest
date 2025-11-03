@@ -1,5 +1,10 @@
+"""Example script to run a NETT experiment."""
+
 from nett import NETT
+
+
 def main():
+    """Keep code in a main function for multiprocessing compatibility."""
     NETT({
         'Brain': {
             'policy': 'CnnPolicy',
@@ -18,5 +23,6 @@ def main():
 
     NETT.run()
 
-if __name__ == '__main__':  
+
+if __name__ == "__main__":
     main()

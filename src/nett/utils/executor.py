@@ -1,3 +1,5 @@
+"""Custom ProcessPoolExecutor with loading bar support."""
+
 from concurrent.futures import ProcessPoolExecutor
 import os
 import sys
@@ -7,6 +9,15 @@ from .loading_bar_queue import LoadingBarQueue, updateLoadingBars
 
 
 def singleton(cls):
+    """
+    Singleton decorator to ensure only one instance of a class exists.
+    
+    Args:
+        cls: The class to be decorated.
+
+    Returns:
+        Instance of the singleton class.
+    """
     instances = {}
 
     def get_instance(*args, **kwargs):
@@ -19,6 +30,11 @@ def singleton(cls):
 
 @singleton
 class Executor(ProcessPoolExecutor):
+    """Custom ProcessPoolExecutor with loading bar support.
+    
+    Args:
+        verbose (bool): If False, mutes stdout in worker processes.
+    """
 
     def __init__(self, verbose: bool) -> None:
         # mute stdout if not verbose

@@ -52,4 +52,5 @@ class ViT(BaseFeaturesExtractor):
         self.model.fc = nn.Identity()
 
     def forward(self, observations: th.Tensor) -> th.Tensor:
+        """Forward pass in the network"""
         return self.model(observations)

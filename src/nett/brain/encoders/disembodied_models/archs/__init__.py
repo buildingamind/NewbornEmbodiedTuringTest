@@ -1,3 +1,5 @@
+"""Architectures for disembodied models."""
+
 # Mute excessive warnings from pl_bolts, see https://github.com/Lightning-Universe/lightning-bolts/issues/563
 
 import warnings

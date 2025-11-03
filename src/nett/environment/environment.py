@@ -218,7 +218,7 @@ class Environment:
                 # Set render mode based on whether multiple observations are expected
                 env.render_mode = "rgb_array_list" if self.binocular_vision else "rgb_array"
                 complete = True
-            except UnityWorkerInUseException as e:
+            except UnityWorkerInUseException:
                 # If the worker is in use, try again
                 continue
             except Exception as e:

@@ -1,11 +1,7 @@
-import os
-import subprocess
+"""Analyze the results of a run."""
+
 from pathlib import Path
 from typing import Optional
-import numpy as np
-from matplotlib import pyplot as plt
-from sklearn.decomposition import PCA
-from PIL import Image, ImageChops
 from .utils import merge, train_viz, test_viz
 
 def analyze(

@@ -1,3 +1,5 @@
+"""Merge training and testing CSV log files into consolidated results."""
+
 from pathlib import Path
 import pandas as pd
 
@@ -102,6 +104,13 @@ def _combine_data(files: list[Path], mode: str) -> pd.DataFrame:
 
 
 def merge(logs_dir: str, results_dir: str) -> None:
+    """
+    Merge training and testing log files from multiple runs.
+
+    Args:
+        logs_dir: Directory containing the log files to merge.
+        results_dir: Directory where merged results will be saved.
+    """
     # Convert directories to Path objects
     logs_dir = Path(logs_dir)
     results_dir = Path(results_dir)

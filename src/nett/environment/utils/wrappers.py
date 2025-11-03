@@ -1,3 +1,5 @@
+"""Wrappers for Unity environments to adapt them to Gymnasium and PettingZoo interfaces. """
+
 import numpy as np
 from typing import Optional, Any
 import gymnasium as gym
@@ -13,6 +15,7 @@ except PermissionError as _:
     raise PermissionError(
         "Directory '/tmp/ml-agents-binaries' is not accessible. Please change permissions of the directory and its subdirectories ('tmp' and 'binaries') to 1777 or delete the entire directory and try again."
     )
+
 
 class BaseWrapper:
     """Base Wrapper for Unity environment"""
@@ -33,8 +36,8 @@ class BaseWrapper:
         return np.moveaxis(self.env.render(), [0, 1, 2], [2, 0, 1])
 
     def reset(
-        self, seed: Optional[int] = None, **kwargs
-    ) -> None | list[np.ndarray] | np.ndarray:  # pylint: disable=unused-argument
+        self, seed: Optional[int] = None, **kwargs  # pylint: disable=unused-argument
+    ) -> None | list[np.ndarray] | np.ndarray:
         """
         Resets the environment.
 

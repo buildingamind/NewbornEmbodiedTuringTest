@@ -1,5 +1,6 @@
-from pathlib import Path
+"""Grabs experiment design from the executable directory."""
 
+from pathlib import Path
 import yaml
 
 
@@ -28,7 +29,6 @@ def get_experiment_design(executable_path: Path) -> dict[str, int]:
 
     yaml_file: Path = yaml_files[0]
 
-
     try:
         # read the yaml file
         with open(yaml_file, "r") as file:
@@ -39,4 +39,3 @@ def get_experiment_design(executable_path: Path) -> dict[str, int]:
         )
 
     return valid_imprinting_conditions
-

@@ -86,11 +86,23 @@ class Task:
         self.agent = Agent(brain, body, env)
 
     def set_device(self, device: int) -> None:
+        """
+        Set the device for the task configuration.
+
+        Args:
+            device: Device ID to use for computation.
+        """
         self.config.device = device
 
 
 # Split up task into BBE and else
 def run_task(task: Task) -> None:
+    """
+    Execute a training or testing task.
+
+    Args:
+        task: Task object containing configuration, agent, and environment.
+    """
     config = task.config
     agent = task.agent
 

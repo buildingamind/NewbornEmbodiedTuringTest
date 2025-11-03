@@ -10,6 +10,12 @@ from .task import Task
 
 
 class TaskList:
+    """
+    Manages a list of tasks for running brain-body-environment experiments.
+
+    Creates tasks by combining brain instances with environmental conditions,
+    and manages task distribution across compute devices.
+    """
     brain_env_combinations: Iterable[tuple[int, str]]
     n_tasks: int
     current: int

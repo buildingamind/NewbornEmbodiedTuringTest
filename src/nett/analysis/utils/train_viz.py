@@ -1,3 +1,5 @@
+"""Visualization utilities for training data analysis."""
+
 import os
 import numpy as np
 import pandas as pd

@@ -47,8 +47,8 @@ class DVS(gym.ObservationWrapper):
         kernel_size=(3, 3),
         sigma=1,
         is_color=True,
-        *args,
-        **kwargs,
+        *args, # pylint: disable=unused-argument
+        **kwargs, # pylint: disable=unused-argument
     ):
 
         self.change_threshold = change_threshold

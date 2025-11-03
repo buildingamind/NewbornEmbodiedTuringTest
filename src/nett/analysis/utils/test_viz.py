@@ -1,3 +1,5 @@
+"""Visualization utilities for test data analysis and statistical comparisons."""
+
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -69,6 +71,17 @@ def _stats(group, column="percent_correct", mu=0.5):
 
 
 def compute_stats(data: pd.DataFrame, results_dir: Path) -> pd.DataFrame:
+    """
+    Compute statistics for test data grouped by condition and agent.
+
+    Args:
+        data: DataFrame containing test results.
+        results_dir: Directory to save statistics CSV file.
+
+    Returns:
+        DataFrame with computed statistics including averages, standard deviations,
+        t-test values, and effect sizes.
+    """
     grouped = data.groupby(["imprint.cond", "agent", "test.cond"])
     by_test_cond = grouped.apply(_stats).reset_index()  # keep group columns as columns
     by_test_cond["imp_agent"] = (
@@ -90,6 +103,19 @@ def make_bar_charts(
     color_bars,
     chick_data=None,
 ):
+    """
+    Create bar charts with error bars for test performance data.
+
+    Args:
+        data: DataFrame containing the bar chart data.
+        dots: DataFrame containing individual data points to overlay.
+        y_col: Column name for y-axis values.
+        error_min_col: Column name for minimum error values.
+        error_max_col: Column name for maximum error values.
+        img_name: Output filename for the chart.
+        color_bars: Whether to color bars by test condition.
+        chick_data: Optional DataFrame containing chick behavioral data for comparison.
+    """
     plt.figure(figsize=(6, 6))
     sns.set_style("white")
     ax = plt.gca()
@@ -278,6 +304,15 @@ def agent_bar_charts(
     color_bars: bool,
     chick_data: pd.DataFrame = None,
 ):
+    """
+    Generate individual bar charts for each agent's test performance.
+
+    Args:
+        data: DataFrame containing statistics by agent.
+        results_dir: Directory to save the generated charts.
+        color_bars: Whether to color bars by test condition.
+        chick_data: Optional DataFrame containing chick behavioral data for comparison.
+    """
     for imp_agent in data["imp_agent"].unique():
         bar_data = data[data["imp_agent"] == imp_agent]
         bar_data["error_min"] = bar_data["avgs"] - bar_data["se"]
@@ -295,6 +330,16 @@ def agent_bar_charts(
 
 
 def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
+    """
+    Compute statistics grouped by imprint condition.
+
+    Args:
+        data: DataFrame containing test results.
+        results_dir: Directory to save statistics CSV file.
+
+    Returns:
+        DataFrame with statistics aggregated by imprint condition.
+    """
     grouped_imp = data.groupby(["imprint.cond", "test.cond"])
     by_imp_cond = grouped_imp.apply(lambda g: _stats(g, column="avgs")).reset_index()
     by_imp_cond.to_csv(results_dir / "stats_by_imp_cond.csv", index=False)
@@ -304,6 +349,16 @@ def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
 def imprint_cond_bar_charts(
     by_imp_cond, by_test_cond, results_dir, color_bars, chick_data=None
 ):
+    """
+    Generate bar charts grouped by imprint condition.
+
+    Args:
+        by_imp_cond: DataFrame with statistics by imprint condition.
+        by_test_cond: DataFrame with statistics by test condition.
+        results_dir: Directory to save the generated charts.
+        color_bars: Whether to color bars by test condition.
+        chick_data: Optional DataFrame containing chick behavioral data for comparison.
+    """
     for imp_cond in by_imp_cond["imprint.cond"].unique():
         bar_data = by_imp_cond[
             (
@@ -333,6 +388,17 @@ def imprint_cond_bar_charts(
 def stats_overall(
     data: pd.DataFrame, results_dir: Path, chick_data: pd.DataFrame = None
 ):
+    """
+    Compute overall statistics across all agents and conditions.
+
+    Args:
+        data: DataFrame containing test results.
+        results_dir: Directory to save statistics CSV file.
+        chick_data: Optional DataFrame containing chick behavioral data for matching conditions.
+
+    Returns:
+        DataFrame with overall statistics across conditions.
+    """
     if chick_data is not None:
         if "experiment" in chick_data.columns:
             valid_experiments = set(str(x) for x in chick_data["experiment"].unique())
@@ -386,6 +452,16 @@ def stats_overall(
 def exp_cond_bar_charts(
     by_test_cond, across_imp_cond, results_dir, color_bars, chick_data=None
 ):
+    """
+    Generate bar charts grouped by experimental condition.
+
+    Args:
+        by_test_cond: DataFrame with statistics by test condition.
+        across_imp_cond: DataFrame with overall statistics across conditions.
+        results_dir: Directory to save the generated charts.
+        color_bars: Whether to color bars by test condition.
+        chick_data: Optional DataFrame containing chick behavioral data for comparison.
+    """
     if "experiment" in across_imp_cond.columns:
         if "exp.cond" in across_imp_cond.columns:
             combinations = zip(
@@ -453,6 +529,16 @@ def exp_cond_bar_charts(
 def all_cond_bar_chart(
     by_test_cond, across_imp_cond, results_dir, color_bars, chick_data=None
 ):
+    """
+    Generate a single bar chart showing all conditions combined.
+
+    Args:
+        by_test_cond: DataFrame with statistics by test condition.
+        across_imp_cond: DataFrame with overall statistics across conditions.
+        results_dir: Directory to save the generated chart.
+        color_bars: Whether to color bars by test condition.
+        chick_data: Optional DataFrame containing chick behavioral data for comparison.
+    """
     across_imp_cond["error_min"] = across_imp_cond["avgs"] - across_imp_cond["se"]
     across_imp_cond["error_max"] = across_imp_cond["avgs"] + across_imp_cond["se"]
     dot_data = by_test_cond[~by_test_cond["test.cond"].str.lower().eq("rest")]
@@ -473,6 +559,15 @@ def all_cond_bar_chart(
 def test_viz(
     results_dir: Path, chick_file: Path = None, bar_order="default", color_bars=False
 ):
+    """
+    Main function to generate all test visualizations and statistical analyses.
+
+    Args:
+        results_dir: Directory containing test results and where outputs will be saved.
+        chick_file: Optional path to CSV file containing chick behavioral data.
+        bar_order: Order for displaying bars in charts (default: "default").
+        color_bars: Whether to color bars by test condition.
+    """
     # Do not warn about chained assignments
     pd.options.mode.chained_assignment = None
     # Load data

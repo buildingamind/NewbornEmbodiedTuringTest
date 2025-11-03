@@ -1,3 +1,5 @@
+"""Validation utilities for body wrappers."""
+
 import gymnasium as gym
 
 from ..wrappers import Binocular, DVS, MultiObs, Retina

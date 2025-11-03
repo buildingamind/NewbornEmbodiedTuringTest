@@ -48,7 +48,7 @@ class Retina(gym.ObservationWrapper):
         - Initializes ArtificialRetina with fovea at image center and radius at 1/4 of height
     """
 
-    def __init__(self, env, device: int, *args, **kwargs):
+    def __init__(self, env, device: int, *args, **kwargs): # pylint: disable=unused-argument
         super().__init__(env)
 
         try:

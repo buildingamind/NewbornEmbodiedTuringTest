@@ -1,3 +1,4 @@
+"""ResNet architectures adapted from torchvision with modifications."""
 import torch
 from torch import nn as nn
 

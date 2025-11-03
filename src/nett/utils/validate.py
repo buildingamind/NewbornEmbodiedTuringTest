@@ -1,3 +1,5 @@
+"""Configuration validation utilities for JSON and YAML files."""
+
 import json
 import jsonschema
 from pathlib import Path
@@ -5,6 +7,20 @@ import yaml
 
 
 def validate_config(config: Path | str | dict, schema: dict) -> dict:
+    """
+    Validate a configuration against a JSON schema.
+
+    Args:
+        config: Configuration as a dictionary, file path string, or Path object.
+        schema: JSON schema dictionary to validate against.
+
+    Returns:
+        Validated configuration dictionary.
+
+    Raises:
+        TypeError: If config is not a dict, str, or Path, or if file type is not JSON or YAML.
+        jsonschema.ValidationError: If configuration does not match schema.
+    """
     if isinstance(config, dict):
         valid_config = config
     elif isinstance(config, (str, Path)):

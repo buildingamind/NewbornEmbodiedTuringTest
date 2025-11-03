@@ -1,3 +1,5 @@
+"""Pseudo-counts based on 'Never Give Up: Learning Directed Exploration Strategies (NGU)' implementation from RLLTE with bug fix for multi-dimensional action space."""
+
 # =============================================================================
 # MIT License
 

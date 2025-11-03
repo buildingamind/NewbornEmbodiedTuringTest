@@ -1,3 +1,5 @@
+"""Initialization file for the NETT package."""
+
 import os
 import logging
 from pathlib import Path

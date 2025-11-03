@@ -147,7 +147,7 @@ class Brain:
     def calc_iterations(
         self,
         num_brains: int,
-        num_threads: int,
+        num_threads: int, # pylint: disable=unused-argument
         iterations_per_episode: dict[str, int],
         episodes: dict[str, int],
         steps_per_episode: int,
@@ -165,9 +165,9 @@ class Brain:
         if "test" in episodes:
             # calculate number of environments that can be run at once per job (using SubProcVecEnv)
             # TODO: Determine the number of threads used per brain and per env
-            n_threads_per_task = 4
+            # n_threads_per_task = 4
 
-            max_envs = num_threads / (n_threads_per_task * self.n_tasks)
+            # max_envs = num_threads / (n_threads_per_task * self.n_tasks)
 
             self.n_parallel_envs = 1
             self.test_iterations = {

@@ -1,3 +1,5 @@
+"""Validation utilities for the environment component."""
+
 from typing import Optional
 from pathlib import Path
 
@@ -52,6 +54,20 @@ def validate_executable_path(executable_path: str) -> Path:
 
 
 def validate_conditions(all_conditions: list[str] | dict[str, int], conditions: Optional[list[str]]):
+    """
+    Validates the imprinting conditions.
+    
+    Args:
+        all_conditions (list[str] | dict[str, int]): The list or dictionary of all available imprinting conditions.
+        conditions (Optional[list[str]]): The list of user-specified imprinting conditions.
+
+    Returns:
+        list[str]: The validated list of imprinting conditions.
+
+    Raises:
+        ValueError: If any of the user-specified conditions are not in the list of available conditions.
+    """
+
     if isinstance(all_conditions, dict):
         all_conditions = list(all_conditions.keys())
 

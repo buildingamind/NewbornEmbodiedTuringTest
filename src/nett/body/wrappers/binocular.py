@@ -27,7 +27,7 @@ class Binocular(gym.ObservationWrapper):
 
     """
 
-    def __init__(self, env, *args, **kwargs):
+    def __init__(self, env, *args, **kwargs): # pylint: disable=unused-argument
         super().__init__(env)
 
         try:
@@ -58,5 +58,14 @@ class Binocular(gym.ObservationWrapper):
         return combined_obs
 
     def reset(self, **kwargs):
+        """
+        Reset the environment and return the transformed binocular observation.
+
+        Args:
+            **kwargs: Additional arguments passed to the environment reset.
+
+        Returns:
+            tuple: Transformed observation and info dictionary.
+        """
         initial_obs, initial_info = self.env.reset(**kwargs)
         return self.observation(initial_obs), initial_info
