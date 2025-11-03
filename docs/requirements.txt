@@ -1,12 +1,17 @@
-mlagents
-stable-baselines3[extra]
-sb3-contrib
+mlagents_envs @ git+https://github.com/Zach-Attach/ml-agents.git@gym-plus#subdirectory=ml-agents-envs
+stable-baselines3[extra_no_roms]>=2.0.0
+sb3-contrib>=2.0.0
 torchvision
 timm
 nvidia-ml-py
-lightning
-lightning-bolts
-scikit-learn
+lightning==2.2.5
+lightning-bolts==0.7.0
+scikit-learn==1.5.0
+vit-pytorch
+seaborn
+rllte-core
+supersuit
+jsonschema
 sphinx
 mkdocs
 sphinx-rtd-theme
