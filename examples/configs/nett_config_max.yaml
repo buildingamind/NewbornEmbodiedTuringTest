@@ -1,0 +1,59 @@
+name: Experiment1
+episodes:
+  train: 5000
+  test: 20
+steps_per_episode: 200
+num_brains: 5
+task_memory: auto
+brain:
+  policy: CnnPolicy
+  algorithm: PPO
+  encoder: ViT
+  reward: ICM
+  embedding_dim: 512
+  batch_size: 512
+  buffer_size: 2048
+  learning_rate: 0.0003
+  ent_coef: 0
+  checkpoint_freq: 30_000 # move?
+  train_encoder: True
+  save_checkpoints: False # move?
+  custom_encoder_args:
+    patch_size: 4
+    depth: 3
+    heads: 3
+    intermediate_size: 128
+    hidden_size: 64
+    hidden_dropout_prob: 0.0
+    attention_probs_dropout_prob: 0.0
+  custom_policy_arch: # each member defines the number of neurons in that layer
+    - 64
+    - 32
+  reward_args:
+    beta: 0.2
+    kappa: 0.0
+    gamma: 0.99
+    rwd_norm_type: rms
+    obs_norm_type: none
+    latent_dim: 128
+    batch_size: 256
+    update_proportion: 1.0
+    encoder_model: mnih
+    weight_init: orthogonal
+body:
+  wrappers: 
+    - binocular
+    - dvs
+  record_eps:
+    train: 0
+    test: 0
+environment:
+  executable_path: path/to/executable.x86_64
+  conditions:
+    - object1
+    - object2
+  record_eps:
+    train: 0
+    test: 0
+  multiagent: False
+  display: 0
