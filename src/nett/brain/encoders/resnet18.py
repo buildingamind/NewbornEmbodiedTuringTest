@@ -27,7 +27,7 @@ Example usage:
 #!/usr/bin/env python3
 
 # import pdb
-import gym
+import gymnasium as gym
 
 import torch as th
 from torch import nn
@@ -36,6 +36,7 @@ from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 import logging
 
 logger = logging.getLogger(__name__)
+
 
 class Resnet18CNN(BaseFeaturesExtractor):
     """
@@ -46,14 +47,16 @@ class Resnet18CNN(BaseFeaturesExtractor):
         features_dim (int): Number of features to be extracted.
     """
 
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 256) -> None:
-        super(Resnet18CNN, self).__init__(observation_space, features_dim)
+    def __init__(
+        self, observation_space: gym.spaces.Box, features_dim: int = 256
+    ) -> None:
+        super().__init__(observation_space, features_dim)
         # We assume CxHxW images (channels first)
         # Re-ordering will be done by pre-preprocessing or wrapper
         ## pretrain set false;
-        #self.cnn = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT)
+        # self.cnn = torchvision.models.resnet18(weights=torchvision.models.ResNet18_Weights.DEFAULT)
         n_input_channels = observation_space.shape[0]
-        logger.info("Resnet18CNN Encoder: ")
+        # logger.info("Resnet18CNN Encoder: ")
         self.cnn = ResNet_18(n_input_channels, features_dim)
         with th.no_grad():
             n_flatten = self.cnn(
@@ -80,6 +83,7 @@ class Resnet18CNN(BaseFeaturesExtractor):
         # return
         return self.linear(self.cnn(observations))
 
+
 ## reference - online
 class ResBlock(nn.Module):
     """
@@ -92,11 +96,17 @@ class ResBlock(nn.Module):
         stride (int): Stride of the convolutional layers.
     """
 
-    def __init__(self, in_channels, out_channels, identity_downsample=None, stride=1) -> None:
-        super(ResBlock, self).__init__()
-        self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+    def __init__(
+        self, in_channels, out_channels, identity_downsample=None, stride=1
+    ) -> None:
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            in_channels, out_channels, kernel_size=3, stride=stride, padding=1
+        )
         self.bn1 = nn.BatchNorm2d(out_channels)
-        self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv2d(
+            out_channels, out_channels, kernel_size=3, stride=1, padding=1
+        )
         self.bn2 = nn.BatchNorm2d(out_channels)
         self.relu = nn.ReLU()
         self.identity_downsample = identity_downsample
@@ -123,6 +133,7 @@ class ResBlock(nn.Module):
         x = self.relu(x)
         return x
 
+
 class ResNet_18(nn.Module):
     """
     ResNet-18 architecture used in the Resnet18CNN class.
@@ -133,14 +144,14 @@ class ResNet_18(nn.Module):
     """
 
     def __init__(self, image_channels, num_classes) -> None:
-        super(ResNet_18, self).__init__()
+        super().__init__()
         self.in_channels = 64
         self.conv1 = nn.Conv2d(image_channels, 64, kernel_size=7, stride=2, padding=3)
         self.bn1 = nn.BatchNorm2d(64)
         self.relu = nn.ReLU()
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
 
-        #resnet layers
+        # resnet layers
         self.layer1 = self.__make_layer(64, 64, stride=1)
         self.layer2 = self.__make_layer(64, 128, stride=2)
         self.layer3 = self.__make_layer(128, 256, stride=2)
@@ -166,8 +177,13 @@ class ResNet_18(nn.Module):
             identity_downsample = self.identity_downsample(in_channels, out_channels)
 
         return nn.Sequential(
-            ResBlock(in_channels, out_channels, identity_downsample=identity_downsample, stride=stride),
-            ResBlock(out_channels, out_channels)
+            ResBlock(
+                in_channels,
+                out_channels,
+                identity_downsample=identity_downsample,
+                stride=stride,
+            ),
+            ResBlock(out_channels, out_channels),
         )
 
     def forward(self, x: th.Tensor) -> th.Tensor:
@@ -208,5 +224,5 @@ class ResNet_18(nn.Module):
         """
         return nn.Sequential(
             nn.Conv2d(in_channels, out_channels, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(out_channels)
+            nn.BatchNorm2d(out_channels),
         )

@@ -1,3 +1,4 @@
+"""ResNet architectures adapted from torchvision with modifications."""
 import torch
 from torch import nn as nn
 
@@ -8,35 +9,36 @@ from pl_bolts.utils import _TORCHVISION_AVAILABLE
 from pl_bolts.utils.warnings import warn_missing_pkg
 
 if _TORCHVISION_AVAILABLE:
-    #from torchvision.models.utils import load_state_dict_from_url
+    # from torchvision.models.utils import load_state_dict_from_url
     from torch.hub import load_state_dict_from_url
 else:  # pragma: no cover
-    warn_missing_pkg('torchvision')
+    warn_missing_pkg("torchvision")
 
 __all__ = [
-    'ResNet',
-    'resnet18',
-    'resnet34',
-    'resnet50',
-    'resnet101',
-    'resnet152',
-    'resnext50_32x4d',
-    'resnext101_32x8d',
-    'wide_resnet50_2',
-    'wide_resnet101_2',
+    "ResNet",
+    "resnet18",
+    "resnet34",
+    "resnet50",
+    "resnet101",
+    "resnet152",
+    "resnext50_32x4d",
+    "resnext101_32x8d",
+    "wide_resnet50_2",
+    "wide_resnet101_2",
 ]
 
 MODEL_URLS = {
-    'resnet18': 'https://download.pytorch.org/models/resnet18-5c106cde.pth',
-    'resnet34': 'https://download.pytorch.org/models/resnet34-333f7ec4.pth',
-    'resnet50': 'https://download.pytorch.org/models/resnet50-19c8e357.pth',
-    'resnet101': 'https://download.pytorch.org/models/resnet101-5d3b4d8f.pth',
-    'resnet152': 'https://download.pytorch.org/models/resnet152-b121ed2d.pth',
-    'resnext50_32x4d': 'https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth',
-    'resnext101_32x8d': 'https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth',
-    'wide_resnet50_2': 'https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth',
-    'wide_resnet101_2': 'https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth',
+    "resnet18": "https://download.pytorch.org/models/resnet18-5c106cde.pth",
+    "resnet34": "https://download.pytorch.org/models/resnet34-333f7ec4.pth",
+    "resnet50": "https://download.pytorch.org/models/resnet50-19c8e357.pth",
+    "resnet101": "https://download.pytorch.org/models/resnet101-5d3b4d8f.pth",
+    "resnet152": "https://download.pytorch.org/models/resnet152-b121ed2d.pth",
+    "resnext50_32x4d": "https://download.pytorch.org/models/resnext50_32x4d-7cdf4587.pth",
+    "resnext101_32x8d": "https://download.pytorch.org/models/resnext101_32x8d-8ba56ff5.pth",
+    "wide_resnet50_2": "https://download.pytorch.org/models/wide_resnet50_2-95faca4d.pth",
+    "wide_resnet101_2": "https://download.pytorch.org/models/wide_resnet101_2-32ee1156.pth",
 }
+
 
 class ResNet(nn.Module):
     """
@@ -58,8 +60,8 @@ class ResNet(nn.Module):
 
     def __init__(
         self,
-        block, # what kind of block, for ex - basic block or bottleneck
-        layers, # how many layers or basic blocks in each residual block
+        block,  # what kind of block, for ex - basic block or bottleneck
+        layers,  # how many layers or basic blocks in each residual block
         num_classes=1000,
         zero_init_residual=False,
         groups=1,
@@ -68,17 +70,15 @@ class ResNet(nn.Module):
         norm_layer=None,
         return_all_feature_maps=False,
         first_conv=False,
-        maxpool1=False 
+        maxpool1=False,
     ):
-        super(ResNet, self).__init__()
+        super().__init__()
         if norm_layer is None:
             norm_layer = nn.BatchNorm2d
         self._norm_layer = norm_layer
         self.return_all_feature_maps = return_all_feature_maps
-        
-        
-        
-        self.inplanes = 3 # what is inplanes and planes in CNN ???? it should be 64 as per original implementation, does not work with 64 in case of block 1
+
+        self.inplanes = 3  # what is inplanes and planes in CNN ???? it should be 64 as per original implementation, does not work with 64 in case of block 1
         self.dilation = 1
         if replace_stride_with_dilation is None:
             # each element in the tuple indicates if we should replace
@@ -93,11 +93,15 @@ class ResNet(nn.Module):
         self.base_width = width_per_group
 
         # ------ layers before first residual block ---------------
-        
+
         if first_conv:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False)
+            self.conv1 = nn.Conv2d(
+                3, self.inplanes, kernel_size=7, stride=2, padding=3, bias=False
+            )
         else:
-            self.conv1 = nn.Conv2d(3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False)
+            self.conv1 = nn.Conv2d(
+                3, self.inplanes, kernel_size=3, stride=1, padding=1, bias=False
+            )
 
         self.bn1 = norm_layer(self.inplanes)
         self.relu = nn.ReLU(inplace=True)
@@ -108,17 +112,16 @@ class ResNet(nn.Module):
             self.maxpool = nn.MaxPool2d(kernel_size=1, stride=1)
 
         # ------ residual blocks start here ------------------------
-       
+
         self.layer1 = self._make_layer(block, 512, layers[0])
 
         self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
 
         self.fc = nn.Linear(512 * block.expansion, num_classes)
-    
-        
+
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
             elif isinstance(m, (nn.BatchNorm2d, nn.GroupNorm)):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
@@ -133,7 +136,9 @@ class ResNet(nn.Module):
                 elif isinstance(m, BasicBlock):
                     nn.init.constant_(m.bn2.weight, 0)
 
-    def _make_layer(self, block, planes, blocks, stride=1, dilate=False) -> nn.Sequential:
+    def _make_layer(
+        self, block, planes, blocks, stride=1, dilate=False
+    ) -> nn.Sequential:
         """
         Make a layer of blocks.
 
@@ -181,13 +186,12 @@ class ResNet(nn.Module):
                     groups=self.groups,
                     base_width=self.base_width,
                     dilation=self.dilation,
-                    norm_layer=norm_layer
+                    norm_layer=norm_layer,
                 )
             )
 
         return nn.Sequential(*layers)
 
-    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """
         Forward pass in the network
@@ -202,16 +206,16 @@ class ResNet(nn.Module):
         x0 = self.bn1(x0)
         x0 = self.relu(x0)
         x0 = self.maxpool(x0)
-        #print(x0.shape)
+        # print(x0.shape)
         if self.return_all_feature_maps:
             x1 = self.layer1(x)
             return [x0, x1]
         else:
             x0 = self.layer1(x)
-  
-            x0 = self.avgpool(x0) # output shape = [256X1X1]
 
-            x0 = x0.reshape(x0.shape[0],-1)
+            x0 = self.avgpool(x0)  # output shape = [256X1X1]
+
+            x0 = x0.reshape(x0.shape[0], -1)
             return x0
 
 
@@ -234,8 +238,8 @@ def _resnet(arch, block, layers, pretrained, progress, **kwargs) -> ResNet:
         state_dict = load_state_dict_from_url(MODEL_URLS[arch], progress=progress)
         model.load_state_dict(state_dict)
     # Remove the last fc layer, since we only need the encoder part of resnet.
-    #model.fc = nn.Identity()
-    
+    # model.fc = nn.Identity()
+
     # we cannot remove the last fc layer in smaller version of the resnet because we are using the fc layer
     # to flatten the output and making it equal dimensions for testing and training the classifier.
     return model
@@ -253,5 +257,4 @@ def resnet_1block(pretrained: bool = False, progress: bool = True, **kwargs) -> 
         ResNet: ResNet-18 model
     """
 
-    return _resnet('resnet18', BasicBlock, [1, 1, 1, 1], pretrained, progress, **kwargs)
-
+    return _resnet("resnet18", BasicBlock, [1, 1, 1, 1], pretrained, progress, **kwargs)

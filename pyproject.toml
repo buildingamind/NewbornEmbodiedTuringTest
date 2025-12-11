@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools<=65.5.0", "pip<=21"]
+requires = ["setuptools", "pip"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,20 +15,24 @@ readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = "==3.10.12"
 dependencies = [
-    "mlagents==1.0.0",
-    "stable-baselines3[extra]==1.8.0",
-    "sb3-contrib==1.8.0",
+    "mlagents_envs @ git+https://github.com/Zach-Attach/ml-agents.git@gym-plus#subdirectory=ml-agents-envs",
+    "stable-baselines3[extra_no_roms]>=2.0.0",
+    "sb3-contrib>=2.0.0",
     "torchvision",
     "timm",
     "nvidia-ml-py",
     "lightning==2.2.5",
     "lightning-bolts==0.7.0",
-    "scikit-learn==1.5.0"
+    "scikit-learn==1.5.0",
+    "vit-pytorch",
+    "seaborn",
+    "rllte-core",
+    "supersuit",
+    "jsonschema",
 ]
 keywords = ["nett","netts","newborn","embodied","turing test","benchmark","benchmarking","learning","animals","autonomous","artificial","agents","reinforcement","neuroml","AI","ML","machine learning","artificial intelligence"]
 classifiers = [
   "Programming Language :: Python :: 3.10",
-  "Programming Language :: R",
   "Environment :: GPU :: NVIDIA CUDA"
 ]
 

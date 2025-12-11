@@ -1,51 +1,56 @@
 """ViT (Vision Transformer) encoder"""
-import gym
-import torch
-import timm
 
-from torchvision.transforms import Compose
-from torchvision.transforms import Resize, CenterCrop, Normalize, InterpolationMode
+import gymnasium as gym
+import torch as th
+from torch import nn
+
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
+
+from .disembodied_models.vit_contrastive import LitClassifier
+
 
 class ViT(BaseFeaturesExtractor):
     """
-    ViT is a feature extractor based on the Vision Transformer model.
-
-    Args:
-        observation_space (gym.spaces.Box): The observation space of the environment.
-        features_dim (int, optional): The dimension of the extracted features. Defaults to 384.
+    :param observation_space: (gym.Space)
+    :param features_dim: (int) Number of features extracted.
+        This corresponds to the number of unit for the last layer.
     """
-    def __init__(self, observation_space: gym.spaces.Box, features_dim: int = 384) -> None:
-        """
-        Initializes the ViT (Vision Transformer) encoder.
 
-        Args:
-            observation_space (gym.spaces.Box): The observation space of the environment.
-            features_dim (int, optional): The dimension of the extracted features. Defaults to 384.
-        """
-        super(ViT, self).__init__(observation_space, features_dim)
+    def __init__(
+        self,
+        observation_space: gym.spaces.Box,
+        learning_rate: float = 3e-4,
+        features_dim: int = 512,
+        patch_size: int = 4,  # 8,
+        depth: int = 3,
+        heads: int = 3,
+        intermediate_size: int = 128,  # 3072,
+        hidden_size: int = 64,  # 768,
+        hidden_dropout_prob=0.0,
+        attention_probs_dropout_prob=0.0,
+    ) -> None:
+        # TODO: Line up this with num_classes
+        super().__init__(observation_space, features_dim)
         self.n_input_channels = observation_space.shape[0]
-        self.transforms = Compose([Resize(size=248,
-                                          interpolation=InterpolationMode.BICUBIC,
-                                          max_size=None,
-                                          antialias=True),
-                                   CenterCrop(size=(224, 224)),
-                                   Normalize(mean=torch.tensor([0.4850, 0.4560, 0.4060]),
-                                             std=torch.tensor([0.2290, 0.2240, 0.2250]))])
 
-        self.model = timm.create_model("vit_small_patch8_224.dino",
-                                       in_chans=self.n_input_channels,
-                                       num_classes=0,
-                                       pretrained=False)
+        configuration = dict(
+            image_size=observation_space.shape[1],
+            patch_size=patch_size,
+            num_classes=features_dim,
+            dim=hidden_size,
+            depth=depth,
+            heads=heads,
+            mlp_dim=intermediate_size,
+            channels=self.n_input_channels,
+        )
 
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """
-        Forward pass of the ViT encoder.
+        if hidden_dropout_prob > 0.0 or attention_probs_dropout_prob > 0.0:
+            configuration["dropout"] = hidden_dropout_prob
+            configuration["emb_dropout"] = attention_probs_dropout_prob
 
-        Args:
-            observations (torch.Tensor): The input observations.
+        self.model = LitClassifier(configuration, learning_rate=learning_rate)
+        self.model.fc = nn.Identity()
 
-        Returns:
-            torch.Tensor: The extracted features.
-        """
-        return self.model(self.transforms(observations))
+    def forward(self, observations: th.Tensor) -> th.Tensor:
+        """Forward pass in the network"""
+        return self.model(observations)

@@ -1,2 +1,8 @@
 """Simplifies imports for wrappers"""
-from .dvs import DVSWrapper
+
+from .binocular import Binocular
+from .dvs import DVS
+from .multiobs import MultiObs
+from .retina import Retina
+# import trace_recording
+

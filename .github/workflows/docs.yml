@@ -32,10 +32,6 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('docs/requirements.txt') }}
           restore-keys: |
             ${{ runner.os }}-pip
-      - name: Install pip
-        if: steps.cache-pip.outputs.cache-hit != 'true'
-        run: |
-          pip install setuptools==65.5.0 pip==21
       - name: Install Dependencies
         if: steps.cache-pip.outputs.cache-hit != 'true'
         run: |

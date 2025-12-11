@@ -1,5 +1,5 @@
 body
 ====
 
-.. autoclass:: nett.Body
-   :members:
+.. automodule:: nett.body
+  :members:

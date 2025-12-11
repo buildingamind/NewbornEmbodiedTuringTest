@@ -2,8 +2,7 @@
 Dynamic Vision Sensor (DVS) transformation for gym environments.
 """
 
-import collections
-import gym
+import gymnasium as gym
 import numpy as np
 import cv2
 import logging
@@ -11,7 +10,8 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-class DVSWrapper(gym.ObservationWrapper):
+
+class DVS(gym.ObservationWrapper):
     """
     A gym observation wrapper that performs Dynamic Vision Sensor (DVS) transformation on the environment observations.
 
@@ -20,6 +20,7 @@ class DVSWrapper(gym.ObservationWrapper):
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
         kernel_size (tuple): The size of the Gaussian kernel used for blurring.
         sigma (float): The standard deviation of the Gaussian kernel.
+        is_color (bool): Whether the observation is in color or grayscale.
 
     Attributes:
         change_threshold (int): The threshold value for detecting changes in pixel intensity.
@@ -33,35 +34,43 @@ class DVSWrapper(gym.ObservationWrapper):
         is_color (bool): Whether the observation is in color or grayscale.
 
     Methods:
-        create_grayscale(image): Converts an image to grayscale.
-        gaussianDiff(previous, current): Computes the difference between two images using Gaussian blur.
         observation(obs): Performs the DVS transformation on the observation.
         threshold(change): Applies a threshold to the change map.
         reset(**kwargs): Resets the environment and returns the initial observation.
 
     """
 
-    def __init__(self, env, change_threshold=60, kernel_size=(3, 3), sigma=1, is_color = True):
-        super().__init__(env)
-        
+    def __init__(
+        self,
+        env,
+        change_threshold=30,
+        kernel_size=(3, 3),
+        sigma=1,
+        is_color=True,
+        *args, # pylint: disable=unused-argument
+        **kwargs, # pylint: disable=unused-argument
+    ):
+
         self.change_threshold = change_threshold
         self.kernel_size = kernel_size
         self.sigma = sigma
-        self.num_stack = 2 ## default
-        self.env = gym.wrappers.FrameStack(env,self.num_stack)
-        self.stack = collections.deque(maxlen=self.num_stack)
         self.is_color = is_color
-        
+
+        self.env = gym.wrappers.FrameStackObservation(
+            env, stack_size=2, padding_type="zero"
+        )
+        super().__init__(self.env)
+
         try:
-            _, channels, width, height = self.env.observation_space.shape # stack,
-            self.shape=(channels, width, height)
-            self.observation_space = gym.spaces.Box(shape=self.shape, low=0, high=255, dtype=np.uint8)
-            logger.info("In dvs wrapper")
+            _, channels, width, height = self.env.observation_space.shape  # stack,
+            self.shape = (channels, width, height)
+            self.observation_space = gym.spaces.Box(
+                shape=self.shape, low=0, high=255, dtype=np.uint8
+            )
         except Exception as e:
             raise e
-        
-        
-    def create_grayscale(self, image):
+
+    def _create_grayscale(self, image):
         """
         Converts an image to grayscale.
 
@@ -72,10 +81,9 @@ class DVSWrapper(gym.ObservationWrapper):
             numpy.ndarray: The grayscale image.
 
         """
-        return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        
+        return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
 
-    def gaussianDiff(self, previous, current):
+    def _gaussianDiff(self, previous, current):
         """
         Computes the difference between two images using Gaussian blur.
 
@@ -88,15 +96,13 @@ class DVSWrapper(gym.ObservationWrapper):
 
         """
         previous = cv2.GaussianBlur(previous, self.kernel_size, self.sigma)
-        np_previous = np.asarray(previous, dtype=np.int64)
-        
+
         current = cv2.GaussianBlur(current, self.kernel_size, self.sigma)
-        np_current = np.asarray(current, dtype=np.int64)
-        
-        change = np_current - np_previous
-        
+
+        change = current - previous
+
         return change
-    
+
     def observation(self, obs):
         """
         Performs the DVS transformation on the observation.
@@ -108,33 +114,18 @@ class DVSWrapper(gym.ObservationWrapper):
             numpy.ndarray: The transformed observation.
 
         """
-        
-        if len(obs)>0:
-            prev = np.transpose(obs[0], (1, 2, 0))
-            current = np.transpose(obs[1], (1, 2, 0))
-            
-            if not self.is_color:
-                prev = cv2.cvtColor(prev, cv2.COLOR_RGB2GRAY)
-                current = cv2.cvtColor(current, cv2.COLOR_RGB2GRAY)
-                
-            change = self.gaussianDiff(prev, current)
-            
-            ## threshold
-            dc = self.threshold(change)
-            
-        else:
-            obs = np.transpose(obs, (1, 2, 0))
-            
-            if not self.is_color:
-                obs = self.create_grayscale(obs)
-            
-            obs = np.array(obs, dtype=np.float32) / 255.0
-            dc = self.threshold(obs)
-        
-        # change to channel first, w, h
-        dc = np.transpose(dc, (2, 0, 1))
-        
-        return  dc.astype(np.uint8)
+        # Avoid transpose by working with channel-first format directly
+        prev = np.transpose(obs[0], (1, 2, 0))  # Convert to (H, W, C) format
+        current = np.transpose(obs[1], (1, 2, 0))  # Convert to (H, W, C) format
+
+        if not self.is_color:
+            prev = self._create_grayscale(prev)
+            current = self._create_grayscale(current)
+
+        change = self._gaussianDiff(prev, current)
+        dc = self.threshold(change)
+
+        return np.transpose(dc, (2, 0, 1))
 
     def threshold(self, change):
         """
@@ -152,20 +143,20 @@ class DVSWrapper(gym.ObservationWrapper):
             ret_frame[change >= self.change_threshold] = 255
             ret_frame[change <= -self.change_threshold] = 0
         else:
-            ret_frame = abs(change)
+            ret_frame = change
             ret_frame[ret_frame < self.change_threshold] = 0
-            
+
         return ret_frame
-    
+
     def reset(self, **kwargs):
         """
         Resets the environment and returns the initial observation.
-        
+
         Args:
             **kwargs: Additional arguments for the reset method.
-            
+
         Returns:
             numpy.ndarray: The initial observation.
         """
-        initial_obs = self.env.reset(**kwargs)
-        return self.observation(initial_obs)
+        initial_obs, initial_info = self.env.reset(**kwargs)
+        return self.observation(initial_obs), initial_info

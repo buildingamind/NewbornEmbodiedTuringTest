@@ -1,0 +1,271 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "title": "NETT Config Schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Name of the folder the results of the run will output into",
+      "type": "string"
+    },
+    "brain":{
+      "type": "object",
+      "properties": {
+        "encoder": {
+          "description": "Encoder Network. Defaults to 'small'",
+          "type": "string",
+          "enum": [
+            "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "MultiInputEncoder", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "SimpleViT", "small", "medium", "large"
+          ],
+          "default": "small"
+        },
+        "policy": {
+          "description": "Policy Network. Defaults to 'CnnPolicy'",
+          "type": "string",
+          "enum": [
+            "CnnLstmPolicy", "CnnPolicy", "MlpPolicy", "MlpLstmPolicy", "MultiInputLstmPolicy", "MultiInputPolicy"
+          ],
+          "default": "CnnPolicy"
+        },
+        "algorithm": {
+          "description": "Optimization Algorithm. Defaults to 'PPO'",
+          "type": "string",
+          "enum": [
+            "A2C", "DDPG", "DQN", "HER", "HerReplayBuffer", "PPO", "SAC", "TD3", "ARS", "MaskablePPO", "QRDQN", "RecurrentPPO", "TQC", "TRPO"
+          ],
+          "default": "PPO"
+        },
+        "reward": {
+          "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'closeness'",
+          "type": "string",
+          "enum": ["unsupervised", "closeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "GIRM", "ICM", "NGU", "PseudoCounts", "RE3", "REVD", "RIDE", "RISE", "RND"],
+          "default": "closeness"
+        },
+        "embedding_dim": {
+          "description": "Embedding Dimension. Defaults to null. If null, the embedding dimension is the default for the particular encoder.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
+        },
+        "batch_size": {
+          "description": "Mini-batch Size",
+          "type": "integer",
+          "minimum": 1,
+          "data": {"maximum": "/Brain/buffer_size"},
+          "default": 512
+        },
+        "buffer_size": {
+          "description": "Replay Buffer Size",
+          "type": "integer",
+          "data": {"minimum": "/Brain/batch_size"},
+          "default": 2048
+        },
+        "learning_rate": {
+          "description": "Learning Rate",
+          "type": "number",
+          "minimum": 0,
+          "default": 3e-4
+        },
+        "ent_coef": {
+          "description": "Entropy Coefficient",
+          "type": "number",
+          "minimum": 0,
+          "default": 0
+        },
+        "checkpoint_freq": {
+          "description": "Frequency of saving checkpoints. If null, no checkpoints are saved. Defaults to null.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
+        },
+        "train_encoder": {
+          "description": "Whether to train the encoder",
+          "type": "boolean",
+          "default": true
+        },
+        "custom_encoder_args": {
+          "description": "Custom Encoder Arguments that are fed directly into the encoder network",
+          "type": "object",
+          "default": {}
+        },
+        "custom_algorithm_args": {
+          "description": "Custom Algorithm Arguments that are fed directly into the optimization algorithm",
+          "type": "object",
+          "default": {}
+        },
+        "custom_policy_arch": {
+          "description": "An array of integers defining the number of neurons in each layer of the policy network. If not provided, the default architecture is used as defined by Stable Baselines 3.",
+          "type": ["array", "null"],
+          "items": {
+            "type": "integer"
+          },
+          "default": null
+        },
+        "reward_args": {
+          "description": "Arguments passed on to the reward function",
+          "type": "object",
+          "default": {
+            "beta": 0.2,
+            "kappa": 0.0,
+            "gamma": 0.99
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "body": {
+      "type": ["object", "null"],
+      "properties": {
+        "wrappers": {
+          "description": "List of wrappers to apply to the body. Can be either a string or an object that inherits from gym.Wrapper.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "record_eps": {
+          "description": "Number of episodes to record from the body.",
+          "type": "object",
+          "properties": {
+            "train": {
+              "description": "Number of training episodes to record. Defaults to 0.",
+              "type": "string",
+              "default": "0"
+            },
+            "test": {
+              "description": "Number of testing episodes to record. Defaults to 0.",
+              "type": "string",
+              "default": "0"
+            }
+          },
+          "default": {"train": "0", "test": "0"},
+          "additionalProperties": false
+        },
+        "panini_projection": {
+          "description": "Apply a panini projection to the agent's vision",
+          "type": "boolean",
+          "default": false
+        },
+        "input_resolution": {
+          "description": "Resolution of the input images. Defaults to None. If None, the environment's default resolution is used.",
+          "type": ["integer", "null"],
+          "default": null
+        },
+        "binocular_vision": {
+          "description": "Whether the body has binocular vision. If the 'binocular' or 'multiobs' wrapper is included, this will be overridden to `True`. This is useful for implementing custom wrappers that use binocular vision. Defaults to `False`.",
+          "type": "boolean",
+          "default": false
+        },
+        "additionalProperties": false
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "executable_path": {
+          "description": "Path to the executable",
+          "type": "string"
+        },
+        "conditions": {
+          "description": "List of conditions to run",
+          "type": ["array", "null"],
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "default": "null"
+        },
+        "record_eps": {
+          "description": "Number of episodes to record of the environment (top-down view).",
+          "type": "object",
+          "properties": {
+            "train": {
+              "description": "Number of training episodes to record. Defaults to 0.",
+              "type": "string",
+              "default": "0"
+            },
+            "test": {
+              "description": "Number of testing episodes to record. Defaults to 0.",
+              "type": "string",
+              "default": "0"
+            }
+          },
+          "default": {"train": "0", "test": "0"},
+          "additionalProperties": false
+        },
+        "timescale": {
+          "description": "Time scale of the environment. Defaults to 20.",
+          "type": "number",
+          "minimum": 0,
+          "default": 20
+        },
+        "input_resolution": {
+          "description": "Resolution of the input images. Defaults to 64.",
+          "type": "integer",
+          "minimum": 1,
+          "default": 64
+        },
+        "multiagent": {
+          "description": "Whether the environment supports multi-agent training",
+          "type": "boolean",
+          "default": false
+        },
+        "display": {
+          "description": "Display number to output to. Set to null to run headless. Defaults to null.",
+          "type": ["integer", "null"],
+          "default": null
+        }
+      },
+      "required": ["executable_path"],
+      "additionalProperties": false
+    },
+    "episodes": {
+      "description": "Number of episodes to run for train and test",
+      "type": "object",
+      "properties": {
+        "train": {
+          "description": "Number of training episodes",
+          "type": "integer",
+          "minimum": 0,
+          "default": 5000
+        },
+        "test": {
+          "description": "Number of testing episodes",
+          "type": "integer",
+          "minimum": 0,
+          "default": 100
+        }
+      },
+      "additionalProperties": false
+    },
+    "steps_per_episode": {
+      "description": "Number of steps per episode",
+      "type": "integer",
+      "minimum": 1,
+      "default": 200
+    },
+    "num_brains": {
+      "description": "Number of brains to run in parallel. Defaults to 1.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "task_memory": {
+      "description": "Memory limit for a single task",
+      "oneOf": [
+        { "type": "number" },
+        { "type": "string", "enum": ["auto"] }
+      ],
+      "default": "auto"
+    }
+  },
+  "patternProperties": {
+    "^\\$": {
+      "type": "string"
+    }
+  },
+  "required": ["name","environment"],
+  "additionalProperties": false
+}
