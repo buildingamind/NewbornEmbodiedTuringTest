@@ -107,6 +107,9 @@ class Environment:
             # Set the display for the Unity environment
             os.environ["DISPLAY"] = str(f":{display}")
 
+        if self.random_first_frame:
+            args.append("--random-first-frame")
+
         # Split arguments for training and testing modes
         self.base_args = {"train": args[:], "test": args[:]}
 
@@ -115,9 +118,7 @@ class Environment:
             self.base_args[mode].extend(
                 [
                     "--record-episodes",
-                    record_eps.get(mode, "0"),
-                    "--random-first-frame",
-                    str(random_first_frame).lower(),
+                    record_eps.get(mode, "0")
                 ]
             )
 
