@@ -46,6 +46,7 @@ class Environment:
         conditions (list[str], optional): A list of imprinting conditions to run. If None, all available imprinting conditions will be run. For a list of available imprinting condtions from an executable, run `nett.list_conditions` :func:`~nett.nett.list_conditions`. Defaults to `None`.
         record_eps (dict[str, int]): Dictionary specifying the number of episodes to record the entire chamber for each mode (train and test). Defaults to `{"train": 0, "test": 0}`
         multiagent (bool): Flag to indicate if environment is a multiagent environment (beta). Defaults to `False`.
+        random_first_frame (bool): Flag to randomize the first frame of episodes. Defaults to `False`.
         display (int, optional): The display number to use for the Unity environment. If None, the environment will be run headless. Defaults to `None`.
     """
 
@@ -55,7 +56,9 @@ class Environment:
     conditions: list[str]  # the imprinting conditions to run
     multiagent: bool  # whether the environment is multiagent
     base_args: dict[str, list]  # the base arguments to pass to the Unity environment
-    binocular_vision: bool  # whether the environment passes multiple observations to the agent
+    binocular_vision: (
+        bool  # whether the environment passes multiple observations to the agent
+    )
     env: UnityEnvironment  # the Unity environment
 
     def __init__(
@@ -64,6 +67,7 @@ class Environment:
         conditions: Optional[list[str]] = None,
         record_eps: dict = {"train": "0", "test": "0"},
         multiagent: bool = False,
+        random_first_frame: bool = False,
         display: Optional[int] = None,
     ):
         """
@@ -87,6 +91,7 @@ class Environment:
         }
 
         self.multiagent = multiagent
+        self.random_first_frame = random_first_frame
 
         # Set the correct permissions on the executable to ensure it can be run
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
@@ -111,6 +116,8 @@ class Environment:
                 [
                     "--record-episodes",
                     record_eps.get(mode, "0"),
+                    "--random-first-frame",
+                    str(random_first_frame).lower(),
                 ]
             )
 
@@ -224,7 +231,9 @@ class Environment:
                     # side_channels=side_channels,
                 )
                 # Set render mode based on whether multiple observations are expected
-                env.render_mode = "rgb_array_list" if self.binocular_vision else "rgb_array"
+                env.render_mode = (
+                    "rgb_array_list" if self.binocular_vision else "rgb_array"
+                )
                 complete = True
             except UnityWorkerInUseException as e:
                 # If the worker is in use, try again
