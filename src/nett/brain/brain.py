@@ -56,13 +56,13 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
     # Create the directory if it doesn't exist
     path.mkdir(parents=True, exist_ok=True)
     # Save the policy
-    model.policy.save(path / "policy.pkl")
+    # model.policy.save(path / "policy.pkl")
 
     # Save the feature extractor's state dictionary
-    encoder = model.policy.features_extractor.state_dict()
-    torch.save(encoder, path / "feature_extractor.pth")
+    # encoder = model.policy.features_extractor.state_dict()
+    # torch.save(encoder, path / "feature_extractor.pth")
 
-    print("Saved feature extractor")
+    # print("Saved feature extractor")
 
     # Save the full model
     save_path = path / "latest_model.zip"
