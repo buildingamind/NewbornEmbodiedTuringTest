@@ -79,7 +79,6 @@ class Brain:
         embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
         batch_size (int): The batch size used for training. Defaults to 512.
         buffer_size (int): The buffer size used for training. Defaults to 2048.
-        ent_coef (float): Entropy coefficient. Defaults to 0.
         checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
         train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
         custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
@@ -97,7 +96,6 @@ class Brain:
         batch_size: int = 512,
         buffer_size: int = 2048,
         learning_rate: float = 3e-4,
-        ent_coef: float = 0,
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         deterministic: bool = True,
@@ -118,7 +116,6 @@ class Brain:
         self.batch_size = int(batch_size)
         self.buffer_size = int(buffer_size)
         self.learning_rate = float(learning_rate)
-        self.ent_coef = float(ent_coef)
 
         # --- Training configuration ---
         self.checkpoint_freq = (
@@ -205,7 +202,6 @@ class Brain:
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
                 learning_rate=self.learning_rate,
-                ent_coef=self.ent_coef,
                 verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{config.device}",
