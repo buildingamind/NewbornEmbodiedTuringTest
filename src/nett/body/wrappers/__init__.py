@@ -4,5 +4,6 @@ from .binocular import Binocular
 from .dvs import DVS
 from .multiobs import MultiObs
 from .retina import Retina
-# import trace_recording
+from .video import Video
 
+# import trace_recording
