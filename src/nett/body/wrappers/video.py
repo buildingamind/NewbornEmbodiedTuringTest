@@ -23,7 +23,7 @@ class Video(gym.ObservationWrapper):
 
         try:
             stack, channels, width, height = self.env.observation_space.shape  # stack,
-            self.shape = (channels, stack, width, height)  # TODO: Flip h and w??
+            self.shape = (channels * stack, width, height)  # TODO: Flip h and w??
             self.observation_space = gym.spaces.Box(
                 shape=self.shape, low=0, high=255, dtype=np.uint8
             )
@@ -34,7 +34,9 @@ class Video(gym.ObservationWrapper):
         # print("Original obs shape:", obs.shape)
         # print("Reformatted obs shape:", self.shape)
         # print("Obs:", obs)
-        obs = np.transpose(obs, (1, 0, 2, 3))  # flip c and f?
+        # obs = np.transpose(obs, (1, 0, 2, 3))  # flip c and f?
+        obs = obs.reshape(obs.shape[0] * obs.shape[1], *obs.shape[2:])
+        # obs = np.transpose(obs, (1, 0, 2, 3))  # flip c and f?
         return obs
 
     def reset(self, **kwargs):
