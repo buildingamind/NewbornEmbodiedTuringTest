@@ -215,7 +215,7 @@ def make_bar_charts(
             )
             chick_x_pos = chick_data_filtered["test.cond"].cat.codes - 1
 
-            shift = 0
+            shift = 1
             for xi, yi, yerr, i in zip(
                 chick_x_pos,
                 chick_data_filtered["avg"],
