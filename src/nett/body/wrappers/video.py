@@ -10,7 +10,7 @@ class Video(gym.ObservationWrapper):
     def __init__(
         self,
         env,
-        frames=3,
+        frames=2,
         *args,
         **kwargs,
     ):
