@@ -5,6 +5,9 @@ from multiprocessing import SimpleQueue
 from pathlib import Path
 from typing import Optional
 
+import cv2
+import numpy as np
+
 
 class TaskConfig:
     """TaskConfig class for holding and creating tasks"""
@@ -93,6 +96,8 @@ class Task:
 def run_task(task: Task) -> None:
     config = task.config
     agent = task.agent
+    np.random.seed(config.brain_id)
+    cv2.setRNGSeed(config.brain_id)
 
     # create log path
     log_path = config.path / "logs"

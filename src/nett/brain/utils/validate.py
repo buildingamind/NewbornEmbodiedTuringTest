@@ -48,11 +48,11 @@ def _getValidator(
                 raise KeyError(
                     f"If string, {label} should be one of: {mapping.keys()}. Provided {label} {input} is not one of them."
                 )
-        elif issubclass(input, baseclass):
+        elif isinstance(input, type) and issubclass(input, baseclass):
             return input
         else:
             raise TypeError(
-                "Reward should only be either a string or a subclass of rllte BaseReward"
+                f"{label} should only be either a string or a subclass of {baseclass.__name__}"
             )
 
     return validate
