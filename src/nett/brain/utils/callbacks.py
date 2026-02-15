@@ -169,6 +169,10 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
         self.buffer = self.model.rollout_buffer  #
+        # Set the logger in the intrinsic reward module for tensorboard logging
+        if hasattr(self.irs, 'set_logger'):
+            self.irs.set_logger(self.logger)
+
 
     def _on_step(self) -> bool:
         """
@@ -233,6 +237,10 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
     def init_callback(self, model: BaseAlgorithm) -> None:
         super().init_callback(model)
         self.buffer = self.model.replay_buffer  #
+        # Set the logger in the intrinsic reward module for tensorboard logging
+        if hasattr(self.irs, 'set_logger'):
+            self.irs.set_logger(self.logger)
+
 
     def _on_step(self) -> bool:
         """
