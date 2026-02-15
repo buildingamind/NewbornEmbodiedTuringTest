@@ -39,6 +39,8 @@ from .brain.utils import (
     encoders_list,
     policies_list,
     rewards_list,
+    jax_algorithms_list,
+    jax_policies_list,
 )
 
 
@@ -105,6 +107,29 @@ def list_rewards() -> list[str]:
     return rewards_list
 
 
+def list_jax_algorithms() -> list[str]:
+    """
+    List all available JAX/SBX algorithms.
+
+    Returns:
+        list[str]: A list of all available SBX algorithm names.
+
+    Raises:
+        ImportError: If the ``sbx-rl`` package is not installed.
+    """
+    return jax_algorithms_list()
+
+
+def list_jax_policies() -> list[str]:
+    """
+    List all available JAX/SBX policies.
+
+    Returns:
+        list[str]: A list of all available SBX policy names.
+    """
+    return jax_policies_list()
+
+
 from .nett import NETT
 
 from .analysis import analyze, map_trajectories
@@ -121,4 +146,6 @@ __all__ = [
     "list_policies",
     "list_rewards",
     "list_wrappers",
+    "list_jax_algorithms",
+    "list_jax_policies",
 ]

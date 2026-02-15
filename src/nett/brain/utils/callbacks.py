@@ -24,6 +24,7 @@ import cv2
 
 # from nett.utils.performance import compute_train_performance
 
+
 def img2video(record_path: Path, expected_length: int, fps: int = 25):
     png_files = glob.glob(str(record_path / "*.png"))
     if not png_files:
@@ -65,6 +66,7 @@ def img2video(record_path: Path, expected_length: int, fps: int = 25):
             except Exception:
                 pass
 
+
 # TODO (v0.4): refactor needed, especially logging
 class HParamCallback(BaseCallback):
     """
@@ -76,10 +78,12 @@ class HParamCallback(BaseCallback):
         hparam_dict = {
             "algorithm": self.model.__class__.__name__,
             "learning rate": lr if isinstance(lr, (int, float)) else str(lr),
-            "gamma": self.model.gamma,
-            "batch_size": self.model.batch_size,
-            "n_steps": self.model.n_steps,
+            "gamma": getattr(self.model, "gamma", 0.99),
+            "batch_size": getattr(self.model, "batch_size", None),
+            "n_steps": getattr(self.model, "n_steps", None),
         }
+        # Remove None entries (e.g. off-policy algos don't have n_steps)
+        hparam_dict = {k: v for k, v in hparam_dict.items() if v is not None}
         # define the metrics that will appear in the `HPARAMS` Tensorboard tab by referencing their tag
         # Tensorbaord will find & display metrics from the `SCALARS` tab
         metric_dict = {
@@ -170,9 +174,8 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
         super().init_callback(model)
         self.buffer = self.model.rollout_buffer  #
         # Set the logger in the intrinsic reward module for tensorboard logging
-        if hasattr(self.irs, 'set_logger'):
+        if hasattr(self.irs, "set_logger"):
             self.irs.set_logger(self.logger)
-
 
     def _on_step(self) -> bool:
         """
@@ -238,9 +241,8 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
         super().init_callback(model)
         self.buffer = self.model.replay_buffer  #
         # Set the logger in the intrinsic reward module for tensorboard logging
-        if hasattr(self.irs, 'set_logger'):
+        if hasattr(self.irs, "set_logger"):
             self.irs.set_logger(self.logger)
-
 
     def _on_step(self) -> bool:
         """
@@ -309,7 +311,9 @@ class PngToMp4Callback(BaseCallback):
     PNGs must be named as <episode>_<frame>.png.
     """
 
-    def __init__(self, record_path: Path, expected_size: int, fps: int = 24, verbose: int = 0):
+    def __init__(
+        self, record_path: Path, expected_size: int, fps: int = 24, verbose: int = 0
+    ):
         super().__init__(verbose)
         if not record_path.exists():
             record_path.mkdir(parents=True)

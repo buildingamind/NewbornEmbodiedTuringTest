@@ -198,6 +198,7 @@ class NETT:
         steps_per_episode: int = 200,
         num_brains: int = 1,
         task_memory: str | float = "auto",
+        use_jax: bool = False,
         **kwargs,
     ) -> list[Future]:
         """
@@ -212,6 +213,7 @@ class NETT:
             steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
             task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
+            use_jax (bool): Whether to use JAX (via SBX) instead of PyTorch (via SB3). Defaults to `False`.
             **kwargs: Additional keyword arguments.
 
         Returns:
@@ -243,9 +245,19 @@ class NETT:
         ########## Initialization ##########
 
         # Initialize the brain, body, and environment
-        base_brain = Brain(**brain)
+        # Pass use_jax flag to Brain so it uses SBX algorithms instead of SB3
+        brain_kwargs = dict(brain)
+        brain_kwargs["use_jax"] = use_jax
+        base_brain = Brain(**brain_kwargs)
         base_body = Body(**body)
         base_env = Environment(**environment)
+
+        # Set JAX mode flag on the environment module
+        if use_jax:
+            from .environment import environment as env_module
+
+            env_module._use_jax = True
+            self.logger.info("JAX/SBX mode enabled — using JAX backend for computation")
 
         ############## Setup ###############
 

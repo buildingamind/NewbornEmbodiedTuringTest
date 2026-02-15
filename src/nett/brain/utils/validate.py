@@ -58,6 +58,8 @@ def _getValidator(
     return validate
 
 
+# ===================== SB3 (PyTorch) Mappings ===================== #
+
 # grabs all algorithms from stable_baselines3 and sb3-contrib
 algorithm_mapping: dict[str, type[BaseAlgorithm]] = _getMapping(
     [stable_baselines3, sb3_contrib], {}
@@ -89,13 +91,78 @@ policy_mapping: dict[str, type[BasePolicy]] = (
     RecurrentPPO.policy_aliases | PPO.policy_aliases
 )  # keys = ['CnnLstmPolicy', 'CnnPolicy', 'MlpPolicy', 'MlpLstmPolicy', 'MultiInputLstmPolicy', 'MultiInputPolicy']
 
+# ===================== SBX (JAX) Mappings ===================== #
+
+# SBX algorithm mapping — lazily loaded to avoid hard dependency when JAX is not used
+_jax_algorithm_mapping: Optional[dict[str, type]] = None
+_jax_policy_list: Optional[list[str]] = None
+
+
+def _get_jax_algorithm_mapping() -> dict[str, type]:
+    """Lazily load SBX algorithms so JAX is only imported when needed."""
+    global _jax_algorithm_mapping
+    if _jax_algorithm_mapping is not None:
+        return _jax_algorithm_mapping
+
+    try:
+        import sbx
+    except ImportError:
+        raise ImportError(
+            "The 'sbx-rl' package is required when use_jax=True. "
+            "Install it with: pip install sbx-rl"
+        )
+
+    _jax_algorithm_mapping = {}
+    for key in dir(sbx):
+        obj = getattr(sbx, key)
+        if isinstance(obj, type) and key[0].isupper():
+            _jax_algorithm_mapping[key] = obj
+
+    return _jax_algorithm_mapping
+
+
+def _get_jax_policy_list() -> list[str]:
+    """Return the list of policies supported by SBX."""
+    global _jax_policy_list
+    if _jax_policy_list is not None:
+        return _jax_policy_list
+    # SBX supports these policy strings (same naming convention as SB3)
+    _jax_policy_list = ["MlpPolicy", "CnnPolicy", "MultiInputPolicy"]
+    return _jax_policy_list
+
+
+def get_jax_algorithm_validator() -> Callable[[str | type], type]:
+    """Return a validator for SBX algorithms."""
+    mapping = _get_jax_algorithm_mapping()
+    return _getValidator("algorithm", object, mapping)
+
+
+def get_jax_policy_validator() -> Callable[[str | type], str]:
+    """Return a validator for SBX policies (string-based)."""
+    policy_list = _get_jax_policy_list()
+    mapping = {p: p for p in policy_list}
+    return _getValidator("policy", str, mapping)
+
+
 # list valid options
 algorithms_list: list[str] = list(algorithm_mapping.keys())
 encoders_list: list[str] = list(encoder_mapping.keys())
 policies_list: list[str] = list(policy_mapping.keys())
 rewards_list: list[str] = list(reward_mapping.keys())
 
-# validators
+
+# JAX-specific lists (populated lazily)
+def jax_algorithms_list() -> list[str]:
+    """List all available SBX (JAX) algorithms."""
+    return list(_get_jax_algorithm_mapping().keys())
+
+
+def jax_policies_list() -> list[str]:
+    """List all available SBX (JAX) policies."""
+    return _get_jax_policy_list()
+
+
+# validators (SB3 / PyTorch — default)
 validate_algorithm = _getValidator("algorithm", BaseAlgorithm, algorithm_mapping)
 validate_encoder = _getValidator("encoder", BaseFeaturesExtractor, encoder_mapping)
 validate_policy = _getValidator("policy", BasePolicy, policy_mapping)

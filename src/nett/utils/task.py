@@ -107,6 +107,19 @@ def run_task(task: Task) -> None:
     np.random.seed(config.seed)
     cv2.setRNGSeed(config.seed)
 
+    # Set framework-specific random seed
+    if getattr(agent.brain, "use_jax", False):
+        # JAX uses explicit PRNG keys, so we only set numpy/cv2 seeds above.
+        # Optionally seed Python's random module for reproducibility.
+        import random
+
+        random.seed(config.seed)
+    else:
+        # PyTorch global seed for SB3
+        import torch
+
+        torch.manual_seed(config.seed)
+
     # create log path
     log_path = config.path / "logs"
     log_path.mkdir(exist_ok=True, parents=True)
