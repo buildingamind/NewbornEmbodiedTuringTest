@@ -72,9 +72,10 @@ class HParamCallback(BaseCallback):
     """
 
     def _on_training_start(self) -> None:
+        lr = self.model.learning_rate
         hparam_dict = {
             "algorithm": self.model.__class__.__name__,
-            "learning rate": self.model.learning_rate,
+            "learning rate": lr if isinstance(lr, (int, float)) else str(lr),
             "gamma": self.model.gamma,
             "batch_size": self.model.batch_size,
             "n_steps": self.model.n_steps,

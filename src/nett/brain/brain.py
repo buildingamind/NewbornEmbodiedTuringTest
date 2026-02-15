@@ -9,7 +9,7 @@ from math import ceil
 import torch
 import numpy as np
 
-from typing import Any, Optional
+from typing import Any, Optional, Callable
 from pathlib import Path
 
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
@@ -95,7 +95,7 @@ class Brain:
         embedding_dim: Optional[int] = None,
         batch_size: int = 512,
         buffer_size: int = 2048,
-        learning_rate: float = 3e-4,
+        learning_rate: float | Callable = 3e-4,
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         deterministic: bool = True,
