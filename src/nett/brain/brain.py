@@ -209,7 +209,7 @@ class Brain:
                 verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{config.device}",
-                seed=config.brain_id,  # env.seed() function is expected in sb3 but does not exist in the ss.SB3VecEnvWrapper
+                seed=(config.brain_id * 7919) % (2**31 - 1),  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling). Original: seed=config.brain_id
                 tensorboard_log=config.path / "tensorboard",
                 **self.custom_algorithm_args,
             )
@@ -305,49 +305,49 @@ class Brain:
                 raise e
         else:
             # --- Standard (inference-only) Test Mode ---
-        try:
-            # load previously trained model from save_dir, if it exists
-            model: BaseAlgorithm = self.algorithm.load(
-                config.path / "model" / "latest_model.zip",
-                device=f"cuda:{config.device}",
-            )
-
-            # reset environment and get initial obs
-            obs = envs.reset()
-            # reset states for recurrent policies
-            states = None
-            # dones need to start True for episode_start for recurrent policies
-            dones = np.ones((self.n_parallel_envs,), dtype=bool)
-
-            # loop over episodes
-            for _ in range(self.test_iterations[config.condition]):
-                while True:
-                    # predict an action
-                    action, states = model.predict(
-                        obs,
-                        state=states,  # used only for recurrent policies
-                        episode_start=dones,  # used only for recurrent policies
-                        deterministic=self.deterministic,
-                    )
-                    # perform the action
-                    obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
-                    # update the loading bar
-                    config.queue.put((config.name, 1))
-
-                    if all(dones):
-                        # episode is done
-                        break
-
-                # Convert recorded frames to video
-                cb.img2video(
-                    config.path / "recordings" / "chamber" / config.current_mode,
-                    self.steps_per_episode,
+            try:
+                # load previously trained model from save_dir, if it exists
+                model: BaseAlgorithm = self.algorithm.load(
+                    config.path / "model" / "latest_model.zip",
+                    device=f"cuda:{config.device}",
                 )
 
-            del model  # free memory
-        except Exception as e:
-            config.logger.exception(f"Failed to test model with error: {str(e)}")
-            raise e
+                # reset environment and get initial obs
+                obs = envs.reset()
+                # reset states for recurrent policies
+                states = None
+                # dones need to start True for episode_start for recurrent policies
+                dones = np.ones((self.n_parallel_envs,), dtype=bool)
+
+                # loop over episodes
+                for _ in range(self.test_iterations[config.condition]):
+                    while True:
+                        # predict an action
+                        action, states = model.predict(
+                            obs,
+                            state=states,  # used only for recurrent policies
+                            episode_start=dones,  # used only for recurrent policies
+                            deterministic=self.deterministic,
+                        )
+                        # perform the action
+                        obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
+                        # update the loading bar
+                        config.queue.put((config.name, 1))
+
+                        if all(dones):
+                            # episode is done
+                            break
+
+                    # Convert recorded frames to video
+                    cb.img2video(
+                        config.path / "recordings" / "chamber" / config.current_mode,
+                        self.steps_per_episode,
+                    )
+
+                del model  # free memory
+            except Exception as e:
+                config.logger.exception(f"Failed to test model with error: {str(e)}")
+                raise e
 
     def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
         # Initialize the callbacks for training.

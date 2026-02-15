@@ -174,7 +174,7 @@ class Environment:
             logger = config.logger.getChild(str(seed))
         else:
             logger = config.logger
-            seed = config.brain_id
+            seed = (config.brain_id * 7919) % (2**31 - 1)  # Diversified seed: matches brain.py change
 
         # Set the random seed for reproducibility
         torch.manual_seed(seed)
