@@ -104,6 +104,7 @@ class Brain:
         custom_policy_args: Optional[dict[str, Any]] = {},
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
+        continual_learning: bool = False,
     ):
         # --- Validate and set attributes ---
         self.encoder = validate_encoder(encoder)
@@ -123,6 +124,9 @@ class Brain:
         )
         self.train_encoder = bool(train_encoder)
         self.deterministic = bool(deterministic)
+
+        # --- Continual Learning Test Mode ---
+        self.continual_learning = bool(continual_learning)
 
         # --- Custom arguments ---
         # used for extractors that wrap other extractors e.g. multiinput
