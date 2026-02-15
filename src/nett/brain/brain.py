@@ -209,7 +209,7 @@ class Brain:
                 verbose=1,  # 0,  # TODO: Incorporate this into options
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{config.device}",
-                seed=(config.brain_id * 7919) % (2**31 - 1),  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling). Original: seed=config.brain_id
+                seed=config.seed,
                 tensorboard_log=config.path / "tensorboard",
                 **self.custom_algorithm_args,
             )

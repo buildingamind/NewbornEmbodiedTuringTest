@@ -23,6 +23,7 @@ class TaskConfig:
     name: str
     path: Path
     logger: logging.Logger
+    seed: int
 
     def __init__(
         self,
@@ -35,6 +36,9 @@ class TaskConfig:
         memory: Optional[float] = None,
     ):
         self.brain_id = brain_id
+        self.seed = (brain_id * 7919) % (
+            2**31 - 1
+        )  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling).
         self.condition = condition
         self.modes = modes
         self.n_parallel_envs = n_parallel_envs
@@ -96,8 +100,8 @@ class Task:
 def run_task(task: Task) -> None:
     config = task.config
     agent = task.agent
-    np.random.seed(config.brain_id)
-    cv2.setRNGSeed(config.brain_id)
+    np.random.seed(config.seed)
+    cv2.setRNGSeed(config.seed)
 
     # create log path
     log_path = config.path / "logs"
