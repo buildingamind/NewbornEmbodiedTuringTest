@@ -69,6 +69,7 @@ class Environment:
         multiagent: bool = False,
         random_first_frame: bool = False,
         display: Optional[int] = None,
+        continuous_position: bool = False,
     ):
         """
         Initializes the Environment object.
@@ -109,6 +110,8 @@ class Environment:
 
         if self.random_first_frame:
             args.append("--random-first-frame")
+        if continuous_position:
+            args.append("--continuous-position")
 
         # Split arguments for training and testing modes
         self.base_args = {"train": args[:], "test": args[:]}
