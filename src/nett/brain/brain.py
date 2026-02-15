@@ -264,6 +264,47 @@ class Brain:
 
     def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
+        # --- Continual Learning Test Mode ---
+        if self.continual_learning:
+            try:
+                # Load the trained model with test envs attached so SB3 rebinds
+                model: BaseAlgorithm = self.algorithm.load(
+                    config.path / "model" / "latest_model.zip",
+                    env=envs,
+                    device=f"cuda:{config.device}",
+                )
+
+                # Initialize the full callback list (intrinsic reward, TB, video, etc.)
+                callback_list = self._init_callbacks(envs, config)
+
+                # Continue learning in the test environment
+                total_timesteps = (
+                    self.test_iterations[config.condition] * self.steps_per_episode
+                )
+                model.learn(
+                    total_timesteps=total_timesteps,
+                    tb_log_name=f"{self.algorithm.__name__}_test",
+                    progress_bar=False,
+                    callback=callback_list,
+                    reset_num_timesteps=False,  # continue TB step counter from training
+                )
+                config.logger.info("Continual-learning test phase complete")
+
+                # Save updated model to a separate path (preserve original trained model)
+                test_model_path = config.path / "model_test" / config.condition
+                _save_model(model, test_model_path)
+                config.logger.info(
+                    f"Saved continual-learning test model at {test_model_path}"
+                )
+
+                del model  # free memory
+            except Exception as e:
+                config.logger.exception(
+                    f"Failed continual-learning test with error: {str(e)}"
+                )
+                raise e
+        else:
+            # --- Standard (inference-only) Test Mode ---
         try:
             # load previously trained model from save_dir, if it exists
             model: BaseAlgorithm = self.algorithm.load(
