@@ -10,6 +10,7 @@ from ..environment.environment import Environment
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
+import random as _random
 from time import sleep
 from typing import Optional
 
@@ -32,6 +33,7 @@ def _load_env(
     validation_mode: bool,
     record_eps: str = "0:0:1",
     seed: Optional[int] = None,
+    position_seed: Optional[int] = None,
 ) -> gym.Env:
     # Loads and wraps a single environment instance.
     #
@@ -39,7 +41,7 @@ def _load_env(
     # and other parameters to prepare an environment for use. It applies the
     # specified wrappers and, if not in validation mode, sets up monitoring and
     # video recording.
-    loaded_env = env.load(config, validation_mode, seed)
+    loaded_env = env.load(config, validation_mode, seed, position_seed=position_seed)
     # Record Video only if not in validation mode and not estimating memory
 
     try:
@@ -87,7 +89,12 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
 
     if config.current_mode == "test":
         # Adjust the number of episodes to record based on the number of parallel environments
-        record_stop = ceil(record_stop / config.n_parallel_envs)
+        n_envs = (
+            config.n_parallel_envs.get(config.current_mode, 1)
+            if isinstance(config.n_parallel_envs, dict)
+            else config.n_parallel_envs
+        )
+        record_stop = ceil(record_stop / n_envs)
     if (
         record_stop > 0 and record_step > 0
     ):  #####TODO: Add support for recording multiple agents and multiobs
@@ -146,7 +153,9 @@ class Body:
         input_resolution: Optional[int] = None,
         binocular_vision: bool = False,
     ):
-        self.binocular_vision = "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
+        self.binocular_vision = (
+            "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
+        )
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -203,13 +212,50 @@ class Body:
         env = ConcatVecEnv([lambda: env])
         return SB3VecEnvWrapper(env)
 
-    def _gym_wrapper(self, env: gym.Env, config: TaskConfig) -> DummyVecEnv:
-        # Wraps a Gymnasium (single-agent) environment in a DummyVecEnv.
-        def callback():
-            record_eps = self.record_eps.get(config.current_mode, "0:0:1")
-            return _load_env(env, config, self.wrappers, False, record_eps)
+    def _gym_wrapper(self, env: gym.Env, config: TaskConfig) -> VecEnv:
+        # Wraps a Gymnasium (single-agent) environment in a vectorized env.
+        # Uses SubprocVecEnv when n_parallel_envs > 1 for true parallelization,
+        # and DummyVecEnv for single-env mode.
+        n_envs = (
+            config.n_parallel_envs.get(config.current_mode, 1)
+            if isinstance(config.n_parallel_envs, dict)
+            else config.n_parallel_envs
+        )
+        record_eps = self.record_eps.get(config.current_mode, "0:0:1")
 
-        return DummyVecEnv([callback])
+        def make_env(env_idx: int):
+            """Factory function that creates a closure for env at the given index."""
+
+            def _init():
+                # Determine position_seed:
+                #   - Testing: sequential starting at 0
+                #   - Training: randomly determined from the task seed
+                if config.current_mode == "test":
+                    pos_seed = env_idx
+                else:
+                    rng = _random.Random(config.seed + env_idx)
+                    pos_seed = rng.randint(0, 2**31 - 1)
+
+                # Each parallel env gets a distinct seed derived from the task seed
+                env_seed = config.seed + env_idx if n_envs > 1 else None
+                return _load_env(
+                    env,
+                    config,
+                    self.wrappers,
+                    False,
+                    record_eps,
+                    seed=env_seed,
+                    position_seed=pos_seed,
+                )
+
+            return _init
+
+        env_fns = [make_env(i) for i in range(n_envs)]
+
+        if n_envs > 1:
+            return SubprocVecEnv(env_fns)
+        else:
+            return DummyVecEnv(env_fns)
 
     def __enter__(self) -> VecEnv:
         # Enter the runtime context related to this object.

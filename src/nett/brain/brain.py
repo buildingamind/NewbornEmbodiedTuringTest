@@ -153,28 +153,59 @@ class Brain:
         iterations_per_episode: dict[str, int],
         episodes: dict[str, int],
         steps_per_episode: int,
+        max_envs_per_config: int | None = None,
     ):
-        """Calculate the total number of iterations for training and testing."""
+        """Calculate the total number of iterations for training and testing.
+
+        Args:
+            num_brains (int): Number of brains to train/test.
+            num_threads (int): Available threads for parallelization.
+            iterations_per_episode (dict[str, int]): Iterations per test episode per condition.
+            episodes (dict[str, int]): Number of episodes for train and/or test.
+            steps_per_episode (int): Steps per episode.
+            max_envs_per_config (int | None): Maximum parallel environments allowed
+                per config, derived from CPU capacity. If None, no CPU-based cap is applied.
+        """
         self.steps_per_episode = steps_per_episode
         # Calculate the total number of tasks to be run
         self.n_tasks = len(iterations_per_episode) * num_brains
 
+        # --- Compute desired parallel env counts ---
+        n_train_envs = 1
+        n_test_envs = 1
+
         # Calculate total training iterations if in 'train' mode
-        if "train" in episodes:
+        if "train" in episodes and episodes["train"] > 0:
             self.train_iterations = episodes["train"] * steps_per_episode
+            # Parallelize training: run buffer_size / episodes.train envs simultaneously
+            n_train_envs = max(1, self.buffer_size // episodes["train"])
 
         # Calculate testing iterations if in 'test' mode
-        if "test" in episodes:
-            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-            # TODO: Determine the number of threads used per brain and per env
-            n_threads_per_task = 4
-
-            max_envs = num_threads / (n_threads_per_task * self.n_tasks)
-
-            self.n_parallel_envs = 1
+        if "test" in episodes and episodes["test"] > 0:
             self.test_iterations = {
                 k: v * episodes["test"] for k, v in iterations_per_episode.items()
             }
+            # Parallelize testing: run all test episodes in parallel (unless continual_learning)
+            if not self.continual_learning:
+                n_test_envs = episodes["test"]
+
+        # --- Cap by CPU capacity ---
+        if max_envs_per_config is not None:
+            n_train_envs = min(n_train_envs, max_envs_per_config)
+            n_test_envs = min(n_test_envs, max_envs_per_config)
+
+        # --- Ensure SB3 batch_size compatibility for training ---
+        # On-policy algorithms require (buffer_size * n_envs) % batch_size == 0
+        if n_train_envs > 1:
+            while (
+                self.buffer_size * n_train_envs
+            ) % self.batch_size != 0 and n_train_envs > 1:
+                n_train_envs -= 1
+
+        self.n_parallel_envs = {
+            "train": max(1, n_train_envs),
+            "test": max(1, n_test_envs),
+        }
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
@@ -312,15 +343,22 @@ class Brain:
                     device=f"cuda:{config.device}",
                 )
 
+                # Number of parallel test environments
+                n_envs = self.n_parallel_envs.get("test", 1)
+
                 # reset environment and get initial obs
                 obs = envs.reset()
                 # reset states for recurrent policies
                 states = None
                 # dones need to start True for episode_start for recurrent policies
-                dones = np.ones((self.n_parallel_envs,), dtype=bool)
+                dones = np.ones((n_envs,), dtype=bool)
 
-                # loop over episodes
-                for _ in range(self.test_iterations[config.condition]):
+                # Adjust iteration count for parallel environments
+                total_test_episodes = self.test_iterations[config.condition]
+                actual_iterations = ceil(total_test_episodes / n_envs)
+
+                # loop over episode batches
+                for _ in range(actual_iterations):
                     while True:
                         # predict an action
                         action, states = model.predict(
@@ -331,11 +369,11 @@ class Brain:
                         )
                         # perform the action
                         obs, _, dones, _ = envs.step(action)  # obs, rewards, done, info
-                        # update the loading bar
-                        config.queue.put((config.name, 1))
+                        # update the loading bar (each step processes n_envs environments)
+                        config.queue.put((config.name, n_envs))
 
                         if all(dones):
-                            # episode is done
+                            # episode batch is done
                             break
 
                     # Convert recorded frames to video

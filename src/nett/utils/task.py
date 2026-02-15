@@ -17,7 +17,7 @@ class TaskConfig:
     brain_id: int
     condition: str
     modes: list[str]
-    n_parallel_envs: int
+    n_parallel_envs: dict[str, int]
     queue: SimpleQueue
     memory: Optional[float]
     name: str
@@ -31,7 +31,7 @@ class TaskConfig:
         condition: str,
         output_dir: Path,
         modes: list[str],
-        n_parallel_envs: int,
+        n_parallel_envs: dict[str, int] | int,
         queue: SimpleQueue,
         memory: Optional[float] = None,
     ):
@@ -41,7 +41,11 @@ class TaskConfig:
         )  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling).
         self.condition = condition
         self.modes = modes
-        self.n_parallel_envs = n_parallel_envs
+        # Accept dict[str, int] or int (backward compat) for parallel envs per mode
+        if isinstance(n_parallel_envs, int):
+            self.n_parallel_envs = {"train": n_parallel_envs, "test": n_parallel_envs}
+        else:
+            self.n_parallel_envs = n_parallel_envs
         self.queue = queue
         self.memory = memory
         self.name = output_dir.stem
