@@ -374,8 +374,6 @@ class Brain:
                     CheckpointCallback(
                         save_freq=self.checkpoint_freq,  # defaults to 30_000 steps
                         save_path=config.path / "checkpoints",
-                        save_replay_buffer=True,
-                        save_vecnormalize=True,
                     )
                 )
 
