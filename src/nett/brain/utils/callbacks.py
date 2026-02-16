@@ -227,6 +227,67 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
         # ===================== compute the intrinsic rewards ===================== #
 
 
+class IntrinsicRewardJaxWithOnPolicyRL(BaseCallback):
+    """
+    A callback for combining JAX-based intrinsic rewards with on-policy
+    algorithms from SBX.  Operates entirely on numpy arrays (no PyTorch
+    dependency).
+    """
+
+    def __init__(self, irs, verbose=0):
+        super().__init__(verbose)
+        self.irs = irs
+        self.buffer = None
+
+    def init_callback(self, model: BaseAlgorithm) -> None:
+        super().init_callback(model)
+        self.buffer = self.model.rollout_buffer
+
+    def _on_step(self) -> bool:
+        import numpy as np
+
+        new_obs = np.asarray(self.locals["new_obs"])
+        actions = np.asarray(self.locals["actions"])
+        rewards = np.asarray(self.locals["rewards"])
+        dones = np.asarray(self.locals["dones"])
+        # Use last obs stored by the algorithm (always numpy)
+        obs = (
+            np.asarray(self.model._last_obs)
+            if hasattr(self.model, "_last_obs")
+            else new_obs
+        )
+
+        self.irs.watch(obs, actions, rewards, dones, dones, new_obs)
+        return True
+
+    def _on_rollout_end(self) -> None:
+        import numpy as np
+
+        obs = np.asarray(self.buffer.observations)
+        new_obs = obs.copy()
+        new_obs[:-1] = obs[1:]
+        new_obs[-1] = np.asarray(self.locals["new_obs"])
+        actions = np.asarray(self.buffer.actions)
+        rewards = np.asarray(self.buffer.rewards)
+        dones = np.asarray(self.buffer.episode_starts)
+
+        intrinsic_rewards = self.irs.compute(
+            samples=dict(
+                observations=obs,
+                actions=actions,
+                rewards=rewards,
+                terminateds=dones,
+                truncateds=dones,
+                next_observations=new_obs,
+            ),
+            sync=True,
+        )
+        # intrinsic_rewards is a numpy array [n_steps, n_envs]
+        intrinsic_rewards = np.asarray(intrinsic_rewards)
+        self.buffer.advantages += intrinsic_rewards
+        self.buffer.returns += intrinsic_rewards
+
+
 class IntrinsicRewardWithOffPolicyRL(BaseCallback):
     """
     A custom callback for combining RLeXplore and off-policy algorithms from SB3.
