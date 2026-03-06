@@ -37,7 +37,7 @@
         "reward": {
           "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'closeness'",
           "type": "string",
-          "enum": ["unsupervised", "closeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "GIRM", "ICM", "NGU", "PseudoCounts", "RE3", "REVD", "RIDE", "RISE", "RND"],
+          "enum": ["unsupervised", "closeness", "completeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "ICM", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
           "default": "closeness"
         },
         "embedding_dim": {
@@ -64,12 +64,6 @@
           "type": "number",
           "minimum": 0,
           "default": 3e-4
-        },
-        "ent_coef": {
-          "description": "Entropy Coefficient",
-          "type": "number",
-          "minimum": 0,
-          "default": 0
         },
         "checkpoint_freq": {
           "description": "Frequency of saving checkpoints. If null, no checkpoints are saved. Defaults to null.",
@@ -108,6 +102,21 @@
             "kappa": 0.0,
             "gamma": 0.99
           }
+        },
+        "deterministic": {
+          "description": "Whether to use deterministic actions during testing. Defaults to true.",
+          "type": "boolean",
+          "default": true
+        },
+        "custom_policy_args": {
+          "description": "Custom Policy Arguments that are fed directly into the policy network",
+          "type": "object",
+          "default": {}
+        },
+        "continual_learning": {
+          "description": "Whether to use continual learning during the test phase. Defaults to false.",
+          "type": "boolean",
+          "default": false
         }
       },
       "additionalProperties": false
@@ -125,21 +134,21 @@
           "default": []
         },
         "record_eps": {
-          "description": "Number of episodes to record from the body.",
+          "description": "Episodes to record from the body. Format is 'start:stop:step'.",
           "type": "object",
           "properties": {
             "train": {
-              "description": "Number of training episodes to record. Defaults to 0.",
+              "description": "Training episodes to record. Format is 'start:stop:step'. Defaults to '0:0:1'.",
               "type": "string",
-              "default": "0"
+              "default": "0:0:1"
             },
             "test": {
-              "description": "Number of testing episodes to record. Defaults to 0.",
+              "description": "Testing episodes to record. Format is 'start:stop:step'. Defaults to '0:0:1'.",
               "type": "string",
-              "default": "0"
+              "default": "0:0:1"
             }
           },
-          "default": {"train": "0", "test": "0"},
+          "default": {"train": "0:0:1", "test": "0:0:1"},
           "additionalProperties": false
         },
         "panini_projection": {
@@ -195,20 +204,13 @@
           "default": {"train": "0", "test": "0"},
           "additionalProperties": false
         },
-        "timescale": {
-          "description": "Time scale of the environment. Defaults to 20.",
-          "type": "number",
-          "minimum": 0,
-          "default": 20
-        },
-        "input_resolution": {
-          "description": "Resolution of the input images. Defaults to 64.",
-          "type": "integer",
-          "minimum": 1,
-          "default": 64
-        },
         "multiagent": {
           "description": "Whether the environment supports multi-agent training",
+          "type": "boolean",
+          "default": false
+        },
+        "random_first_frame": {
+          "description": "Whether to randomize the first frame of episodes. Defaults to false.",
           "type": "boolean",
           "default": false
         },
@@ -216,6 +218,11 @@
           "description": "Display number to output to. Set to null to run headless. Defaults to null.",
           "type": ["integer", "null"],
           "default": null
+        },
+        "continuous_position": {
+          "description": "Whether to use continuous position in the environment. Defaults to false.",
+          "type": "boolean",
+          "default": false
         }
       },
       "required": ["executable_path"],
