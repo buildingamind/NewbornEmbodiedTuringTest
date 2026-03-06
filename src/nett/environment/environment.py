@@ -111,13 +111,14 @@ class Environment:
             # Set the display for the Unity environment
             os.environ["DISPLAY"] = str(f":{display}")
 
-        if self.random_first_frame:
-            args.append("--random-first-frame")
         if continuous_position:
             args.append("--continuous-position")
 
         # Split arguments for training and testing modes
         self.base_args = {"train": args[:], "test": args[:]}
+
+        if self.random_first_frame:
+            self.base_args["train"].append("--random-first-frame")
 
         # Add recording arguments for each mode
         for mode in ["train", "test"]:

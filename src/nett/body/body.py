@@ -214,48 +214,21 @@ class Body:
 
     def _gym_wrapper(self, env: gym.Env, config: TaskConfig) -> VecEnv:
         # Wraps a Gymnasium (single-agent) environment in a vectorized env.
-        # Uses SubprocVecEnv when n_parallel_envs > 1 for true parallelization,
-        # and DummyVecEnv for single-env mode.
-        n_envs = (
-            config.n_parallel_envs.get(config.current_mode, 1)
-            if isinstance(config.n_parallel_envs, dict)
-            else config.n_parallel_envs
-        )
         record_eps = self.record_eps.get(config.current_mode, "0:0:1")
 
-        def make_env(env_idx: int):
-            """Factory function that creates a closure for env at the given index."""
+        def _init():
+            pos_seed = 0 if config.current_mode == "test" else None
+            return _load_env(
+                env,
+                config,
+                self.wrappers,
+                False,
+                record_eps,
+                seed=None,
+                position_seed=pos_seed,
+            )
 
-            def _init():
-                # Determine position_seed:
-                #   - Testing: sequential starting at 0
-                #   - Training: randomly determined from the task seed
-                if config.current_mode == "test":
-                    pos_seed = env_idx
-                else:
-                    rng = _random.Random(config.seed + env_idx)
-                    pos_seed = rng.randint(0, 2**31 - 1)
-
-                # Each parallel env gets a distinct seed derived from the task seed
-                env_seed = config.seed + env_idx if n_envs > 1 else None
-                return _load_env(
-                    env,
-                    config,
-                    self.wrappers,
-                    False,
-                    record_eps,
-                    seed=env_seed,
-                    position_seed=pos_seed,
-                )
-
-            return _init
-
-        env_fns = [make_env(i) for i in range(n_envs)]
-
-        if n_envs > 1:
-            return SubprocVecEnv(env_fns)
-        else:
-            return DummyVecEnv(env_fns)
+        return DummyVecEnv([_init])
 
     def __enter__(self) -> VecEnv:
         # Enter the runtime context related to this object.
