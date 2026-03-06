@@ -119,16 +119,8 @@ class Brain:
             jax_policy_validator = get_jax_policy_validator()
             self.algorithm = jax_algo_validator(algorithm)
             self.policy = jax_policy_validator(policy)
-            # Allow custom Flax feature extractors in JAX mode;
-            # only skip if encoder is "small" (the default SB3 string)
-            if (
-                encoder is not None
-                and encoder != "small"
-                and not isinstance(encoder, str)
-            ):
-                self.encoder = encoder  # Flax nn.Module class
-            else:
-                self.encoder = None
+            # SBX does not support custom PyTorch feature extractors
+            self.encoder = None
         else:
             # --- Validate and set attributes (SB3 / PyTorch) ---
             self.encoder = validate_encoder(encoder)
@@ -160,14 +152,10 @@ class Brain:
                 custom_encoder_args["extractor_class"]
             )
 
-        self.custom_encoder_args = (
-            custom_encoder_args if not self.use_jax else (custom_encoder_args or {})
-        )
+        self.custom_encoder_args = custom_encoder_args if not self.use_jax else {}
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
-        self.custom_policy_args = (
-            custom_policy_args if not self.use_jax else (custom_policy_args or {})
-        )
+        self.custom_policy_args = custom_policy_args if not self.use_jax else {}
         self.reward_args = reward_args
 
         # --- Reward arguments ---
@@ -254,13 +242,6 @@ class Brain:
             policy_kwargs["net_arch"] = self.custom_policy_arch
 
         policy_kwargs.update(self.custom_policy_args)
-
-        # Pass custom Flax feature extractor if specified
-        if self.encoder is not None:
-            policy_kwargs["features_extractor_class"] = self.encoder
-            fe_kwargs = {"features_dim": self.embedding_dim or 64}
-            fe_kwargs.update(self.custom_encoder_args or {})
-            policy_kwargs["features_extractor_kwargs"] = fe_kwargs
 
         # Determine JAX device string
         jax_device = self._get_jax_device(config.device)
@@ -625,38 +606,16 @@ class Brain:
                     )
                 )
 
-        # create and add intrinsic reward callback
+        # create and add intrinsic reward callback (only for SB3/PyTorch mode)
         if self.reward is not None:
             if self.use_jax:
-                # Try to instantiate the reward; if it's a JAX-compatible
-                # reward (not a PyTorch BaseReward), use the JAX callback.
-                try:
-                    reward_func = self.reward(
-                        envs,
-                        device="cpu",
-                        **self.reward_args,
-                    )
-                    if isinstance(reward_func, BaseReward):
-                        config.logger.warning(
-                            "PyTorch BaseReward is not supported in JAX/SBX mode. "
-                            "Skipping intrinsic reward augmentation."
-                        )
-                    else:
-                        # JAX-compatible reward — use numpy-based callback
-                        if self._is_sbx_on_policy():
-                            callback_list.append(
-                                cb.IntrinsicRewardJaxWithOnPolicyRL(reward_func)
-                            )
-                        else:
-                            config.logger.warning(
-                                "Off-policy JAX intrinsic reward callback not yet implemented. "
-                                "Skipping intrinsic reward augmentation."
-                            )
-                except Exception as e:
-                    config.logger.warning(
-                        f"Could not initialize intrinsic reward in JAX mode: {e}. "
-                        "Skipping intrinsic reward augmentation."
-                    )
+                # Intrinsic rewards from rllte depend on PyTorch tensors.
+                # When running in JAX mode, we skip intrinsic reward augmentation
+                # and log a warning.
+                config.logger.warning(
+                    "Intrinsic reward callbacks are not supported in JAX/SBX mode. "
+                    "Skipping intrinsic reward augmentation."
+                )
             else:
                 reward_func: BaseReward = self.reward(
                     envs,
