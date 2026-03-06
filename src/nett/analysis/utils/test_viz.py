@@ -1,4 +1,6 @@
 from pathlib import Path
+import warnings
+import logging
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,6 +8,13 @@ import seaborn as sns
 from scipy import stats
 from matplotlib.lines import Line2D
 import textwrap
+
+# Suppress seaborn/pandas FutureWarnings from seaborn internals
+warnings.filterwarnings("ignore", category=FutureWarning, module="seaborn")
+warnings.filterwarnings("ignore", message="use_inf_as_na")
+warnings.filterwarnings("ignore", message="When grouping with a length-1")
+# Suppress matplotlib categorical unit INFO messages
+logging.getLogger("matplotlib.category").setLevel(logging.WARNING)
 
 # bar chart colors
 CUSTOM_PALETTE = [
@@ -69,8 +78,12 @@ def _stats(group, column="percent_correct", mu=0.5):
 
 
 def compute_stats(data: pd.DataFrame, results_dir: Path) -> pd.DataFrame:
-    grouped = data.groupby(["imprint.cond", "agent", "test.cond"])
-    by_test_cond = grouped.apply(_stats).reset_index()  # keep group columns as columns
+    data = data.copy()
+    data["agent"] = data["agent"].fillna(0)
+    grouped = data.groupby(["imprint.cond", "agent", "test.cond"], observed=True)
+    by_test_cond = grouped.apply(
+        _stats, include_groups=False
+    ).reset_index()  # keep group columns as columns
     by_test_cond["imp_agent"] = (
         by_test_cond["imprint.cond"].astype(str)
         + "_"
@@ -250,8 +263,8 @@ def make_bar_charts(
         # Add dots to bar chart
 
         not_nan_indices = pd.notna(dots["avgs"])
-        x_vals = dot_x_pos[not_nan_indices]
-        y_vals = dots["avgs"][not_nan_indices]
+        x_vals = dot_x_pos[not_nan_indices].to_numpy()
+        y_vals = dots["avgs"][not_nan_indices].to_numpy()
         if len(y_vals) != 0:
             sns.stripplot(x=x_vals, y=y_vals, ax=ax, color="black", jitter=0.3, size=7)
         else:
@@ -295,8 +308,10 @@ def agent_bar_charts(
 
 
 def stats_by_imprint_cond(data: pd.DataFrame, results_dir: Path):
-    grouped_imp = data.groupby(["imprint.cond", "test.cond"])
-    by_imp_cond = grouped_imp.apply(lambda g: _stats(g, column="avgs")).reset_index()
+    grouped_imp = data.groupby(["imprint.cond", "test.cond"], observed=True)
+    by_imp_cond = grouped_imp.apply(
+        lambda g: _stats(g, column="avgs"), include_groups=False
+    ).reset_index()
     by_imp_cond.to_csv(results_dir / "stats_by_imp_cond.csv", index=False)
     return by_imp_cond
 
@@ -374,11 +389,18 @@ def stats_overall(
     # if "experiment" in data.columns:
     #     group_by_cols.append("experiment")
 
-    across_imp_cond = (
-        data[~data["test.cond"].str.lower().eq("rest")]
-        .groupby(group_by_cols, as_index=False)
-        .apply(lambda g: _stats(g, column="avgs"))
-    )
+    records = []
+    for group_vals, g in data[~data["test.cond"].str.lower().eq("rest")].groupby(
+        group_by_cols, observed=True
+    ):
+        record = _stats(g, column="avgs").to_dict()
+        if isinstance(group_vals, tuple):
+            for col, val in zip(group_by_cols, group_vals):
+                record[col] = val
+        else:
+            record[group_by_cols[0]] = group_vals
+        records.append(record)
+    across_imp_cond = pd.DataFrame(records)
     across_imp_cond.to_csv(results_dir / "stats_across_all_agents.csv", index=False)
     return across_imp_cond
 
@@ -397,7 +419,7 @@ def exp_cond_bar_charts(
                 (exp, None) for exp in across_imp_cond["experiment"].unique()
             ]
     elif "exp.cond" in across_imp_cond.columns:
-    # if "exp.cond" in across_imp_cond.columns:
+        # if "exp.cond" in across_imp_cond.columns:
         combinations = [
             (None, exp_cond) for exp_cond in across_imp_cond["exp.cond"].unique()
         ]
