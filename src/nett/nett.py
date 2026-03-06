@@ -249,24 +249,6 @@ class NETT:
 
         ############## Setup ###############
 
-        # --- CPU capacity check for environment parallelization ---
-        # Each Unity environment instance uses approximately 4 threads.
-        # We must account for multiple configs running concurrently, Python
-        # overhead threads (executor, main loops, etc.), and ensure the CPU
-        # is not oversubscribed.
-        total_cpu_cores = os.cpu_count() or 4
-        threads_per_env = 4  # approximate threads per Unity environment instance
-        num_configs = len(self.configs)
-        # Reserve threads for Python overhead: ~2 per config + 4 base
-        reserved_threads = num_configs * 2 + 4
-        available_cores = max(1, total_cpu_cores - reserved_threads)
-        max_envs_per_config = max(1, available_cores // (threads_per_env * num_configs))
-        self.logger.info(
-            f"CPU capacity: {total_cpu_cores} cores, "
-            f"max {max_envs_per_config} parallel envs per config "
-            f"({num_configs} config(s) running concurrently)"
-        )
-
         # calculate run info for Brain
         base_brain.calc_iterations(
             num_brains,
@@ -274,11 +256,6 @@ class NETT:
             base_env.iterations_per_test_episode,
             episodes,
             steps_per_episode,
-            max_envs_per_config=max_envs_per_config,
-        )
-        self.logger.info(
-            f"Parallel envs per brain: train={base_brain.n_parallel_envs['train']}, "
-            f"test={base_brain.n_parallel_envs['test']}"
         )
 
         # adjust environment to agent settings

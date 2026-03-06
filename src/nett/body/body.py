@@ -10,7 +10,6 @@ from ..environment.environment import Environment
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
-import random as _random
 from time import sleep
 from typing import Optional
 
@@ -33,7 +32,6 @@ def _load_env(
     validation_mode: bool,
     record_eps: str = "0:0:1",
     seed: Optional[int] = None,
-    position_seed: Optional[int] = None,
 ) -> gym.Env:
     # Loads and wraps a single environment instance.
     #
@@ -41,7 +39,7 @@ def _load_env(
     # and other parameters to prepare an environment for use. It applies the
     # specified wrappers and, if not in validation mode, sets up monitoring and
     # video recording.
-    loaded_env = env.load(config, validation_mode, seed, position_seed=position_seed)
+    loaded_env = env.load(config, validation_mode, seed)
     # Record Video only if not in validation mode and not estimating memory
 
     try:
@@ -89,12 +87,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
 
     if config.current_mode == "test":
         # Adjust the number of episodes to record based on the number of parallel environments
-        n_envs = (
-            config.n_parallel_envs.get(config.current_mode, 1)
-            if isinstance(config.n_parallel_envs, dict)
-            else config.n_parallel_envs
-        )
-        record_stop = ceil(record_stop / n_envs)
+        record_stop = ceil(record_stop / config.n_parallel_envs)
     if (
         record_stop > 0 and record_step > 0
     ):  #####TODO: Add support for recording multiple agents and multiobs
@@ -153,9 +146,7 @@ class Body:
         input_resolution: Optional[int] = None,
         binocular_vision: bool = False,
     ):
-        self.binocular_vision = (
-            "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
-        )
+        self.binocular_vision = "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -217,15 +208,12 @@ class Body:
         record_eps = self.record_eps.get(config.current_mode, "0:0:1")
 
         def _init():
-            pos_seed = 0 if config.current_mode == "test" else None
             return _load_env(
                 env,
                 config,
                 self.wrappers,
                 False,
-                record_eps,
-                seed=None,
-                position_seed=pos_seed,
+                record_eps
             )
 
         return DummyVecEnv([_init])

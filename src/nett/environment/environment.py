@@ -120,7 +120,10 @@ class Environment:
         # Add recording arguments for each mode
         for mode in ["train", "test"]:
             self.base_args[mode].extend(
-                ["--record-episodes", record_eps.get(mode, "0")]
+                [
+                    "--record-episodes",
+                    record_eps.get(mode, "0")
+                ]
             )
 
     def adjust_to_agent(
@@ -160,34 +163,20 @@ class Environment:
             self.base_args[mode].extend(args)
 
     def load(
-        self,
-        config: TaskConfig,
-        validation_mode: bool,
-        seed: Optional[int] = None,
-        position_seed: Optional[int] = None,
+        self, config: TaskConfig, validation_mode: bool, seed: Optional[int] = None
     ) -> gym.Env:  # logger, brain_id, path, current_mode, device, condition
         """
         Loads the Unity environment with the specified configuration.
-
-        Args:
-            config (TaskConfig): The task configuration.
-            validation_mode (bool): Whether the environment is being loaded for validation.
-            seed (Optional[int]): The random seed. If None, config.seed is used.
-            position_seed (Optional[int]): The position seed passed to the Unity executable.
-                For testing, this should be sequential (0, 1, 2, ...). For training,
-                it should be randomly determined from the task seed.
         """
         # This method opens the Unity environment.
 
         # Check if running in parallel and adjust logger and seed accordingly
-        if position_seed is not None:
-            seed = position_seed  # For training, use the position seed as the seed for environment initialization
-            logger = config.logger.getChild(str(seed))
-        elif seed is not None:
+        if seed is not None:
             logger = config.logger.getChild(str(seed))
         else:
             logger = config.logger
             seed = config.seed  # Diversified seed: matches brain.py change
+
 
         # Set the random seed for reproducibility
         torch.manual_seed(seed)
@@ -228,11 +217,6 @@ class Environment:
             / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"
         )
         args.extend(["--log-path", str(log_dir)])
-
-        # Add position seed argument if provided
-        if position_seed is not None:
-            args.extend(["--position-seed", str(position_seed)])
-
         # side_channels = [
         #     Logger(
         #         f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed}",
