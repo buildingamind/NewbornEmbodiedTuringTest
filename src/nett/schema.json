@@ -259,11 +259,6 @@
         { "type": "string", "enum": ["auto"] }
       ],
       "default": "auto"
-    },
-    "use_jax": {
-      "description": "Whether to use JAX (via SBX) instead of PyTorch (via SB3) as the deep learning backend. When true, algorithms are loaded from the sbx package and JAX is used for all computation. Defaults to false.",
-      "type": "boolean",
-      "default": false
     }
   },
   "patternProperties": {

@@ -23,9 +23,6 @@ import torch
 from ..utils.task import TaskConfig
 from .utils import GymWrapper, ZooWrapper
 
-# Flag to track whether JAX mode is active (set at runtime by NETT)
-_use_jax: bool = False
-
 # checks to see if ml-agents tmp files have the proper permissions
 try:
     from mlagents_envs.envs.unity_gym_env import UnityToGymWrapper
@@ -193,21 +190,7 @@ class Environment:
             seed = config.seed  # Diversified seed: matches brain.py change
 
         # Set the random seed for reproducibility
-        if _use_jax:
-            # In JAX mode, use JAX's PRNG for seeding instead of PyTorch
-            try:
-                import jax
-
-                # JAX uses explicit PRNG keys rather than global seed state.
-                # We just set numpy's seed here; JAX PRNG keys are created
-                # as needed by the algorithm via the seed parameter.
-                import numpy as _np
-
-                _np.random.seed(seed)
-            except ImportError:
-                pass
-        else:
-            torch.manual_seed(seed)
+        torch.manual_seed(seed)
 
         # Create path for recordings
         recording_path = config.path / "recordings"

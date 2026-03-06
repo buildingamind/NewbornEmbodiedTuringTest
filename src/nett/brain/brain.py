@@ -30,8 +30,6 @@ from .utils.validate import (
     validate_encoder,
     validate_reward,
     validate_policy,
-    get_jax_algorithm_validator,
-    get_jax_policy_validator,
 )
 
 
@@ -74,19 +72,18 @@ def _save_model(model: BaseAlgorithm, path: Path) -> None:
 class Brain:
     """
     Args:
-        encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small". Ignored when ``use_jax=True`` (SBX uses its own internal CNN architecture).
+        encoder (Any | str, optional): The network used to extract features from the observations. Must be either a string pointing to an already implemented encoder or a custom encoder class that inherits from Stable-Baselines3 BaseFeaturesExtractor. For a list of available extractors, run `nett.list_encoders` :func:`~nett.nett.list_encoders`. Defaults to "small".
         policy (str | BasePolicy): The network used for defining the value and action networks. Must be either a string pointing to an already implemented policy or a custom policy class that inherits from Stable-Baselines3 BasePolicy. For a list of available policy strings, run `nett.list_policies` :func:`~nett.nett.list_policies`. Defaults to "CnnPolicy".
         algorithm (str | BaseAlgorithm): The optimization algorithm used for training the model. Must be either a string pointing to an already implemented algorithm or a custom algorithm class that inherits from Stable-Baselines3 BaseAlgorithm. For a list of available algorithms, run `nett.list_algorithms` :func:`~nett.nett.list_algorithms`. Defaults to "PPO".
         reward (str): The type of reward used for training the brain. For a list of available reward strings, run `nett.list_rewards` :func:`~nett.nett.list_rewards`. Defaults to "closeness".
-        embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None. Ignored when ``use_jax=True``.
+        embedding_dim (int, optional): The dimension of the embedding space of the encoder. If None, default embedding dim defined by encoder is used. Defaults to None.
         batch_size (int): The batch size used for training. Defaults to 512.
         buffer_size (int): The buffer size used for training. Defaults to 2048.
         checkpoint_freq (int, optional): Number of steps to save checkpoints of the model. If None, no checkpoints are saved. Defaults to None.
-        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True. Ignored when ``use_jax=True``.
-        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}. Ignored when ``use_jax=True``.
+        train_encoder (bool, optional): Whether to train the encoder or not. Defaults to True.
+        custom_encoder_args (dict[str, str], optional): Custom arguments for the encoder. Defaults to {}.
         custom_policy_arch (list[int|dict[str,list[int]]], optional): Custom architecture for the policy. Takes the form of a list of integers with each integer representing the number of neurons in that layer. The first member defines the number of neurons in the first hidden layer after the encoder and the last member defines the number of neurons in the final hidden layer before the output layer. If set to None, the policy arch will be the defaults defined in SB3, which is the equivalent of [] when the encoder is NatureCNN (small) and [64, 64] for any other encoder. Defaults to None.
         reward_args (dict[str, Any]): Arguments for the encoder. Defaults to {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}.
-        use_jax (bool): Whether to use JAX (via SBX) instead of PyTorch (via SB3). When True, algorithms are loaded from the ``sbx`` package and JAX handles all computation. Defaults to False.
     """
 
     def __init__(
@@ -108,25 +105,11 @@ class Brain:
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
         reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
         continual_learning: bool = False,
-        use_jax: bool = False,
     ):
-        # --- JAX / SBX mode ---
-        self.use_jax = bool(use_jax)
-
-        if self.use_jax:
-            # Validate algorithm and policy against SBX mappings
-            jax_algo_validator = get_jax_algorithm_validator()
-            jax_policy_validator = get_jax_policy_validator()
-            self.algorithm = jax_algo_validator(algorithm)
-            self.policy = jax_policy_validator(policy)
-            # SBX does not support custom PyTorch feature extractors
-            self.encoder = None
-        else:
-            # --- Validate and set attributes (SB3 / PyTorch) ---
-            self.encoder = validate_encoder(encoder)
-            self.policy = validate_policy(policy)
-            self.algorithm = validate_algorithm(algorithm)
-
+        # --- Validate and set attributes ---
+        self.encoder = validate_encoder(encoder)
+        self.policy = validate_policy(policy)
+        self.algorithm = validate_algorithm(algorithm)
         self.reward: Optional[type[BaseReward]] = validate_reward(reward)
 
         # --- Hyperparameters ---
@@ -147,15 +130,15 @@ class Brain:
 
         # --- Custom arguments ---
         # used for extractors that wrap other extractors e.g. multiinput
-        if not self.use_jax and "extractor_class" in custom_encoder_args:
+        if "extractor_class" in custom_encoder_args:
             custom_encoder_args["extractor_class"] = validate_encoder(
                 custom_encoder_args["extractor_class"]
             )
 
-        self.custom_encoder_args = custom_encoder_args if not self.use_jax else {}
+        self.custom_encoder_args = custom_encoder_args
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
-        self.custom_policy_args = custom_policy_args if not self.use_jax else {}
+        self.custom_policy_args = custom_policy_args
         self.reward_args = reward_args
 
         # --- Reward arguments ---
@@ -226,90 +209,6 @@ class Brain:
 
     def train(self, envs: VecEnv, config: TaskConfig):
         """Train the brain."""
-        if self.use_jax:
-            self._train_jax(envs, config)
-        else:
-            self._train_torch(envs, config)
-
-    def _train_jax(self, envs: VecEnv, config: TaskConfig):
-        """Train the brain using JAX/SBX."""
-        import jax
-
-        # --- Build SBX model ---
-        policy_kwargs = {}
-
-        if self.custom_policy_arch:
-            policy_kwargs["net_arch"] = self.custom_policy_arch
-
-        policy_kwargs.update(self.custom_policy_args)
-
-        # Determine JAX device string
-        jax_device = self._get_jax_device(config.device)
-
-        try:
-            # SBX algorithm constructor — similar API to SB3 but uses JAX
-            # SBX on-policy algorithms (like PPO) use n_steps; off-policy use buffer_size
-            algo_kwargs = {
-                "batch_size": self.batch_size,
-                "learning_rate": self.learning_rate,
-                "verbose": 1,
-                "seed": config.seed,
-                "tensorboard_log": str(config.path / "tensorboard"),
-                **self.custom_algorithm_args,
-            }
-
-            # Detect on-policy vs off-policy for SBX
-            if self._is_sbx_on_policy():
-                algo_kwargs["n_steps"] = self.buffer_size
-            else:
-                algo_kwargs["buffer_size"] = self.buffer_size
-
-            if policy_kwargs:
-                algo_kwargs["policy_kwargs"] = policy_kwargs
-
-            model = self.algorithm(
-                self.policy,
-                envs,
-                device=jax_device,
-                **algo_kwargs,
-            )
-
-        except Exception as e:
-            config.logger.exception(
-                f"Failed to initialize JAX model with error: {str(e)}"
-            )
-            raise e
-
-        # --- Initialize callbacks ---
-        callback_list = self._init_callbacks(envs, config)
-
-        # --- Train model ---
-        total_timesteps = (
-            self.buffer_size if config.memory is None else self.train_iterations
-        )
-        try:
-            model.learn(
-                total_timesteps=total_timesteps,
-                tb_log_name=self.algorithm.__name__,
-                progress_bar=False,
-                callback=callback_list,
-            )
-        except Exception as e:
-            config.logger.exception(f"Failed to train JAX model with error: {str(e)}")
-            raise e
-        config.logger.info("Training Complete (JAX/SBX)")
-
-        # --- Save model if not estimating memory ---
-        if config.memory is not None:
-            config.logger.info(f"Saving model...")
-            model_path = config.path / "model"
-            _save_model(model, model_path)
-            config.logger.info(f"Saved model at {model_path}")
-
-        del model  # free memory
-
-    def _train_torch(self, envs: VecEnv, config: TaskConfig):
-        """Train the brain using PyTorch/SB3."""
         # --- Build model ---
         policy_kwargs = (
             {
@@ -396,96 +295,6 @@ class Brain:
 
     def test(self, envs: VecEnv, config: TaskConfig):
         """Test the brain."""
-        if self.use_jax:
-            self._test_jax(envs, config)
-        else:
-            self._test_torch(envs, config)
-
-    def _test_jax(self, envs: VecEnv, config: TaskConfig):
-        """Test the brain using JAX/SBX."""
-        import jax
-
-        jax_device = self._get_jax_device(config.device)
-
-        # --- Continual Learning Test Mode ---
-        if self.continual_learning:
-            try:
-                model = self.algorithm.load(
-                    config.path / "model" / "latest_model.zip",
-                    env=envs,
-                    device=jax_device,
-                )
-
-                callback_list = self._init_callbacks(envs, config)
-
-                total_timesteps = (
-                    self.test_iterations[config.condition] * self.steps_per_episode
-                )
-                model.learn(
-                    total_timesteps=total_timesteps,
-                    tb_log_name=f"{self.algorithm.__name__}_test",
-                    progress_bar=False,
-                    callback=callback_list,
-                    reset_num_timesteps=False,
-                )
-                config.logger.info("Continual-learning test phase complete (JAX/SBX)")
-
-                test_model_path = config.path / "model_test" / config.condition
-                _save_model(model, test_model_path)
-                config.logger.info(
-                    f"Saved continual-learning test model at {test_model_path}"
-                )
-                del model
-            except Exception as e:
-                config.logger.exception(
-                    f"Failed continual-learning test (JAX) with error: {str(e)}"
-                )
-                raise e
-        else:
-            # --- Standard (inference-only) Test Mode ---
-            try:
-                model = self.algorithm.load(
-                    config.path / "model" / "latest_model.zip",
-                    device=jax_device,
-                )
-
-                n_envs = self.n_parallel_envs.get("test", 1)
-
-                obs = envs.reset()
-                states = None
-                dones = np.ones((n_envs,), dtype=bool)
-
-                total_test_episodes = self.test_iterations[config.condition]
-                actual_iterations = ceil(total_test_episodes / n_envs)
-
-                for _ in range(actual_iterations):
-                    while True:
-                        action, states = model.predict(
-                            obs,
-                            state=states,
-                            episode_start=dones,
-                            deterministic=self.deterministic,
-                        )
-                        obs, _, dones, _ = envs.step(action)
-                        config.queue.put((config.name, n_envs))
-
-                        if all(dones):
-                            break
-
-                    cb.img2video(
-                        config.path / "recordings" / "chamber" / config.current_mode,
-                        self.steps_per_episode,
-                    )
-
-                del model
-            except Exception as e:
-                config.logger.exception(
-                    f"Failed to test JAX model with error: {str(e)}"
-                )
-                raise e
-
-    def _test_torch(self, envs: VecEnv, config: TaskConfig):
-        """Test the brain using PyTorch/SB3."""
         # --- Continual Learning Test Mode ---
         if self.continual_learning:
             try:
@@ -606,31 +415,22 @@ class Brain:
                     )
                 )
 
-        # create and add intrinsic reward callback (only for SB3/PyTorch mode)
+        # create and add intrinsic reward callback
         if self.reward is not None:
-            if self.use_jax:
-                # Intrinsic rewards from rllte depend on PyTorch tensors.
-                # When running in JAX mode, we skip intrinsic reward augmentation
-                # and log a warning.
-                config.logger.warning(
-                    "Intrinsic reward callbacks are not supported in JAX/SBX mode. "
-                    "Skipping intrinsic reward augmentation."
-                )
+            reward_func: BaseReward = self.reward(
+                envs,
+                device=f"cuda:{config.device}",
+                **self.reward_args,
+            )
+            if issubclass(self.algorithm, OnPolicyAlgorithm):
+                # brain.algorithm is instance of OnPolicyAlgorithn
+                callback_list.append(cb.IntrinsicRewardWithOnPolicyRL(reward_func))
+            elif issubclass(self.algorithm, OffPolicyAlgorithm):
+                callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
             else:
-                reward_func: BaseReward = self.reward(
-                    envs,
-                    device=f"cuda:{config.device}",
-                    **self.reward_args,
+                config.logger.warning(
+                    f"Intrinsic rewards do not support selected algorithm {self.algorithm}"
                 )
-                if issubclass(self.algorithm, OnPolicyAlgorithm):
-                    # brain.algorithm is instance of OnPolicyAlgorithn
-                    callback_list.append(cb.IntrinsicRewardWithOnPolicyRL(reward_func))
-                elif issubclass(self.algorithm, OffPolicyAlgorithm):
-                    callback_list.append(cb.IntrinsicRewardWithOffPolicyRL(reward_func))
-                else:
-                    config.logger.warning(
-                        f"Intrinsic rewards do not support selected algorithm {self.algorithm}"
-                    )
 
         # Add video recording callback
         callback_list.append(
@@ -641,47 +441,3 @@ class Brain:
         )
 
         return CallbackList(callback_list)
-
-    # ===================== JAX/SBX Helpers ===================== #
-
-    @staticmethod
-    def _get_jax_device(cuda_device_index: int) -> str:
-        """
-        Convert a CUDA device index to a JAX device string.
-
-        JAX uses its own device management. When a GPU is available, JAX addresses
-        GPUs as ``gpu:0``, ``gpu:1``, etc.  This helper maps the CUDA index used
-        by the rest of the NETT framework to the corresponding JAX device string.
-
-        Args:
-            cuda_device_index (int): The CUDA GPU device index.
-
-        Returns:
-            str: A JAX-compatible device string, e.g. ``"cuda"`` which lets JAX
-                 pick the default GPU, or ``"auto"`` to let SBX decide.
-        """
-        try:
-            import jax
-
-            available = jax.devices("gpu")
-            if cuda_device_index < len(available):
-                # SBX accepts "auto" or a jax.Device. Return "auto" and let
-                # JAX's CUDA_VISIBLE_DEVICES handle the rest; alternatively
-                # you can pass the jax.Device directly.
-                return "auto"
-            else:
-                return "auto"
-        except Exception:
-            return "auto"
-
-    def _is_sbx_on_policy(self) -> bool:
-        """Check whether the current SBX algorithm is on-policy.
-
-        SBX on-policy algorithms (PPO) accept ``n_steps``, while off-policy
-        algorithms (SAC, TD3, DQN, TQC, DroQ, CrossQ) accept ``buffer_size``.
-
-        Returns:
-            bool: True if the algorithm is on-policy.
-        """
-        on_policy_names = {"PPO"}
-        return getattr(self.algorithm, "__name__", "") in on_policy_names
