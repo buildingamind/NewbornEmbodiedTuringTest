@@ -213,7 +213,7 @@ class Brain:
                 batch_size=self.batch_size,
                 n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
                 learning_rate=self.learning_rate,
-                verbose=1,  # 0,  # TODO: Incorporate this into options
+                verbose=0,
                 policy_kwargs=policy_kwargs,
                 device=f"cuda:{config.device}",
                 seed=config.seed,
