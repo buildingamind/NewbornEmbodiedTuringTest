@@ -149,7 +149,6 @@ class Brain:
     def calc_iterations(
         self,
         num_brains: int,
-        num_threads: int,
         iterations_per_episode: dict[str, int],
         episodes: dict[str, int],
         steps_per_episode: int,
@@ -165,16 +164,6 @@ class Brain:
 
         # Calculate testing iterations if in 'test' mode
         if "test" in episodes:
-            # calculate number of environments that can be run at once per job (using SubProcVecEnv)
-            # TODO: Determine the number of threads used per brain and per env
-            n_threads_per_task = 4
-
-            max_envs = num_threads / (n_threads_per_task * self.n_tasks)
-
-            # Parallelize testing: run all test episodes in parallel (unless continual_learning)
-            if not self.continual_learning:
-                n_test_envs = episodes["test"]
-            self.n_parallel_envs = 1
             self.test_iterations = {
                 k: v * episodes["test"] for k, v in iterations_per_episode.items()
             }
@@ -320,7 +309,7 @@ class Brain:
                 # reset states for recurrent policies
                 states = None
                 # dones need to start True for episode_start for recurrent policies
-                dones = np.ones((self.n_parallel_envs,), dtype=bool)
+                dones = np.ones((1,), dtype=bool)
 
                 # loop over episodes
                 for _ in range(self.test_iterations[config.condition]):

@@ -17,7 +17,6 @@ class TaskConfig:
     brain_id: int
     condition: str
     modes: list[str]
-    n_parallel_envs: int
     queue: SimpleQueue
     memory: Optional[float]
     name: str
@@ -31,7 +30,6 @@ class TaskConfig:
         condition: str,
         output_dir: Path,
         modes: list[str],
-        n_parallel_envs: int,
         queue: SimpleQueue,
         memory: Optional[float] = None,
     ):
@@ -41,7 +39,6 @@ class TaskConfig:
         )  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling).
         self.condition = condition
         self.modes = modes
-        self.n_parallel_envs = n_parallel_envs
         self.queue = queue
         self.memory = memory
         self.name = output_dir.stem
@@ -86,9 +83,8 @@ class Task:
         memory: Optional[float] = None,
     ) -> None:
         """initialize task"""
-        n_parallel_envs = getattr(brain, "n_parallel_envs", 1)
         self.config = TaskConfig(
-            brain_id, condition, output_dir, modes, n_parallel_envs, queue, memory
+            brain_id, condition, output_dir, modes, queue, memory
         )
         self.agent = Agent(brain, body, env)
 

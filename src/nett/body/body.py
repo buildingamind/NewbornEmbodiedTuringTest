@@ -5,7 +5,6 @@ The body determines how observations from the environment are processed before t
 It can apply wrappers to modify the observations and provide a different perception to the brain.
 """
 
-from math import ceil
 from ..environment.environment import Environment
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
@@ -13,7 +12,7 @@ from gymnasium.wrappers import RecordVideo
 from time import sleep
 from typing import Optional
 
-from stable_baselines3.common.vec_env import SubprocVecEnv, DummyVecEnv, VecFrameStack
+from stable_baselines3.common.vec_env import DummyVecEnv
 from stable_baselines3.common.monitor import Monitor
 import supersuit as ss
 from supersuit.vector.concat_vec_env import ConcatVecEnv
@@ -85,9 +84,6 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
         if len(record_episodes) == 3:
             record_step = int(record_episodes[2] or 1)
 
-    if config.current_mode == "test":
-        # Adjust the number of episodes to record based on the number of parallel environments
-        record_stop = ceil(record_stop / config.n_parallel_envs)
     if (
         record_stop > 0 and record_step > 0
     ):  #####TODO: Add support for recording multiple agents and multiobs

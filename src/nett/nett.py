@@ -7,7 +7,6 @@ This module contains the NETT class, which is the main class for training, testi
 
 import logging
 import json
-import os
 from pathlib import Path
 import time
 from typing import Optional
@@ -75,11 +74,10 @@ class NETT:
         >>>
         >>> # run the benchmark
         >>> benchmark = NETT(config=[experiment1_config, experiment2_config, experiment3_config])
-        >>> benchmark.run(output_dir="path/to/output/directory", devices=[0,1,2], num_threads=32)
+        >>> benchmark.run(output_dir="path/to/output/directory", devices=[0,1,2])
     """
 
     output_path: Path
-    num_threads: int
     devices: list[int]
     task_sheet: dict[Future, TaskConfig]
     waitlist: list[Task]
@@ -107,7 +105,6 @@ class NETT:
         self,
         output_path: Path | str = ".",
         devices: Optional[list[int]] = None,
-        num_threads: Optional[int] = None,
         verbose: int = True,
         asynchronous: bool = False,
     ) -> list[Future]:
@@ -117,7 +114,6 @@ class NETT:
         Args:
             output_path (Path | str, optional): The directory where the run results will be stored. Defaults to `"."`.
             devices (list[int], optional): The list of the indices of CUDA GPUs to be used for training and testing. If None, all available devices will be used. Defaults to `None`.
-            num_threads (int, optional): The number of threads to run in parallel for testing. Defaults to `None`. If None, the number of threads is equal to the number of cpu cores.
             verbose (int, optional): Whether or not to print info statements. Defaults to `True`.
             asynchronous (bool, optional): Whether or not to run the tasks asynchronously. Defaults to `False`.
 
@@ -125,24 +121,11 @@ class NETT:
             list[Future]: A list of futures representing the jobs that have been launched.
 
         Example:
-            >>> task_sheet = benchmarks.run(output_dir="./test_run", devices=[0,1,2], num_threads=32, verbose=True) # benchmarks is an instance of NETT
+            >>> task_sheet = benchmarks.run(output_dir="./test_run", devices=[0,1,2], verbose=True) # benchmarks is an instance of NETT
         """
         # get the output directory
         self.output_path = Path(output_path).resolve()
         self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
-
-        # Set the number of threads
-        self.num_threads = os.cpu_count() if num_threads is None else num_threads
-
-        # Count the number of test configurations
-        test_config_count: int = 0
-        for config in self.configs:
-            if "episodes" in config:
-                test_config_count += bool(config["episodes"].get("test", 0))
-
-        # Adjust the number of threads based on the number of test configurations
-        if test_config_count > 0:
-            self.num_threads = int(self.num_threads / test_config_count)
 
         # initialize task sheet and waitlist
         self.task_sheet = {}
@@ -176,12 +159,6 @@ class NETT:
                     # else:
                     self.task_waiter()
 
-                except ConnectionResetError as e:
-                    # TODO: Fix this to appear at the end of a run
-                    self.logger.error(
-                        "Failed to create SubprocVecEnv. Please ensure your script includes `if __name__ == '__main__':` (see LINK)"
-                    )
-                    raise e
                 except Exception as e:
                     self.logger.exception(f"Error in launching tasks: {e}")
                     raise e
@@ -252,7 +229,6 @@ class NETT:
         # calculate run info for Brain
         base_brain.calc_iterations(
             num_brains,
-            self.num_threads,
             base_env.iterations_per_test_episode,
             episodes,
             steps_per_episode,
