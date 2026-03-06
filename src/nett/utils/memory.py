@@ -63,13 +63,4 @@ class MemoryManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-        if exc_type is None:
-            return False
-        # An exception occurred
-        print(f"Exception type: {exc_type}")
-        print(f"Exception value: {exc_val}")
-        # Optionally print traceback using traceback module
-        import traceback
-
-        traceback.print_tb(exc_tb)
-        return True
+        return False  # Don't suppress exceptions

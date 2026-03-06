@@ -45,13 +45,4 @@ class Executor(ProcessPoolExecutor):
         self.loading_bar_thread.join()
         self.loading_bar.close()
         super().__exit__(exc_type, exc_val, exc_tb)
-        if exc_type is None:
-            return False
-        # An exception occurred
-        print(f"Exception type: {exc_type}")
-        print(f"Exception value: {exc_val}")
-        # Optionally print traceback using traceback module
-        import traceback
-
-        traceback.print_tb(exc_tb)
-        return True  # Suppress the exception in this example
+        return False  # Don't suppress exceptions

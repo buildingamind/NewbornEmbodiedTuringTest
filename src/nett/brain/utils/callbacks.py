@@ -208,7 +208,6 @@ class IntrinsicRewardWithOnPolicyRL(BaseCallback):
         actions = th.as_tensor(self.buffer.actions)
         rewards = th.as_tensor(self.buffer.rewards)
         dones = th.as_tensor(self.buffer.episode_starts)
-        print(obs.shape, actions.shape, rewards.shape, dones.shape, obs.shape)
         # compute the intrinsic rewards
         intrinsic_rewards = self.irs.compute(
             samples=dict(
@@ -296,7 +295,7 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
                     .to(device),
                 }
             )
-        except:
+        except Exception:
             pass
         ####################################
         return True

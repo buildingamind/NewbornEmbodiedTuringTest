@@ -7,6 +7,7 @@ import yaml
 def validate_config(config: Path | str | dict, schema: dict) -> dict:
     if isinstance(config, dict):
         valid_config = config
+        jsonschema.validate(valid_config, schema)
     elif isinstance(config, (str, Path)):
         config_str = str(config)
         with open(config, "r") as file:

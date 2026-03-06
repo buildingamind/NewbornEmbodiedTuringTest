@@ -169,7 +169,7 @@ def _act_max(
                 input = torch.mul(input, (1.0 - theta_decay))
 
             # Regularization: Gaussian Blur
-            if Gaussian_Blur and k % theta_every is 0:
+            if Gaussian_Blur and k % theta_every == 0:
                 temp = input.squeeze(0)
                 temp = temp.detach().numpy()
                 for channel in range(3):

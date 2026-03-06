@@ -56,11 +56,7 @@ class Retina(gym.ObservationWrapper):
                     _, channels, width, height = shape
                 elif len(shape) == 3:
                     channels, width, height = shape
-                    self.env.observation_space[key] = (
-                        gym.wrappers.FrameStackObservation(
-                            self.env.observation_space[key], 2
-                        )
-                    )
+                    self.env = gym.wrappers.FrameStackObservation(env, stack_size=2)
                 else:
                     raise ValueError(
                         "Unsupported observation space shape: {}".format(shape)

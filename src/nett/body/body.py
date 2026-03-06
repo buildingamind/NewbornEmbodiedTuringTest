@@ -137,12 +137,16 @@ class Body:
 
     def __init__(
         self,
-        wrappers: list[gym.Wrapper | str] = [],
-        record_eps: dict[str, str] = {"train": "0:0:1", "test": "0:0:1"},
+        wrappers: Optional[list[gym.Wrapper | str]] = None,
+        record_eps: Optional[dict[str, str]] = None,
         panini_projection: bool = False,
         input_resolution: Optional[int] = None,
         binocular_vision: bool = False,
     ):
+        if wrappers is None:
+            wrappers = []
+        if record_eps is None:
+            record_eps = {"train": "0:0:1", "test": "0:0:1"}
         self.binocular_vision = (
             "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
         )
@@ -222,14 +226,4 @@ class Body:
         # TODO: Add a way to close Unity Environment after episodes are complete (in Unity)
         self.env.close()
         del self.env  # free memory
-        if exc_type is None:
-            # No exception occurred
-            return False
-
-        # An exception occurred, print details
-        print(f"Exception type: {exc_type}")
-        print(f"Exception value: {exc_val}")
-        import traceback
-
-        traceback.print_tb(exc_tb)
-        return True  # Suppress the exception
+        return False  # Don't suppress exceptions

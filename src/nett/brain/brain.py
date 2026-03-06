@@ -99,11 +99,11 @@ class Brain:
         checkpoint_freq: Optional[int] = None,
         train_encoder: bool = True,
         deterministic: bool = True,
-        custom_encoder_args: dict[str, Any] = {},
-        custom_algorithm_args: dict[str, Any] = {},
-        custom_policy_args: Optional[dict[str, Any]] = {},
+        custom_encoder_args: Optional[dict[str, Any]] = None,
+        custom_algorithm_args: Optional[dict[str, Any]] = None,
+        custom_policy_args: Optional[dict[str, Any]] = None,
         custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
-        reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
+        reward_args: Optional[dict[str, Any]] = None,
         continual_learning: bool = False,
     ):
         # --- Validate and set attributes ---
@@ -129,6 +129,21 @@ class Brain:
         self.continual_learning = bool(continual_learning)
 
         # --- Custom arguments ---
+        custom_encoder_args = (
+            custom_encoder_args if custom_encoder_args is not None else {}
+        )
+        custom_algorithm_args = (
+            custom_algorithm_args if custom_algorithm_args is not None else {}
+        )
+        custom_policy_args = (
+            custom_policy_args if custom_policy_args is not None else {}
+        )
+        reward_args = (
+            reward_args
+            if reward_args is not None
+            else {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}
+        )
+
         # used for extractors that wrap other extractors e.g. multiinput
         if "extractor_class" in custom_encoder_args:
             custom_encoder_args["extractor_class"] = validate_encoder(
@@ -139,7 +154,7 @@ class Brain:
         self.custom_algorithm_args = custom_algorithm_args
         self.custom_policy_arch = custom_policy_arch
         self.custom_policy_args = custom_policy_args
-        self.reward_args = reward_args
+        self.reward_args = dict(reward_args)  # copy to avoid mutating caller's dict
 
         # --- Reward arguments ---
         if reward != "RE3":

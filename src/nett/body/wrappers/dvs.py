@@ -64,6 +64,8 @@ class DVS(gym.ObservationWrapper):
 
         try:
             _, channels, width, height = self.env.observation_space.shape  # stack,
+            if not self.is_color:
+                channels = 1
             self.shape = (channels, width, height)
             self.observation_space = gym.spaces.Box(
                 shape=self.shape, low=0, high=255, dtype=np.uint8
@@ -125,6 +127,9 @@ class DVS(gym.ObservationWrapper):
 
         change = self._gaussianDiff(prev, current)
         dc = self.threshold(change)
+
+        if not self.is_color:
+            dc = np.expand_dims(dc, axis=2)  # (H, W) -> (H, W, 1)
 
         return np.transpose(dc, (2, 0, 1))
 
