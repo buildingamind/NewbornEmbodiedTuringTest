@@ -20,6 +20,8 @@ def _port_in_use(port) -> bool:
         sock.bind(("localhost", port))
     except socket.error:
         return True
+    finally:
+        sock.close()
     return False
 
 

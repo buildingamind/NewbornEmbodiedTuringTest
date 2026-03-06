@@ -63,7 +63,7 @@ def dst(run_dir: str | Path, output_dir: str | Path) -> None:
         ax.figure.savefig(output_dir.joinpath("trajectories.png"))
 
     except Exception as e:
-        raise f"Error in dst: {e}"
+        raise RuntimeError(f"Error in dst: {e}") from e
 
 
 def timelapse(data_dir: Path | str, output_dir: Path | str):
@@ -117,7 +117,7 @@ def timelapse(data_dir: Path | str, output_dir: Path | str):
 
                 print(f"{filename} completed")
     except Exception as e:
-        raise f"Error in timelapse: {e}"
+        raise RuntimeError(f"Error in timelapse: {e}") from e
 
 
 # TODO v0.3, make .analyze() a staticmethod so that it does not need a class instance to call

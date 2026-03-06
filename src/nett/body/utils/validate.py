@@ -41,7 +41,7 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
             wrappers[i] = wrapper
         else:
             raise TypeError(
-                "Reward should only be either a string or a subclass of rllte BaseReward"
+                "Wrapper should only be either a string or a subclass of gym.Wrapper"
             )
 
     return wrappers

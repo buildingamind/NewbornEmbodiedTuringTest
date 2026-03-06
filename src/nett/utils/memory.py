@@ -41,9 +41,9 @@ class MemoryManager:
         maxMemoryDevice: int = None
         for device in devices:
             memory = self.get_free_memory(device)
-        if memory > maxMemory:
-            maxMemory = memory
-            maxMemoryDevice = device
+            if memory > maxMemory:
+                maxMemory = memory
+                maxMemoryDevice = device
         return maxMemoryDevice, maxMemory
 
     @staticmethod

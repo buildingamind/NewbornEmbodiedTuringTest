@@ -9,6 +9,7 @@ from ..environment.environment import Environment
 import gymnasium as gym
 from gymnasium.wrappers import RecordVideo
 
+import sys
 from time import sleep
 from typing import Optional
 
@@ -80,7 +81,7 @@ def _record_wrapper(  # TODO: Capture both eyes rather than just one
         record_stop = int(record_episodes[0] or 0)
     else:
         record_start = int(record_episodes[0] or 0)
-        record_stop = int(record_episodes[1] or int.max)
+        record_stop = int(record_episodes[1] or sys.maxsize)
         if len(record_episodes) == 3:
             record_step = int(record_episodes[2] or 1)
 
@@ -142,7 +143,9 @@ class Body:
         input_resolution: Optional[int] = None,
         binocular_vision: bool = False,
     ):
-        self.binocular_vision = "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
+        self.binocular_vision = (
+            "binocular" in wrappers or "multiobs" in wrappers or binocular_vision
+        )
         self.wrappers = validate_wrappers(wrappers)
         self.record_eps = record_eps
         self.panini_projection = panini_projection
@@ -204,13 +207,7 @@ class Body:
         record_eps = self.record_eps.get(config.current_mode, "0:0:1")
 
         def _init():
-            return _load_env(
-                env,
-                config,
-                self.wrappers,
-                False,
-                record_eps
-            )
+            return _load_env(env, config, self.wrappers, False, record_eps)
 
         return DummyVecEnv([_init])
 

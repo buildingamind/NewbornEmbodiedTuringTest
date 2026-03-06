@@ -171,12 +171,12 @@ class NETT:
         environment: dict,
         body: dict = {},
         brain: dict = {},
-        episodes: {str, int} = {"train": 5000, "test": 100},
+        episodes: dict[str, int] = {"train": 5000, "test": 100},
         steps_per_episode: int = 200,
         num_brains: int = 1,
         task_memory: str | float = "auto",
         **kwargs,
-    ) -> list[Future]:
+    ) -> None:
         """
         Non-public function for running a single benchmark. The parameters here should match the top-level parameters of a config file input into :func:`~nett.nett.NETT.run`.
 
@@ -190,9 +190,6 @@ class NETT:
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
             task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
             **kwargs: Additional keyword arguments.
-
-        Returns:
-            list[Future]: A list of futures representing the jobs that have been launched.
 
         """
 
