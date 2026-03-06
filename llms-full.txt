@@ -1,0 +1,896 @@
+# Newborn Embodied Turing Test (NETT)
+
+> NETT is a Python toolkit for benchmarking virtual agents in controlled-rearing conditions. It enables researchers to train and test AI agents in Unity-based virtual environments that replicate the controlled-rearing laboratory conditions used to study newborn animals (chicks), allowing direct comparison between artificial and biological learning.
+
+- GitHub: https://github.com/buildingamind/NewbornEmbodiedTuringTest
+- PyPI: https://pypi.org/project/nett-benchmarks/
+- Docs: https://buildingamind.github.io/NewbornEmbodiedTuringTest/
+
+## Overview
+
+NETT follows a three-component architecture — **Brain**, **Body**, and **Environment** — orchestrated by a central `NETT` class. The pipeline is configuration-driven: users define experiments in YAML/JSON configs validated against a JSON schema, then NETT handles task scheduling, GPU memory management, and parallel execution across multiple agents and conditions.
+
+**Training pipeline**: Unity Environment → Body (wrapper chain) → SubprocVecEnv → Brain (RL training) → Checkpoints + Logs
+
+**Testing pipeline**: Trained Model → Brain (evaluation) → Metrics
+
+## Project Structure
+
+```
+src/nett/                  # Main package source
+├── nett.py                # NETT orchestrator class — primary entry point
+├── __init__.py            # Public API re-exports
+├── schema.json            # JSON Schema for config validation
+├── _version.py            # Package version
+├── brain/                 # Learning module
+│   ├── brain.py           # Brain class
+│   ├── encoders/          # Vision encoders (BaseFeaturesExtractor subclasses)
+│   │   ├── cnnlstm.py     # CNNLSTM encoder
+│   │   ├── dinov1.py       # DinoV1 encoder
+│   │   ├── dinov2.py       # DinoV2 encoder
+│   │   ├── frozensimclr.py # FrozenSimCLR encoder
+│   │   ├── multiinput.py   # MultiInputEncoder
+│   │   ├── resnet10.py     # Resnet10CNN (medium)
+│   │   ├── resnet18.py     # Resnet18CNN (large)
+│   │   ├── sam.py          # SegmentAnything encoder
+│   │   ├── simplevit.py    # SimpleViT encoder
+│   │   └── vit.py          # ViT encoder
+│   ├── rewards/           # Intrinsic reward functions (BaseReward subclasses)
+│   │   ├── e3b.py          # E3B reward
+│   │   ├── icm.py          # ICM reward
+│   │   ├── pseudo_counts.py # PseudoCounts reward
+│   │   └── ride.py         # RIDE reward
+│   └── utils/
+│       ├── validate.py    # Registry pattern: _getMapping(), _getValidator()
+│       ├── callbacks.py   # SB3 training callbacks
+│       └── performance.py # Performance metrics
+├── body/                  # Sensory interface module
+│   ├── body.py            # Body class
+│   ├── wrappers/          # gym.Wrapper subclasses
+│   │   ├── binocular.py    # Binocular vision wrapper
+│   │   ├── dvs.py          # Dynamic Vision Sensor wrapper
+│   │   ├── multiobs.py     # Multi-observation wrapper
+│   │   ├── retina.py       # Retina wrapper
+│   │   ├── video.py        # Frame stacking wrapper
+│   │   └── trace_recording.py # Trace recording (disabled)
+│   └── utils/
+│       └── validate.py    # Wrapper validation
+├── environment/           # Unity simulation module
+│   ├── environment.py     # Environment class
+│   └── utils/
+│       ├── design.py      # get_experiment_design()
+│       ├── ports.py       # random_port() for Unity workers
+│       ├── wrappers.py    # GymWrapper, ZooWrapper
+│       └── validate.py    # Executable/conditions validation
+├── analysis/              # Post-training analysis (standalone)
+│   ├── analysis.py        # dst(), timelapse(), analyze()
+│   ├── feature_visualization.py # CNN feature map visualization
+│   ├── activation_maximization.py # Neuron activation maximization
+│   ├── trajectory.py      # map_trajectories()
+│   ├── tSNE.py            # generate_tSNEs()
+│   └── utils/             # R script wrappers
+│       ├── merge.py        # merge()
+│       ├── train_viz.py    # train_viz()
+│       └── test_viz.py     # test_viz()
+└── utils/                 # Orchestration internals
+    ├── task.py            # TaskConfig, Agent, Task, run_task()
+    ├── executor.py        # Singleton ProcessPoolExecutor wrapper
+    ├── tasklist.py        # TaskList management
+    ├── memory.py          # MemoryManager — GPU VRAM tracking
+    ├── loading_bar_queue.py # Progress bar queue
+    └── validate.py        # Config validation against schema.json
+```
+
+## Configuration
+
+All experiments are defined via YAML or JSON files validated against `src/nett/schema.json`. Only `name` and `environment.executable_path` are required.
+
+### Minimal Config
+
+```yaml
+name: Experiment1
+environment:
+  executable_path: path/to/executable.x86_64
+```
+
+### Full Config
+
+```yaml
+name: Experiment1
+episodes:
+  train: 5000          # Number of training episodes (default: 5000)
+  test: 20             # Number of testing episodes (default: 100)
+steps_per_episode: 200 # Steps per episode (default: 200)
+num_brains: 5          # Number of parallel agents (default: 1)
+task_memory: auto      # GPU memory per task in GB, or "auto" (default: "auto")
+
+brain:
+  policy: CnnPolicy            # Policy network type (default: "CnnPolicy")
+  algorithm: PPO               # RL algorithm (default: "PPO")
+  encoder: ViT                 # Vision encoder (default: "small")
+  reward: ICM                  # Reward function (default: "closeness")
+  embedding_dim: 512           # Encoder embedding dimension (default: null, uses encoder's default)
+  batch_size: 512              # Mini-batch size (default: 512)
+  buffer_size: 2048            # Replay buffer size (default: 2048)
+  learning_rate: 0.0003        # Learning rate (default: 3e-4)
+  checkpoint_freq: 30000       # Steps between checkpoints, null=disabled (default: null)
+  train_encoder: true          # Whether to train the encoder (default: true)
+  deterministic: true          # Deterministic actions during testing (default: true)
+  continual_learning: false    # Continue learning during test phase (default: false)
+  custom_encoder_args:         # Passed directly to encoder constructor
+    patch_size: 4
+    depth: 3
+    heads: 3
+    intermediate_size: 128
+    hidden_size: 64
+  custom_algorithm_args: {}    # Passed directly to SB3 algorithm constructor
+  custom_policy_args: {}       # Passed directly to policy constructor
+  custom_policy_arch:          # Custom policy network layers [neurons_per_layer, ...]
+    - 64
+    - 32
+  reward_args:                 # Passed to reward function constructor
+    beta: 0.2
+    kappa: 0.0
+    gamma: 0.99
+
+body:
+  wrappers:                    # List of observation wrappers (default: [])
+    - binocular
+    - dvs
+  record_eps:                  # Episodes to record, format "start:stop:step"
+    train: "0:0:1"             # (default: "0:0:1" = no recording)
+    test: "0:0:1"
+  panini_projection: false     # Apply panini projection (default: false)
+  input_resolution: null       # Input image resolution, null=environment default (default: null)
+  binocular_vision: false      # Enable binocular vision (default: false)
+
+environment:
+  executable_path: path/to/executable.x86_64  # Required. Path to Unity executable
+  conditions:                  # Imprinting conditions to run (default: all available)
+    - object1
+    - object2
+  record_eps:                  # Environment recording (top-down view)
+    train: "0"
+    test: "0"
+  multiagent: false            # Multi-agent environment (default: false)
+  random_first_frame: false    # Randomize first frame (default: false)
+  display: null                # Display number, null=headless (default: null)
+  continuous_position: false   # Continuous position mode (default: false)
+```
+
+## NETT Class (Orchestrator)
+
+The primary entry point for running experiments.
+
+```python
+from nett import NETT
+```
+
+### Constructor
+
+```python
+NETT(configs: list[Path | str | dict]) -> None
+```
+
+Initialize with one or more experiment configurations. Each config can be a `dict`, a `Path` to a YAML/JSON file, or a string path. All configs are validated against `src/nett/schema.json`.
+
+### Methods
+
+#### `run(output_path, devices, verbose, asynchronous)`
+
+```python
+def run(
+    self,
+    output_path: Path | str = ".",
+    devices: Optional[list[int]] = None,
+    verbose: int = True,
+    asynchronous: bool = False,
+) -> list[Future]
+```
+
+Execute all configured benchmarks in parallel.
+
+- `output_path`: Directory where run results are stored
+- `devices`: List of CUDA GPU indices to use. If `None`, all available GPUs are used
+- `verbose`: Whether to print progress info
+- `asynchronous`: Whether to run tasks asynchronously
+
+Internally: initializes MemoryManager, validates GPUs, creates Executor (ProcessPoolExecutor), runs `single_run()` for each config, then `task_waiter()` to manage GPU memory and waitlisted tasks.
+
+#### `single_run(name, environment, body, brain, episodes, steps_per_episode, num_brains, task_memory)`
+
+```python
+def single_run(
+    self,
+    name: str,
+    environment: dict,
+    body: dict = {},
+    brain: dict = {},
+    episodes: dict[str, int] = {"train": 5000, "test": 100},
+    steps_per_episode: int = 200,
+    num_brains: int = 1,
+    task_memory: str | float = "auto",
+    **kwargs,
+) -> list[Future]
+```
+
+Run a single benchmark. Parameters match top-level config file keys. Internally:
+
+1. Creates output directory, saves config copy
+2. Initializes Brain, Body, Environment from dicts
+3. Calculates training iterations via `Brain.calc_iterations()`
+4. Adjusts environment to agent settings via `Environment.adjust_to_agent()`
+5. Estimates GPU memory (auto mode runs one rollout to measure)
+6. Creates TaskList (brain × condition combinations)
+7. Validates tasks, then assigns each to a GPU via `_assign_task()`
+
+#### `status()`
+
+```python
+def status(self) -> dict[Future, TaskConfig]
+```
+
+Returns the status of running tasks as a dict mapping futures to their configs.
+
+#### `task_waiter()`
+
+Blocks until all tasks complete. When a task finishes, frees its GPU memory and checks if waitlisted tasks can now run.
+
+### Usage Example
+
+```python
+from nett import NETT
+
+if __name__ == '__main__':
+    config = {
+        "name": "Experiment1",
+        "episodes": {"train": 5000, "test": 20},
+        "steps_per_episode": 200,
+        "num_brains": 5,
+        "brain": {
+            "policy": "CnnPolicy",
+            "algorithm": "PPO",
+            "encoder": "small",
+            "reward": "closeness"
+        },
+        "body": {
+            "wrappers": ["dvs"]
+        },
+        "environment": {
+            "executable_path": "path/to/executable.x86_64"
+        }
+    }
+
+    benchmark = NETT([config])
+    benchmark.run(output_path="./output", devices=[0, 1])
+```
+
+**Note**: The `if __name__ == '__main__':` guard is required because `SubprocVecEnv` spawns subprocesses.
+
+## Brain Class (Learning)
+
+Represents the agent's learning model: encoder, policy, algorithm, reward function, and hyperparameters.
+
+```python
+from nett.brain import Brain
+```
+
+### Constructor
+
+```python
+def __init__(
+    self,
+    encoder: str | type[BaseFeaturesExtractor] = "small",
+    policy: str | type[BasePolicy] = "CnnPolicy",
+    algorithm: str | type[BaseAlgorithm] = "PPO",
+    reward: str | type[BaseReward] = "closeness",
+    embedding_dim: Optional[int] = None,
+    batch_size: int = 512,
+    buffer_size: int = 2048,
+    learning_rate: float | Callable = 3e-4,
+    checkpoint_freq: Optional[int] = None,
+    train_encoder: bool = True,
+    deterministic: bool = True,
+    custom_encoder_args: dict[str, Any] = {},
+    custom_algorithm_args: dict[str, Any] = {},
+    custom_policy_args: Optional[dict[str, Any]] = {},
+    custom_policy_arch: Optional[list[int | dict[str, list[int]]]] = None,
+    reward_args: dict[str, Any] = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99},
+    continual_learning: bool = False,
+) -> None
+```
+
+All string arguments are validated against the registry (see Available Components). Custom class types can also be passed directly.
+
+### Methods
+
+#### `calc_iterations(num_brains, iterations_per_episode, episodes, steps_per_episode)`
+
+```python
+def calc_iterations(
+    self,
+    num_brains: int,
+    iterations_per_episode: dict[str, int],
+    episodes: dict[str, int],
+    steps_per_episode: int,
+) -> None
+```
+
+Calculates and stores `self.train_iterations`, `self.test_iterations`, `self.steps_per_episode`, and `self.n_tasks`.
+
+#### `train(envs, config)`
+
+```python
+def train(self, envs: VecEnv, config: TaskConfig) -> None
+```
+
+Trains the model:
+
+1. Builds policy kwargs (encoder class, features_dim, custom args, network architecture)
+2. Creates SB3 algorithm instance with policy, hyperparameters, and CUDA device
+3. Optionally freezes encoder parameters (`train_encoder=False`)
+4. Initializes callbacks (hyperparameter logging, progress bar, checkpoints, intrinsic rewards, video conversion)
+5. Calls `model.learn()` with calculated timesteps
+6. Saves model and frees memory
+
+#### `test(envs, config)`
+
+```python
+def test(self, envs: VecEnv, config: TaskConfig) -> None
+```
+
+Two modes:
+
+**Standard inference** (default): Loads trained model, runs `model.predict()` for each test iteration step by step, records frames as video.
+
+**Continual learning** (`continual_learning=True`): Loads trained model, calls `model.learn()` again with `reset_num_timesteps=False` to continue training during test, then saves updated model.
+
+### Callbacks
+
+Defined in `src/nett/brain/utils/callbacks.py`:
+
+- **`HParamCallback`**: Logs hyperparameters (algorithm, learning rate, gamma, batch_size, n_steps) to TensorBoard
+- **`LoadingBarCallback`**: Updates progress bar via `SimpleQueue`
+- **`MemoryCallback`**: Measures GPU VRAM usage during memory estimation runs; writes to `mem.txt`
+- **`IntrinsicRewardWithOnPolicyRL`**: Integrates RLeXplore intrinsic rewards with on-policy algorithms (PPO, A2C, etc.)
+- **`IntrinsicRewardWithOffPolicyRL`**: Integrates RLeXplore intrinsic rewards with off-policy algorithms (DQN, SAC, etc.)
+- **`PngToMp4Callback`**: Converts PNG frame sequences to MP4 videos after training
+
+Standalone: `img2video(record_path, expected_length, fps=25)` — converts PNG sequences to MP4 using OpenCV.
+
+## Body Class (Sensory Interface)
+
+Interface between Environment and Brain. Applies observation wrappers and vectorizes environments.
+
+```python
+from nett.body import Body
+```
+
+### Constructor
+
+```python
+def __init__(
+    self,
+    wrappers: list[gym.Wrapper | str] = [],
+    record_eps: dict[str, str] = {"train": "0:0:1", "test": "0:0:1"},
+    panini_projection: bool = False,
+    input_resolution: Optional[int] = None,
+    binocular_vision: bool = False,
+) -> None
+```
+
+- `wrappers`: List of wrapper names (strings) or wrapper classes. Validated via `validate_wrappers()`
+- `record_eps`: Episodes to record in format `"start:stop:step"`
+- `panini_projection`: Apply panini projection to agent's vision
+- `input_resolution`: Override environment's default image resolution
+- `binocular_vision`: Enable dual-camera observations. Auto-set to `True` if `"binocular"` or `"multiobs"` wrapper is used
+
+### Methods
+
+#### `embed(env, config)`
+
+```python
+def embed(self, env: Environment, config: TaskConfig) -> Body
+```
+
+Embeds the environment in the body:
+
+1. Selects wrapper path: `_zoo_wrapper()` for multi-agent, `_gym_wrapper()` for single-agent
+2. For single-agent: creates `SubprocVecEnv` with environment factory functions that apply the wrapper chain
+3. Returns `self` with `self.envs` attribute set to the vectorized environment
+
+#### `validate_env(env, config)`
+
+```python
+def validate_env(self, env: Environment, config: TaskConfig) -> None
+```
+
+Validates the wrapped environment using SB3's environment checker.
+
+#### Context Manager
+
+`Body` implements `__enter__`/`__exit__`. `__enter__` returns the vectorized environment; `__exit__` closes it.
+
+### Wrappers
+
+All wrappers are `gym.ObservationWrapper` subclasses in `src/nett/body/wrappers/`:
+
+#### Binocular
+
+```python
+class Binocular(gym.ObservationWrapper)
+```
+
+Combines left/right binocular observations into a single stacked observation with 2× channels. Converts Tuple observation space to Box.
+
+#### DVS (Dynamic Vision Sensor)
+
+```python
+class DVS(gym.ObservationWrapper)
+    def __init__(self, env, change_threshold=30, kernel_size=(3,3), sigma=1, is_color=True)
+```
+
+Simulates a Dynamic Vision Sensor. Computes Gaussian-blurred frame differences between consecutive observations. Only pixels exceeding `change_threshold` are passed through.
+
+#### MultiObs
+
+```python
+class MultiObs(gym.ObservationWrapper)
+```
+
+Converts Tuple observation spaces to Dict spaces, enabling SB3's `MultiInputPolicy` for multi-camera setups.
+
+#### Retina
+
+```python
+class Retina(gym.ObservationWrapper)
+    def __init__(self, env, device)
+```
+
+Simulates biological retina with foveal (high-acuity center) and peripheral (low-acuity surround) regions. Uses the `ArtificialRetina` helper class for spatially-varying resolution processing.
+
+#### Video (Frame Stacking)
+
+```python
+class Video(gym.ObservationWrapper)
+    def __init__(self, env, frames=2)
+```
+
+Stacks multiple consecutive frames (default 2). Output shape: `(frames * channels, H, W)`.
+
+## Environment Class (Simulation)
+
+Wraps Unity executables as gymnasium environments.
+
+```python
+from nett.environment import Environment
+```
+
+### Constructor
+
+```python
+def __init__(
+    self,
+    executable_path: str,
+    conditions: Optional[list[str]] = None,
+    record_eps: dict = {"train": "0", "test": "0"},
+    multiagent: bool = False,
+    random_first_frame: bool = False,
+    display: Optional[int] = None,
+    continuous_position: bool = False,
+) -> None
+```
+
+- `executable_path`: Path to Unity executable file. Validated by `validate_executable_path()` (checks existence, `UnityPlayer.so`, data directory)
+- `conditions`: Imprinting conditions to run. If `None`, all available conditions from `get_experiment_design()` are used
+- `record_eps`: Episodes to record (top-down environment view)
+- `multiagent`: Whether environment uses PettingZoo multi-agent interface
+- `display`: X display number for rendering. `None` = headless
+
+### Methods
+
+#### `adjust_to_agent(steps_per_episode, reward, binocular_vision, panini, input_resolution)`
+
+```python
+def adjust_to_agent(
+    self,
+    steps_per_episode: int,
+    reward: str,
+    binocular_vision: bool,
+    panini: bool = False,
+    input_resolution: Optional[int] = None,
+) -> None
+```
+
+Configures environment parameters based on agent settings: episode length, reward type, vision configuration.
+
+#### `load(config, validation_mode, seed)`
+
+```python
+def load(self, config: TaskConfig, validation_mode: bool, seed: Optional[int] = None) -> gym.Env
+```
+
+Opens the Unity executable as a `UnityEnvironment`, wraps it in either `GymWrapper` (single-agent) or `ZooWrapper` (multi-agent), and returns a gym.Env.
+
+### Environment Wrappers
+
+Defined in `src/nett/environment/utils/wrappers.py`:
+
+- **`BaseWrapper`**: Base class handling `render()` (converts mlagents frame format `(C,W,H)` to gym `(W,H,C)`) and `reset()`
+- **`GymWrapper(BaseWrapper, gym.Wrapper)`**: Single-agent wrapper with `step()` returning `(obs, reward, terminated, truncated, info)`
+- **`ZooWrapper(BaseWrapper, BaseParallelWrapper)`**: Multi-agent PettingZoo wrapper
+
+### Utilities
+
+- `get_experiment_design(executable_path: Path) -> dict[str, int]`: Reads available imprinting conditions from Unity executable directory
+- `random_port() -> int`: Returns a random unused port (range 1024-49151) for Unity worker communication
+- `validate_executable_path(path) -> Path`: Validates Unity executable exists with required files
+- `validate_conditions(all_conditions, conditions) -> list[str]`: Validates requested conditions exist
+
+## Analysis Module
+
+Post-training analysis functions. Standalone — can be used without the NETT class.
+
+```python
+from nett.analysis import analyze, map_trajectories, feature_visualization, generate_tSNEs, dst, timelapse
+```
+
+### `analyze(experiment, run_dir, output_dir, bar_order, color_bars)`
+
+```python
+def analyze(
+    experiment: str,
+    run_dir: str,
+    output_dir: Optional[str] = None,
+    bar_order: str | list[int] = "default",
+    color_bars: bool = True,
+) -> None
+```
+
+Runs the standard analysis pipeline using R scripts. Calls `merge()`, `train_viz()`, and `test_viz()`.
+
+- `experiment`: One of `"parsing"`, `"binding"`, `"viewinvariance"`, `"facerecognition"`, `"biomotion"`, `"statisticallearning"`
+- `run_dir`: Directory containing run results
+- `output_dir`: Defaults to `{run_dir}/results`
+- `bar_order`: Bar display order — `"default"`, `"asc"`, `"desc"`, or list like `[3,1,2,4]`
+- Requires R with `tidyverse`, `argparse`, `scales` packages
+
+### `map_trajectories(input_dir, output_dir, arrow_freq, path_arrow_freq, episode_range)`
+
+```python
+def map_trajectories(
+    input_dir,
+    output_dir,
+    arrow_freq=100,
+    path_arrow_freq=10,
+    episode_range={"train": None, "test": None},
+) -> None
+```
+
+Processes experiment logs to generate agent trajectory plots. Walks `{input_dir}/{condition}/{brain_*}/logs/` and reads train/test CSVs. Plots agent X-Z position with colored directional arrows.
+
+- `episode_range`: Dict with ranges in `"start:stop:step"` format
+
+### `feature_visualization(input_path, output_path, images_path)`
+
+```python
+def feature_visualization(input_path, output_path, images_path) -> None
+```
+
+Visualizes CNN feature maps from trained models. Globs for `latest_model.zip` files, extracts conv layers from `model.policy.features_extractor`, passes images through each layer, averages channels, and saves feature map plots.
+
+### `generate_tSNEs(input_dir, output_dir)`
+
+```python
+def generate_tSNEs(input_dir, output_dir) -> None
+```
+
+Creates t-SNE visualizations of model parameters. Supports `.pth`, `.pkl`, and `.zip` model files. Walks `{input_dir}/{condition}/{brain_*}/model/` and plots t-SNE of flattened parameter vectors.
+
+### `dst(run_dir, output_dir)`
+
+```python
+def dst(run_dir: str | Path, output_dir: str | Path) -> None
+```
+
+Performs dimensionality reduction (PCA) on observations, actions, and states from `{run_dir}/recordings/states/`. Creates 3D trajectory plots saved as `trajectories.png`.
+
+### `timelapse(data_dir, output_dir)`
+
+```python
+def timelapse(data_dir: Path | str, output_dir: Path | str) -> None
+```
+
+Creates timelapse images by blending PNG frames from `{data_dir}/{condition}/{brain_*}/recordings/chamber/`.
+
+### `run_activation_maximization(input_path, output_path)`
+
+```python
+def run_activation_maximization(input_path, output_path) -> None
+```
+
+Applies activation maximization to understand learned features. For each model, hooks into `features_extractor.cnn`, runs iterative optimization on random input images to maximize neuron activations, with regularization (L2 decay, Gaussian blur, norm/contribution cropping).
+
+## Available Components
+
+### Algorithms
+
+All from Stable-Baselines3 and sb3-contrib. Pass as string or class:
+
+| Name | Source | Type |
+|------|--------|------|
+| A2C | stable-baselines3 | On-policy |
+| ARS | sb3-contrib | On-policy |
+| DDPG | stable-baselines3 | Off-policy |
+| DQN | stable-baselines3 | Off-policy |
+| HER | stable-baselines3 | Replay buffer |
+| MaskablePPO | sb3-contrib | On-policy |
+| PPO | stable-baselines3 | On-policy |
+| QRDQN | sb3-contrib | Off-policy |
+| RecurrentPPO | sb3-contrib | On-policy |
+| SAC | stable-baselines3 | Off-policy |
+| TD3 | stable-baselines3 | Off-policy |
+| TQC | sb3-contrib | Off-policy |
+| TRPO | sb3-contrib | On-policy |
+
+### Encoders
+
+All subclass `BaseFeaturesExtractor` from Stable-Baselines3:
+
+| Name | Class | Default features_dim | Description |
+|------|-------|---------------------|-------------|
+| small | NatureCNN | 512 | Basic CNN from SB3 (3 conv layers) |
+| medium | Resnet10CNN | 256 | Custom ResNet-10 with BasicBlock residual blocks |
+| large | Resnet18CNN | 256 | Custom ResNet-18 with ResBlock residual blocks |
+| CNNLSTM | CNNLSTM | 256 | CNN followed by LSTM for temporal features |
+| DinoV1 | DinoV1 | 384 | Self-supervised ViT-small patch8 from timm (DINO v1) |
+| DinoV2 | DinoV2 | 384 | Self-supervised ViT-small patch14 from torch.hub (DINO v2) |
+| FrozenSimCLR | FrozenSimCLR | 512 | Frozen pre-trained SimCLR encoder (no gradient updates) |
+| SegmentAnything | SegmentAnything | 384 | SAM ViT base patch16 from timm |
+| SimpleViT | SimpleViT | 512 | Lightweight ViT with configurable depth/heads/patch_size |
+| ViT | ViT | 512 | Full ViT with configurable dropout, depth, heads |
+| MultiInputEncoder | MultiInputEncoder | 512 | For Dict observation spaces; applies separate extractors per subspace |
+
+Custom encoder args for ViT/SimpleViT: `patch_size`, `depth`, `heads`, `intermediate_size`, `hidden_size`, `hidden_dropout_prob`, `attention_probs_dropout_prob`.
+
+### Policies
+
+From Stable-Baselines3 and sb3-contrib:
+
+| Name | Use Case |
+|------|----------|
+| CnnPolicy | Image observations with CNN feature extractor |
+| CnnLstmPolicy | Image observations with CNN + LSTM (requires RecurrentPPO) |
+| MlpPolicy | Vector observations with MLP |
+| MlpLstmPolicy | Vector observations with MLP + LSTM |
+| MultiInputPolicy | Dict observation spaces |
+| MultiInputLstmPolicy | Dict observation spaces with LSTM |
+
+### Reward Functions
+
+Built-in reward strings (map to `None` — use environment's native reward):
+- `closeness` — Distance-based reward from the environment
+- `completeness` — Task completion reward from the environment
+- `closeness,completeness` — Combined reward
+- `unsupervised` — No reward signal (exploration only)
+
+Intrinsic reward modules (from rllte and custom implementations):
+
+| Name | Class | Source | Description |
+|------|-------|--------|-------------|
+| icm | ICM | Custom (rllte base) | Intrinsic Curiosity Module — prediction error from forward/inverse dynamics |
+| e3b | E3B | Custom (rllte base) | Exploration via Elliptical Episodic Bonuses |
+| pseudocounts | PseudoCounts | Custom (rllte base) | K-NN density estimation for counting state visits |
+| ride | RIDE | Custom (rllte base) | Rewarding Impact-Driven Exploration |
+| disagreement | Disagreement | rllte | Ensemble model disagreement |
+| fabric | Fabric | rllte | FABRIC exploration |
+| ngu | NGU | rllte | Never Give Up exploration |
+| re3 | RE3 | rllte | Random Encoders for Efficient Exploration |
+| rnd | RND | rllte | Random Network Distillation |
+
+Default reward_args: `{"beta": 0.2, "kappa": 0.0, "gamma": 0.99}`.
+
+### Body Wrappers
+
+| Name | Class | Description |
+|------|-------|-------------|
+| binocular | Binocular | Stacks left/right camera observations (2× channels) |
+| dvs | DVS | Dynamic Vision Sensor — frame difference with Gaussian blur and threshold |
+| multiobs | MultiObs | Converts Tuple to Dict observation spaces for MultiInputPolicy |
+| retina | Retina | Simulates biological retina with foveal/peripheral regions |
+| video | Video | Stacks consecutive frames (default 2) along channel axis |
+
+## Registry Pattern
+
+Brain components and Body wrappers use a registry pattern in `src/nett/brain/utils/validate.py`:
+
+### `_getMapping(sources, override)`
+
+```python
+def _getMapping(sources: list[ModuleType], override: dict[str, type]) -> dict[str, type]
+```
+
+Scans module exports for capitalized class names, then applies manual override entries. Produces a `dict[str, type]` mapping string names to classes.
+
+### `_getValidator(label, baseclass, mapping)`
+
+```python
+def _getValidator(label: str, baseclass: type, mapping: dict[str, type]) -> Callable[[str | type], type]
+```
+
+Returns a validator function that:
+- If input is `str`: looks up in mapping dict (raises `KeyError` if not found)
+- If input is `callable`: passes through directly
+- Otherwise: raises `TypeError`
+
+### Global Validators
+
+```python
+validate_algorithm = _getValidator("algorithm", BaseAlgorithm, algorithm_mapping)
+validate_encoder = _getValidator("encoder", BaseFeaturesExtractor, encoder_mapping)
+validate_policy = _getValidator("policy", BasePolicy, policy_mapping)
+validate_reward = _getValidator("reward", BaseReward, reward_mapping)
+```
+
+Body wrapper validation in `src/nett/body/utils/validate.py` uses a simple dict lookup:
+```python
+wrapper_mapping = {"binocular": Binocular, "dvs": DVS, "multiobs": MultiObs, "retina": Retina, "video": Video}
+```
+
+## Task Execution
+
+### TaskConfig
+
+```python
+class TaskConfig:
+    device: int           # GPU device ID
+    current_mode: str     # "train" or "test"
+    brain_id: int         # Agent index
+    condition: str        # Imprinting condition
+    modes: list[str]      # ["train", "test"] or subset
+    queue: SimpleQueue    # Progress bar communication
+    memory: Optional[float]  # Allocated VRAM in bytes
+    name: str             # Display name
+    path: Path            # Output path for this task
+    logger: logging.Logger
+    seed: int             # Diversified: (brain_id * 7919) % (2**31 - 1)
+```
+
+### Task
+
+```python
+class Task:
+    config: TaskConfig
+    agent: Agent  # Contains brain, body, env
+    
+    def set_device(self, device: int) -> None
+```
+
+### run_task(task)
+
+```python
+def run_task(task: Task) -> None
+```
+
+Seeds RNG with `task.config.seed`, creates log directories, then iterates through modes:
+- For `"train"`: calls `Body.embed()` then `Brain.train()`
+- For `"test"`: calls `Body.embed()` then `Brain.test()` for each condition
+
+### TaskList
+
+```python
+class TaskList:
+    def __init__(self, brain, body, env, num_brains, conditions, output_dir, modes, queue, memory)
+```
+
+Creates Cartesian product of `num_brains × conditions`. Implements `__iter__`/`__next__` to yield `Task` objects.
+
+### Executor
+
+Singleton `ProcessPoolExecutor` wrapper. Implements context manager. Manages `LoadingBarQueue` for progress visualization.
+
+### MemoryManager
+
+Singleton GPU memory tracker using `nvidia-ml-py`. Methods:
+- `get_free_memory(device_id) -> float`
+- `get_most_free_gpu(devices) -> tuple[int, float]`
+- `validate_devices(devices) -> list[int]` (static)
+- Context manager: calls `nvmlInit()` / `nvmlShutdown()`
+
+## Random Seeding
+
+**Training**: Agent number (brain_id) is used as seed. Seed is diversified via `(brain_id * 7919) % (2**31 - 1)` to avoid correlated systematic failures from sequential seeds.
+
+Two sources of randomness during training:
+1. **Model seed**: Determines mini-batch sampling from replay buffer
+2. **Environment seed**: Determines initial agent placement per episode
+
+**Testing**: Nothing is random; seeding has no impact.
+
+## Output Structure
+
+```
+output_dir/
+├── experiment_name/
+│   ├── config.yaml              # Saved config for reproducibility
+│   ├── condition1/
+│   │   ├── brain_1/
+│   │   │   ├── logs/            # TensorBoard logs + CSV episode data
+│   │   │   ├── model/           # Saved model (latest_model.zip)
+│   │   │   ├── recordings/      # Episode recordings
+│   │   │   │   ├── chamber/     # Environment recordings (top-down)
+│   │   │   │   └── states/      # obs.txt, actions.txt, states.txt
+│   │   │   └── tensorboard/     # TB event files
+│   │   └── brain_2/
+│   └── condition2/
+└── results/                     # Analysis outputs
+```
+
+## Dependencies
+
+### Core
+
+- **stable-baselines3[extra_no_roms]>=2.0.0**: RL algorithms, policies, callbacks
+- **sb3-contrib**: Additional algorithms (RecurrentPPO, TQC, ARS, TRPO, QRDQN, MaskablePPO)
+- **rllte-core**: Intrinsic reward functions (BaseReward, RND, ICM, E3B, etc.)
+- **mlagents-envs**: Unity ML-Agents environment interface (custom fork from `Zach-Attach/ml-agents`, gym-plus branch)
+- **gymnasium**: Environment API standard
+- **pettingzoo / supersuit**: Multi-agent environment support
+
+### Neural Networks
+
+- **torch / torchvision**: PyTorch backend
+- **timm**: Pre-trained vision models (DINO, SAM)
+- **vit-pytorch**: Vision Transformer implementations
+- **lightning==2.2.5 / lightning-bolts==0.7.0**: PyTorch Lightning for ViT training
+
+### Analysis
+
+- **scikit-learn==1.5.0**: t-SNE, PCA
+- **seaborn**: Visualization
+- **opencv-python**: Video creation (img2video)
+- **R** (external): Required for `analyze()` — needs `tidyverse`, `argparse`, `scales` packages
+
+### System
+
+- **nvidia-ml-py**: GPU VRAM monitoring
+- **jsonschema**: Config validation
+
+## Constraints
+
+- **Python**: Exactly 3.10.12 — other versions may cause dependency conflicts
+- **Apple Silicon**: Not supported — `mlagents==1.0.0` is incompatible with M1/M2/M3
+- **Build tools**: Requires `setuptools==65.5.0`, `pip==21`, `wheel==0.38.4` (gym==0.21 subdependency constraint)
+- **Unity executables**: Required for environments (not included in the package)
+- **`if __name__ == '__main__':` guard**: Required in user scripts because `SubprocVecEnv` spawns subprocesses
+- **R**: Required only for `analyze()` function
+
+## Utility Functions
+
+Top-level listing functions:
+
+```python
+from nett import list_algorithms, list_encoders, list_policies, list_rewards, list_wrappers, list_conditions
+
+list_algorithms() -> list[str]       # All registered RL algorithm names
+list_encoders() -> list[str]         # All registered encoder names
+list_policies() -> list[str]         # All registered policy names
+list_rewards() -> list[str]          # All registered reward names
+list_wrappers() -> list[str]         # All registered wrapper names
+list_conditions(executable_dir: str | Path) -> list[str]  # Available conditions for a Unity executable
+```
+
+## Config Validation
+
+```python
+from nett.utils import validate_config
+
+validate_config(config: Path | str | dict, schema: dict) -> dict
+```
+
+Accepts config as a dict, file path (`.yaml` or `.json`), or string. Validates against `src/nett/schema.json` using `jsonschema.validate()`. The schema enforces:
+- Required fields: `name`, `environment.executable_path`
+- Enum constraints for algorithms, encoders, policies, rewards
+- Type checking and numeric constraints (e.g., `batch_size` minimum 1)
+- `additionalProperties: false` on all sections
+- Pattern properties for `$`-prefixed variable substitution
