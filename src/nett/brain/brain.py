@@ -206,19 +206,31 @@ class Brain:
 
         policy_kwargs.update(self.custom_policy_args)
 
+        # Build algorithm kwargs based on whether it is on-policy or off-policy
+        algo_kwargs = {
+            "batch_size": self.batch_size,
+            "learning_rate": self.learning_rate,
+            "verbose": 0,
+            "policy_kwargs": policy_kwargs,
+            "device": f"cuda:{config.device}",
+            "seed": config.seed,
+            "tensorboard_log": config.path / "tensorboard",
+        }
+
+        if issubclass(self.algorithm, OnPolicyAlgorithm):
+            # On-policy (PPO, A2C, TRPO, etc.): n_steps = rollout buffer length
+            algo_kwargs["n_steps"] = self.buffer_size
+        elif issubclass(self.algorithm, OffPolicyAlgorithm):
+            # Off-policy (SAC, TD3, DDPG, DQN, TQC, etc.): buffer_size = replay buffer capacity
+            algo_kwargs["buffer_size"] = self.buffer_size
+
+        algo_kwargs.update(self.custom_algorithm_args)
+
         try:
             model = self.algorithm(
                 self.policy,
                 envs,
-                batch_size=self.batch_size,
-                n_steps=self.buffer_size,  # TODO: Will need to be adjusted if running parallel envs
-                learning_rate=self.learning_rate,
-                verbose=0,
-                policy_kwargs=policy_kwargs,
-                device=f"cuda:{config.device}",
-                seed=config.seed,
-                tensorboard_log=config.path / "tensorboard",
-                **self.custom_algorithm_args,
+                **algo_kwargs,
             )
 
             # set encoder as eval only if train_encoder is not True
@@ -236,9 +248,14 @@ class Brain:
         callback_list = self._init_callbacks(envs, config)
 
         # --- Train model ---
-        total_timesteps = (
-            self.buffer_size if config.memory is None else self.train_iterations
-        )
+        if config.memory is None:
+            # Memory estimation mode: run just enough steps to trigger one update
+            if issubclass(self.algorithm, OnPolicyAlgorithm):
+                total_timesteps = self.buffer_size  # one full rollout
+            else:
+                total_timesteps = self.batch_size  # one gradient step worth
+        else:
+            total_timesteps = self.train_iterations
         try:
             model.learn(
                 total_timesteps=total_timesteps,
