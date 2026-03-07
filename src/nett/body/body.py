@@ -49,6 +49,8 @@ def _load_env(
         config.logger.getChild(str(seed)).exception(
             f"Failed to apply wrappers to environment"
         )
+        if hasattr(loaded_env, "close"):
+            loaded_env.close()
         raise e
 
     # If not in validation mode and memory estimation is not the goal, add monitoring and recording

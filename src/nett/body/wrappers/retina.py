@@ -105,7 +105,10 @@ class Retina(gym.ObservationWrapper):
                 current: np.ndarray = obs[key][-1]
                 # prev = np.transpose(obs[key][-2], (1, 2, 0))  # move channels to last dimension
                 # current = np.transpose(obs[key][-1], (1, 2, 0))  # move channels to last dimension
-                out[key] = self.retina.process(image=prev, next_image=current)
+                out[key] = self.retina.process(image=prev, next_image=current).astype(
+                    np.uint8
+                )
+            return out
         else:
             # grab the last 2 images from the stack
             prev: np.ndarray = obs[-2]  # move channels to last dimension
@@ -117,7 +120,7 @@ class Retina(gym.ObservationWrapper):
             # change to channel first, w, h
             # out = np.transpose(out, (2, 0, 1))
 
-        return out.astype(np.uint8)
+            return out.astype(np.uint8)
 
     def reset(self, **kwargs):
         """

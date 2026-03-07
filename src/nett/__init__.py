@@ -107,7 +107,7 @@ def list_rewards() -> list[str]:
 
 from .nett import NETT
 
-from .analysis import analyze, map_trajectories
+from .analysis import analyze, map_trajectories, feature_visualization, generate_tSNEs
 
 __all__ = [
     "NETT",

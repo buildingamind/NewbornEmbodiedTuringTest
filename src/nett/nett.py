@@ -175,9 +175,9 @@ class NETT:
         self,
         name: str,
         environment: dict,
-        body: dict = {},
-        brain: dict = {},
-        episodes: dict[str, int] = {"train": 5000, "test": 100},
+        body: Optional[dict] = None,
+        brain: Optional[dict] = None,
+        episodes: Optional[dict[str, int]] = None,
         steps_per_episode: int = 200,
         num_brains: int = 1,
         task_memory: str | float = "auto",
@@ -200,6 +200,13 @@ class NETT:
         """
 
         ############ Validation ############
+
+        if body is None:
+            body = {}
+        if brain is None:
+            brain = {}
+        if episodes is None:
+            episodes = {"train": 5000, "test": 100}
 
         # check if episodes contains train and/or test only
         if len(episodes) == 0 or not set(episodes.keys()).issubset({"train", "test"}):

@@ -132,5 +132,5 @@ class PseudoCounts(BasePseudoCounts):
 
         try:
             self.metrics["loss"].append([self.global_step, np.mean(avg_loss)])
-        except:
+        except Exception:
             pass
