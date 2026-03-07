@@ -295,8 +295,12 @@ class IntrinsicRewardWithOffPolicyRL(BaseCallback):
                     .to(device),
                 }
             )
-        except Exception:
-            pass
+        except (RuntimeError, ValueError) as e:
+            import logging
+
+            logging.getLogger("nett.Brain").warning(
+                f"Failed to update intrinsic rewards: {e}"
+            )
         ####################################
         return True
 

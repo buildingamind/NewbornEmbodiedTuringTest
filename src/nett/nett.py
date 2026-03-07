@@ -30,9 +30,13 @@ from .utils import (
 )
 
 
-JobTooBigError = ValueError(
-    "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
-)
+class JobTooBigError(ValueError):
+    """Raised when no jobs can be scheduled because job size exceeds GPU memory."""
+
+    def __init__(self):
+        super().__init__(
+            "No jobs could be scheduled. Job size too large for GPUs. Consider setting job_memory to a value less than or equal to total free GPU memory."
+        )
 
 
 class NETT:
@@ -165,6 +169,8 @@ class NETT:
 
             # TODO: Add an analysis stage to the run
 
+        return list(self.task_sheet.keys())
+
     def single_run(
         self,
         name: str,
@@ -285,7 +291,7 @@ class NETT:
         if not base_env.multiagent:
             self.logger.info("Validating tasks...")
             task_future: Future = self.executor.submit(validate_tasklist, tasklist)
-            future_wait({task_future: ""}, return_when="ALL_COMPLETED")
+            future_wait([task_future], return_when="ALL_COMPLETED")
 
         # Assign tasks to devices
         self.logger.info(f"Assigning tasks...")
@@ -409,7 +415,7 @@ class NETT:
 
                 # Run the task and wait for it to complete
                 task_future: Future = self.executor.submit(run_task, task)
-                future_wait({task_future: task.config}, return_when="ALL_COMPLETED")
+                future_wait([task_future], return_when="ALL_COMPLETED")
                 self.logger.info("Finished estimating memory")
 
                 # Remove the loading bar
@@ -438,6 +444,6 @@ class NETT:
 
         # check to see if GPUs can run a single job
         if memory_use > gpu_max_capacity:
-            raise JobTooBigError
+            raise JobTooBigError()
 
         return memory_use

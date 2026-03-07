@@ -22,7 +22,13 @@ class Executor(ProcessPoolExecutor):
 
     def __init__(self, verbose: bool) -> None:
         # mute stdout if not verbose
-        mute = lambda: setattr(sys, "stdout", open(os.devnull, "w"))
+        def mute():
+            devnull = open(os.devnull, "w")
+            import atexit
+
+            atexit.register(devnull.close)
+            sys.stdout = devnull
+
         initializer = mute if not verbose else None
 
         super().__init__(

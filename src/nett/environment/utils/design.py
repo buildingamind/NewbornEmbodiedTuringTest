@@ -19,7 +19,7 @@ def get_experiment_design(executable_path: Path) -> dict[str, int]:
     """
     # get the experiment design from the executable directory
     parent_dir = executable_path.parent
-    yaml_files: str = [file for file in parent_dir.glob("*.yaml")]
+    yaml_files: list[Path] = [file for file in parent_dir.glob("*.yaml")]
 
     if not yaml_files:
         raise FileNotFoundError(
@@ -27,7 +27,6 @@ def get_experiment_design(executable_path: Path) -> dict[str, int]:
         )
 
     yaml_file: Path = yaml_files[0]
-
 
     try:
         # read the yaml file
@@ -39,4 +38,3 @@ def get_experiment_design(executable_path: Path) -> dict[str, int]:
         )
 
     return valid_imprinting_conditions
-

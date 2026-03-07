@@ -37,7 +37,7 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
                 raise KeyError(
                     f"If string, wrapper should be one of: {wrapper_list}. Provided wrapper {wrapper} is not one of them."
                 )
-        elif issubclass(wrapper, gym.Wrapper):
+        elif isinstance(wrapper, type) and issubclass(wrapper, gym.Wrapper):
             wrappers[i] = wrapper
         else:
             raise TypeError(
