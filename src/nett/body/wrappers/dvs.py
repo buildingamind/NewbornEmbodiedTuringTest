@@ -145,7 +145,7 @@ class DVS(gym.ObservationWrapper):
 
         """
         if not self.is_color:
-            ret_frame = np.ones(shape=change.shape) * 128
+            ret_frame = np.full(change.shape, 128, dtype=np.uint8)
             ret_frame[change >= self.change_threshold] = 255
             ret_frame[change <= -self.change_threshold] = 0
         else:

@@ -79,10 +79,12 @@ def _create_tsne_plot(data, output_path, title):
     if data.ndim == 1:
         data = data.reshape(-1, 1)
 
+    if len(data) < 2:
+        return
     tsne = TSNE(
         n_components=2,
         random_state=42,
-        perplexity=min(30, len(data) - 1) if len(data) > 1 else 0,
+        perplexity=min(30, max(1, len(data) - 1)),
     )
     tsne_results = tsne.fit_transform(data)
 

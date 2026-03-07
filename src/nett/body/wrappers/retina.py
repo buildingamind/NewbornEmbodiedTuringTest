@@ -1,5 +1,5 @@
 """
-Dynamic Vision Sensor (DVS) transformation for gym environments.
+Artificial retina transformation for gym environments.
 """
 
 from typing import Optional
@@ -16,7 +16,7 @@ logger.setLevel(logging.INFO)
 
 class Retina(gym.ObservationWrapper):
     """
-    A gym observation wrapper that performs Dynamic Vision Sensor (DVS) transformation on the environment observations.
+    A gym observation wrapper that applies an artificial retina transformation on the environment observations.
 
     Args:
         env (gym.Env): The environment to wrap.

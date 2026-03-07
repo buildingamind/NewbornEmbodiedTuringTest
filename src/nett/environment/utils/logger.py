@@ -1,5 +1,5 @@
 """
-environment.py
+logger.py
 
 Classes:
     Logger(SideChannel)
@@ -53,6 +53,11 @@ class Logger(SideChannel):
         self.f.write(msg)
         self.f.write("\n")
 
+    def close(self) -> None:
+        """Explicitly close the log file."""
+        if hasattr(self, "f") and self.f and not self.f.closed:
+            self.f.close()
+
     def __del__(self) -> None:
-        """This is called when the environment is shut down"""
-        self.f.close()
+        """Fallback cleanup when the environment is shut down."""
+        self.close()

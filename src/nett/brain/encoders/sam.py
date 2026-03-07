@@ -44,9 +44,6 @@ class SegmentAnything(BaseFeaturesExtractor):
             ]
         )
 
-        n_input_channels = observation_space.shape[0]
-        print("N_input_channels", n_input_channels)
-
         self.model = timm.create_model(
             "samvit_base_patch16.sa1b", pretrained=True, num_classes=0
         )  # remove classifier th.nn.Linear)

@@ -43,7 +43,6 @@ class DinoV2(BaseFeaturesExtractor):
         self, observation_space: gym.spaces.Box, features_dim: int = 384
     ) -> None:
         super().__init__(observation_space, features_dim)
-        """Constructor method"""
         self.n_input_channels = observation_space.shape[0]
         self.transforms = Compose(
             [
