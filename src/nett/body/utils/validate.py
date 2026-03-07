@@ -12,7 +12,7 @@ wrapper_mapping: dict[str, type[gym.Wrapper]] = {
     # 'trace': trace_recording.TraceRecordingWrapper
 }
 
-wrapper_list: list[type[gym.Wrapper]] = list(wrapper_mapping.keys())
+wrapper_list: list[str] = list(wrapper_mapping.keys())
 
 
 def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:

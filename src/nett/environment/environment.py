@@ -120,10 +120,7 @@ class Environment:
         # Add recording arguments for each mode
         for mode in ["train", "test"]:
             self.base_args[mode].extend(
-                [
-                    "--record-episodes",
-                    record_eps.get(mode, "0")
-                ]
+                ["--record-episodes", record_eps.get(mode, "0")]
             )
 
     def adjust_to_agent(
@@ -177,7 +174,6 @@ class Environment:
             logger = config.logger
             seed = config.seed  # Diversified seed: matches brain.py change
 
-
         # Set the random seed for reproducibility
         torch.manual_seed(seed)
 
@@ -224,9 +220,11 @@ class Environment:
         #     )
         # ]
 
-        complete = False
+        import time as _time
+
+        max_retries = 100
         # Loop to handle UnityWorkerInUseException, which can occur during parallel environment initialization
-        while not complete:
+        for attempt in range(max_retries):
             try:
                 # Initialize the Unity environment
                 env = UnityEnvironment(
@@ -240,13 +238,18 @@ class Environment:
                 env.render_mode = (
                     "rgb_array_list" if self.binocular_vision else "rgb_array"
                 )
-                complete = True
+                break
             except UnityWorkerInUseException as e:
-                # If the worker is in use, try again
+                # If the worker is in use, wait briefly and try again
+                _time.sleep(0.5)
                 continue
             except Exception as e:
                 logger.exception(f"Error initializing environment: {e}")
                 raise e
+        else:
+            raise RuntimeError(
+                f"Failed to initialize Unity environment after {max_retries} attempts due to worker port conflicts."
+            )
 
         # Return the appropriate wrapper for the environment (multi-agent or single-agent)
         return (

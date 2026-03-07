@@ -40,6 +40,7 @@ class TaskList:
         ]
 
     def __iter__(self):
+        self.current = 0
         return self
 
     def __next__(self):
@@ -48,6 +49,7 @@ class TaskList:
         current = self.current
         self.current += 1
         return self.tasks[current]
+
 
 def validate_tasklist(tasklist: TaskList) -> None:
     """Validate the tasklist"""

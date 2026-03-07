@@ -55,12 +55,12 @@ def list_conditions(executable_dir: str | Path) -> list[str]:
     return list(get_experiment_design(Path(executable_dir)).keys())
 
 
-def list_wrappers() -> list[type[gym.Wrapper]]:
+def list_wrappers() -> list[str]:
     """
     List all available wrappers.
 
     Returns:
-        list[type[gym.Wrapper]]: A list of all available wrappers.
+        list[str]: A list of all available wrapper names.
     """
     return wrapper_list
 

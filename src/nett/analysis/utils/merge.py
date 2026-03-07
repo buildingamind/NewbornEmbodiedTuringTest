@@ -29,7 +29,7 @@ def _read_data(filename: Path) -> pd.DataFrame:
         filename, skipinitialspace=True, on_bad_lines="skip"
     )
     # Check if last row is incomplete
-    if pd.isna(data.loc[data.index[-1], "test.cond"]):
+    if not data.empty and pd.isna(data.loc[data.index[-1], "test.cond"]):
         # Drop the last row
         data = data.drop(data.index[-1])
 

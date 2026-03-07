@@ -60,6 +60,7 @@ class LoadingBarQueue:
         for pbar in self.pbar.values():
             pbar.refresh()
             pbar.close()
+        self.manager.shutdown()
 
 
 def updateLoadingBars(loading_bar_queue: LoadingBarQueue) -> None:

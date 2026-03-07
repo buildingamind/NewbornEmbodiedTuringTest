@@ -157,7 +157,9 @@ class Brain:
         self.reward_args = dict(reward_args)  # copy to avoid mutating caller's dict
 
         # --- Reward arguments ---
-        if reward != "RE3":
+        # Check by class name to handle both string and class inputs
+        reward_name = self.reward.__name__ if self.reward is not None else None
+        if reward_name != "RE3":
             self.reward_args["batch_size"] = self.batch_size
             self.reward_args["lr"] = self.learning_rate
 

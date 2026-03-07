@@ -109,7 +109,7 @@ class NETT:
         self,
         output_path: Path | str = ".",
         devices: Optional[list[int]] = None,
-        verbose: int = True,
+        verbose: bool = True,
         asynchronous: bool = False,
     ) -> list[Future]:
         """

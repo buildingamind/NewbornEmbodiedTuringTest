@@ -171,12 +171,6 @@ def analyze(
     if not chick_data_dir.exists():
         chick_data_dir = None
         print(f"Warning: No chick data exists for '{experiment}'.")
-    elif not run_dir.exists():
-        raise ValueError(f"'{run_dir}' is not a valid run directory.")
-    elif not analysis_dir.exists():
-        raise ValueError(
-            f"'{analysis_dir}' is not a valid analysis directory. This is likely an error in the package."
-        )
 
     # translate bar_order for R to read
     bar_order_str = str(bar_order).translate(
