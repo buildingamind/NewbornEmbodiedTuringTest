@@ -37,14 +37,15 @@ def dst(run_dir: str | Path, output_dir: str | Path) -> None:
             states = None
 
         # Normalize data
-        obs = (np.array(obs) - np.min(obs)) / (np.max(obs) - np.min(obs))
-        actions = (np.array(actions) - np.min(actions)) / (
-            np.max(actions) - np.min(actions)
-        )
+        def _safe_normalize(arr):
+            arr = np.array(arr, dtype=float)
+            min_val, max_val = arr.min(), arr.max()
+            return (arr - min_val) / (max_val - min_val) if max_val != min_val else np.zeros_like(arr)
+
+        obs = _safe_normalize(obs)
+        actions = _safe_normalize(actions)
         if states is not None:
-            states = (np.array(states) - np.min(states)) / (
-                np.max(states) - np.min(states)
-            )
+            states = _safe_normalize(states)
 
         # perform PCA on observations
         pca1 = PCA(n_components=1)

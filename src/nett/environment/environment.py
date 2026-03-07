@@ -65,7 +65,7 @@ class Environment:
         self,
         executable_path: str,
         conditions: Optional[list[str]] = None,
-        record_eps: dict = {"train": "0", "test": "0"},
+        record_eps: Optional[dict] = None,
         multiagent: bool = False,
         random_first_frame: bool = False,
         display: Optional[int] = None,
@@ -74,6 +74,9 @@ class Environment:
         """
         Initializes the Environment object.
         """
+        if record_eps is None:
+            record_eps = {"train": "0", "test": "0"}
+
         # Validate the executable path
         self.executable_path = validate_executable_path(executable_path)
 
@@ -103,10 +106,10 @@ class Environment:
         if display is None:
             # Enable batchmode for headless servers (no display)
             args.append("-batchmode")
-            os.environ["DISPLAY"] = str(f":0")
+            os.environ["DISPLAY"] = ":0"
         else:
             # Set the display for the Unity environment
-            os.environ["DISPLAY"] = str(f":{display}")
+            os.environ["DISPLAY"] = f":{display}"
 
         if continuous_position:
             args.append("--continuous-position")

@@ -2,7 +2,6 @@
 
 from multiprocessing import SimpleQueue
 import time
-from typing import Iterable
 from itertools import product
 from pathlib import Path
 
@@ -10,7 +9,6 @@ from .task import Task
 
 
 class TaskList:
-    brain_env_combinations: Iterable[tuple[int, str]]
     n_tasks: int
     current: int
     tasks: list[Task]
@@ -27,8 +25,8 @@ class TaskList:
         queue: SimpleQueue,
         memory: float,
     ):
-        self.brain_env_combinations = product(range(1, num_brains + 1), conditions)
-        self.n_tasks = len(conditions) * num_brains
+        brain_env_combinations = list(product(range(1, num_brains + 1), conditions))
+        self.n_tasks = len(brain_env_combinations)
 
         self.current = 0
 
@@ -36,7 +34,7 @@ class TaskList:
             Task(
                 brain, body, env, brain_id, condition, output_dir, modes, queue, memory
             )
-            for brain_id, condition in self.brain_env_combinations
+            for brain_id, condition in brain_env_combinations
         ]
 
     def __iter__(self):

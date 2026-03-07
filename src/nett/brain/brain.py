@@ -116,7 +116,7 @@ class Brain:
         self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
         self.batch_size = int(batch_size)
         self.buffer_size = int(buffer_size)
-        self.learning_rate = float(learning_rate)
+        self.learning_rate = learning_rate if callable(learning_rate) else float(learning_rate)
 
         # --- Training configuration ---
         self.checkpoint_freq = (
