@@ -400,6 +400,7 @@ class NETT:
 
         if task_memory == "auto":
             # calculate current memory usage for baseline for comparison
+            task = None
             try:
                 # create a test task to estimate memory
                 # TODO: Allow mem estimation to accurately estimate for test
@@ -438,7 +439,7 @@ class NETT:
                 raise e
             finally:
                 # Clean up the test task directory
-                if "task" in locals() and task.config.path.exists():
+                if task is not None and task.config.path.exists():
                     shutil.rmtree(task.config.path)
 
             # estimate memory allocated

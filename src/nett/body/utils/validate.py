@@ -30,7 +30,7 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
         TypeError: If any wrapper is not an instance of str or gym.Wrapper.
     """
     for i, wrapper in enumerate(wrappers):
-        if type(wrapper) == str:
+        if isinstance(wrapper, str):
             try:
                 wrappers[i] = wrapper_mapping[wrapper]
             except KeyError:

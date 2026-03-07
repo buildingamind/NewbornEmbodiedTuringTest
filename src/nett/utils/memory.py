@@ -42,8 +42,10 @@ class MemoryManager:
         return self.get_memory_status(device_id).free
 
     def get_most_free_gpu(self, devices: list[int]) -> tuple[int, float]:
-        maxMemory: int = 0
-        maxMemoryDevice: int = None
+        if not devices:
+            raise ValueError("devices list cannot be empty")
+        maxMemory: float = 0
+        maxMemoryDevice: int = devices[0]
         for device in devices:
             memory = self.get_free_memory(device)
             if memory > maxMemory:

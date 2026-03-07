@@ -25,11 +25,17 @@ def _port_in_use(port) -> bool:
     return False
 
 
-def random_port():
-    """Returns a random port that is not in use."""
-    complete = False
-    while not complete:
-        port = np.random.choice(LEGAL_PORTS)
+def random_port(max_retries: int = 1000) -> int:
+    """Returns a random port that is not in use.
+
+    Args:
+        max_retries: Maximum number of attempts before raising RuntimeError.
+
+    Raises:
+        RuntimeError: If no available port is found after max_retries attempts.
+    """
+    for _ in range(max_retries):
+        port = int(np.random.choice(LEGAL_PORTS))
         if not _port_in_use(port):
-            complete = True
-    return port
+            return port
+    raise RuntimeError(f"Could not find an available port after {max_retries} attempts")

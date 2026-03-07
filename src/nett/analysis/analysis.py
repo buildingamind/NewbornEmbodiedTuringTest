@@ -40,7 +40,11 @@ def dst(run_dir: str | Path, output_dir: str | Path) -> None:
         def _safe_normalize(arr):
             arr = np.array(arr, dtype=float)
             min_val, max_val = arr.min(), arr.max()
-            return (arr - min_val) / (max_val - min_val) if max_val != min_val else np.zeros_like(arr)
+            return (
+                (arr - min_val) / (max_val - min_val)
+                if max_val != min_val
+                else np.zeros_like(arr)
+            )
 
         obs = _safe_normalize(obs)
         actions = _safe_normalize(actions)

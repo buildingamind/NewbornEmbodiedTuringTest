@@ -42,7 +42,7 @@ def img2video(record_path: Path, expected_length: int, fps: int = 25):
     for ep, frames in episode_dict.items():
         # Sort frames by frame number
         frames_sorted = sorted(frames, key=lambda x: x[0])
-        if frames_sorted[-1][0] != expected_length:
+        if len(frames_sorted) < expected_length:
             continue
         images = [cv2.imread(f[1]) for f in frames_sorted]
         if not images or images[0] is None:
