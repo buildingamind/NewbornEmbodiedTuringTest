@@ -316,26 +316,30 @@ class NETT:
                 f"Insufficient GPU Memory. Waiting for running tasks to complete. Number of Tasks in Waitlist: {len(self.waitlist)}"
             )
 
-        # Wait for tasks to complete
-        for done_future in as_completed(self.task_sheet):
-            self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
-            done_future.result()
+        # Wait for tasks to complete, re-checking for new futures submitted
+        # from the waitlist. as_completed() takes a snapshot of futures at call
+        # time, so futures added during the inner loop are only picked up by
+        # the next iteration of the outer while-loop.
+        while self.task_sheet:
+            for done_future in as_completed(self.task_sheet):
+                self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
+                done_future.result()
 
-            # Free up memory from the completed task
-            done_config: TaskConfig = self.task_sheet.pop(done_future)
-            free_device: int = done_config.device
-            self.free_device_memory[free_device] += done_config.memory
+                # Free up memory from the completed task
+                done_config: TaskConfig = self.task_sheet.pop(done_future)
+                free_device: int = done_config.device
+                self.free_device_memory[free_device] += done_config.memory
 
-            # Check if any tasks in the waitlist can be run
-            for i, task in enumerate(self.waitlist):
-                if task.config.memory <= self.free_device_memory[free_device]:
-                    # Allocate memory and run the task
-                    self.free_device_memory[free_device] -= task.config.memory
-                    task.set_device(free_device)
-                    task_future: Future = self.executor.submit(run_task, task)
-                    self.task_sheet[task_future] = task.config
-                    self.waitlist.pop(i)
-                    break
+                # Check if any tasks in the waitlist can be run
+                for i, task in enumerate(self.waitlist):
+                    if task.config.memory <= self.free_device_memory[free_device]:
+                        # Allocate memory and run the task
+                        self.free_device_memory[free_device] -= task.config.memory
+                        task.set_device(free_device)
+                        task_future: Future = self.executor.submit(run_task, task)
+                        self.task_sheet[task_future] = task.config
+                        self.waitlist.pop(i)
+                        break
 
     def status(self):
         """

@@ -29,19 +29,20 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
         KeyError: If the wrapper is a string that does not correspond to a wrapper.
         TypeError: If any wrapper is not an instance of str or gym.Wrapper.
     """
-    for i, wrapper in enumerate(wrappers):
+    validated = []
+    for wrapper in wrappers:
         if isinstance(wrapper, str):
             try:
-                wrappers[i] = wrapper_mapping[wrapper]
+                validated.append(wrapper_mapping[wrapper])
             except KeyError:
                 raise KeyError(
                     f"If string, wrapper should be one of: {wrapper_list}. Provided wrapper {wrapper} is not one of them."
                 )
         elif isinstance(wrapper, type) and issubclass(wrapper, gym.Wrapper):
-            wrappers[i] = wrapper
+            validated.append(wrapper)
         else:
             raise TypeError(
                 "Wrapper should only be either a string or a subclass of gym.Wrapper"
             )
 
-    return wrappers
+    return validated

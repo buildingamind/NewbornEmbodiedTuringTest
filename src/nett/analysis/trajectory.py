@@ -140,9 +140,7 @@ def _plot_and_save_trajectory(
         for _, row in arrow_df.iterrows():
             x, z = row["agent.x"], row["agent.z"]
             agent_angle = row["agent.angle"]
-            head_angle = (
-                (row["head.angle"] + 20) % 360
-            ) - 20  # Normalize to [-20, 20]
+            head_angle = ((row["head.angle"] + 20) % 360) - 20  # Normalize to [-20, 20]
 
             step = row["Step"]
 
@@ -201,8 +199,10 @@ def map_trajectories(
     output_dir,
     arrow_freq=100,
     path_arrow_freq=10,
-    episode_range={"train": None, "test": None},
+    episode_range=None,
 ):
+    if episode_range is None:
+        episode_range = {"train": None, "test": None}
     """
     Processes experiment logs to generate and save agent trajectory plots.
 

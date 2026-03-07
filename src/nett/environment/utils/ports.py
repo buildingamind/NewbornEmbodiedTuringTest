@@ -15,13 +15,11 @@ LEGAL_PORTS = np.arange(1024, 49151)
 
 def _port_in_use(port) -> bool:
     """This function checks if a port is in use. It returns True if the port is in use and False if it is not."""
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("localhost", port))
-    except socket.error:
-        return True
-    finally:
-        sock.close()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        try:
+            sock.bind(("localhost", port))
+        except socket.error:
+            return True
     return False
 
 
