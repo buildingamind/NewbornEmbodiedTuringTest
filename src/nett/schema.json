@@ -11,33 +11,61 @@
       "type": "object",
       "properties": {
         "encoder": {
-          "description": "Encoder Network. Defaults to 'small'",
-          "type": "string",
-          "enum": [
-            "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "MultiInputEncoder", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "SimpleViT", "small", "medium", "large"
+          "description": "Encoder Network. Can be either a string or a class that inherits from BaseFeaturesExtractor. Defaults to 'small'",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "CNNLSTM", "DinoV1", "DinoV2", "FrozenSimCLR", "MultiInputEncoder", "Resnet10CNN", "Resnet18CNN", "SegmentAnything", "ViT", "SimpleViT", "small", "medium", "large"
+              ]
+            },
+            {
+              "not": { "type": "string" }
+            }
           ],
           "default": "small"
         },
         "policy": {
-          "description": "Policy Network. Defaults to 'CnnPolicy'",
-          "type": "string",
-          "enum": [
-            "CnnLstmPolicy", "CnnPolicy", "MlpPolicy", "MlpLstmPolicy", "MultiInputLstmPolicy", "MultiInputPolicy"
+          "description": "Policy Network. Can be either a string or a class that inherits from BasePolicy. Defaults to 'CnnPolicy'",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "CnnLstmPolicy", "CnnPolicy", "MlpPolicy", "MlpLstmPolicy", "MultiInputLstmPolicy", "MultiInputPolicy"
+              ]
+            },
+            {
+              "not": { "type": "string" }
+            }
           ],
           "default": "CnnPolicy"
         },
         "algorithm": {
-          "description": "Optimization Algorithm. Defaults to 'PPO'",
-          "type": "string",
-          "enum": [
-            "A2C", "DDPG", "DQN", "HER", "HerReplayBuffer", "PPO", "SAC", "TD3", "ARS", "MaskablePPO", "QRDQN", "RecurrentPPO", "TQC", "TRPO"
+          "description": "Optimization Algorithm. Can be either a string or a class that inherits from BaseAlgorithm. Defaults to 'PPO'",
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": [
+                "A2C", "DDPG", "DQN", "HER", "HerReplayBuffer", "PPO", "SAC", "TD3", "ARS", "MaskablePPO", "QRDQN", "RecurrentPPO", "TQC", "TRPO"
+              ]
+            },
+            {
+              "not": { "type": "string" }
+            }
           ],
           "default": "PPO"
         },
         "reward": {
           "description": "Reward Function. Can be either a string or a class that inherits from rllte BaseReward. Defaults to 'closeness'",
-          "type": "string",
-          "enum": ["unsupervised", "closeness", "completeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "ICM", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"],
+          "anyOf": [
+            {
+              "type": "string",
+              "enum": ["unsupervised", "closeness", "completeness", "closeness,completeness", "Disagreement", "E3B", "Fabric", "ICM", "NGU", "PseudoCounts", "RE3", "RIDE", "RND"]
+            },
+            {
+              "not": { "type": "string" }
+            }
+          ],
           "default": "closeness"
         },
         "embedding_dim": {
@@ -129,7 +157,10 @@
           "type": "array",
           "uniqueItems": true,
           "items": {
-            "type": "string"
+            "anyOf": [
+              { "type": "string" },
+              { "not": { "type": "string" } }
+            ]
           },
           "default": []
         },
