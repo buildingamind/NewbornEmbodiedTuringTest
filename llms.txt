@@ -28,7 +28,7 @@ NETT follows a three-component architecture — **Brain**, **Body**, and **Envir
 
 `from nett.brain import Brain`
 
-- `Brain(policy, algorithm, encoder, reward, embedding_dim, batch_size, buffer_size, learning_rate, checkpoint_freq, train_encoder, deterministic, custom_encoder_args, custom_algorithm_args, custom_policy_arch, reward_args, continual_learning)` — Configure the learning model
+- `Brain(policy, algorithm, encoder, reward, embedding_dim, batch_size, buffer_size, learning_rate, checkpoint_freq, train_encoder, deterministic, custom_encoder_args, custom_algorithm_args, custom_policy_args, custom_policy_arch, reward_args, continual_learning)` — Configure the learning model
 - `Brain.train(envs, config)` — Train the model using Stable-Baselines3
 - `Brain.test(envs, config)` — Evaluate the trained model
 - `Brain.calc_iterations(num_brains, iterations_per_episode, episodes, steps_per_episode)` — Calculate total training iterations
@@ -53,7 +53,7 @@ NETT follows a three-component architecture — **Brain**, **Body**, and **Envir
 
 `from nett.analysis import analyze, map_trajectories, feature_visualization, generate_tSNEs`
 
-- `analyze(run_dir, output_dir)` — Run standard analysis pipeline (calls R scripts for visualization)
+- `analyze(experiment, run_dir, output_dir, bar_order, color_bars)` — Run standard analysis pipeline (calls R scripts for visualization)
 - `map_trajectories(...)` — Plot agent trajectories with directional arrows
 - `feature_visualization(input_path, output_path, images_path)` — Visualize CNN feature maps
 - `generate_tSNEs(input_dir, output_dir)` — Create t-SNE plots of model parameters
@@ -88,16 +88,16 @@ See `examples/configs/nett_config_min.yaml` and `examples/configs/nett_config_ma
 ## Available Components
 
 ### Algorithms (RL)
-A2C, ARS, DDPG, DQN, HER, MaskablePPO, PPO, QRDQN, RecurrentPPO, SAC, TD3, TQC, TRPO
+A2C, ARS, DDPG, DQN, HER, HerReplayBuffer, MaskablePPO, PPO, QRDQN, RecurrentPPO, SAC, TD3, TQC, TRPO
 
 ### Encoders (Vision)
-small (NatureCNN), medium (Resnet10CNN), large (Resnet18CNN), CNNLSTM, DinoV1, DinoV2, FrozenSimCLR, SegmentAnything, SimpleViT, ViT
+small (NatureCNN), medium (Resnet10CNN), large (Resnet18CNN), CNNLSTM, DinoV1, DinoV2, FrozenSimCLR, MultiInputEncoder, SegmentAnything, SimpleViT, ViT
 
 ### Policies
 CnnPolicy, CnnLstmPolicy, MlpPolicy, MlpLstmPolicy, MultiInputPolicy, MultiInputLstmPolicy
 
 ### Reward Functions
-closeness, completeness, closeness,completeness, unsupervised, disagreement, e3b, fabric, icm, ngu, pseudocounts, re3, ride, rnd
+closeness, completeness, closeness,completeness, unsupervised, Disagreement, E3B, Fabric, ICM, NGU, PseudoCounts, RE3, RIDE, RND
 
 ### Body Wrappers
 binocular, dvs, multiobs, retina, video

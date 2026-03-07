@@ -22,6 +22,7 @@ src/nett/                  # Main package source
 ├── brain/                 # Learning module
 │   ├── brain.py           # Brain class: train(), test(), calc_iterations()
 │   ├── encoders/          # Vision encoders (BaseFeaturesExtractor subclasses)
+│   │   └── disembodied_models/  # Standalone model architectures (SimCLR, ViT contrastive, ResNets)
 │   ├── rewards/           # Intrinsic reward functions (BaseReward subclasses)
 │   └── utils/
 │       ├── validate.py    # Registry pattern: _getMapping(), _getValidator() factories
@@ -36,6 +37,7 @@ src/nett/                  # Main package source
 │   ├── environment.py     # Environment class: load(), adjust_to_agent()
 │   └── utils/
 │       ├── design.py      # get_experiment_design() — reads conditions from Unity executables
+│       ├── logger.py      # Logger side channel for Unity ↔ Python communication
 │       ├── ports.py       # random_port() for Unity worker processes
 │       ├── wrappers.py    # GymWrapper, ZooWrapper for single/multi-agent
 │       └── validate.py    # Executable path and conditions validation
@@ -45,6 +47,7 @@ src/nett/                  # Main package source
 │   ├── activation_maximization.py
 │   ├── trajectory.py      # map_trajectories()
 │   ├── tSNE.py            # generate_tSNEs()
+│   ├── ChickData/         # Chick experiment comparison data (CSV files per experiment type)
 │   └── utils/             # R script wrappers (merge, train_viz, test_viz)
 └── utils/                 # Orchestration internals
     ├── task.py            # TaskConfig, Agent, Task, run_task()
@@ -114,10 +117,10 @@ Brain components (encoders, algorithms, policies, rewards) and Body wrappers use
 
 | Category    | Names |
 |-------------|-------|
-| Algorithms  | A2C, ARS, DDPG, DQN, HER, MaskablePPO, PPO, QRDQN, RecurrentPPO, SAC, TD3, TQC, TRPO |
-| Encoders    | small, medium, large, CNNLSTM, DinoV1, DinoV2, FrozenSimCLR, SegmentAnything, SimpleViT, ViT |
+| Algorithms  | A2C, ARS, DDPG, DQN, HER, HerReplayBuffer, MaskablePPO, PPO, QRDQN, RecurrentPPO, SAC, TD3, TQC, TRPO |
+| Encoders    | small, medium, large, CNNLSTM, DinoV1, DinoV2, FrozenSimCLR, MultiInputEncoder, SegmentAnything, SimpleViT, ViT |
 | Policies    | CnnPolicy, CnnLstmPolicy, MlpPolicy, MlpLstmPolicy, MultiInputPolicy, MultiInputLstmPolicy |
-| Rewards     | closeness, completeness, closeness,completeness, unsupervised, disagreement, e3b, fabric, icm, ngu, pseudocounts, re3, ride, rnd |
+| Rewards     | closeness, completeness, closeness,completeness, unsupervised, Disagreement, E3B, Fabric, ICM, NGU, PseudoCounts, RE3, RIDE, RND |
 | Wrappers    | binocular, dvs, multiobs, retina, video |
 
 ### Wrapper Composition
@@ -208,3 +211,23 @@ output_dir/
 ## Maintenance
 
 When adding new components (encoders, rewards, wrappers, algorithms), update the "Registered Components" table above and the corresponding section in `llms.txt`.
+
+### Keeping Documentation Files in Sync
+
+Three documentation files must be kept up to date whenever the code changes:
+
+| File | Purpose | Audience |
+|------|---------|----------|
+| `CLAUDE.md` | Project context for LLM assistants (Claude Code, Copilot, etc.) | AI coding agents |
+| `llms.txt` | Concise API reference following the [llms.txt convention](https://llmstxt.org/) | LLMs needing quick project context |
+| `llms-full.txt` | Comprehensive API reference with full signatures, examples, and internals | LLMs needing deep project understanding |
+
+**Update all three files when you:**
+- Add, remove, or rename a registered component (encoder, algorithm, policy, reward, wrapper)
+- Change a public method signature (parameters, return types, defaults)
+- Add or remove a public API function in `src/nett/__init__.py`
+- Change the config schema (`src/nett/schema.json`) — add/remove/rename fields or enum values
+- Add or remove source files or directories under `src/nett/`
+- Change the output directory structure
+- Add or change dependencies in `pyproject.toml`
+- Modify the architecture (new classes, changed execution flow)

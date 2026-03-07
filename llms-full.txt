@@ -34,7 +34,11 @@ src/nett/                  # Main package source
 │   │   ├── resnet18.py     # Resnet18CNN (large)
 │   │   ├── sam.py          # SegmentAnything encoder
 │   │   ├── simplevit.py    # SimpleViT encoder
-│   │   └── vit.py          # ViT encoder
+│   │   ├── vit.py          # ViT encoder
+│   │   └── disembodied_models/  # Standalone model architectures
+│   │       ├── simclr.py         # SimCLR contrastive learning
+│   │       ├── vit_contrastive.py # ViT contrastive learning
+│   │       └── archs/            # ResNet architecture variants (resnet_1b, 2b, 3b)
 │   ├── rewards/           # Intrinsic reward functions (BaseReward subclasses)
 │   │   ├── e3b.py          # E3B reward
 │   │   ├── icm.py          # ICM reward
@@ -59,6 +63,7 @@ src/nett/                  # Main package source
 │   ├── environment.py     # Environment class
 │   └── utils/
 │       ├── design.py      # get_experiment_design()
+│       ├── logger.py      # Logger side channel for Unity ↔ Python communication
 │       ├── ports.py       # random_port() for Unity workers
 │       ├── wrappers.py    # GymWrapper, ZooWrapper
 │       └── validate.py    # Executable/conditions validation
@@ -68,6 +73,7 @@ src/nett/                  # Main package source
 │   ├── activation_maximization.py # Neuron activation maximization
 │   ├── trajectory.py      # map_trajectories()
 │   ├── tSNE.py            # generate_tSNEs()
+│   ├── ChickData/         # Chick experiment comparison data (CSV files per experiment type)
 │   └── utils/             # R script wrappers
 │       ├── merge.py        # merge()
 │       ├── train_viz.py    # train_viz()
