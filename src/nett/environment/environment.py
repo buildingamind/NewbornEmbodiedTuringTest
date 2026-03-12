@@ -68,6 +68,7 @@ class Environment:
         record_eps: Optional[dict] = None,
         multiagent: bool = False,
         random_first_frame: bool = False,
+        FOV: Optional[int] = None,
         display: Optional[int] = None,
         continuous_position: bool = False,
     ):
@@ -113,6 +114,9 @@ class Environment:
 
         if continuous_position:
             args.append("--continuous-position")
+
+        if FOV is not None:
+            args.extend(["--fov", str(FOV)])
 
         # Split arguments for training and testing modes
         self.base_args = {"train": args[:], "test": args[:]}

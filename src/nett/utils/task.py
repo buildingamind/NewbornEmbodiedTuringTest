@@ -83,9 +83,7 @@ class Task:
         memory: Optional[float] = None,
     ) -> None:
         """initialize task"""
-        self.config = TaskConfig(
-            brain_id, condition, output_dir, modes, queue, memory
-        )
+        self.config = TaskConfig(brain_id, condition, output_dir, modes, queue, memory)
         self.agent = Agent(brain, body, env)
 
     def set_device(self, device: int) -> None:
@@ -106,9 +104,20 @@ def run_task(task: Task) -> None:
     for mode in config.modes:
         config.current_mode = mode
 
-        with agent.body.embed(agent.env, config) as body_interface:
-            # brain.train() or brain.test()
-            getattr(agent.brain, mode)(body_interface, config)
-            config.logger.info(f"Closing Environment...")
+        # Create a separate eval env for periodic evaluation during training
+        eval_env = None
+        if mode == "train" and agent.brain.eval_freq is not None:
+            eval_env = agent.body.make_eval_env(agent.env, config)
+
+        try:
+            with agent.body.embed(agent.env, config) as body_interface:
+                if mode == "train":
+                    agent.brain.train(body_interface, config, eval_env=eval_env)
+                else:
+                    agent.brain.test(body_interface, config)
+                config.logger.info(f"Closing Environment...")
+        finally:
+            if eval_env is not None:
+                eval_env.close()
 
     config.logger.info("Environments Closed")

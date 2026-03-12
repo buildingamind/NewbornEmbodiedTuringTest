@@ -15,7 +15,11 @@ from pathlib import Path
 from stable_baselines3.common.torch_layers import BaseFeaturesExtractor
 from stable_baselines3.common.policies import BasePolicy
 from stable_baselines3.common.base_class import BaseAlgorithm
-from stable_baselines3.common.callbacks import CheckpointCallback, CallbackList
+from stable_baselines3.common.callbacks import (
+    CheckpointCallback,
+    CallbackList,
+    EvalCallback,
+)
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
 from stable_baselines3.common.vec_env.base_vec_env import VecEnv
@@ -130,6 +134,10 @@ class Brain:
         # --- Continual Learning Test Mode ---
         self.continual_learning = bool(continual_learning)
 
+        # --- Eval during training (set by NETT orchestrator) ---
+        self.eval_freq: Optional[int] = None
+        self.iterations_per_test_episode: dict[str, int] = {}
+
         # --- Custom arguments ---
         custom_encoder_args = (
             custom_encoder_args if custom_encoder_args is not None else {}
@@ -187,7 +195,9 @@ class Brain:
                 k: v * episodes["test"] for k, v in iterations_per_episode.items()
             }
 
-    def train(self, envs: VecEnv, config: TaskConfig):
+    def train(
+        self, envs: VecEnv, config: TaskConfig, eval_env: "Optional[VecEnv]" = None
+    ):
         """Train the brain."""
         # --- Build model ---
         policy_kwargs = (
@@ -249,7 +259,7 @@ class Brain:
             raise e
 
         # --- Initialize callbacks ---
-        callback_list = self._init_callbacks(envs, config)
+        callback_list = self._init_callbacks(envs, config, eval_env=eval_env)
 
         # --- Train model ---
         if config.memory is None:
@@ -377,7 +387,9 @@ class Brain:
                 config.logger.exception(f"Failed to test model with error: {str(e)}")
                 raise e
 
-    def _init_callbacks(self, envs: VecEnv, config: TaskConfig) -> CallbackList:
+    def _init_callbacks(
+        self, envs: VecEnv, config: TaskConfig, eval_env: "Optional[VecEnv]" = None
+    ) -> CallbackList:
         # Initialize the callbacks for training.
 
         # Callbacks for memory estimation mode
@@ -402,6 +414,25 @@ class Brain:
                     CheckpointCallback(
                         save_freq=self.checkpoint_freq,  # defaults to 30_000 steps
                         save_path=config.path / "checkpoints",
+                    )
+                )
+
+            # Add eval callback for periodic test evaluation during training
+            if self.eval_freq is not None and eval_env is not None:
+                n_eval_episodes = (
+                    self.iterations_per_test_episode.get(config.condition, 1) * 5
+                )
+                eval_log_path = config.path / "eval_logs"
+                eval_log_path.mkdir(parents=True, exist_ok=True)
+                callback_list.append(
+                    EvalCallback(
+                        eval_env,
+                        eval_freq=self.eval_freq * self.steps_per_episode,
+                        n_eval_episodes=n_eval_episodes,
+                        best_model_save_path=str(config.path / "best_model"),
+                        log_path=str(eval_log_path),
+                        deterministic=self.deterministic,
+                        verbose=0,
                     )
                 )
 

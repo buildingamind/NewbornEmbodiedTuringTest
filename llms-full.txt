@@ -109,6 +109,7 @@ episodes:
 steps_per_episode: 200 # Steps per episode (default: 200)
 num_brains: 5          # Number of parallel agents (default: 1)
 task_memory: auto      # GPU memory per task in GB, or "auto" (default: "auto")
+eval_freq: 50          # Evaluate every N training episodes, null=disabled (default: null)
 
 brain:
   policy: CnnPolicy            # Policy network type (default: "CnnPolicy")
@@ -203,7 +204,7 @@ Execute all configured benchmarks in parallel.
 
 Internally: initializes MemoryManager, validates GPUs, creates Executor (ProcessPoolExecutor), runs `single_run()` for each config, then `task_waiter()` to manage GPU memory and waitlisted tasks.
 
-#### `single_run(name, environment, body, brain, episodes, steps_per_episode, num_brains, task_memory)`
+#### `single_run(name, environment, body, brain, episodes, steps_per_episode, num_brains, task_memory, eval_freq)`
 
 ```python
 def single_run(
@@ -216,6 +217,7 @@ def single_run(
     steps_per_episode: int = 200,
     num_brains: int = 1,
     task_memory: str | float = "auto",
+    eval_freq: Optional[int] = None,
     **kwargs,
 ) -> list[Future]
 ```
@@ -227,8 +229,9 @@ Run a single benchmark. Parameters match top-level config file keys. Internally:
 3. Calculates training iterations via `Brain.calc_iterations()`
 4. Adjusts environment to agent settings via `Environment.adjust_to_agent()`
 5. Estimates GPU memory (auto mode runs one rollout to measure)
-6. Creates TaskList (brain × condition combinations)
-7. Validates tasks, then assigns each to a GPU via `_assign_task()`
+6. Sets `eval_freq` and `iterations_per_test_episode` on Brain for periodic evaluation during training
+7. Creates TaskList (brain × condition combinations)
+8. Validates tasks, then assigns each to a GPU via `_assign_task()`
 
 #### `status()`
 
@@ -324,10 +327,10 @@ def calc_iterations(
 
 Calculates and stores `self.train_iterations`, `self.test_iterations`, `self.steps_per_episode`, and `self.n_tasks`.
 
-#### `train(envs, config)`
+#### `train(envs, config, eval_env)`
 
 ```python
-def train(self, envs: VecEnv, config: TaskConfig) -> None
+def train(self, envs: VecEnv, config: TaskConfig, eval_env: Optional[VecEnv] = None) -> None
 ```
 
 Trains the model:
@@ -335,7 +338,7 @@ Trains the model:
 1. Builds policy kwargs (encoder class, features_dim, custom args, network architecture)
 2. Creates SB3 algorithm instance with policy, hyperparameters, and CUDA device
 3. Optionally freezes encoder parameters (`train_encoder=False`)
-4. Initializes callbacks (hyperparameter logging, progress bar, checkpoints, intrinsic rewards, video conversion)
+4. Initializes callbacks (hyperparameter logging, progress bar, checkpoints, eval callback, intrinsic rewards, video conversion)
 5. Calls `model.learn()` with calculated timesteps
 6. Saves model and frees memory
 
@@ -361,6 +364,7 @@ Defined in `src/nett/brain/utils/callbacks.py`:
 - **`IntrinsicRewardWithOnPolicyRL`**: Integrates RLeXplore intrinsic rewards with on-policy algorithms (PPO, A2C, etc.)
 - **`IntrinsicRewardWithOffPolicyRL`**: Integrates RLeXplore intrinsic rewards with off-policy algorithms (DQN, SAC, etc.)
 - **`PngToMp4Callback`**: Converts PNG frame sequences to MP4 videos after training
+- **`EvalCallback`** (SB3 built-in): Periodically evaluates the agent in a separate test environment during training. Configured via the `eval_freq` top-level config parameter. Saves the best model and logs eval metrics to TensorBoard.
 
 Standalone: `img2video(record_path, expected_length, fps=25)` — converts PNG sequences to MP4 using OpenCV.
 
@@ -404,6 +408,14 @@ Embeds the environment in the body:
 1. Selects wrapper path: `_zoo_wrapper()` for multi-agent, `_gym_wrapper()` for single-agent
 2. For single-agent: creates `SubprocVecEnv` with environment factory functions that apply the wrapper chain
 3. Returns `self` with `self.envs` attribute set to the vectorized environment
+
+#### `make_eval_env(env, config)`
+
+```python
+def make_eval_env(self, env: Environment, config: TaskConfig) -> VecEnv
+```
+
+Creates a standalone vectorized environment in test mode for evaluation during training. Temporarily switches `config.current_mode` to `"test"` so the Unity executable receives test-mode arguments, creates the env, then restores the original mode.
 
 #### `validate_env(env, config)`
 
@@ -779,7 +791,7 @@ def run_task(task: Task) -> None
 ```
 
 Seeds RNG with `task.config.seed`, creates log directories, then iterates through modes:
-- For `"train"`: calls `Body.embed()` then `Brain.train()`
+- For `"train"`: optionally creates an eval environment (if `brain.eval_freq` is set), calls `Body.embed()` then `Brain.train(envs, config, eval_env)`, and closes the eval env after training
 - For `"test"`: calls `Body.embed()` then `Brain.test()` for each condition
 
 ### TaskList

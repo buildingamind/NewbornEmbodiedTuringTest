@@ -22,14 +22,14 @@ NETT follows a three-component architecture — **Brain**, **Body**, and **Envir
 
 - `NETT(configs: list[Path | str | dict])` — Initialize with experiment configurations
 - `NETT.run(output_path, devices, verbose, asynchronous)` — Execute all configured benchmarks in parallel
-- `NETT.single_run(name, environment, body, brain, episodes, steps_per_episode, num_brains, task_memory)` — Run a single experiment
+- `NETT.single_run(name, environment, body, brain, episodes, steps_per_episode, num_brains, task_memory, eval_freq)` — Run a single experiment
 
 ### Brain (Learning)
 
 `from nett.brain import Brain`
 
 - `Brain(policy, algorithm, encoder, reward, embedding_dim, batch_size, buffer_size, learning_rate, checkpoint_freq, train_encoder, deterministic, custom_encoder_args, custom_algorithm_args, custom_policy_args, custom_policy_arch, reward_args, continual_learning)` — Configure the learning model
-- `Brain.train(envs, config)` — Train the model using Stable-Baselines3
+- `Brain.train(envs, config, eval_env)` — Train the model using Stable-Baselines3
 - `Brain.test(envs, config)` — Evaluate the trained model
 - `Brain.calc_iterations(num_brains, iterations_per_episode, episodes, steps_per_episode)` — Calculate total training iterations
 
@@ -39,6 +39,7 @@ NETT follows a three-component architecture — **Brain**, **Body**, and **Envir
 
 - `Body(wrappers, record_eps, panini_projection, input_resolution, binocular_vision)` — Configure the agent's sensory processing
 - `Body.embed(env, config)` — Apply wrapper chain to the environment
+- `Body.make_eval_env(env, config)` — Create a standalone test-mode environment for evaluation
 - `Body.validate_env(env, config)` — Validate the wrapped environment
 
 ### Environment (Simulation)
@@ -81,7 +82,7 @@ environment:
   executable_path: "path/to/unity_executable"
 ```
 
-Full config adds: `episodes` (train/test counts), `steps_per_episode`, `num_brains`, `task_memory`, `brain` (policy, algorithm, encoder, reward, hyperparameters), `body` (wrappers, recording, vision settings), and `environment` (conditions, multiagent, display settings).
+Full config adds: `episodes` (train/test counts), `steps_per_episode`, `num_brains`, `task_memory`, `eval_freq` (periodic test evaluation during training), `brain` (policy, algorithm, encoder, reward, hyperparameters), `body` (wrappers, recording, vision settings), and `environment` (conditions, multiagent, display settings).
 
 See `examples/configs/nett_config_min.yaml` and `examples/configs/nett_config_max.yaml` for reference.
 

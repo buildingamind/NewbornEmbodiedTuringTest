@@ -104,7 +104,7 @@ See `docs/dev/full_architecture.md` for the complete mermaid diagram and `docs/d
 ## Key Patterns
 
 ### Config-Driven Experiments
-All experiments defined via YAML/JSON validated against `src/nett/schema.json`. Only `name` and `environment.executable_path` are required. Configs are saved to output directories for reproducibility.
+All experiments defined via YAML/JSON validated against `src/nett/schema.json`. Only `name` and `environment.executable_path` are required. Configs are saved to output directories for reproducibility. Top-level config options include `episodes`, `steps_per_episode`, `num_brains`, `task_memory`, and `eval_freq` (periodic test evaluation during training).
 
 ### Registry Pattern (Component Validation)
 Brain components (encoders, algorithms, policies, rewards) and Body wrappers use a registry pattern defined in `src/nett/brain/utils/validate.py`:

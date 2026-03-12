@@ -217,6 +217,31 @@ class Body:
 
         return DummyVecEnv([_init])
 
+    def make_eval_env(self, env: "Environment", config: TaskConfig) -> VecEnv:
+        """Creates a standalone vectorized environment in test mode for evaluation.
+
+        Temporarily switches config.current_mode to 'test' so the Unity
+        executable receives test-mode arguments, then restores it.
+
+        Args:
+            env: The Environment instance to load.
+            config: The task configuration.
+
+        Returns:
+            VecEnv: A vectorized evaluation environment.
+        """
+        original_mode = config.current_mode
+        config.current_mode = "test"
+        try:
+
+            def _init():
+                return _load_env(env, config, self.wrappers, False, "0:0:1")
+
+            eval_vec_env = DummyVecEnv([_init])
+        finally:
+            config.current_mode = original_mode
+        return eval_vec_env
+
     def __enter__(self) -> VecEnv:
         # Enter the runtime context related to this object.
 

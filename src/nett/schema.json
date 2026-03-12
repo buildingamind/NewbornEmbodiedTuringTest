@@ -297,6 +297,12 @@
         { "type": "string", "enum": ["auto"] }
       ],
       "default": "auto"
+    },
+    "eval_freq": {
+      "description": "Run a test evaluation every eval_freq training episodes. If null, no evaluation is performed during training. Defaults to null.",
+      "type": ["integer", "null"],
+      "minimum": 1,
+      "default": null
     }
   },
   "patternProperties": {

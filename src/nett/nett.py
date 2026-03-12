@@ -181,6 +181,7 @@ class NETT:
         steps_per_episode: int = 200,
         num_brains: int = 1,
         task_memory: str | float = "auto",
+        eval_freq: Optional[int] = None,
         **kwargs,
     ) -> None:
         """
@@ -195,6 +196,7 @@ class NETT:
             steps_per_episode (int, optional): The number of steps per episode. Defaults to `200`.
             num_brains (int): The number of brains to be trained and tested. Defaults to `1`.
             task_memory (str | float, optional): The memory allocated, in Gigabytes, for a single job. Defaults to `"auto"`.
+            eval_freq (int, optional): Run a test evaluation every eval_freq training episodes. If None, no evaluation is performed during training. Defaults to None.
             **kwargs: Additional keyword arguments.
 
         """
@@ -243,6 +245,10 @@ class NETT:
             episodes,
             steps_per_episode,
         )
+
+        # Set eval_freq on brain for periodic evaluation during training
+        base_brain.eval_freq = eval_freq
+        base_brain.iterations_per_test_episode = base_env.iterations_per_test_episode
 
         # adjust environment to agent settings
         base_env.adjust_to_agent(
