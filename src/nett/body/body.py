@@ -220,8 +220,9 @@ class Body:
     def make_eval_env(self, env: "Environment", config: TaskConfig) -> VecEnv:
         """Creates a standalone vectorized environment in test mode for evaluation.
 
-        Temporarily switches config.current_mode to 'test' so the Unity
-        executable receives test-mode arguments, then restores it.
+        Temporarily switches config.current_mode to 'test' and config.path to
+        a subdirectory so the Unity executable receives test-mode arguments and
+        writes logs to a separate eval directory. Restores both after creation.
 
         Args:
             env: The Environment instance to load.
@@ -231,7 +232,9 @@ class Body:
             VecEnv: A vectorized evaluation environment.
         """
         original_mode = config.current_mode
+        original_path = config.path
         config.current_mode = "test"
+        config.path = original_path / "_eval"
         try:
 
             def _init():
@@ -240,6 +243,7 @@ class Body:
             eval_vec_env = DummyVecEnv([_init])
         finally:
             config.current_mode = original_mode
+            config.path = original_path
         return eval_vec_env
 
     def __enter__(self) -> VecEnv:

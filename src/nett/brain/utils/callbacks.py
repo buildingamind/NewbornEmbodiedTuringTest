@@ -334,3 +334,113 @@ class PngToMp4Callback(BaseCallback):
 
     def _convert_pngs_to_mp4s(self):
         return img2video(self.record_path, self.expected_size, self.fps)
+
+
+# Spatial zone constants — must match src/nett/analysis/utils/merge.py
+_X_LIMITS = (-33.15, 33.15)
+_AGENT_RADIUS = 3.0
+_AGENT_LIMITS = (_X_LIMITS[0] + _AGENT_RADIUS, _X_LIMITS[1] - _AGENT_RADIUS)
+_ONE_THIRD = (_AGENT_LIMITS[1] - _AGENT_LIMITS[0]) / 3
+_BOUNDS = [_AGENT_LIMITS[0] + _ONE_THIRD, _AGENT_LIMITS[1] - _ONE_THIRD]
+
+
+class EvalScoreCallback(BaseCallback):
+    """Reads Unity test logs after each eval, computes percent_correct per
+    test.cond, and records the scores to the SB3 TensorBoard logger.
+
+    Intended for use as ``callback_after_eval`` on SB3's ``EvalCallback``,
+    so ``_on_step`` fires exactly once after each evaluation completes.
+    """
+
+    def __init__(self, eval_log_dir: Path, verbose: int = 0):
+        super().__init__(verbose)
+        self.eval_log_dir = Path(eval_log_dir)
+        self._last_line_counts: dict[str, int] = {}
+
+    def _on_step(self) -> bool:
+        import pandas as pd
+        import numpy as np
+        import logging
+
+        logger = logging.getLogger("nett.EvalScoreCallback")
+
+        log_files = list(self.eval_log_dir.glob("test_*.csv"))
+        if not log_files:
+            return True
+
+        all_frames = []
+        for log_file in log_files:
+            key = str(log_file)
+            try:
+                df = pd.read_csv(log_file, skipinitialspace=True, on_bad_lines="skip")
+            except Exception:
+                continue
+            if df.empty:
+                continue
+
+            # Only process rows added since the last eval
+            prev_count = self._last_line_counts.get(key, 0)
+            self._last_line_counts[key] = len(df)
+            if len(df) <= prev_count:
+                continue
+            df = df.iloc[prev_count:]
+
+            # Drop rows with missing test.cond
+            if "test.cond" not in df.columns or "agent.x" not in df.columns:
+                continue
+            df = df.dropna(subset=["test.cond"])
+            if df.empty:
+                continue
+
+            # Coerce numeric columns
+            df["agent.x"] = pd.to_numeric(df["agent.x"], errors="coerce")
+            df["Episode"] = pd.to_numeric(df.get("Episode"), errors="coerce")
+
+            all_frames.append(df)
+
+        if not all_frames:
+            return True
+
+        data = pd.concat(all_frames, ignore_index=True)
+        data = data.dropna(subset=["agent.x", "Episode"])
+        if data.empty:
+            return True
+
+        # Classify spatial zones (same logic as merge.py)
+        data["left"] = (data["agent.x"] < _BOUNDS[0]).astype(int)
+        data["right"] = (data["agent.x"] > _BOUNDS[1]).astype(int)
+
+        # Group by episode and test condition, sum zone steps
+        group_cols = ["Episode", "test.cond"]
+        if "correct.monitor" in data.columns:
+            group_cols.append("correct.monitor")
+
+        agg = (
+            data.groupby(group_cols, dropna=False)
+            .agg(left_steps=("left", "sum"), right_steps=("right", "sum"))
+            .reset_index()
+        )
+        if "correct.monitor" not in agg.columns:
+            return True
+
+        # Compute correct / incorrect steps (same logic as test_viz.py)
+        agg["correct_steps"] = np.where(
+            agg["correct.monitor"] == "left",
+            agg["left_steps"],
+            agg["right_steps"],
+        )
+        agg["incorrect_steps"] = np.where(
+            agg["correct.monitor"] == "right",
+            agg["left_steps"],
+            agg["right_steps"],
+        )
+        total = agg["correct_steps"] + agg["incorrect_steps"]
+        agg["percent_correct"] = np.where(total != 0, agg["correct_steps"] / total, 0.0)
+
+        # Average percent_correct per test.cond and record to TensorBoard
+        scores = agg.groupby("test.cond")["percent_correct"].mean()
+        for test_cond, score in scores.items():
+            self.logger.record(f"test/{test_cond}", score)
+            logger.debug(f"Eval score test/{test_cond} = {score:.4f}")
+
+        return True

@@ -424,6 +424,8 @@ class Brain:
                 )
                 eval_log_path = config.path / "eval_logs"
                 eval_log_path.mkdir(parents=True, exist_ok=True)
+                eval_unity_log_dir = config.path / "_eval" / "logs"
+                score_callback = cb.EvalScoreCallback(eval_unity_log_dir)
                 callback_list.append(
                     EvalCallback(
                         eval_env,
@@ -432,6 +434,7 @@ class Brain:
                         best_model_save_path=str(config.path / "best_model"),
                         log_path=str(eval_log_path),
                         deterministic=self.deterministic,
+                        callback_after_eval=score_callback,
                         verbose=0,
                     )
                 )
