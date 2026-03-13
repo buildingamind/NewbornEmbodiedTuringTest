@@ -1,4 +1,5 @@
 import gymnasium as gym
+from functools import partial
 
 from ..wrappers import Binocular, DVS, MultiObs, Retina, Video
 
@@ -15,19 +16,22 @@ wrapper_mapping: dict[str, type[gym.Wrapper]] = {
 wrapper_list: list[str] = list(wrapper_mapping.keys())
 
 
-def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
+def validate_wrappers(
+    wrappers: list[gym.Wrapper | str | partial],
+) -> list[gym.Wrapper | partial]:
     """
     Validate the wrappers.
 
     Args:
-        wrappers (list[Wrapper] | str): The list of wrappers.
+        wrappers (list[Wrapper] | str | partial): The list of wrappers.
 
     Returns:
-        list[Wrapper]: The validated list of wrappers.
+        list[Wrapper | partial]: The validated list of wrappers.
 
     Raises:
         KeyError: If the wrapper is a string that does not correspond to a wrapper.
-        TypeError: If any wrapper is not an instance of str or gym.Wrapper.
+        TypeError: If any wrapper is not a string, wrapper subclass,
+            or functools.partial of a wrapper subclass.
     """
     validated = []
     for wrapper in wrappers:
@@ -40,9 +44,16 @@ def validate_wrappers(wrappers: list[gym.Wrapper | str]) -> list[gym.Wrapper]:
                 )
         elif isinstance(wrapper, type) and issubclass(wrapper, gym.Wrapper):
             validated.append(wrapper)
+        elif (
+            isinstance(wrapper, partial)
+            and isinstance(wrapper.func, type)
+            and issubclass(wrapper.func, gym.Wrapper)
+        ):
+            validated.append(wrapper)
         else:
             raise TypeError(
-                "Wrapper should only be either a string or a subclass of gym.Wrapper"
+                "Wrapper should only be either a string, a subclass of gym.Wrapper, "
+                "or functools.partial wrapping a subclass of gym.Wrapper"
             )
 
     return validated
