@@ -250,6 +250,11 @@
           "type": ["integer", "null"],
           "default": null
         },
+        "fov": {
+          "description": "Field of View of the agent in degrees. Defaults to null. If null, the environment's default FOV is used.",
+          "type": ["integer", "null"],
+          "default": null
+        },
         "continuous_position": {
           "description": "Whether to use continuous position in the environment. Defaults to false.",
           "type": "boolean",
