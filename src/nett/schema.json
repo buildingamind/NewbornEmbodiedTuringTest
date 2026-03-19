@@ -250,7 +250,7 @@
           "type": ["integer", "null"],
           "default": null
         },
-        "fov": {
+        "FOV": {
           "description": "Field of View of the agent in degrees. Defaults to null. If null, the environment's default FOV is used.",
           "type": ["integer", "null"],
           "default": null
