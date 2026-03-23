@@ -259,6 +259,12 @@
           "description": "Whether to use continuous position in the environment. Defaults to false.",
           "type": "boolean",
           "default": false
+        },
+        "switch_steps": {
+          "description": "Number of steps between object switches. Passed as --switch-steps to the Unity executable. Defaults to null.",
+          "type": ["integer", "null"],
+          "minimum": 1,
+          "default": null
         }
       },
       "required": ["executable_path"],

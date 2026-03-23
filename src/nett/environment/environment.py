@@ -71,6 +71,7 @@ class Environment:
         FOV: Optional[int] = None,
         display: Optional[int] = None,
         continuous_position: bool = False,
+        switch_steps: Optional[int] = None,
     ):
         """
         Initializes the Environment object.
@@ -123,6 +124,9 @@ class Environment:
 
         if self.random_first_frame:
             self.base_args["train"].append("--random-first-frame")
+
+        if switch_steps is not None:
+            self.base_args["train"].extend(["--switch-steps", str(switch_steps)])
 
         # Add recording arguments for each mode
         for mode in ["train", "test"]:
