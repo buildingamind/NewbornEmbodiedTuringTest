@@ -243,6 +243,7 @@ class Environment:
                     additional_args=args,
                     base_port=random_port(),  # Use a random port to avoid conflicts
                     seed=seed,
+                    timeout=300,  # Set a timeout for environment initialization
                     # side_channels=side_channels,
                 )
                 # Set render mode based on whether multiple observations are expected

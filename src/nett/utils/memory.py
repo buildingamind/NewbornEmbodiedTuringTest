@@ -23,6 +23,11 @@ def singleton(cls):
                 instances[cls] = cls(*args, **kwargs)
         return instances[cls]
 
+    def reset_instance():
+        with lock:
+            instances.pop(cls, None)
+
+    get_instance.reset_instance = reset_instance
     return get_instance
 
 
@@ -70,4 +75,5 @@ class MemoryManager:
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+        MemoryManager.reset_instance()
         return False  # Don't suppress exceptions

@@ -5,23 +5,11 @@ from multiprocessing import Manager
 from tqdm.auto import tqdm
 
 
-def singleton(cls):
-    instances = {}
-
-    def get_instance(*args, **kwargs):
-        if cls not in instances:
-            instances[cls] = cls(*args, **kwargs)
-        return instances[cls]
-
-    return get_instance
-
-
-@singleton
 class LoadingBarQueue:
     def __init__(self) -> None:
         self.manager = Manager()
         self.queue = self.manager.Queue()
-        self.pbar: dict[str, int] = {}
+        self.pbar: dict[str, tqdm] = {}
         self.rows = 0
 
     def add(self, label: str, num_steps: int) -> None:

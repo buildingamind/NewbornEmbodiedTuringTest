@@ -329,12 +329,22 @@ class NETT:
         while self.task_sheet:
             for done_future in as_completed(self.task_sheet):
                 self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
-                done_future.result()
 
                 # Free up memory from the completed task
                 done_config: TaskConfig = self.task_sheet.pop(done_future)
                 free_device: int = done_config.device
-                self.free_device_memory[free_device] += done_config.memory
+
+                try:
+                    done_future.result()
+                except Exception:
+                    self.logger.exception(
+                        f"Task failed for {done_config.name} "
+                        f"(condition={done_config.condition}, brain_id={done_config.brain_id})"
+                    )
+                    self.free_device_memory[free_device] += done_config.memory or 0.0
+                    continue
+
+                self.free_device_memory[free_device] += done_config.memory or 0.0
 
                 # Check if any tasks in the waitlist can be run
                 for i, task in enumerate(self.waitlist):
@@ -411,6 +421,7 @@ class NETT:
         if task_memory == "auto":
             # calculate current memory usage for baseline for comparison
             task = None
+            label = None
             try:
                 # create a test task to estimate memory
                 # TODO: Allow mem estimation to accurately estimate for test
@@ -427,19 +438,13 @@ class NETT:
                 task.set_device(most_free_gpu)
 
                 # Add a loading bar for the memory estimation
-                self.executor.loading_bar.add(
-                    f"Estimating Memory Usage for {task.config.name}", brain.buffer_size
-                )
+                label = f"Estimating Memory Usage for {task.config.name}"
+                self.executor.loading_bar.add(label, brain.buffer_size)
 
                 # Run the task and wait for it to complete
                 task_future: Future = self.executor.submit(run_task, task)
                 future_wait([task_future], return_when="ALL_COMPLETED")
                 self.logger.info("Finished estimating memory")
-
-                # Remove the loading bar
-                self.executor.loading_bar.remove(
-                    f"Estimating Memory Usage for {task.config.name}"
-                )
 
                 # Read the memory usage from the file
                 with open(task.config.path / "mem.txt", "r") as file:
@@ -448,6 +453,9 @@ class NETT:
                 self.logger.exception(f"Error in estimating memory: {e}")
                 raise e
             finally:
+                # Remove the loading bar (always, even on exception)
+                if label is not None:
+                    self.executor.loading_bar.remove(label)
                 # Clean up the test task directory
                 if task is not None and task.config.path.exists():
                     shutil.rmtree(task.config.path)
