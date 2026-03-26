@@ -216,9 +216,8 @@ class Environment:
         )
 
         # Create log path and extend arguments
-        # create logger
-        # create log path
         log_path = config.path / "logs"
+        log_path.mkdir(exist_ok=True, parents=True)
         log_dir = (
             log_path
             / f"{config.current_mode}_{config.condition}_{config.brain_id}_{seed or ''}.csv"

@@ -337,6 +337,8 @@ class NETT:
                 free_device: int = done_config.device
                 if done_config.port is not None:
                     self.reserved_ports.discard(done_config.port)
+                if done_config.eval_port is not None:
+                    self.reserved_ports.discard(done_config.eval_port)
 
                 try:
                     done_future.result()
@@ -355,6 +357,7 @@ class NETT:
                     if task.config.memory <= self.free_device_memory[free_device]:
                         # Allocate memory and run the task
                         task.config.port = self._claim_port()
+                        task.config.eval_port = self._claim_port()
                         self.free_device_memory[free_device] -= task.config.memory
                         task.set_device(free_device)
                         task_future: Future = self.executor.submit(run_task, task)
@@ -391,8 +394,9 @@ class NETT:
 
         # check if enough memory is available on the device
         if gpu_max_capacity >= task.config.memory:
-            # Claim a port before submitting so no two workers get the same one
+            # Claim ports before submitting so no two workers get the same ones
             task.config.port = self._claim_port()
+            task.config.eval_port = self._claim_port()
             # Assign the task to the device
             task.set_device(most_free_gpu)
             task_future = self.executor.submit(run_task, task)

@@ -236,7 +236,7 @@ class Body:
         original_port = config.port
         config.current_mode = "test"
         config.path = original_path / "_eval"
-        config.port = None  # eval env needs its own port, not the training env's port
+        config.port = config.eval_port  # use pre-assigned eval port to avoid port races
         try:
 
             def _init():
