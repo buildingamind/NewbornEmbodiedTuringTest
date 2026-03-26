@@ -1,7 +1,6 @@
 """TaskList class for holding and creating tasks"""
 
 from multiprocessing import SimpleQueue
-import time
 from itertools import product
 from pathlib import Path
 
@@ -59,7 +58,6 @@ def validate_tasklist(tasklist: TaskList) -> None:
         if config.brain_id != 1:
             continue
 
-        time.sleep(1)
         # validation only for train
         task.config.current_mode = "train"
 

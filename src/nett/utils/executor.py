@@ -16,7 +16,8 @@ class Executor(ProcessPoolExecutor):
         initializer = mute if not verbose else None
 
         super().__init__(
-            initializer=initializer,  # TODO: too many workers
+            max_workers=os.cpu_count(),
+            initializer=initializer,
             # max_tasks_per_child=1  # Ensure each task runs in a fresh process
         )
 

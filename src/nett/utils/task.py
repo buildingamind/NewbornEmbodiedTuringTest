@@ -13,6 +13,7 @@ class TaskConfig:
     """TaskConfig class for holding and creating tasks"""
 
     device: int
+    port: Optional[int]
     current_mode: str
     brain_id: int
     condition: str
@@ -34,6 +35,7 @@ class TaskConfig:
         memory: Optional[float] = None,
     ):
         self.brain_id = brain_id
+        self.port = None  # Assigned by NETT._assign_task() in the main process before submission
         self.seed = (brain_id * 7919) % (
             2**31 - 1
         )  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling).

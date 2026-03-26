@@ -44,10 +44,10 @@ def img2video(record_path: Path, expected_length: int, fps: int = 25):
         frames_sorted = sorted(frames, key=lambda x: x[0])
         if len(frames_sorted) < expected_length:
             continue
-        images = [cv2.imread(f[1]) for f in frames_sorted]
-        if not images or images[0] is None:
+        first_img = cv2.imread(frames_sorted[0][1])
+        if first_img is None:
             continue
-        height, width, layers = images[0].shape
+        height, width, layers = first_img.shape
         mp4_path = record_path / f"{ep}.mp4"
         out = cv2.VideoWriter(
             str(mp4_path),
@@ -55,7 +55,9 @@ def img2video(record_path: Path, expected_length: int, fps: int = 25):
             fps,
             (width, height),
         )
-        for img in images:
+        out.write(first_img)
+        for _, png_path in frames_sorted[1:]:
+            img = cv2.imread(png_path)
             if img is not None:
                 out.write(img)
         out.release()

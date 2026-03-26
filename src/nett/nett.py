@@ -8,7 +8,6 @@ This module contains the NETT class, which is the main class for training, testi
 import logging
 import json
 from pathlib import Path
-import time
 from typing import Optional
 import yaml
 import shutil
@@ -18,6 +17,7 @@ from nett.utils.tasklist import validate_tasklist
 from .brain import Brain
 from .body import Body
 from .environment import Environment
+from .environment.utils import claim_port
 from .utils import (
     Executor,
     LoadingBarQueue,
@@ -85,6 +85,7 @@ class NETT:
     devices: list[int]
     task_sheet: dict[Future, TaskConfig]
     waitlist: list[Task]
+    reserved_ports: set[int]
     memory_manager: MemoryManager
     loading_bar: LoadingBarQueue
     free_device_memory: dict[int, float]
@@ -131,9 +132,10 @@ class NETT:
         self.output_path = Path(output_path).resolve()
         self.logger.info(f"Set up output directory at: {self.output_path.resolve()}")
 
-        # initialize task sheet and waitlist
+        # initialize task sheet, waitlist, and port reservation set
         self.task_sheet = {}
         self.waitlist = []
+        self.reserved_ports = set()
 
         # initialize NVIDIA memory management
         with MemoryManager() as self.memory_manager:
@@ -309,7 +311,6 @@ class NETT:
         # Assign tasks to devices
         self.logger.info(f"Assigning tasks...")
         for task in tasklist:
-            time.sleep(2)
             self._assign_task(task)
 
     def task_waiter(self):
@@ -330,9 +331,11 @@ class NETT:
             for done_future in as_completed(self.task_sheet):
                 self.logger.info(f"Task Completed: Waitlist Size: {len(self.waitlist)}")
 
-                # Free up memory from the completed task
+                # Free up memory and port reservation from the completed task
                 done_config: TaskConfig = self.task_sheet.pop(done_future)
                 free_device: int = done_config.device
+                if done_config.port is not None:
+                    self.reserved_ports.discard(done_config.port)
 
                 try:
                     done_future.result()
@@ -350,6 +353,7 @@ class NETT:
                 for i, task in enumerate(self.waitlist):
                     if task.config.memory <= self.free_device_memory[free_device]:
                         # Allocate memory and run the task
+                        task.config.port = self._claim_port()
                         self.free_device_memory[free_device] -= task.config.memory
                         task.set_device(free_device)
                         task_future: Future = self.executor.submit(run_task, task)
@@ -365,6 +369,10 @@ class NETT:
             dict[Future, TaskConfig]: A dictionary of futures representing the jobs that have been launched.
         """
         return self.task_sheet
+
+    def _claim_port(self) -> int:
+        """Claims a free port from the main process, recording it in reserved_ports."""
+        return claim_port(self.reserved_ports)
 
     def _assign_task(self, task: Task) -> None:
         """
@@ -382,6 +390,8 @@ class NETT:
 
         # check if enough memory is available on the device
         if gpu_max_capacity >= task.config.memory:
+            # Claim a port before submitting so no two workers get the same one
+            task.config.port = self._claim_port()
             # Assign the task to the device
             task.set_device(most_free_gpu)
             task_future = self.executor.submit(run_task, task)
@@ -435,6 +445,7 @@ class NETT:
                     ["train"],
                     self.loading_bar_queue,
                 )
+                task.config.port = self._claim_port()
                 task.set_device(most_free_gpu)
 
                 # Add a loading bar for the memory estimation
@@ -456,6 +467,9 @@ class NETT:
                 # Remove the loading bar (always, even on exception)
                 if label is not None:
                     self.executor.loading_bar.remove(label)
+                # Release the port reservation
+                if task is not None and task.config.port is not None:
+                    self.reserved_ports.discard(task.config.port)
                 # Clean up the test task directory
                 if task is not None and task.config.path.exists():
                     shutil.rmtree(task.config.path)

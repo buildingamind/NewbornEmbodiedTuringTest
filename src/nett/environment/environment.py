@@ -241,7 +241,7 @@ class Environment:
                 env = UnityEnvironment(
                     str(self.executable_path),
                     additional_args=args,
-                    base_port=random_port(),  # Use a random port to avoid conflicts
+                    base_port=config.port if config.port is not None else random_port(),
                     seed=seed,
                     timeout_wait=300,  # Set a timeout for environment initialization
                     # side_channels=side_channels,
