@@ -1,14 +1,15 @@
 import queue as stdlib_queue
 import sys
 import time
-import multiprocessing
+from multiprocessing import Manager
 
 from tqdm.auto import tqdm
 
 
 class LoadingBarQueue:
     def __init__(self) -> None:
-        self.queue = multiprocessing.Queue()
+        self._manager = Manager()
+        self.queue = self._manager.Queue()
         self.pbar: dict[str, tqdm] = {}
         self.rows = 0
 
@@ -47,7 +48,7 @@ class LoadingBarQueue:
         for pbar in self.pbar.values():
             pbar.refresh()
             pbar.close()
-        self.queue.close()
+        self._manager.shutdown()
 
 
 def updateLoadingBars(loading_bar_queue: LoadingBarQueue) -> None:
