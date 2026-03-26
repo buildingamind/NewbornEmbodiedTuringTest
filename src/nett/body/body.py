@@ -233,8 +233,10 @@ class Body:
         """
         original_mode = config.current_mode
         original_path = config.path
+        original_port = config.port
         config.current_mode = "test"
         config.path = original_path / "_eval"
+        config.port = None  # eval env needs its own port, not the training env's port
         try:
 
             def _init():
@@ -244,6 +246,7 @@ class Body:
         finally:
             config.current_mode = original_mode
             config.path = original_path
+            config.port = original_port
         return eval_vec_env
 
     def __enter__(self) -> VecEnv:
