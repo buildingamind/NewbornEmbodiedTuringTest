@@ -7,6 +7,7 @@ This module contains the NETT class, which is the main class for training, testi
 
 import logging
 import json
+import time
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -398,6 +399,8 @@ class NETT:
             self.task_sheet[task_future] = task.config
             # allocate memory
             self.free_device_memory[most_free_gpu] -= task.config.memory
+            # stagger Unity process startup to avoid simultaneous GPU context initialization
+            time.sleep(0.5)
         else:
             # waitlist remaining tasks if no free memory
             self.waitlist.append(task)
