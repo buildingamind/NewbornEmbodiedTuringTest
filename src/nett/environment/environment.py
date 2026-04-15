@@ -72,6 +72,7 @@ class Environment:
         display: Optional[int] = None,
         continuous_position: bool = False,
         switch_steps: Optional[int] = None,
+        decision_period: int = 1,
     ):
         """
         Initializes the Environment object.
@@ -112,6 +113,8 @@ class Environment:
         else:
             # Set the display for the Unity environment
             os.environ["DISPLAY"] = f":{display}"
+
+        args.extend(["--decision-period", str(decision_period)])
 
         if continuous_position:
             args.append("--continuous-position")
