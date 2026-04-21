@@ -106,13 +106,12 @@ class Environment:
         # Create a list of base arguments to pass to the Unity environment
         args = []
 
+        self.display = display
+
         if display is None:
             # Enable batchmode for headless servers (no display)
             args.append("-batchmode")
-            os.environ["DISPLAY"] = ":0"
-        else:
-            # Set the display for the Unity environment
-            os.environ["DISPLAY"] = f":{display}"
+
 
         args.extend(["--decision-period", str(decision_period)])
 
@@ -187,6 +186,10 @@ class Environment:
         else:
             logger = config.logger
             seed = config.seed  # Diversified seed: matches brain.py change
+
+        # Set DISPLAY here (in the subprocess) so multiple configs with different
+        # display settings don't overwrite each other in the main process.
+        os.environ["DISPLAY"] = ":0" if self.display is None else f":{self.display}"
 
         # Set the random seed for reproducibility
         torch.manual_seed(seed)

@@ -90,7 +90,7 @@ class NETT:
     memory_manager: MemoryManager
     loading_bar: LoadingBarQueue
     free_device_memory: dict[int, float]
-    configs: list[dict] = []
+    configs: list[dict]
     logger: logging.Logger = logging.getLogger("nett.NETT")
 
     def __init__(self, configs: list[Path | str | dict]) -> None:
