@@ -7,6 +7,7 @@ from typing import Optional
 
 import cv2
 import numpy as np
+import torch
 
 
 class TaskConfig:
@@ -125,3 +126,4 @@ def run_task(task: Task) -> None:
                 eval_env.close()
 
     config.logger.info("Environments Closed")
+    torch.cuda.empty_cache()
