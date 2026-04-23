@@ -73,6 +73,9 @@ class Environment:
         continuous_position: bool = False,
         switch_steps: Optional[int] = None,
         decision_period: int = 1,
+        forward_speed: Optional[float] = 3.0,
+        turn_speed: Optional[float] = 20.0,
+        extrinsic_reward: bool = False,
     ):
         """
         Initializes the Environment object.
@@ -99,6 +102,7 @@ class Environment:
 
         self.multiagent = multiagent
         self.random_first_frame = random_first_frame
+        self.extrinsic_reward = extrinsic_reward
 
         # Set the correct permissions on the executable to ensure it can be run
         subprocess.run(["chmod", "-R", "755", executable_path], check=True)
@@ -114,6 +118,8 @@ class Environment:
 
 
         args.extend(["--decision-period", str(decision_period)])
+        args.extend(["--forward-speed", str(forward_speed)])
+        args.extend(["--turn-speed", str(turn_speed)])
 
         if continuous_position:
             args.append("--continuous-position")
@@ -160,13 +166,14 @@ class Environment:
         if panini:
             args.append("--panini-projection")
 
-        # Add reward function argument
-        if reward in {
-            "closeness",
-            "completeness",
-            "closeness,completeness",
-        }:  # TODO: Clean this up
+        # Add reward function argument — only pass --reward when reward is a string
+        # (custom reward classes are Python-side only and must not be passed as CLI args)
+        if isinstance(reward, str) and (
+            reward in {"closeness", "completeness", "closeness,completeness"}
+        ):
             args.extend(["--reward", reward])
+        elif self.extrinsic_reward:
+            args.extend(["--reward", "closeness"])
 
         # Extend base arguments for both train and test modes
         for mode in ["train", "test"]:
