@@ -1,7 +1,7 @@
 import threading
 from pathlib import Path
 
-from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
+from stable_baselines3.common.callbacks import EvalCallback
 
 
 _HEARTBEAT_INTERVAL_SECONDS = 30
@@ -13,108 +13,6 @@ _AGENT_RADIUS = 3.0
 _AGENT_LIMITS = (_X_LIMITS[0] + _AGENT_RADIUS, _X_LIMITS[1] - _AGENT_RADIUS)
 _ONE_THIRD = (_AGENT_LIMITS[1] - _AGENT_LIMITS[0]) / 3
 _BOUNDS = [_AGENT_LIMITS[0] + _ONE_THIRD, _AGENT_LIMITS[1] - _ONE_THIRD]
-
-
-class _EvalScoreCallback(BaseCallback):
-    """Reads Unity test logs after each eval, computes percent_correct per
-    test.cond, and records the scores to the SB3 TensorBoard logger.
-
-    Intended for use as ``callback_after_eval`` on SB3's ``EvalCallback``,
-    so ``_on_step`` fires exactly once after each evaluation completes.
-    """
-
-    def __init__(self, eval_log_dir: Path, verbose: int = 0):
-        super().__init__(verbose)
-        self.eval_log_dir = Path(eval_log_dir)
-        self._last_line_counts: dict[str, int] = {}
-
-    def _on_step(self) -> bool:
-        import pandas as pd
-        import numpy as np
-        import logging
-
-        logger = logging.getLogger("nett._EvalScoreCallback")
-
-        log_files = list(self.eval_log_dir.glob("test_*.csv"))
-        if not log_files:
-            return True
-
-        all_frames = []
-        for log_file in log_files:
-            key = str(log_file)
-            try:
-                df = pd.read_csv(log_file, skipinitialspace=True, on_bad_lines="skip")
-            except Exception:
-                continue
-            if df.empty:
-                continue
-
-            # Only process rows added since the last eval
-            prev_count = self._last_line_counts.get(key, 0)
-            self._last_line_counts[key] = len(df)
-            if len(df) <= prev_count:
-                continue
-            df = df.iloc[prev_count:]
-
-            # Drop rows with missing test.cond
-            if "test.cond" not in df.columns or "agent.x" not in df.columns:
-                continue
-            df = df.dropna(subset=["test.cond"])
-            if df.empty:
-                continue
-
-            # Coerce numeric columns
-            df["agent.x"] = pd.to_numeric(df["agent.x"], errors="coerce")
-            df["Episode"] = pd.to_numeric(df.get("Episode"), errors="coerce")
-
-            all_frames.append(df)
-
-        if not all_frames:
-            return True
-
-        data = pd.concat(all_frames, ignore_index=True)
-        data = data.dropna(subset=["agent.x", "Episode"])
-        if data.empty:
-            return True
-
-        # Classify spatial zones (same logic as merge.py)
-        data["left"] = (data["agent.x"] < _BOUNDS[0]).astype(int)
-        data["right"] = (data["agent.x"] > _BOUNDS[1]).astype(int)
-
-        # Group by episode and test condition, sum zone steps
-        group_cols = ["Episode", "test.cond"]
-        if "correct.monitor" in data.columns:
-            group_cols.append("correct.monitor")
-
-        agg = (
-            data.groupby(group_cols, dropna=False)
-            .agg(left_steps=("left", "sum"), right_steps=("right", "sum"))
-            .reset_index()
-        )
-        if "correct.monitor" not in agg.columns:
-            return True
-
-        # Compute correct / incorrect steps (same logic as test_viz.py)
-        agg["correct_steps"] = np.where(
-            agg["correct.monitor"] == "left",
-            agg["left_steps"],
-            agg["right_steps"],
-        )
-        agg["incorrect_steps"] = np.where(
-            agg["correct.monitor"] == "right",
-            agg["left_steps"],
-            agg["right_steps"],
-        )
-        total = agg["correct_steps"] + agg["incorrect_steps"]
-        agg["percent_correct"] = np.where(total != 0, agg["correct_steps"] / total, 0.0)
-
-        # Average percent_correct per test.cond and record to TensorBoard
-        scores = agg.groupby("test.cond")["percent_correct"].mean()
-        for test_cond, score in scores.items():
-            self.logger.record(f"test/{test_cond}", score)
-            logger.debug(f"Eval score test/{test_cond} = {score:.4f}")
-
-        return True
 
 
 class KeepAliveEvalCallback(EvalCallback):
@@ -136,6 +34,11 @@ class KeepAliveEvalCallback(EvalCallback):
 
     Both resets are best-effort — exceptions are caught and silenced so that a
     transient Unity hiccup does not abort the whole training run.
+
+    After the eval has fully wrapped up (and the eval Unity has had a chance to
+    flush its log buffer via a final ``eval_env.reset()``), the callback parses
+    the Unity test CSV, computes ``percent_correct`` per ``test.cond``, and
+    records the scores to TensorBoard.
     """
 
     def __init__(
@@ -149,7 +52,8 @@ class KeepAliveEvalCallback(EvalCallback):
     ):
         eval_log_path = task_path / "eval_logs"
         eval_log_path.mkdir(parents=True, exist_ok=True)
-        eval_unity_log_dir = task_path / "_eval" / "logs"
+        self._eval_unity_log_dir = task_path / "_eval" / "logs"
+        self._last_line_counts: dict[str, int] = {}
         super().__init__(
             eval_env,
             eval_freq=eval_freq,
@@ -157,7 +61,6 @@ class KeepAliveEvalCallback(EvalCallback):
             best_model_save_path=str(task_path / "best_model"),
             log_path=str(eval_log_path),
             deterministic=deterministic,
-            callback_after_eval=_EvalScoreCallback(eval_unity_log_dir),
             verbose=verbose,
         )
 
@@ -188,4 +91,97 @@ class KeepAliveEvalCallback(EvalCallback):
             except Exception:
                 pass
 
+            # Force the eval Unity to flush the final episode's rows to disk.
+            # evaluate_policy stops as soon as n_eval_episodes is hit without
+            # resetting the env, so without this the last episode can still be
+            # sitting in Unity's stdio buffer when we read the CSV.
+            try:
+                self.eval_env.reset()
+            except Exception:
+                pass
+
+            self._record_eval_scores()
+
         return result
+
+    def _record_eval_scores(self) -> None:
+        import pandas as pd
+        import numpy as np
+        import logging
+
+        logger = logging.getLogger("nett.KeepAliveEvalCallback")
+
+        log_files = list(self._eval_unity_log_dir.glob("test_*.csv"))
+        if not log_files:
+            return
+
+        all_frames = []
+        for log_file in log_files:
+            key = str(log_file)
+            try:
+                df = pd.read_csv(log_file, skipinitialspace=True, on_bad_lines="skip")
+            except Exception:
+                continue
+            if df.empty:
+                continue
+
+            # Only process rows added since the last eval
+            prev_count = self._last_line_counts.get(key, 0)
+            self._last_line_counts[key] = len(df)
+            if len(df) <= prev_count:
+                continue
+            df = df.iloc[prev_count:]
+
+            if "test.cond" not in df.columns or "agent.x" not in df.columns:
+                continue
+            df = df.dropna(subset=["test.cond"])
+            if df.empty:
+                continue
+
+            df["agent.x"] = pd.to_numeric(df["agent.x"], errors="coerce")
+            df["Episode"] = pd.to_numeric(df.get("Episode"), errors="coerce")
+
+            all_frames.append(df)
+
+        if not all_frames:
+            return
+
+        data = pd.concat(all_frames, ignore_index=True)
+        data = data.dropna(subset=["agent.x", "Episode"])
+        if data.empty:
+            return
+
+        # Classify spatial zones (same logic as merge.py)
+        data["left"] = (data["agent.x"] < _BOUNDS[0]).astype(int)
+        data["right"] = (data["agent.x"] > _BOUNDS[1]).astype(int)
+
+        group_cols = ["Episode", "test.cond"]
+        if "correct.monitor" in data.columns:
+            group_cols.append("correct.monitor")
+
+        agg = (
+            data.groupby(group_cols, dropna=False)
+            .agg(left_steps=("left", "sum"), right_steps=("right", "sum"))
+            .reset_index()
+        )
+        if "correct.monitor" not in agg.columns:
+            return
+
+        # Compute correct / incorrect steps (same logic as test_viz.py)
+        agg["correct_steps"] = np.where(
+            agg["correct.monitor"] == "left",
+            agg["left_steps"],
+            agg["right_steps"],
+        )
+        agg["incorrect_steps"] = np.where(
+            agg["correct.monitor"] == "right",
+            agg["left_steps"],
+            agg["right_steps"],
+        )
+        total = agg["correct_steps"] + agg["incorrect_steps"]
+        agg["percent_correct"] = np.where(total != 0, agg["correct_steps"] / total, 0.0)
+
+        scores = agg.groupby("test.cond")["percent_correct"].mean()
+        for test_cond, score in scores.items():
+            self.logger.record(f"test/{test_cond}", score)
+            logger.debug(f"Eval score test/{test_cond} = {score:.4f}")
