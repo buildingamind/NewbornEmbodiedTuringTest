@@ -88,9 +88,16 @@
           "default": 2048
         },
         "learning_rate": {
-          "description": "Learning Rate",
-          "type": "number",
-          "minimum": 0,
+          "description": "Learning Rate. Can be a float or a callable schedule (function of progress_remaining: float -> float). Defaults to 3e-4.",
+          "anyOf": [
+            {
+              "type": "number",
+              "minimum": 0
+            },
+            {
+              "not": { "type": "string" }
+            }
+          ],
           "default": 3e-4
         },
         "checkpoint_freq": {
