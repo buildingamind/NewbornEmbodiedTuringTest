@@ -5,7 +5,6 @@ The brain is made up of an encoder, policy, algorithm, reward function, and the 
 """
 
 import inspect
-import threading
 import numpy as np
 
 from typing import Any, Optional, Callable
@@ -17,63 +16,7 @@ from stable_baselines3.common.base_class import BaseAlgorithm
 from stable_baselines3.common.callbacks import (
     CheckpointCallback,
     CallbackList,
-    EvalCallback,
 )
-
-
-_HEARTBEAT_INTERVAL_SECONDS = 30
-
-
-class _KeepAliveEvalCallback(EvalCallback):
-    """EvalCallback that keeps the training Unity process alive during long evaluations.
-
-    After a long evaluation period the training Unity process can become
-    unresponsive because it has been idle while eval episodes ran.  Two
-    mechanisms work together to prevent UnityTimeOutException:
-
-    1. **Heartbeat thread**: When an evaluation is triggered, a background
-       thread calls ``training_env.reset()`` every ``_HEARTBEAT_INTERVAL_SECONDS``
-       (default 60 s) *while the evaluation is in progress*, keeping the
-       Python↔Unity communication channel alive throughout the eval.  The thread
-       stops as soon as ``super()._on_step()`` returns.
-
-    2. **Post-eval reset**: After the evaluation completes, a final
-       ``training_env.reset()`` re-establishes the channel before
-       ``collect_rollouts`` tries to step it again.
-
-    Both resets are best-effort — exceptions are caught and silenced so that a
-    transient Unity hiccup does not abort the whole training run.
-    """
-
-    def _on_step(self) -> bool:
-        should_eval = self.eval_freq > 0 and self.n_calls % self.eval_freq == 0
-
-        if should_eval and self.training_env is not None:
-            stop_event = threading.Event()
-
-            def _heartbeat():
-                while not stop_event.wait(_HEARTBEAT_INTERVAL_SECONDS):
-                    try:
-                        self.training_env.reset()
-                    except Exception:
-                        pass
-
-            t = threading.Thread(target=_heartbeat, daemon=True)
-            t.start()
-            result = super()._on_step()
-            stop_event.set()
-            t.join(timeout=5)
-        else:
-            result = super()._on_step()
-
-        if should_eval and self.training_env is not None:
-            try:
-                self.training_env.reset()
-            except Exception:
-                pass
-
-        return result
-
 
 from stable_baselines3.common.on_policy_algorithm import OnPolicyAlgorithm
 from stable_baselines3.common.off_policy_algorithm import OffPolicyAlgorithm
@@ -443,7 +386,7 @@ class Brain:
                 raise e
 
     def _init_callbacks(
-        self, envs: VecEnv, config: TaskConfig, eval_env: "Optional[VecEnv]" = None
+        self, envs: VecEnv, config: TaskConfig, eval_env: Optional[VecEnv] = None
     ) -> CallbackList:
         # Initialize the callbacks for training.
 
@@ -474,23 +417,15 @@ class Brain:
 
             # Add eval callback for periodic test evaluation during training
             if self.eval_freq is not None and eval_env is not None:
-                n_eval_episodes = self.iterations_per_test_episode.get(
-                    config.condition, 1
-                )  # * 5
-                eval_log_path = config.path / "eval_logs"
-                eval_log_path.mkdir(parents=True, exist_ok=True)
-                eval_unity_log_dir = config.path / "_eval" / "logs"
-                score_callback = cb.EvalScoreCallback(eval_unity_log_dir)
                 callback_list.append(
-                    _KeepAliveEvalCallback(
+                    cb.KeepAliveEvalCallback(
                         eval_env,
+                        task_path=config.path,
                         eval_freq=self.eval_freq * self.steps_per_episode,
-                        n_eval_episodes=n_eval_episodes,
-                        best_model_save_path=str(config.path / "best_model"),
-                        log_path=str(eval_log_path),
+                        n_eval_episodes=self.iterations_per_test_episode.get(
+                            config.condition, 1
+                        ),
                         deterministic=self.deterministic,
-                        callback_after_eval=score_callback,
-                        verbose=0,
                     )
                 )
 
