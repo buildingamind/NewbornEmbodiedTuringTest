@@ -301,6 +301,12 @@
       "minimum": 1,
       "default": 1
     },
+    "brain_id_offset": {
+      "description": "Offset applied to all brain IDs. Brain IDs will be 1+offset…num_brains+offset. Defaults to 0.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
     "task_memory": {
       "description": "Memory limit for a single task",
       "oneOf": [

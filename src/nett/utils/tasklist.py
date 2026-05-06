@@ -23,8 +23,10 @@ class TaskList:
         modes: list[str],
         queue: SimpleQueue,
         memory: float,
+        brain_id_offset: int = 0,
     ):
-        brain_env_combinations = list(product(range(1, num_brains + 1), conditions))
+        self.brain_id_offset = brain_id_offset
+        brain_env_combinations = list(product(range(1 + brain_id_offset, num_brains + 1 + brain_id_offset), conditions))
         self.n_tasks = len(brain_env_combinations)
 
         self.current = 0
@@ -55,7 +57,7 @@ def validate_tasklist(tasklist: TaskList) -> None:
         agent = task.agent
 
         # run only once per condition
-        if config.brain_id != 1:
+        if config.brain_id != 1 + tasklist.brain_id_offset:
             continue
 
         # validation only for train

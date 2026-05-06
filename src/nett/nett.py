@@ -183,6 +183,7 @@ class NETT:
         episodes: Optional[dict[str, int]] = None,
         steps_per_episode: int = 200,
         num_brains: int = 1,
+        brain_id_offset: int = 0,
         task_memory: str | float = "auto",
         eval_freq: Optional[int] = None,
         **kwargs,
@@ -289,6 +290,7 @@ class NETT:
             modes,
             self.loading_bar_queue,
             memory,
+            brain_id_offset,
         )
 
         # create loading bar
