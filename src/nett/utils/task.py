@@ -1,6 +1,7 @@
 """Task class for holding information for each task to run"""
 
 import logging
+import random
 from multiprocessing import SimpleQueue
 from pathlib import Path
 from typing import Optional
@@ -41,7 +42,7 @@ class TaskConfig:
         self.eval_port = None  # Assigned by NETT._assign_task() for the eval env (make_eval_env)
         self.seed = (brain_id * 7919) % (
             2**31 - 1
-        )  # Diversified seed: avoids systematic failures from sequential brain_id seeds (e.g. seeds 4,5 cause middle-dwelling).
+        )  # Diversified seed: avoids systematic failures from sequential brain_id seeds
         self.condition = condition
         self.modes = modes
         self.queue = queue
@@ -95,12 +96,19 @@ class Task:
         self.config.device = device
 
 
-# Split up task into BBE and else
+def _set_seeds(seed: int) -> None:
+    """Set all of the random seeds for reproducibility"""
+    np.random.seed(seed)
+    cv2.setRNGSeed(seed)
+    random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
 def run_task(task: Task) -> None:
     config = task.config
     agent = task.agent
-    np.random.seed(config.seed)
-    cv2.setRNGSeed(config.seed)
+    _set_seeds(config.seed)
 
     # create log path
     log_path = config.path / "logs"
