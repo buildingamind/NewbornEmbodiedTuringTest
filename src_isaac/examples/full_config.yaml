@@ -1,0 +1,152 @@
+# Full nett_skrl config — every supported field with comments + defaults.
+#
+# This is documentation-by-example. Most fields are optional; only `name` and
+# `environment.{design_sheet, media_root}` are strictly required.
+
+name: example_run                       # output subdir under output_path
+
+# ----------------------------------------------------------------------------
+# Environment — Isaac Lab + NETTEnv.
+# ----------------------------------------------------------------------------
+environment:
+  # Required: path to the design-sheet CSV that drives per-episode condition
+  # selection (replaces Unity AssetBundles). 7-col format:
+  #   ImprintCondition, Phase, TestCondition, TargetVideo, NonTargetVideo,
+  #   LeftMonitor, RightMonitor
+  design_sheet: /path/to/design_sheets/binding.csv
+
+  # Required: directory containing video/PNG stimulus assets referenced by
+  # the design sheet. Supports .webm, .mp4, and PNG-sequence directories
+  # (lossless input).
+  media_root: /path/to/videos
+
+  # Optional: subset of imprint conditions to run. `null` runs all conditions
+  # found in the design sheet's Train rows. One Isaac Sim process is spawned
+  # per condition; total parallelism = len(conditions) × num_brains.
+  conditions: null
+
+  # Headless = no GUI window; cameras still render to the policy.
+  # Flip to false to watch live in the Omniverse viewport.
+  headless: true
+
+  # Two side cameras concatenated (H, 2W, 3) vs one center camera (H, W, 3).
+  binocular_vision: true
+
+  # Per-eye square resolution. Lower = faster training, less visual detail.
+  # The default native encoders support every schema-valid value >= 16.
+  input_resolution: 64
+
+  # Reward components (additive). Supported values: ["closeness"],
+  # ["completeness"], or both. Empty list = no extrinsic reward (intrinsic-
+  # only training).
+  reward_types: [closeness]
+
+# ----------------------------------------------------------------------------
+# Brain — skrl algorithm + model spec.
+# ----------------------------------------------------------------------------
+brain:
+  # See `nett_skrl.list_algorithms()` for the full set. DQN is not exposed
+  # because NETT motor actions are continuous.
+  algorithm: PPO
+
+  # Visual feature extractor. Native options:
+  #   small
+  #   medium / Resnet10CNN
+  #   large / Resnet18CNN
+  # Heavy encoders such as DINO/ViT/SAM must be registered as concrete
+  # NETTFeatureExtractor classes before Brain/NETT construction.
+  encoder: small
+
+  # Reward function. Environment-side rewards ("closeness", "completeness",
+  # "closeness,completeness") are computed inside NETTEnv. Intrinsic rewards
+  # (ICM/E3B/RIDE/PseudoCounts/NGU) are added through a skrl env wrapper.
+  reward: closeness
+
+  # Encoder output dim. null → use the encoder's default (512).
+  embedding_dim: null
+
+  # PPO update params.
+  batch_size: 256
+  buffer_size: 2048
+  learning_rate: 1.0e-5
+
+  # Save a per-brain checkpoint every N training steps. null = only save at
+  # the end of training.
+  checkpoint_freq: 500
+
+  # Freeze encoder weights if false (transfer-learning mode).
+  train_encoder: true
+
+  # Encoder-class init kwargs for the selected registered/native encoder.
+  custom_encoder_args: {}
+
+  # Algorithm cfg overrides — merged on top of skrl's *_CFG defaults.
+  custom_algorithm_args: {}
+
+  # MLP trunk/action-head settings. Omit to use these defaults.
+  model:
+    hidden_sizes: [64, 64]
+    activation: elu
+    initial_log_std: 0.0
+    clip_actions: true
+    value_bound: 10.0
+    orthogonal_init: true
+    hidden_gain: 1.4142135623730951
+    output_gain: 0.01
+
+  # Reward-function init kwargs for intrinsic rewards.
+  reward_args:
+    beta: 0.2
+    kappa: 0.0
+    gamma: 0.99
+
+  # Intrinsic reward controls. Ignored for env-side rewards.
+  intrinsic_reward_weight: 1.0
+  intrinsic_reward_update: true
+
+  # Weights & Biases logging. skrl's native wandb integration creates one
+  # wandb run per agent (per brain). All training metrics that skrl tracks
+  # internally (rewards, losses, gradients, entropy, log_std, etc.) are
+  # forwarded to wandb via `sync_tensorboard=True`. Hparams are auto-captured
+  # from the agent config + model module list.
+  #
+  # Auth: set the WANDB_API_KEY env var or run `wandb login` once. With
+  # `mode: online` and no key, training will block on auth in non-TTY runs.
+  wandb:
+    project: nett-skrl          # wandb project name
+    entity: null                # wandb team/user. null = your default account.
+    mode: online                # online | offline | disabled
+    tags: []                    # extra tags appended to (run_name, condition, brain_i, phase)
+    notes: null                 # free-form notes attached to every run
+
+# ----------------------------------------------------------------------------
+# Optional observation transforms applied after the env.
+# Supported: "dvs", "retina", "video".
+# Use environment.binocular_vision for binocular egocentric cameras.
+# ----------------------------------------------------------------------------
+wrappers: []
+
+# ----------------------------------------------------------------------------
+# Top-level run parameters.
+# ----------------------------------------------------------------------------
+episodes:
+  train: 5000
+  test: 100
+
+steps_per_episode: 200
+
+# Optional metrics-only milestone eval cadence in train env steps. Milestone
+# evals run in separate Isaac subprocesses and write logs/eval_metrics.*.
+eval_freq: null
+
+# N brains trained in parallel as N independent skrl agents over one
+# vectorized env (num_envs = num_brains) inside one Isaac Sim process per
+# condition.
+num_brains: 4
+brain_id_offset: 0
+
+# Per-task VRAM budget (GB). "auto" runs one task with validation_mode=True
+# past a single PPO update and measures peak VRAM via NVML; subsequent tasks
+# in the same condition list reuse that estimate. A float overrides the
+# estimator (useful when you know your model's footprint or want fast tests).
+task_memory: auto

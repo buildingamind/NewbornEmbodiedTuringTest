@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft/2020-12/schema",
+  "title": "NETT-skrl (Isaac Lab) Config Schema",
+  "type": "object",
+  "properties": {
+    "name": {
+      "description": "Name of the folder the results of the run will output into",
+      "type": "string"
+    },
+    "brain": {
+      "type": "object",
+      "properties": {
+        "encoder": {
+          "description": "NETTFeatureExtractor name or subclass.",
+          "anyOf": [
+            { "type": "string" },
+            { "not": { "type": "string" } }
+          ],
+          "default": "small"
+        },
+        "algorithm": {
+          "description": "skrl agent class name from the algorithm registry.",
+          "anyOf": [
+            { "type": "string" },
+            { "not": { "type": "string" } }
+          ],
+          "default": "PPO"
+        },
+        "reward": {
+          "description": "Environment reward string or registered intrinsic reward.",
+          "anyOf": [
+            { "type": "string" },
+            { "not": { "type": "string" } }
+          ],
+          "default": "closeness"
+        },
+        "embedding_dim":         { "type": ["integer", "null"], "minimum": 1, "default": null },
+        "batch_size":            { "type": "integer", "minimum": 1, "default": 512 },
+        "buffer_size":           { "type": "integer", "minimum": 1, "default": 2048 },
+        "learning_rate": {
+          "anyOf": [ { "type": "number", "minimum": 0 }, { "not": { "type": "string" } } ],
+          "default": 1e-5
+        },
+        "checkpoint_freq":       { "type": ["integer", "null"], "minimum": 1, "default": null },
+        "train_encoder":         { "type": "boolean", "default": true },
+        "custom_encoder_args":   { "type": "object", "default": {} },
+        "custom_algorithm_args": { "type": "object", "default": {} },
+        "model": {
+          "type": "object",
+          "properties": {
+            "hidden_sizes": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "default": [64, 64] },
+            "activation": { "type": "string", "enum": ["elu", "relu", "tanh"], "default": "elu" },
+            "initial_log_std": { "type": "number", "default": 0.0 },
+            "clip_actions": { "type": "boolean", "default": true },
+            "value_bound": { "type": ["number", "null"], "default": 10.0 },
+            "orthogonal_init": { "type": "boolean", "default": true },
+            "hidden_gain": { "type": "number", "exclusiveMinimum": 0, "default": 1.4142135623730951 },
+            "output_gain": { "type": "number", "exclusiveMinimum": 0, "default": 0.01 }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "reward_args":           { "type": "object",
+                                   "default": { "beta": 0.2, "kappa": 0.0, "gamma": 0.99 } },
+        "intrinsic_reward_weight": { "type": "number", "default": 1.0 },
+        "intrinsic_reward_update": { "type": "boolean", "default": true },
+        "wandb": {
+          "description": "Weights & Biases logging. skrl's native integration creates one wandb run per agent (per brain).",
+          "type": "object",
+          "properties": {
+            "project": { "type": "string", "default": "nett-skrl" },
+            "entity":  { "type": ["string", "null"], "default": null,
+                         "description": "wandb entity (team/user). null = use the WANDB_ENTITY env var or default account." },
+            "mode":    { "type": "string", "enum": ["online", "offline", "disabled"], "default": "online",
+                         "description": "online = upload; offline = local only; disabled = skip wandb entirely." },
+            "tags":    { "type": "array", "items": { "type": "string" }, "default": [],
+                         "description": "Extra wandb tags appended to the auto-tags (run/condition/brain/phase)." },
+            "notes":   { "type": ["string", "null"], "default": null }
+          },
+          "additionalProperties": false,
+          "default": {}
+        }
+      },
+      "additionalProperties": false
+    },
+    "wrappers": {
+      "description": "Optional observation transforms; names come from the wrapper registry.",
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "anyOf": [
+          { "type": "string" },
+          { "not": { "type": "string" } }
+        ]
+      },
+      "default": []
+    },
+    "environment": {
+      "type": "object",
+      "properties": {
+        "design_sheet":     { "type": "string",
+                              "description": "Path to design CSV (replaces Unity AssetBundles)." },
+        "media_root":       { "type": "string",
+                              "description": "Directory containing video/PNG stimulus assets." },
+        "conditions":       { "type": ["array", "null"], "uniqueItems": true,
+                              "items": { "type": "string" }, "default": null },
+        "headless":         { "type": "boolean", "default": true },
+        "binocular_vision": { "type": "boolean", "default": true },
+        "input_resolution": { "type": "integer", "minimum": 16, "default": 64 },
+        "record_mode":      { "type": "string", "enum": ["tSNE", "spatial"], "default": "tSNE" },
+        "random_first_frame": { "type": "boolean", "default": false },
+        "switch_steps":     { "type": "integer", "minimum": 0, "default": 0 },
+        "decision_period":  { "type": "integer", "minimum": 1, "default": 1 },
+        "recording": {
+          "type": "object",
+          "properties": {
+            "fps": { "type": "integer", "minimum": 1, "default": 24 },
+            "egocentric": { "$ref": "#/$defs/recordingSection" },
+            "chamber": { "$ref": "#/$defs/recordingSection" }
+          },
+          "additionalProperties": false,
+          "default": {}
+        },
+        "reward_types": {
+          "description": "NETTEnv reward names; validated against the registry.",
+          "type": "array",
+          "items": { "type": "string" },
+          "default": []
+        }
+      },
+      "required": ["design_sheet", "media_root"],
+      "additionalProperties": false
+    },
+    "episodes": {
+      "type": "object",
+      "properties": {
+        "train": { "type": "integer", "minimum": 0, "default": 5000 },
+        "test":  { "type": "integer", "minimum": 0, "default": 100 },
+        "record": { "type": "integer", "minimum": 0, "default": 0 }
+      },
+      "additionalProperties": false
+    },
+    "steps_per_episode": { "type": "integer", "minimum": 1, "default": 200 },
+    "num_brains":        { "type": "integer", "minimum": 1, "default": 1 },
+    "brain_id_offset":   { "type": "integer", "minimum": 0, "default": 0 },
+    "eval_freq":         { "type": ["integer", "null"], "minimum": 1, "default": null },
+    "task_memory":       { "description": "GB per task; \"auto\" runs a one-rollout dry-run to estimate.",
+                           "oneOf": [
+                             { "type": "number", "minimum": 0 },
+                             { "type": "string", "enum": ["auto"] }
+                           ],
+                           "default": "auto" }
+  },
+  "patternProperties": {
+    "^\\$": { "type": "string" }
+  },
+  "$defs": {
+    "recordingSection": {
+      "description": "Per-camera recording config. Each phase key (train/test/record) holds an episode selector. Omitting a phase records nothing for that phase; omitting the whole camera block records nothing for that camera. Selector formats: slice string 'start:stop:step' (Python-slice semantics, '0:5' = episodes 0..4); integer N = episode N only; integer list = those exact episode indices; null = every episode in that phase.",
+      "type": "object",
+      "properties": {
+        "train":  { "$ref": "#/$defs/episodeSelector" },
+        "test":   { "$ref": "#/$defs/episodeSelector" },
+        "record": { "$ref": "#/$defs/episodeSelector" }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
+    "episodeSelector": {
+      "type": ["string", "integer", "array", "null"],
+      "items": { "type": "integer", "minimum": 0 }
+    }
+  },
+  "required": ["name", "environment"],
+  "additionalProperties": false
+}

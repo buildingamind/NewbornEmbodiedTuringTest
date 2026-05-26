@@ -1,0 +1,36 @@
+# Smoke-test config for nett_skrl.
+#
+# Purpose: prove end-to-end that NETT.run() can launch Isaac Sim, instantiate
+# NETTEnv with N=num_brains envs, train N independent skrl PPO agents over a
+# vectorized env, and write per-brain checkpoints.
+#
+# Scope: 2 brains, 1 imprint condition, ~500 training steps total
+# (10 episodes × 50 steps). No videos required — `--no-video` equivalent is
+# achieved by pointing media_root at the real binding asset dir.
+name: smoke
+
+environment:
+  design_sheet: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
+  media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
+  conditions: [Object1]            # one condition → one Isaac Sim process
+  headless: true
+  binocular_vision: true
+  input_resolution: 64
+  reward_types: [closeness]
+
+brain:
+  algorithm: PPO
+  encoder: small
+  batch_size: 64
+  buffer_size: 128
+  learning_rate: 1.0e-5
+  train_encoder: true
+  wandb:
+    mode: disabled                  # never touch wandb cloud from smoke runs
+
+num_brains: 2                      # → 2 env-slices, 2 independent PPO agents
+episodes:
+  train: 10
+  test: 2
+steps_per_episode: 50
+task_memory: 4                     # GB; explicit so smoke skips the dry-run estimator

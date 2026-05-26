@@ -1,0 +1,47 @@
+name: binding_object1_ppo_small_2brain_1000ep
+
+environment:
+  design_sheet: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
+  media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
+  conditions: [Object1]
+  headless: true
+  binocular_vision: true
+  input_resolution: 64
+  reward_types: [closeness]
+  record_mode: tSNE
+  decision_period: 1
+  recording:
+    fps: 24
+    egocentric:
+      train: [0, 1]
+      test:  [0, 1]
+    chamber:
+      train: [0, 1]
+      test:  [0, 1]
+
+brain:
+  algorithm: PPO
+  encoder: small
+  reward: closeness
+  learning_rate: 1.0e-5
+  batch_size: 512
+  buffer_size: 2048
+  checkpoint_freq: 60000
+  model:
+    hidden_sizes: [64, 64]
+    activation: elu
+  wandb:
+    project: nett-skrl
+    entity: null
+    mode: online
+    tags: [binding, Object1, PPO, small, two-brain]
+    notes: Binding Object1 PPO e2e sweep with milestone evals
+
+episodes:
+  train: 1000
+  test: 2
+
+steps_per_episode: 200
+num_brains: 2
+task_memory: auto
+eval_freq: 50000

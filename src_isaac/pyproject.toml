@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools", "pip"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nett-skrl"
+dynamic = ["version"]
+authors = [
+  { name="Zachary Laborde", email="zlaborde@iu.edu" },
+]
+description = "NETT benchmark — Isaac Lab + skrl backend (sibling of nett-benchmarks)."
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = "==3.11.*"
+# Repo layout assumed: this public repo is PROJECT_ROOT, and the Isaac Lab sim
+# package lives beside it at ../NewbornEmbodiedTuringTest_Private/isaac_lab/.
+# The legacy nett-benchmarks package is intentionally not a hard dependency:
+# its SB3/ML-Agents pins conflict with Isaac Lab, and analysis imports are lazy.
+# If the checkout layout differs, override these path-deps in your own
+# constraints file or install the deps manually before `pip install -e .`.
+dependencies = [
+    "nett-isaac @ file:///${PROJECT_ROOT}/../NewbornEmbodiedTuringTest_Private/isaac_lab",
+    "isaaclab",
+    "skrl>=2.0.0",
+    "nvidia-ml-py",
+    "opencv-python-headless",
+    # `reinit="create_new"` (used in brain.py to keep multiple per-brain
+    # wandb runs alive in the same worker process) was added in wandb 0.17.
+    "wandb>=0.17",
+    "jsonschema",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+notebook = ["ipywidgets"]
+
+[project.scripts]
+# `pip install -e .` then `nett-skrl --config path/to.yaml`
+nett-skrl = "nett_skrl.__main__:main"
+
+[tool.setuptools.dynamic]
+version = { attr = "nett_skrl._version.__version__" }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["nett_skrl*"]
+
+[tool.setuptools.package-data]
+nett_skrl = ["schema.json"]
+
+[tool.pytest.ini_options]
+# Default run excludes the Isaac-Sim-dependent tests so the fast unit suite
+# stays runnable on machines without GPU/Isaac. Opt in with
+# ``pytest -m e2e_isaac`` or ``-m e2e_perf``.
+addopts = "-m 'not e2e_isaac and not e2e_perf'"
+markers = [
+    "e2e_isaac: end-to-end test requiring GPU + Isaac Sim",
+    "e2e_perf: performance/convergence test that reads/writes golden.json",
+]
