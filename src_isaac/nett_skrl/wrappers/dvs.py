@@ -196,5 +196,6 @@ class DVS(gym.ObservationWrapper):
 
 def _as_numpy(value):
     if isinstance(value, torch.Tensor):
+        # DVS is a CPU/NumPy preprocessing wrapper; use Video for GPU-resident frame stacking.
         return value.detach().cpu().numpy()
     return np.asarray(value)

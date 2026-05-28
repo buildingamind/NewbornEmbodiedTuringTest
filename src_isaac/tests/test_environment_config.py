@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+import types
 from pathlib import Path
 
 from nett_skrl.environment.environment import Environment
@@ -28,6 +30,7 @@ class _Cfg:
         self.scene = _Nested()
         self.observation = _Nested()
         self.screens = _Nested()
+        self.motor = _Nested()
         self.asset_root = None
         self.scene.num_envs = 1
         self.observation.binocular = True
@@ -89,6 +92,8 @@ def test_configure_cfg_refreshes_derived_fields_and_seed(tmp_path):
     assert cfg.observation.input_resolution == 32
     assert cfg.reward_types == ("closeness",)
     assert cfg.record_mode == "spatial"
+    assert cfg.motor.enable_neck_flexion is True
+    assert cfg.motor.enable_lateral_bending is True
     assert cfg.screens.random_first_frame is True
     assert cfg.screens.switch_steps == 9
     assert cfg.screens.decision_period == 3
@@ -101,15 +106,36 @@ def test_configure_cfg_refreshes_derived_fields_and_seed(tmp_path):
     assert cfg.derived_shape == (32, 32, 3)
 
 
+def test_configure_cfg_can_disable_neck_action_dofs(tmp_path):
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    env = Environment(
+        design_sheet=_design_sheet(tmp_path),
+        media_root=media_root,
+        enable_neck_flexion=False,
+        enable_lateral_bending=False,
+    )
+    task = _TaskConfig()
+    task.path = tmp_path / "run"
+    cfg = _Cfg()
+
+    env._configure_cfg(cfg, task)
+
+    assert cfg.motor.enable_neck_flexion is False
+    assert cfg.motor.enable_lateral_bending is False
+
+
 def test_configure_cfg_infers_private_asset_root(tmp_path):
     assets = tmp_path / "assets"
-    for rel in ("chick/chick.usd", "chamber/chamber.usd"):
+    for rel in (
+        "chick/robot_chick.usd",
+        "chamber/chamber1.usd",
+        "design_sheets/example_design.csv",
+    ):
         path = assets / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("")
-    design_dir = assets / "design_sheets"
-    design_dir.mkdir(parents=True, exist_ok=True)
-    design_sheet = _design_sheet(design_dir)
+    design_sheet = _design_sheet(assets / "design_sheets")
     media_root = assets / "videos"
     media_root.mkdir()
 
@@ -119,6 +145,78 @@ def test_configure_cfg_infers_private_asset_root(tmp_path):
     cfg = _Cfg()
 
     env._configure_cfg(cfg, task)
+
+    assert cfg.asset_root == str(assets.resolve())
+
+
+def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, monkeypatch):
+    assets = tmp_path / "assets"
+    for rel in (
+        "chick/robot_chick.usd",
+        "chamber/chamber1.usd",
+        "design_sheets/example_design.csv",
+    ):
+        path = assets / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    design_sheet = _design_sheet(assets / "design_sheets")
+    media_root = assets / "videos"
+    media_root.mkdir()
+
+    class FakeAppLauncher:
+        def __init__(self, **kwargs):
+            self.app = object()
+
+    class FakeNETTEnvCfg(_Cfg):
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.asset_root = kwargs.get("asset_root")
+            self.phase = "train"
+            self.imprint_condition = None
+            self.design_sheet = ""
+            self.media_root = ""
+            self.episode_steps = 0
+            self.reward_types = ()
+            self.record_mode = ""
+            self.validation_mode = False
+            self.log_path = None
+            self.profile_path = None
+            self.record_path = None
+            self.record_episodes = None
+            self.egocentric_record_episodes = None
+            self.chamber_record_path = None
+            self.chamber_record_episodes = None
+            self.__post_init__()
+
+        def __post_init__(self):
+            if not self.asset_root:
+                raise FileNotFoundError("asset_root required before post_init")
+            super().__post_init__()
+
+    def fake_nett_env(cfg):
+        return cfg
+
+    monkeypatch.setitem(
+        sys.modules,
+        "isaaclab.app",
+        types.SimpleNamespace(AppLauncher=FakeAppLauncher),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env",
+        types.SimpleNamespace(NETTEnv=fake_nett_env),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env_cfg",
+        types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
+    )
+
+    env = Environment(design_sheet=design_sheet, media_root=media_root)
+    task = _TaskConfig()
+    task.path = tmp_path / "run"
+
+    cfg = env.load(task)
 
     assert cfg.asset_root == str(assets.resolve())
 

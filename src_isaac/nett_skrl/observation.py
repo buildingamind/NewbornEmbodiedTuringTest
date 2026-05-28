@@ -66,14 +66,16 @@ def channel_stack_space(space: gym.Space, frames: int) -> gym.Space:
     return gym.spaces.Box(low=low, high=high, dtype=space.dtype)
 
 
-def channel_stack_frames(frames: Iterable[np.ndarray], base_shape: tuple[int, ...] | None = None) -> np.ndarray:
+def channel_stack_frames(frames: Iterable, base_shape: tuple[int, ...] | None = None):
     """Stack image frames along channel axis, preserving HWC/CHW layout."""
-    arrays = [np.asarray(frame) for frame in frames]
-    if not arrays:
+    values = list(frames)
+    if not values:
         raise ValueError("channel_stack_frames requires at least one frame")
-    shape = base_shape or arrays[0].shape
+    shape = base_shape or values[0].shape
     axis = 2 if image_layout(shape) == "hwc" else 0
-    return np.concatenate(arrays, axis=axis)
+    if isinstance(values[0], torch.Tensor):
+        return torch.cat(values, dim=axis)
+    return np.concatenate([np.asarray(frame) for frame in values], axis=axis)
 
 
 def prepare_image_tensor(

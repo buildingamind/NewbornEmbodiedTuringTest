@@ -125,6 +125,14 @@ Supported wrappers:
 
 Use native Isaac env settings for camera layout. For example,
 `environment.binocular_vision: true` controls the binocular egocentric cameras.
+New configs can place wrapper and perception-side settings under `body`:
+
+```yaml
+body:
+  wrappers: [video]
+  binocular_vision: true
+  input_resolution: 64
+```
 
 ## Recording
 

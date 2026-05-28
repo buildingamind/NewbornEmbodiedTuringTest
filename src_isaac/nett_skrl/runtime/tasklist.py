@@ -9,7 +9,7 @@ from .task import Task
 
 def build_tasks(
     brain,
-    wrappers,
+    body,
     env,
     num_brains: int,
     conditions: list[str],
@@ -22,7 +22,7 @@ def build_tasks(
 ) -> list[Task]:
     return [
         Task(
-            brain, wrappers, env, condition, output_dir, modes,
+            brain, body, env, condition, output_dir, modes,
             episodes=episodes,
             memory=memory,
             num_brains=num_brains,
@@ -34,16 +34,16 @@ def build_tasks(
 
 
 def validate_tasklist(tasks: list[Task]) -> None:
-    """Smoke-validate by loading each task's env once and folding its wrappers."""
+    """Smoke-validate by loading each task's env once through its body."""
     for task in tasks:
         config = task.config
         run_config = config.for_mode("train")
         log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)
+        task.agent.body.adjust_to_agent(task.agent.env, num_brains=config.num_brains)
         loaded = task.agent.env.load(run_config)
         try:
-            for wrapper in task.agent.wrappers:
-                loaded = wrapper(loaded)
+            loaded = task.agent.body.wrap(loaded)
             obs, _ = loaded.reset()
             if not hasattr(obs, "shape") and not isinstance(obs, dict):
                 raise TypeError(f"Unexpected obs type from wrapped env: {type(obs)}")

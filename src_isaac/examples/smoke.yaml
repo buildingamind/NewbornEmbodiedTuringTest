@@ -16,6 +16,8 @@ environment:
   headless: true
   binocular_vision: true
   input_resolution: 64
+  enable_neck_flexion: true
+  enable_lateral_bending: true
   reward_types: [closeness]
 
 brain:

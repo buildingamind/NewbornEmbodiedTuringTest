@@ -23,8 +23,8 @@ from typing import Optional
 
 import yaml
 
+from .body import Body
 from .brain import Brain
-from .wrappers.registry import validate_wrappers
 from .environment import Environment
 from .runtime import (
     Executor,
@@ -49,6 +49,15 @@ def _load_schema() -> dict:
 
 def _modes_from_episodes(episodes: dict[str, int]) -> list[str]:
     return [m for m in ("train", "test", "record") if episodes.get(m, 0) > 0]
+
+
+def _make_body(body: Optional[dict], wrappers: Optional[list]) -> Body:
+    body_config = dict(body or {})
+    if wrappers and body_config.get("wrappers"):
+        raise ValueError("Specify body.wrappers or top-level wrappers, not both.")
+    if wrappers:
+        body_config["wrappers"] = wrappers
+    return Body(**body_config)
 
 
 class JobTooBigError(ValueError):
@@ -110,6 +119,7 @@ class NETT:
         name: str,
         environment: dict,
         wrappers: Optional[list] = None,
+        body: Optional[dict] = None,
         brain: Optional[dict] = None,
         episodes: Optional[dict[str, int]] = None,
         steps_per_episode: int = 200,
@@ -127,6 +137,7 @@ class NETT:
         input_params = {
             "name": name,
             "environment": environment,
+            "body": dict(body or {}),
             "wrappers": list(wrappers or []),
             "brain": brain,
             "episodes": episodes,
@@ -142,7 +153,7 @@ class NETT:
             f.write(yaml.dump(input_params))
 
         base_brain = Brain(**(brain or {}))
-        wrappers = validate_wrappers(wrappers)
+        base_body = _make_body(body, wrappers)
         environment = dict(environment)
         if "reward_types" not in environment:
             inferred_rewards = base_brain.env_reward_types()
@@ -162,14 +173,18 @@ class NETT:
         )
         base_brain.iterations_per_test_episode = base_env.iterations_per_test_episode
 
-        base_env.adjust_to_agent(num_brains=num_brains, episode_steps=steps_per_episode)
+        base_body.adjust_to_agent(
+            base_env,
+            num_brains=num_brains,
+            episode_steps=steps_per_episode,
+        )
 
         modes = _modes_from_episodes(episodes)
         memory = self._resolve_task_memory(
-            task_memory, base_brain, wrappers, base_env, output_dir,
+            task_memory, base_brain, base_body, base_env, output_dir,
         )
         tasklist = build_tasks(
-            base_brain, wrappers, base_env, num_brains, base_env.conditions,
+            base_brain, base_body, base_env, num_brains, base_env.conditions,
             output_dir, modes, episodes, memory, brain_id_offset, eval_freq,
         )
 
@@ -217,19 +232,19 @@ class NETT:
         self,
         task_memory: str | float,
         brain: Brain,
-        wrappers,
+        body: Body,
         env: Environment,
         output_dir: Path,
     ) -> float:
         """Return task VRAM budget in bytes; dry-run estimate when ``"auto"``."""
         if task_memory == "auto":
-            return self._estimate_task_memory_via_dry_run(brain, wrappers, env, output_dir)
+            return self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
         return float(task_memory) * (1024**3)
 
     def _estimate_task_memory_via_dry_run(
         self,
         brain: Brain,
-        wrappers,
+        body: Body,
         env: Environment,
         output_dir: Path,
     ) -> float:
@@ -239,7 +254,7 @@ class NETT:
         condition = env.conditions[0]
 
         task = Task(
-            brain, wrappers, env, condition, output_dir,
+            brain, body, env, condition, output_dir,
             modes=["train"], episodes={"train": 1}, memory=None,
             num_brains=env.num_brains,
         )

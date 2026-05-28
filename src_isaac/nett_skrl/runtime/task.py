@@ -65,9 +65,9 @@ class TaskConfig:
 
 @dataclass(frozen=True)
 class Agent:
-    """Co-located brain/wrappers/env triplet for run_task."""
+    """Co-located brain/body/env triplet for run_task."""
     brain: object
-    wrappers: tuple
+    body: object
     env: object
 
 
@@ -77,7 +77,7 @@ class Task:
     def __init__(
         self,
         brain,
-        wrappers,
+        body,
         env,
         condition: str,
         output_dir: Path,
@@ -93,7 +93,7 @@ class Task:
             num_brains=num_brains, brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
         )
-        self.agent = Agent(brain, tuple(wrappers or ()), env)
+        self.agent = Agent(brain, body, env)
 
     def set_device(self, device: int) -> None:
         self.config = replace(self.config, device=device)

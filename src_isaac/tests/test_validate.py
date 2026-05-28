@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 import nett_skrl
+from nett_skrl import Body
 from nett_skrl.brain.registry import (
     algorithms_list,
     register_encoder,
@@ -17,7 +18,7 @@ from nett_skrl.brain.registry import (
     validate_reward,
 )
 from nett_skrl.brain.encoders import NETTFeatureExtractor
-from nett_skrl.wrappers.registry import validate_wrappers
+from nett_skrl.body.wrappers.registry import validate_wrappers
 from nett_skrl.utils.validate import validate_config
 
 
@@ -92,6 +93,8 @@ def test_schema_accepts_recording_and_record_mode():
             "random_first_frame": True,
             "switch_steps": 50,
             "decision_period": 5,
+            "enable_neck_flexion": True,
+            "enable_lateral_bending": True,
             "recording": {
                 "fps": 30,
                 "egocentric": {"train": [0, 2], "record": [0, 2]},
@@ -108,6 +111,24 @@ def test_schema_accepts_recording_and_record_mode():
     cfg["wrappers"] = ["video", "dvs", "retina"]
     cfg["eval_freq"] = 50000
     validate_config(cfg, _SCHEMA)
+
+
+def test_schema_accepts_body_block():
+    cfg = _minimal_cfg()
+    cfg["body"] = {
+        "wrappers": ["video"],
+        "binocular_vision": False,
+        "input_resolution": 32,
+    }
+    validate_config(cfg, _SCHEMA)
+
+
+def test_schema_rejects_duplicate_wrapper_locations():
+    cfg = _minimal_cfg()
+    cfg["wrappers"] = ["video"]
+    cfg["body"] = {"wrappers": ["dvs"]}
+    with pytest.raises(ValueError):
+        validate_config(cfg, _SCHEMA)
 
 
 def test_schema_rejects_eval_strategy():
@@ -218,6 +239,13 @@ def test_unsupported_intrinsic_rewards_fail_explicitly(name):
 def test_public_wrapper_names_validate_lazily():
     wrappers = validate_wrappers(["video", "dvs", "retina"])
     assert [wrapper.__name__ for wrapper in wrappers] == ["Video", "DVS", "Retina"]
+
+
+def test_body_is_public_and_validates_wrappers():
+    body = Body(wrappers=["video"], binocular_vision=False, input_resolution=32)
+    assert [wrapper.__name__ for wrapper in body.wrappers] == ["Video"]
+    assert body.binocular_vision is False
+    assert body.input_resolution == 32
 
 
 @pytest.mark.parametrize("name", ["binocular", "multiobs"])

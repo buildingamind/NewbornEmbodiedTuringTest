@@ -6,6 +6,7 @@ from collections import deque
 
 import gymnasium as gym
 import numpy as np
+import torch
 
 from ..observation import channel_stack_frames, channel_stack_space
 
@@ -25,13 +26,13 @@ class Video(gym.Wrapper):
         policy = obs["policy"] if isinstance(obs, dict) else obs
         self._frames.clear()
         for _ in range(self.frames):
-            self._frames.append(np.array(policy, copy=True))
+            self._frames.append(_clone_frame(policy))
         return self._with_stack(obs), info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         policy = obs["policy"] if isinstance(obs, dict) else obs
-        self._frames.append(np.array(policy, copy=True))
+        self._frames.append(_clone_frame(policy))
         return self._with_stack(obs), reward, terminated, truncated, info
 
     def _with_stack(self, obs):
@@ -47,3 +48,9 @@ def _policy_space(space: gym.Space) -> gym.Space:
     if isinstance(space, gym.spaces.Dict):
         return space["policy"]
     return space
+
+
+def _clone_frame(policy):
+    if isinstance(policy, torch.Tensor):
+        return policy.clone()
+    return np.array(policy, copy=True)

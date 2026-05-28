@@ -36,6 +36,11 @@ environment:
   # The default native encoders support every schema-valid value >= 16.
   input_resolution: 64
 
+  # Include both neck joints in the continuous action space:
+  # [body_turn, body_move, neck_flexion, lateral_bending].
+  enable_neck_flexion: true
+  enable_lateral_bending: true
+
   # Reward components (additive). Supported values: ["closeness"],
   # ["completeness"], or both. Empty list = no extrinsic reward (intrinsic-
   # only training).

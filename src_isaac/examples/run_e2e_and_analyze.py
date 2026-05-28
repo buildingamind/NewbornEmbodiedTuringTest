@@ -21,6 +21,7 @@ commented out to refresh plots without retraining.
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from pathlib import Path
 
 from nett_skrl import NETT
@@ -36,7 +37,7 @@ OUTPUT = Path("/tmp/nett_e2e_out")
 # 32 GB box — keep eval_freq above total step count so only the post-train
 # test phase runs).
 CONFIG: dict = {
-    "name": "e2e_1000ep",
+    "name": f"e2e_1000ep_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
         "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
         "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
@@ -58,8 +59,8 @@ CONFIG: dict = {
     "brain": {
         "algorithm": "PPO",
         "encoder": "small",
-        "batch_size": 64,
-        "buffer_size": 128,
+        "batch_size": 500,
+        "buffer_size": 4000,
         "learning_rate": 1.0e-5,
         "train_encoder": True,
         "wandb": {
@@ -68,9 +69,9 @@ CONFIG: dict = {
         },
     },
     "num_brains": 1,
-    "episodes": {"train": 100, "test": 1},
+    "episodes": {"train": 1000, "test": 1},
     "steps_per_episode": 200,
-    "eval_freq": 250000,   # past total (200k) → no mid-train eval; avoids 2-sim OOM
+    "eval_freq": 25000000,   # past total (200k) → no mid-train eval; avoids 2-sim OOM
     "task_memory": 4,
 }
 
@@ -98,7 +99,7 @@ if __name__ == "__main__":
     log = logging.getLogger("nett.e2e")
 
     log.info("training: output=%s", OUTPUT)
-    NETT(CONFIG).run(output_path=str(OUTPUT), verbose=True)
+    NETT(CONFIG).run(output_path=str(OUTPUT), devices=[0], verbose=True)
     log.info("training complete")
 
     for run_dir in find_run_dirs(OUTPUT):

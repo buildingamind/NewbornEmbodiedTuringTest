@@ -9,7 +9,7 @@ logging.basicConfig(format="[%(name)s] %(levelname)s:  %(message)s", level=loggi
 logger = logging.getLogger("nett")
 
 from .analysis import analyze, merge, test_viz, train_viz
-from .wrappers import wrapper_list
+from .body import Body, wrapper_list
 from .brain.registry import algorithms_list, encoders_list, rewards_list
 from .environment import get_experiment_design
 from .nett import NETT
@@ -38,6 +38,7 @@ def list_rewards() -> list[str]:
 
 __all__ = [
     "NETT",
+    "Body",
     "__version__",
     "analyze",
     "list_algorithms",

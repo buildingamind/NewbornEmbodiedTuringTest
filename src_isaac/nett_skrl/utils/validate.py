@@ -44,8 +44,13 @@ def _validate_registered_names(config: dict) -> None:
         validate_reward(brain["reward"])
 
     wrappers = config.get("wrappers") or []
+    body = config.get("body") or {}
+    body_wrappers = body.get("wrappers") or []
+    if wrappers and body_wrappers:
+        raise ValueError("Specify body.wrappers or top-level wrappers, not both.")
+    wrappers = body_wrappers or wrappers
     if wrappers:
-        from nett_skrl.wrappers.registry import validate_wrappers
+        from nett_skrl.body.wrappers.registry import validate_wrappers
 
         validate_wrappers(wrappers)
 

@@ -95,6 +95,28 @@
       },
       "default": []
     },
+    "body": {
+      "description": "Agent body settings. Prefer this block for observation wrappers and perception-side overrides.",
+      "type": "object",
+      "properties": {
+        "wrappers": {
+          "description": "Optional observation transforms; names come from the body wrapper registry.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "anyOf": [
+              { "type": "string" },
+              { "not": { "type": "string" } }
+            ]
+          },
+          "default": []
+        },
+        "binocular_vision": { "type": ["boolean", "null"], "default": null },
+        "input_resolution": { "type": ["integer", "null"], "minimum": 16, "default": null }
+      },
+      "additionalProperties": false,
+      "default": {}
+    },
     "environment": {
       "type": "object",
       "properties": {
@@ -111,6 +133,8 @@
         "random_first_frame": { "type": "boolean", "default": false },
         "switch_steps":     { "type": "integer", "minimum": 0, "default": 0 },
         "decision_period":  { "type": "integer", "minimum": 1, "default": 1 },
+        "enable_neck_flexion": { "type": "boolean", "default": true },
+        "enable_lateral_bending": { "type": "boolean", "default": true },
         "recording": {
           "type": "object",
           "properties": {

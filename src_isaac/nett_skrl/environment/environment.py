@@ -57,6 +57,8 @@ class Environment:
         random_first_frame: bool = False,
         switch_steps: int = 0,
         decision_period: int = 1,
+        enable_neck_flexion: bool = False,
+        enable_lateral_bending: bool = False,
     ):
         from .design import get_experiment_design, validate_conditions
 
@@ -87,6 +89,8 @@ class Environment:
         self.random_first_frame = bool(random_first_frame)
         self.switch_steps = int(switch_steps or 0)
         self.decision_period = int(decision_period or 1)
+        self.enable_neck_flexion = bool(enable_neck_flexion)
+        self.enable_lateral_bending = bool(enable_lateral_bending)
         self.num_brains = 1  # overridden by adjust_to_agent()
 
         self._sim_app = None  # populated lazily on first load()
@@ -123,7 +127,10 @@ class Environment:
         from nett_isaac.nett_env import NETTEnv
         from nett_isaac.nett_env_cfg import NETTEnvCfg
 
-        cfg = NETTEnvCfg()
+        cfg_kwargs = {}
+        if self.asset_root is not None:
+            cfg_kwargs["asset_root"] = str(self.asset_root)
+        cfg = NETTEnvCfg(**cfg_kwargs)
         self._configure_cfg(cfg, config, seed)
         return NETTEnv(cfg)
 
@@ -141,6 +148,8 @@ class Environment:
         cfg.observation.input_resolution = self.input_resolution
         cfg.reward_types = tuple(self.reward_types)
         cfg.record_mode = self.record_mode
+        cfg.motor.enable_neck_flexion = self.enable_neck_flexion
+        cfg.motor.enable_lateral_bending = self.enable_lateral_bending
         cfg.screens.random_first_frame = self.random_first_frame
         cfg.screens.switch_steps = self.switch_steps
         cfg.screens.decision_period = self.decision_period
@@ -241,6 +250,11 @@ def parse_episode_selector(spec, total_episodes: int) -> tuple[int, ...]:
 
 def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
     """Infer a private Isaac asset root from user-provided asset paths."""
+    required = (
+        Path("chick/robot_chick.usd"),
+        Path("chamber/chamber1.usd"),
+        Path("design_sheets/example_design.csv"),
+    )
     for raw in paths:
         p = Path(raw).expanduser().resolve()
         candidates = [p] if p.is_dir() else []
@@ -248,10 +262,6 @@ def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
         for candidate in candidates:
             if candidate.name != "assets":
                 continue
-            if (
-                (candidate / "chick" / "chick.usd").exists()
-                and (candidate / "chamber" / "chamber.usd").exists()
-                and (candidate / "design_sheets").is_dir()
-            ):
+            if candidate.is_dir() and all((candidate / rel).exists() for rel in required):
                 return candidate
     return None

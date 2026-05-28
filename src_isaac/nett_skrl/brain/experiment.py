@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import hashlib
+import time
 from pathlib import Path
 from typing import Any
 
@@ -79,6 +80,7 @@ def apply_experiment_cfg(
         "reinit": "create_new",
         "id": _wandb_run_id(run_name, condition, brain_id, phase),
         "resume": "allow",
+        "sync_tensorboard": True,
     }
     if wandb_cfg["entity"] is not None:
         wandb_kwargs["entity"] = wandb_cfg["entity"]
@@ -88,13 +90,14 @@ def apply_experiment_cfg(
 
 
 def attach_wandb_scalar_mirror(agent) -> None:
-    """Mirror skrl's tracked scalars into wandb on every flush.
+    """Add supplemental metrics to wandb alongside skrl's tensorboard sync.
 
     skrl writes scalars (rewards, losses, etc.) to local tensorboard event
-    files via its own ``SummaryWriter``. Rather than relying on wandb's
-    tensorboard sync (which conflicts with explicit ``step=`` arguments),
-    we read the same ``agent.tracking_data`` skrl is about to flush and
-    call ``run.log(...)`` ourselves with an explicit timestep.
+    files via its own ``SummaryWriter``; ``sync_tensorboard=True`` watches
+    those files and uploads them to wandb automatically. This function also
+    logs a direct wandb mirror so every brain's scalars are attributed to the
+    correct Run, and adds SB3-compatible PPO ``train/...`` aliases plus live
+    SPS (steps per second).
 
     Implementation is per-instance method wrapping (NOT class
     mutation): we replace ``agent.init`` and ``agent.write_tracking_data``
@@ -108,12 +111,14 @@ def attach_wandb_scalar_mirror(agent) -> None:
     through to ``original_write`` and skips the wandb log call.
     """
     import numpy as np
+    import torch
 
     if getattr(agent, "_nett_wandb_scalar_mirror_attached", False):
         return
 
     original_init = agent.init
     original_write = agent.write_tracking_data
+    _n_updates: list[int] = [0]
 
     def init_with_wandb_capture(*args, **kwargs):
         result = original_init(*args, **kwargs)
@@ -130,35 +135,158 @@ def attach_wandb_scalar_mirror(agent) -> None:
             run_id = agent.cfg.experiment.wandb_kwargs.get("id")
         except AttributeError:
             pass
-        agent._nett_wandb_run = _wandb_runs_by_id.get(run_id) if run_id else None
+        run = _wandb_runs_by_id.get(run_id) if run_id else None
+        agent._nett_wandb_run = run
+        if run is not None and hasattr(run, "define_metric"):
+            # sync_tensorboard=True owns the global step counter; our
+            # supplemental metrics (SPS etc.) use a dedicated step field
+            # so W&B won't warn about conflicting step values.
+            run.define_metric("Stats/nett_timestep")
+            run.define_metric("Stats/nett_*", step_metric="Stats/nett_timestep")
+            run.define_metric("train/n_updates")
+            run.define_metric("train/*", step_metric="train/n_updates")
         return result
 
-    def write_with_wandb_mirror(*, timestep, timesteps):
-        # Snapshot tracking_data BEFORE the original call — skrl clears it
-        # at the end of its own write.
-        run = getattr(agent, "_nett_wandb_run", None)
-        if run is None or not agent.tracking_data:
-            return original_write(timestep=timestep, timesteps=timesteps)
+    _last_flush_time: list[float] = [time.perf_counter()]
+    _last_flush_step: list[int] = [0]
 
-        snapshot = {k: list(v) for k, v in agent.tracking_data.items() if v}
+    def write_with_wandb_mirror(*, timestep, timesteps):
+        tracking_payload = _tracking_data_payload(getattr(agent, "tracking_data", {}))
+        train_payload = _sb3_train_aliases(agent, tracking_payload, torch, np)
+
         result = original_write(timestep=timestep, timesteps=timesteps)
-        log_dict: dict[str, float] = {}
-        for k, values in snapshot.items():
-            if k.endswith("(min)"):
-                log_dict[k] = float(np.min(values))
-            elif k.endswith("(max)"):
-                log_dict[k] = float(np.max(values))
-            else:
-                log_dict[k] = float(np.mean(values))
+
+        run = getattr(agent, "_nett_wandb_run", None)
+        if run is None:
+            return result
+
+        now = time.perf_counter()
+        elapsed = now - _last_flush_time[0]
+        step_delta = int(timestep) - _last_flush_step[0]
+        _last_flush_time[0] = now
+        _last_flush_step[0] = int(timestep)
+
+        if train_payload:
+            _n_updates[0] += 1
+            train_payload["train/n_updates"] = _n_updates[0]
+
+        payload = {**tracking_payload, **train_payload}
+        payload["Stats/nett_timestep"] = int(timestep)
+        if elapsed > 0 and step_delta > 0:
+            payload["Stats/nett_sps"] = step_delta / elapsed
+
+        if not payload:
+            return result
+
         try:
-            run.log(log_dict, step=int(timestep))
+            run.log(payload)
         except Exception:
-            logger.debug("wandb scalar mirror failed", exc_info=True)
+            logger.debug("wandb supplemental log failed", exc_info=True)
         return result
 
     agent.init = init_with_wandb_capture
     agent.write_tracking_data = write_with_wandb_mirror
     agent._nett_wandb_scalar_mirror_attached = True
+
+
+def _tracking_data_payload(tracking_data: dict[str, list]) -> dict[str, float]:
+    """Return skrl's pending scalar aggregates before its writer clears them."""
+    import numpy as np
+
+    payload: dict[str, float] = {}
+    for key, values in tracking_data.items():
+        if not values:
+            continue
+        if key.endswith("(min)"):
+            payload[key] = float(np.min(values))
+        elif key.endswith("(max)"):
+            payload[key] = float(np.max(values))
+        else:
+            payload[key] = float(np.mean(values))
+    return payload
+
+
+def _sb3_train_aliases(agent, tracking_payload: dict[str, float], torch, np) -> dict[str, float]:
+    """Map skrl PPO metrics to the SB3-style ``train/...`` wandb keys."""
+    payload: dict[str, float] = {}
+    key_map = {
+        "Loss / Entropy loss": "train/entropy_loss",
+        "Loss / Policy loss": "train/policy_gradient_loss",
+        "Loss / Value loss": "train/value_loss",
+        "Policy / Standard deviation": "train/std",
+    }
+    for source, target in key_map.items():
+        if source in tracking_payload:
+            payload[target] = float(tracking_payload[source])
+
+    loss_parts = [
+        payload[key]
+        for key in ("train/policy_gradient_loss", "train/value_loss", "train/entropy_loss")
+        if key in payload
+    ]
+    if loss_parts:
+        payload["train/loss"] = float(sum(loss_parts))
+
+    memory_payload = _ppo_memory_stats(agent, torch, np)
+    if not payload and not memory_payload:
+        return {}
+
+    cfg = getattr(agent, "cfg", None)
+    if cfg is not None:
+        if hasattr(cfg, "ratio_clip"):
+            payload["train/clip_range"] = float(cfg.ratio_clip)
+        value_clip = getattr(cfg, "value_clip", None)
+        if value_clip is not None:
+            payload["train/clip_range_vf"] = float(value_clip)
+
+    payload.update(memory_payload)
+    return payload
+
+
+def _ppo_memory_stats(agent, torch, np) -> dict[str, float]:
+    """Compute SB3-style PPO stats that skrl 2.x does not track directly."""
+    memory = getattr(agent, "memory", None)
+    policy = getattr(agent, "policy", None)
+    cfg = getattr(agent, "cfg", None)
+    if memory is None or policy is None or cfg is None:
+        return {}
+
+    try:
+        observations = memory.get_tensor_by_name("observations")
+        states = memory.get_tensor_by_name("states")
+        actions = memory.get_tensor_by_name("actions")
+        old_log_prob = memory.get_tensor_by_name("log_prob")
+        values = memory.get_tensor_by_name("values")
+        returns = memory.get_tensor_by_name("returns")
+    except Exception:
+        return {}
+
+    payload: dict[str, float] = {}
+    try:
+        with torch.no_grad():
+            inputs = {
+                "observations": agent._observation_preprocessor(observations),
+                "states": agent._state_preprocessor(states),
+                "taken_actions": actions,
+            }
+            _, outputs = policy.act(inputs, role="policy")
+            log_ratio = outputs["log_prob"] - old_log_prob
+            ratio = torch.exp(log_ratio)
+            payload["train/approx_kl"] = float(((ratio - 1) - log_ratio).mean().item())
+            ratio_clip = float(getattr(cfg, "ratio_clip", 0.0) or 0.0)
+            payload["train/clip_fraction"] = float((torch.abs(ratio - 1) > ratio_clip).float().mean().item())
+    except Exception:
+        logger.debug("wandb PPO KL/clip stats failed", exc_info=True)
+
+    try:
+        y_pred = values.detach().flatten().cpu().numpy()
+        y_true = returns.detach().flatten().cpu().numpy()
+        variance = np.var(y_true)
+        payload["train/explained_variance"] = float(np.nan if variance == 0 else 1 - np.var(y_true - y_pred) / variance)
+    except Exception:
+        logger.debug("wandb PPO explained variance failed", exc_info=True)
+
+    return payload
 
 
 def finish_agent_wandb_runs(agents) -> None:

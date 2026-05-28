@@ -530,7 +530,10 @@ def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
     class _FakeAgent:
         def __init__(self) -> None:
             self.tracking_data = {
-                "Loss/Policy": [1.0, 3.0],
+                "Loss / Policy loss": [1.0, 3.0],
+                "Loss / Value loss": [0.25, 0.75],
+                "Loss / Entropy loss": [-0.02, -0.04],
+                "Policy / Standard deviation": [0.6, 0.8],
                 "Reward/Total (max)": [0.2, 0.9],
                 "Reward/Total (min)": [-0.5, 0.1],
             }
@@ -566,10 +569,17 @@ def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
     assert agent.write_calls == 1, "original write_tracking_data should still run"
     assert len(fake_run.logged) == 1
     payload, step = fake_run.logged[0]
-    assert step == 42
-    assert payload["Loss/Policy"] == pytest.approx(2.0)            # mean
+    assert step is None
+    assert payload["Stats/nett_timestep"] == 42
+    assert payload["Loss / Policy loss"] == pytest.approx(2.0)     # mean
     assert payload["Reward/Total (max)"] == pytest.approx(0.9)      # max
     assert payload["Reward/Total (min)"] == pytest.approx(-0.5)     # min
+    assert payload["train/policy_gradient_loss"] == pytest.approx(2.0)
+    assert payload["train/value_loss"] == pytest.approx(0.5)
+    assert payload["train/entropy_loss"] == pytest.approx(-0.03)
+    assert payload["train/std"] == pytest.approx(0.7)
+    assert payload["train/loss"] == pytest.approx(2.47)
+    assert payload["train/n_updates"] == 1
 
 
 def test_finish_agent_wandb_runs_calls_finish_and_clears():
@@ -762,5 +772,3 @@ def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
 
     # Must not raise; logs a warning and moves on.
     load_latest_checkpoints([_FakeAgent()], _Cfg())
-
-

@@ -134,11 +134,9 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     if not config.dry_run:
         (config.path / "logs").mkdir(exist_ok=True, parents=True)
 
-    agent.env.adjust_to_agent(num_brains=config.num_brains)
     run_config = config.for_mode(mode, **(overrides or {}))
-    loaded = agent.env.load(run_config)
-    for wrapper in agent.wrappers:
-        loaded = wrapper(loaded)
+    agent.body.adjust_to_agent(agent.env, num_brains=config.num_brains)
+    loaded = agent.body.embed(agent.env, run_config)
     if mode == "train":
         agent.brain.train(
             loaded,

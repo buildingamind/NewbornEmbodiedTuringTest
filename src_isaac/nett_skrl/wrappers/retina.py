@@ -138,6 +138,7 @@ class Retina(gym.ObservationWrapper):
 
 def _as_numpy(value):
     if isinstance(value, torch.Tensor):
+        # Retina is a CPU/NumPy preprocessing wrapper at its boundary today.
         return value.detach().cpu().numpy()
     return np.asarray(value)
 

@@ -1,11 +1,8 @@
-"""Compatibility imports for body observation wrappers.
-
-Prefer :mod:`nett_skrl.body.wrappers` for new code.
-"""
+"""Observation wrappers used by the NETT-skrl body."""
 
 from __future__ import annotations
 
-from nett_skrl.body.wrappers.registry import _WRAPPER_SPECS, validate_wrappers, wrapper_list
+from .registry import _WRAPPER_SPECS, validate_wrappers, wrapper_list
 
 
 def __getattr__(name: str):

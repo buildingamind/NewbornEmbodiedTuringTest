@@ -8,9 +8,10 @@ analysis work should target `src_isaac`.
 ## What This Package Provides
 
 - `nett_skrl.NETT`: config-driven run orchestration.
+- `nett_skrl.body.Body`: observation wrapper and perception-setting bridge.
 - `nett_skrl.brain.Brain`: skrl agent/model setup, training, testing, recording,
   checkpointing, and intrinsic reward wiring.
-- `nett_skrl.wrappers`: optional observation transforms.
+- `nett_skrl.body.wrappers`: optional observation transforms.
 - `nett_skrl.environment.Environment`: configuration bridge into `nett_isaac`
   / Isaac Lab `NETTEnv`.
 - `nett_skrl.analysis`: Isaac-output normalization plus legacy-compatible
