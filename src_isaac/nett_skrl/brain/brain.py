@@ -19,7 +19,7 @@ import torch
 
 from ..runtime.task import TaskConfig
 from .config import AlgorithmCfg, EncoderCfg, RewardCfg, algorithm_cfg_from
-from .trainer import MultiBrainTrainer, RecordingCfg, TrainCfg
+from .trainer import BrainTrainer, RecordingCfg, TrainCfg
 from .models import ModelCfg, model_cfg_from
 from .run_config import (
     dry_run_timesteps,
@@ -50,7 +50,7 @@ _ENV_REWARD_NAMES = {"closeness", "completeness"}
 _RUNTIME_DEFAULTS = {
     "iterations_per_test_episode": {},
     "steps_per_episode": 0,
-    "envs_per_agent": 1,
+    "envs_per_brain": 1,
     "num_brains": None,
     "train_iterations": 0,
     "test_iterations": {},
@@ -139,7 +139,7 @@ class Brain:
         """Compute step budgets for train + test modes."""
         self.num_brains = int(num_brains)
         self.steps_per_episode = steps_per_episode
-        self.envs_per_agent = self.algorithm_cfg.envs_per_agent_for(steps_per_episode)
+        self.envs_per_brain = self.algorithm_cfg.envs_per_brain_for(steps_per_episode)
         self.n_tasks = len(iterations_per_episode) * num_brains
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
@@ -169,7 +169,7 @@ class Brain:
         if config.dry_run:
             # One rollout's worth of timesteps is enough to allocate the
             # replay buffer, run a single update, and commit peak VRAM. The
-            # MultiBrainTrainer.train(dry_run=True) path skips hparams and
+            # BrainTrainer.train(dry_run=True) path skips hparams and
             # final-checkpoint writes for us.
             self._trainer(wrapped, agents, device).train(
                 TrainCfg(total_timesteps=dry_run_timesteps(self)),
@@ -239,8 +239,8 @@ class Brain:
         finally:
             self.wandb_cfg = wandb_cfg_backup
 
-    def _trainer(self, wrapped, agents, device: torch.device) -> MultiBrainTrainer:
-        return MultiBrainTrainer(wrapped, agents, device=device)
+    def _trainer(self, wrapped, agents, device: torch.device) -> BrainTrainer:
+        return BrainTrainer(wrapped, agents, device=device)
 
     def _build_intrinsic_adapters(self, env, device: torch.device) -> list | None:
         if not self.uses_intrinsic_reward():

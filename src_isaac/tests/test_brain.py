@@ -18,7 +18,7 @@ from nett_skrl.brain.brain import Brain, IntrinsicRewardAdapter
 from nett_skrl.brain.models import features_forward as _features_forward
 from nett_skrl.observation import to_chw_space as _hwc_to_chw_space
 from nett_skrl.brain.models import ValueCritic, model_cfg_from
-from nett_skrl.brain.trainer import MultiBrainTrainer, TrainCfg
+from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
 from nett_skrl.brain.encoders import NETTFeatureExtractor, Resnet10CNN, Resnet18CNN, SmallCNN
 from nett_skrl.brain.rewards import E3B, ICM, PseudoCounts, RIDE
 from nett_skrl.brain.env_adapter import NettIsaacLabWrapper
@@ -211,7 +211,7 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
             seen["steps"] = total_timesteps
             return {}
 
-    monkeypatch.setattr("nett_skrl.brain.brain.MultiBrainTrainer", _Trainer)
+    monkeypatch.setattr("nett_skrl.brain.brain.BrainTrainer", _Trainer)
     monkeypatch.setattr(
         "nett_skrl.brain.brain._build_skrl_agents",
         lambda brain, wrapped, device, **_: [object()],
@@ -235,7 +235,7 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
     assert seen["steps"] == 150
 
 
-def test_calc_iterations_derives_parallel_envs_per_agent_from_rollout_minibatch_size():
+def test_calc_iterations_derives_parallel_envs_per_brain_from_rollout_minibatch_size():
     brain = Brain(algorithm_cfg={"rollouts": 1024, "mini_batches": 2})
     brain.calc_iterations(
         num_brains=1,
@@ -243,7 +243,7 @@ def test_calc_iterations_derives_parallel_envs_per_agent_from_rollout_minibatch_
         episodes={"train": 1},
         steps_per_episode=200,
     )
-    assert brain.envs_per_agent == 2
+    assert brain.envs_per_brain == 2
 
 
 def test_brain_train_uses_chunk_timesteps_and_loads_resume_checkpoint(monkeypatch, tmp_path):
@@ -258,7 +258,7 @@ def test_brain_train_uses_chunk_timesteps_and_loads_resume_checkpoint(monkeypatc
         def train(self, cfg, **kwargs):
             seen["steps"] = cfg.total_timesteps
 
-    monkeypatch.setattr("nett_skrl.brain.brain.MultiBrainTrainer", _Trainer)
+    monkeypatch.setattr("nett_skrl.brain.brain.BrainTrainer", _Trainer)
     monkeypatch.setattr(
         "nett_skrl.brain.brain._build_skrl_agents",
         lambda brain, wrapped, device, **_: ["agent"],
@@ -306,8 +306,22 @@ def test_nett_wrapper_uses_actual_policy_observation_space():
     assert obs.device.type == "cpu"
 
 
+def test_nett_wrapper_exposes_skrl_optional_env_api():
+    class _MinimalEnv:
+        num_envs = 1
+        observation_space = gym.spaces.Box(0, 255, (4,), dtype=np.uint8)
+        action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
+
+    wrapped = NettIsaacLabWrapper(_MinimalEnv(), device="cpu")
+    assert wrapped.num_agents == 1
+    assert wrapped.state() is None
+    assert wrapped.render() is None
+    assert wrapped.close() is None
+
+
 class _FakeSkrlEnv:
     num_envs = 1
+    num_agents = 1
     observation_space = gym.spaces.Box(0, 255, (64, 64, 3), dtype=np.uint8)
     action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
 
@@ -322,6 +336,15 @@ class _FakeSkrlEnv:
             torch.zeros(1, 1, dtype=torch.bool),
             {},
         )
+
+    def state(self):
+        return None
+
+    def render(self, *args, **kwargs):
+        return None
+
+    def close(self):
+        pass
 
 
 def _tiny_algorithm_cfg(algorithm="PPO", *, rollouts=8, mini_batch_size=2):
@@ -338,7 +361,7 @@ def test_supported_algorithms_run_one_fake_step(algorithm):
     env = _FakeSkrlEnv()
     brain = Brain(algorithm=algorithm, algorithm_cfg=_tiny_algorithm_cfg(algorithm))
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
-    MultiBrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=1))
+    BrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=1))
 
 
 @pytest.mark.parametrize(
@@ -419,7 +442,7 @@ def test_ppo_first_update_keeps_weights_finite():
         algorithm_cfg={"rollouts": 128, "mini_batches": 4},
     )
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
-    MultiBrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=65))
+    BrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=65))
     for model in agent.models.values():
         for name, param in model.named_parameters():
             assert torch.isfinite(param).all(), name
@@ -777,7 +800,7 @@ def test_checkpoint_freq_none_disables_skrl_auto_checkpoint(tmp_path):
     config = _FakeTaskConfig(condition="c", current_mode="train",
                              run_name="r", tmp=tmp_path)
     agent = _build_agents(brain, env, torch.device("cpu"), config=config)[0]
-    # 0 means "no periodic save"; MultiBrainTrainer still writes a single
+    # 0 means "no periodic save"; BrainTrainer still writes a single
     # final_agent.pt at the end of training.
     assert agent.cfg.experiment.checkpoint_interval == 0
 

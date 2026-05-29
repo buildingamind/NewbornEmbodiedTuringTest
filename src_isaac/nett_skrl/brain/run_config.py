@@ -50,7 +50,7 @@ def train_hparams(brain, config: TaskConfig, timesteps: int) -> dict:
         "algorithm_cfg": _jsonable_cfg(brain.algorithm_cfg.as_dict()),
         "reward_cfg": brain.reward_cfg.as_dict(),
         "checkpoint_freq": brain.checkpoint_freq,
-        "envs_per_agent": brain.envs_per_agent,
+        "envs_per_brain": brain.envs_per_brain,
         "total_timesteps": brain.train_iterations,
         "chunk_timesteps": timesteps,
         "global_step": config.train_global_step,

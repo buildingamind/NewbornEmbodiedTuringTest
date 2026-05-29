@@ -84,7 +84,7 @@ class AlgorithmCfg(FlexibleCfg):
     def dry_run_timesteps(self) -> int:
         return self.agent_memory_size()
 
-    def envs_per_agent_for(self, steps_per_episode: int) -> int:
+    def envs_per_brain_for(self, steps_per_episode: int) -> int:
         return 1
 
 
@@ -140,7 +140,7 @@ class OnPolicyAlgorithmCfg(AlgorithmCfg):
     def agent_memory_size(self) -> int:
         return int(self.rollouts)
 
-    def envs_per_agent_for(self, steps_per_episode: int) -> int:
+    def envs_per_brain_for(self, steps_per_episode: int) -> int:
         return max(1, self.rollout_batch_size() // max(1, steps_per_episode))
 
 
@@ -183,7 +183,7 @@ class OffPolicyAlgorithmCfg(AlgorithmCfg):
     def dry_run_timesteps(self) -> int:
         return max(int(self.batch_size), int(self.memory_size))
 
-    def envs_per_agent_for(self, steps_per_episode: int) -> int:
+    def envs_per_brain_for(self, steps_per_episode: int) -> int:
         return max(1, int(self.batch_size) // max(1, steps_per_episode))
 
 

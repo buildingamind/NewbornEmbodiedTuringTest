@@ -1,4 +1,4 @@
-"""Unit tests for MultiBrainTrainer's per-env-scope dispatch.
+"""Unit tests for BrainTrainer's per-env-scope dispatch.
 
 Mocks both the env and the skrl agents so this runs without Isaac Sim and
 without skrl's optimizer step. The point is to lock the slicing contract:
@@ -9,10 +9,15 @@ from __future__ import annotations
 
 import json
 import csv
+import logging
+from types import SimpleNamespace
 
 import torch
 
-from nett_skrl.brain.trainer import MultiBrainTrainer, TrainCfg
+from nett_skrl.brain.run_recorder import RunRecorder
+from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
+from nett_skrl.nett import NETT
+from nett_skrl.runtime.parallel_envs import capped_num_envs, num_env_candidates
 from nett_skrl.runtime.task_runner import (
     _is_tolerated_isaac_teardown_exit,
     _training_boundaries,
@@ -31,6 +36,7 @@ class _FakeEnv:
         self.act_dim = act_dim
         self.device = torch.device(device)
         self._t = 0
+        self.num_agents = 1
 
     def _obs(self) -> torch.Tensor:
         return torch.randn(self.num_envs, self.obs_dim, device=self.device)
@@ -49,6 +55,15 @@ class _FakeEnv:
             torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device),
             {},
         )
+
+    def state(self):
+        return None
+
+    def render(self, *args, **kwargs):
+        return None
+
+    def close(self):
+        pass
 
 
 class _FakeAgent:
@@ -95,7 +110,7 @@ def test_trainer_dispatches_each_slice_to_its_agent():
     n = 3
     env = _FakeEnv(num_envs=n)
     agents = [_FakeAgent() for _ in range(n)]
-    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer = BrainTrainer(env, agents, device="cpu")
     trainer.train(TrainCfg(total_timesteps=4))
 
     # Each agent saw the same number of act + record_transition calls as steps.
@@ -111,7 +126,7 @@ def test_trainer_dispatches_each_slice_to_its_agent():
 def test_trainer_dispatches_parallel_env_scope_to_single_agent():
     env = _FakeEnv(num_envs=2)
     agent = _FakeAgent()
-    trainer = MultiBrainTrainer(env, [agent], device="cpu")
+    trainer = BrainTrainer(env, [agent], device="cpu")
     trainer.train(TrainCfg(total_timesteps=4))
 
     assert len(agent.act_calls) == 4
@@ -123,7 +138,7 @@ def test_trainer_dispatches_parallel_env_scope_to_single_agent():
 def test_trainer_dispatches_parallel_env_scopes_to_multiple_agents():
     env = _FakeEnv(num_envs=4)
     agents = [_FakeAgent() for _ in range(2)]
-    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer = BrainTrainer(env, agents, device="cpu")
     trainer.train(TrainCfg(total_timesteps=4))
 
     assert trainer.scopes == [2, 2]
@@ -136,7 +151,7 @@ def test_trainer_dispatches_parallel_env_scopes_to_multiple_agents():
 def test_trainer_eval_switches_mode_to_eval():
     env = _FakeEnv(num_envs=2)
     agents = [_FakeAgent() for _ in range(2)]
-    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer = BrainTrainer(env, agents, device="cpu")
     means = trainer.eval(total_timesteps=3)
     assert set(means.keys()) == {0, 1}
     assert all(a.mode == "eval" for a in agents)
@@ -145,7 +160,7 @@ def test_trainer_eval_switches_mode_to_eval():
 def test_trainer_eval_zero_steps_returns_zero_without_reset():
     env = _FakeEnv(num_envs=2)
     agents = [_FakeAgent() for _ in range(2)]
-    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer = BrainTrainer(env, agents, device="cpu")
     assert trainer.eval(total_timesteps=0) == {0: 0.0, 1: 0.0}
 
 
@@ -153,7 +168,7 @@ def test_trainer_raises_on_env_agent_mismatch():
     env = _FakeEnv(num_envs=3)
     agents = [_FakeAgent() for _ in range(2)]
     try:
-        MultiBrainTrainer(env, agents, device="cpu")
+        BrainTrainer(env, agents, device="cpu")
     except ValueError as e:
         assert "num_envs" in str(e)
     else:
@@ -161,7 +176,7 @@ def test_trainer_raises_on_env_agent_mismatch():
 
 
 def test_trainer_saves_final_checkpoint_per_agent_experiment_dir(tmp_path):
-    """``MultiBrainTrainer.train`` must write ``final_agent.pt`` into each
+    """``BrainTrainer.train`` must write ``final_agent.pt`` into each
     agent's own ``experiment_dir`` (the same dir skrl writes ``agent_{N}.pt``
     + ``best_agent.pt`` to). NETT's old ``brain_{i}/models/`` layout is gone;
     checkpoints are owned end-to-end by skrl now."""
@@ -172,7 +187,7 @@ def test_trainer_saves_final_checkpoint_per_agent_experiment_dir(tmp_path):
     # ``cfg.experiment.directory + experiment_name``; here we set it directly.
     agents[0].experiment_dir = str(tmp_path / "wandb_runs" / "brain_1")
     agents[1].experiment_dir = str(tmp_path / "wandb_runs" / "brain_2")
-    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer = BrainTrainer(env, agents, device="cpu")
     trainer.train(TrainCfg(total_timesteps=2, hparams_dir=tmp_path))
     assert agents[0].saved[-1].endswith("wandb_runs/brain_1/checkpoints/final_agent.pt")
     assert agents[1].saved[-1].endswith("wandb_runs/brain_2/checkpoints/final_agent.pt")
@@ -183,6 +198,137 @@ def test_trainer_saves_final_checkpoint_per_agent_experiment_dir(tmp_path):
     assert timing["env_timesteps"] == 2
     assert timing["train_steps"] == 4
     assert timing["train_steps_per_second"] >= timing["env_steps_per_second"]
+
+
+def test_run_recorder_skips_outputs_during_dry_run(tmp_path):
+    agent = _FakeAgent()
+    agent.experiment_dir = str(tmp_path / "wandb_runs" / "brain_1")
+    recorder = RunRecorder([agent], num_envs=1)
+
+    cfg = TrainCfg(total_timesteps=2, hparams_dir=tmp_path)
+    recorder.before_train(cfg, dry_run=True)
+    recorder.after_train(cfg, elapsed_s=1.0, dry_run=True)
+
+    assert not (tmp_path / "logs" / "hparams.json").exists()
+    assert not agent.saved
+
+
+def test_run_recorder_syncs_outputs_only_with_complete_context(monkeypatch, tmp_path):
+    calls = []
+
+    def _sync(*args, **kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr("nett_skrl.brain.wandb_sync.sync_outputs_to_wandb", _sync)
+    agent = _FakeAgent()
+    recorder = RunRecorder([agent], num_envs=1)
+
+    incomplete = TrainCfg(total_timesteps=1, hparams_dir=tmp_path)
+    recorder.after_train(incomplete, elapsed_s=1.0)
+    assert calls == []
+
+    complete = TrainCfg(
+        total_timesteps=1,
+        hparams_dir=tmp_path,
+        output_dir=tmp_path,
+        condition="Object1",
+        phase="train",
+        run_name="run",
+    )
+    recorder.after_train(complete, elapsed_s=1.0)
+    assert calls == [{
+        "output_dir": tmp_path,
+        "condition": "Object1",
+        "phase": "train",
+        "run_name": "run",
+    }]
+
+
+def test_parallel_env_planning_caps_to_brain_multiple():
+    assert capped_num_envs(
+        num_brains=3,
+        preferred_envs_per_brain=4,
+        max_parallel_envs=None,
+    ) == 12
+    assert capped_num_envs(
+        num_brains=3,
+        preferred_envs_per_brain=4,
+        max_parallel_envs=10,
+    ) == 9
+    assert num_env_candidates(9, 3) == [9, 6, 3]
+
+
+def test_auto_memory_resolution_searches_down_to_safe_env_count(tmp_path):
+    nett = object.__new__(NETT)
+    nett.logger = logging.getLogger("test")
+    brain = SimpleNamespace(envs_per_brain=3)
+    env = SimpleNamespace(conditions=["Object1"], num_brains=2, num_envs=6)
+
+    class _Body:
+        def __init__(self):
+            self.plans = []
+
+        def adjust_to_agent(self, env, **kwargs):
+            self.plans.append(kwargs["num_envs"])
+            env.num_brains = kwargs["num_brains"]
+            env.num_envs = kwargs["num_envs"]
+
+    body = _Body()
+
+    def _estimate(self, brain, body, env, output_dir):
+        if env.num_envs == 6:
+            raise RuntimeError("too many envs")
+        return 123.0
+
+    nett._estimate_task_memory_via_dry_run = _estimate.__get__(nett, NETT)
+    memory, num_envs = NETT._resolve_task_memory_and_envs(
+        nett,
+        "auto",
+        brain,
+        body,
+        env,
+        tmp_path,
+        num_brains=2,
+        num_envs=6,
+        steps_per_episode=200,
+    )
+
+    assert memory == 123.0
+    assert num_envs == 4
+    assert brain.envs_per_brain == 2
+    assert body.plans == [6, 4]
+
+
+def test_auto_memory_resolution_falls_back_when_no_env_count_succeeds(tmp_path):
+    nett = object.__new__(NETT)
+    nett.logger = logging.getLogger("test")
+    brain = SimpleNamespace(envs_per_brain=2)
+    env = SimpleNamespace(conditions=["Object1"], num_brains=2, num_envs=4)
+
+    class _Body:
+        def adjust_to_agent(self, env, **kwargs):
+            env.num_brains = kwargs["num_brains"]
+            env.num_envs = kwargs["num_envs"]
+
+    def _estimate(self, brain, body, env, output_dir):
+        raise RuntimeError("nope")
+
+    nett._estimate_task_memory_via_dry_run = _estimate.__get__(nett, NETT)
+    memory, num_envs = NETT._resolve_task_memory_and_envs(
+        nett,
+        "auto",
+        brain,
+        _Body(),
+        env,
+        tmp_path,
+        num_brains=2,
+        num_envs=4,
+        steps_per_episode=200,
+    )
+
+    assert memory == 6.0 * (1024**3)
+    assert num_envs == 2
+    assert brain.envs_per_brain == 1
 
 
 class _Intrinsic:
@@ -210,7 +356,7 @@ def test_intrinsic_reward_is_added_before_record_transition():
     env = _ConstantRewardEnv(num_envs=1)
     agent = _FakeAgent()
     intrinsic = _Intrinsic(value=0.5)
-    trainer = MultiBrainTrainer(env, [agent], device="cpu")
+    trainer = BrainTrainer(env, [agent], device="cpu")
     trainer.train(
         TrainCfg(total_timesteps=1),
         intrinsic_reward_adapters=[intrinsic],

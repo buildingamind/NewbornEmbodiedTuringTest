@@ -139,9 +139,12 @@ steps_per_episode: 200
 eval_freq: null
 
 # N brains trained in parallel as N independent skrl agents over one
-# vectorized env (num_envs = num_brains) inside one Isaac Sim process per
-# condition.
+# vectorized env (num_envs = num_brains × envs_per_brain) inside one Isaac Sim
+# process per condition.
 num_brains: 4
+# Optional per-condition-task cap. null uses the algorithm-preferred
+# envs_per_brain; task_memory: auto can reduce this during dry-run profiling.
+max_parallel_envs: null
 brain_id_offset: 0
 
 # Per-task VRAM budget (GB). "auto" runs one task with validation_mode=True

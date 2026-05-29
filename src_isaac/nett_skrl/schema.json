@@ -198,9 +198,11 @@
     },
     "steps_per_episode": { "type": "integer", "minimum": 1, "default": 200 },
     "num_brains":        { "type": "integer", "minimum": 1, "default": 1 },
+    "max_parallel_envs": { "description": "Optional per-condition-task cap for total vectorized env rows. task_memory: auto may search downward from this cap.",
+                           "type": ["integer", "null"], "minimum": 1, "default": null },
     "brain_id_offset":   { "type": "integer", "minimum": 0, "default": 0 },
     "eval_freq":         { "type": ["integer", "null"], "minimum": 1, "default": null },
-    "task_memory":       { "description": "GB per task; \"auto\" runs a one-rollout dry-run to estimate.",
+    "task_memory":       { "description": "GB per task; \"auto\" runs dry-run profiling to estimate.",
                            "oneOf": [
                              { "type": "number", "minimum": 0 },
                              { "type": "string", "enum": ["auto"] }

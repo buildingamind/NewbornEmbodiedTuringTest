@@ -1,13 +1,7 @@
-"""``MultiBrainTrainer`` — NETT wrapper around skrl's ``SequentialTrainer``.
-
-One skrl agent owns one contiguous vectorized env scope. The env wrappers used
-during the training loop (intrinsic-reward injection + the small skrl-compat
-shim) live in :mod:`nett_skrl.brain.env_wrappers`.
-"""
+"""``BrainTrainer`` — NETT wrapper around skrl's ``SequentialTrainer``."""
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from dataclasses import dataclass
@@ -16,12 +10,9 @@ from pathlib import Path
 import torch
 from skrl.trainers.torch import SequentialTrainer
 
-from ..recording.export import RecordingCfg, export_recordings
-from .env_wrappers import (
-    IntrinsicRewardEnvWrapper,
-    SkrlEnvCompatibilityWrapper,
-    needs_skrl_compat,
-)
+from ..recording.export import RecordingCfg
+from .env_wrappers import IntrinsicRewardEnvWrapper
+from .run_recorder import RunRecorder
 
 logger = logging.getLogger("nett.trainer")
 
@@ -37,7 +28,7 @@ class TrainCfg:
     into wandb independently.
 
     ``output_dir`` / ``condition`` / ``phase`` / ``run_name`` are passed
-    through to the post-train wandb upload (``wandb_sync``). Leave them
+    through to the post-train wandb upload. Leave them
     ``None`` to skip the upload entirely — the trainer still runs.
     """
 
@@ -50,17 +41,17 @@ class TrainCfg:
     run_name: str | None = None
 
 
-class MultiBrainTrainer:
+class BrainTrainer:
     """Thin NETT wrapper over skrl ``SequentialTrainer``.
 
     One skrl agent owns one vectorized env scope. ``SequentialTrainer`` handles
     the act/step/record/update loop through its native ``agents`` + ``scopes``
-    support; this class preserves NETT output layout and eval/record hooks.
+    support; :class:`RunRecorder` owns the output writing around that loop.
     """
 
     def __init__(self, env, agents: list, device: str | torch.device = "cuda"):
         if len(agents) < 1:
-            raise ValueError("MultiBrainTrainer requires at least one agent.")
+            raise ValueError("BrainTrainer requires at least one agent.")
         if env.num_envs % len(agents) != 0:
             raise ValueError(
                 f"env.num_envs ({env.num_envs}) must be divisible by num_brains "
@@ -90,69 +81,28 @@ class MultiBrainTrainer:
         regardless of whether ``total_timesteps`` lands on a checkpoint
         boundary.
 
-        ``dry_run`` short-circuits the artifact-producing branches: skip
+        ``dry_run`` short-circuits the output-producing branches: skip
         ``hparams.json``, skip ``train_timing.json``, skip final checkpoints
         and recording exports.
         """
-        if cfg.hparams_dir and not dry_run:
-            self._write_hparams(cfg)
+        recorder = RunRecorder(self.agents, self.env.num_envs)
+        recorder.before_train(cfg, dry_run=dry_run)
 
         train_env = (
             IntrinsicRewardEnvWrapper(self.env, intrinsic_reward_adapters)
             if intrinsic_reward_adapters else self.env
         )
-        if needs_skrl_compat(train_env):
-            train_env = SkrlEnvCompatibilityWrapper(train_env)
         # One contiguous skrl run — no chunking needed now that NETT no
         # longer interrupts to write its own checkpoints.
         start = time.perf_counter()
         self._run_skrl_train(train_env, cfg.total_timesteps)
         train_elapsed = time.perf_counter() - start
-        if dry_run:
-            return
-        if cfg.hparams_dir:
-            self._write_train_timing(cfg, train_elapsed)
-
-        self._save_final_checkpoints()
-        if record_cfg:
-            export_recordings(record_cfg)
-        # Upload checkpoints, recordings (as wandb.Video + raw MP4), per-step
-        # CSV logs, profiling JSON, and the run's config.yaml to each brain's
-        # wandb Run. ``sync_outputs_to_wandb`` no-ops if wandb is disabled
-        # or the artifacts aren't present.
-        if all(getattr(cfg, attr) is not None for attr in
-               ("output_dir", "condition", "phase", "run_name")):
-            from .wandb_sync import sync_outputs_to_wandb
-
-            sync_outputs_to_wandb(
-                self.agents,
-                output_dir=cfg.output_dir,
-                condition=cfg.condition,
-                phase=cfg.phase,
-                run_name=cfg.run_name,
-            )
-
-        # Mark wandb runs as ``finished`` (without this, the run sits in the
-        # ``crashed`` state because the parent process exits before wandb's
-        # own cleanup hook fires).
-        from .experiment import finish_agent_wandb_runs
-        finish_agent_wandb_runs(self.agents)
-
-    def _save_final_checkpoints(self) -> None:
-        """Write ``{experiment_dir}/checkpoints/final_agent.pt`` per agent.
-
-        Uses skrl's own ``Agent.save`` (whole-modules dict, the same format
-        as the periodic ``write_checkpoint`` output) so test-mode loaders can
-        round-trip through ``Agent.load`` regardless of which checkpoint
-        they pick.
-        """
-        for agent in self.agents:
-            exp_dir = getattr(agent, "experiment_dir", None)
-            if not exp_dir:
-                continue
-            ckpt_dir = Path(exp_dir) / "checkpoints"
-            ckpt_dir.mkdir(parents=True, exist_ok=True)
-            agent.save(str(ckpt_dir / "final_agent.pt"))
+        recorder.after_train(
+            cfg,
+            elapsed_s=train_elapsed,
+            record_cfg=record_cfg,
+            dry_run=dry_run,
+        )
 
     def _run_skrl_train(self, env, timesteps: int) -> None:
         trainer = SequentialTrainer(
@@ -189,11 +139,7 @@ class MultiBrainTrainer:
                     totals[i] += scoped_rewards.to(totals.device, non_blocking=True).mean()
                     offset += scope
                 observations = next_observations
-        # Finish the eval-phase wandb runs so they aren't left ``crashed``.
-        # Skrl creates a fresh wandb run for each phase (different ``id`` per
-        # train/test), so this is independent of any train-phase finish.
-        from .experiment import finish_agent_wandb_runs
-        finish_agent_wandb_runs(self.agents)
+        RunRecorder(self.agents, self.env.num_envs).finish_wandb_runs()
         return {i: float(totals[i].item() / total_timesteps) for i in range(len(self.agents))}
 
     def _collect_actions_for_eval(self, observations: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
@@ -208,26 +154,5 @@ class MultiBrainTrainer:
             offset += scope
         return torch.cat(actions, dim=0)
 
-    @staticmethod
-    def _write_hparams(cfg: TrainCfg) -> None:
-        out = Path(cfg.hparams_dir) / "logs"
-        out.mkdir(parents=True, exist_ok=True)
-        payload = dict(cfg.hparams or {})
-        payload.setdefault("total_timesteps", cfg.total_timesteps)
-        with (out / "hparams.json").open("w") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
 
-    def _write_train_timing(self, cfg: TrainCfg, elapsed_s: float) -> None:
-        out = Path(cfg.hparams_dir) / "logs"
-        out.mkdir(parents=True, exist_ok=True)
-        env_timesteps = int(cfg.total_timesteps)
-        train_steps = env_timesteps * max(1, self.env.num_envs)
-        payload = {
-            "skrl_train_total_s": elapsed_s,
-            "env_timesteps": env_timesteps,
-            "train_steps": train_steps,
-            "env_steps_per_second": float(env_timesteps) / elapsed_s if elapsed_s > 0 else 0.0,
-            "train_steps_per_second": float(train_steps) / elapsed_s if elapsed_s > 0 else 0.0,
-        }
-        with (out / "train_timing.json").open("w") as f:
-            json.dump(payload, f, indent=2, sort_keys=True)
+MultiBrainTrainer = BrainTrainer

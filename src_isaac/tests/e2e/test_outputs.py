@@ -94,6 +94,7 @@ def test_hparams_json_records_algorithm_and_lr(shared_run_output):
         "encoder",
         "algorithm_cfg",
         "checkpoint_freq",
+        "envs_per_brain",
         "total_timesteps",
     }
     assert expected_keys.issubset(hparams.keys()), \

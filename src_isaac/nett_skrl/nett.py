@@ -5,7 +5,7 @@ benchmark run(s) out. The behavioral differences are entirely below the
 public API:
 
   - One process per imprint condition (not per brain x condition).
-  - N brains share one vectorized Isaac env via :class:`MultiBrainTrainer`;
+  - N brains share one vectorized Isaac env via :class:`BrainTrainer`;
     each brain can own multiple parallel env rows.
   - No mlagents port juggling; Isaac Sim doesn't reserve ports.
   - ``task_memory`` declares (or ``"auto"`` measures) per-task VRAM so the
@@ -34,6 +34,7 @@ from .runtime import (
     run_task,
 )
 from .runtime.memory import MemoryManager
+from .runtime.parallel_envs import capped_num_envs, num_env_candidates
 from .utils import validate_config
 from .runtime.tasklist import validate_tasklist
 
@@ -127,6 +128,7 @@ class NETT:
         brain_id_offset: int = 0,
         eval_freq: int | None = None,
         task_memory: str | float = "auto",
+        max_parallel_envs: int | None = None,
         **kwargs,
     ) -> None:
         episodes = episodes or {"train": 5000, "test": 100}
@@ -146,6 +148,7 @@ class NETT:
             "brain_id_offset": brain_id_offset,
             "eval_freq": eval_freq,
             "task_memory": task_memory,
+            "max_parallel_envs": max_parallel_envs,
         }
         output_dir = self.output_path / name
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -172,18 +175,25 @@ class NETT:
             episodes, steps_per_episode,
         )
         base_brain.iterations_per_test_episode = base_env.iterations_per_test_episode
-        num_envs = int(num_brains) * int(base_brain.envs_per_agent)
-
-        base_body.adjust_to_agent(
-            base_env,
+        num_envs = capped_num_envs(
             num_brains=num_brains,
-            num_envs=num_envs,
-            episode_steps=steps_per_episode,
+            preferred_envs_per_brain=base_brain.envs_per_brain,
+            max_parallel_envs=max_parallel_envs,
+        )
+        self._apply_parallel_env_plan(
+            base_brain, base_body, base_env, num_brains, num_envs, steps_per_episode
         )
 
         modes = _modes_from_episodes(episodes)
-        memory = self._resolve_task_memory(
-            task_memory, base_brain, base_body, base_env, output_dir,
+        memory, num_envs = self._resolve_task_memory_and_envs(
+            task_memory,
+            base_brain,
+            base_body,
+            base_env,
+            output_dir,
+            num_brains,
+            num_envs,
+            steps_per_episode,
         )
         tasklist = build_tasks(
             base_brain, base_body, base_env, num_brains, num_envs, base_env.conditions,
@@ -220,18 +230,67 @@ class NETT:
 
     # --- Memory estimation -------------------------------------------------
 
-    def _resolve_task_memory(
+    def _apply_parallel_env_plan(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        num_brains: int,
+        num_envs: int,
+        steps_per_episode: int,
+    ) -> None:
+        brain.envs_per_brain = max(1, int(num_envs) // max(1, int(num_brains)))
+        body.adjust_to_agent(
+            env,
+            num_brains=num_brains,
+            num_envs=num_envs,
+            episode_steps=steps_per_episode,
+        )
+
+    def _resolve_task_memory_and_envs(
         self,
         task_memory: str | float,
         brain: Brain,
         body: Body,
         env: Environment,
         output_dir: Path,
-    ) -> float:
+        num_brains: int,
+        num_envs: int,
+        steps_per_episode: int,
+    ) -> tuple[float, int]:
         """Return task VRAM budget in bytes; dry-run estimate when ``"auto"``."""
-        if task_memory == "auto":
-            return self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
-        return float(task_memory) * (1024**3)
+        if task_memory != "auto":
+            return float(task_memory) * (1024**3), int(num_envs)
+
+        failures: list[tuple[int, Exception]] = []
+        for candidate in num_env_candidates(num_envs, num_brains):
+            self._apply_parallel_env_plan(
+                brain, body, env, num_brains, candidate, steps_per_episode
+            )
+            try:
+                return (
+                    self._estimate_task_memory_via_dry_run(brain, body, env, output_dir),
+                    candidate,
+                )
+            except Exception as exc:
+                failures.append((candidate, exc))
+                self.logger.warning(
+                    "Dry-run memory estimation failed for num_envs=%d; trying smaller plan",
+                    candidate,
+                    exc_info=True,
+                )
+
+        fallback_envs = int(num_brains)
+        self._apply_parallel_env_plan(
+            brain, body, env, num_brains, fallback_envs, steps_per_episode
+        )
+        self.logger.error(
+            "Dry-run memory estimation failed for all candidates %s; falling back to %.1f GB with num_envs=%d",
+            [candidate for candidate, _ in failures],
+            _FALLBACK_TASK_MEMORY_GB,
+            fallback_envs,
+        )
+        return _FALLBACK_TASK_MEMORY_GB * (1024**3), fallback_envs
 
     def _estimate_task_memory_via_dry_run(
         self,
@@ -246,13 +305,13 @@ class NETT:
         condition = env.conditions[0]
 
         task = Task(
-            brain, 
-            body, 
-            env, 
-            condition, 
+            brain,
+            body,
+            env,
+            condition,
             output_dir,
-            modes=["train"], 
-            episodes={"train": 1}, 
+            modes=["train"],
+            episodes={"train": 1},
             memory=None,
             num_brains=env.num_brains,
             num_envs=env.num_envs,
@@ -261,7 +320,7 @@ class NETT:
         task.set_dry_run(True)
         # mem.txt lands at the canonical ``config.path / "mem.txt"`` since
         # ``for_mode()`` rewrites ``path`` from ``__post_init__``; validation
-        # mode suppresses every other artifact, so this file is the only
+        # mode suppresses every other output, so this file is the only
         # thing the dry-run leaves behind.
         condition_dir = output_dir / condition
         mem_txt = condition_dir / "mem.txt"
@@ -279,12 +338,6 @@ class NETT:
             if not mem_txt.exists():
                 raise RuntimeError(f"dry-run produced no mem.txt at {mem_txt}")
             post_free = int(mem_txt.read_text().strip())
-        except Exception:
-            self.logger.exception(
-                "Dry-run memory estimation failed; falling back to %.1f GB",
-                _FALLBACK_TASK_MEMORY_GB,
-            )
-            return _FALLBACK_TASK_MEMORY_GB * (1024**3)
         finally:
             if mem_txt.exists():
                 mem_txt.unlink()

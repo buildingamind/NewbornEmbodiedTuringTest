@@ -18,6 +18,7 @@ episodes:
 
 steps_per_episode: 50
 num_brains: 1
+max_parallel_envs: null
 ```
 
 Run it with:
@@ -52,6 +53,11 @@ interval and runs metrics-only test rollouts in separate Isaac subprocesses at
 each milestone. Final test-mode recording is still controlled by
 `episodes.test` and `environment.recording`.
 
+Top-level `max_parallel_envs` is optional. When set, NETT caps each condition
+task's total vectorized env count to a multiple of `num_brains`. With
+`task_memory: auto`, the dry-run profiler can search downward from that cap
+until it finds a safe env count.
+
 ## Brain
 
 `brain` configures skrl agents.
@@ -75,6 +81,10 @@ Common fields:
 - `reward_cfg`: intrinsic reward constructor config. Defaults include
   `beta: 0.2`, `kappa: 0.0`, `gamma: 0.99`, `weight: 1.0`, and
   `trainable: true`; extra keys pass through.
+
+Unknown `encoder_cfg`, `algorithm_cfg`, and `reward_cfg` keys intentionally pass
+through to skrl or custom modules. This keeps advanced skrl options available
+without requiring schema changes for every lower-level setting.
 
 For PPO, NETT defaults to `learning_rate: 1e-5`, `rollouts: 8000`,
 `mini_batches: 16`, `value_loss_scale: 0.25`, and `grad_norm_clip: 0.25`.

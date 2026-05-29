@@ -116,6 +116,7 @@ def test_schema_accepts_recording_and_record_mode():
     }
     cfg["wrappers"] = ["video", "dvs", "retina"]
     cfg["eval_freq"] = 50000
+    cfg["max_parallel_envs"] = 8
     validate_config(cfg, _SCHEMA)
 
 

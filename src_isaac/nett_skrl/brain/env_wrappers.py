@@ -10,9 +10,6 @@ from __future__ import annotations
 import torch
 
 
-SKRL_OPTIONAL_ENV_API = ("num_agents", "state", "render", "close")
-
-
 class IntrinsicRewardEnvWrapper:
     """Reward-shaping wrapper used before skrl records transitions."""
 
@@ -60,31 +57,3 @@ class IntrinsicRewardEnvWrapper:
                 ).view_as(reward_i)
         self._last_observations = next_observations
         return next_observations, rewards, terminated, truncated, infos
-
-
-class SkrlEnvCompatibilityWrapper:
-    """Adds optional skrl Wrapper attributes that simple test envs omit."""
-
-    def __init__(self, env) -> None:
-        self._env = env
-        self.num_agents = getattr(env, "num_agents", 1)
-
-    def __getattr__(self, name):
-        return getattr(self._env, name)
-
-    def state(self):
-        env_state = getattr(self._env, "state", None)
-        return env_state() if callable(env_state) else None
-
-    def render(self, *args, **kwargs):
-        env_render = getattr(self._env, "render", None)
-        return env_render(*args, **kwargs) if callable(env_render) else None
-
-    def close(self):
-        env_close = getattr(self._env, "close", None)
-        return env_close() if callable(env_close) else None
-
-
-def needs_skrl_compat(env) -> bool:
-    """Return whether ``env`` is missing skrl's optional trainer API."""
-    return any(not hasattr(env, name) for name in SKRL_OPTIONAL_ENV_API)
