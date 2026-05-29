@@ -30,6 +30,22 @@ logger = logging.getLogger("nett.environment")
 
 _RECORDING_TARGETS = ("egocentric", "chamber")
 
+_ENV_CFG_FIELDS = (
+    ("scene.num_envs", "num_envs", int),
+    ("design_sheet", "design_sheet", str),
+    ("media_root", "media_root", str),
+    ("episode_steps", "episode_steps", int),
+    ("observation.binocular", "binocular_vision", bool),
+    ("observation.input_resolution", "input_resolution", int),
+    ("reward_types", "reward_types", tuple),
+    ("record_mode", "record_mode", None),
+    ("motor.enable_neck_flexion", "enable_neck_flexion", bool),
+    ("motor.enable_lateral_bending", "enable_lateral_bending", bool),
+    ("screens.random_first_frame", "random_first_frame", bool),
+    ("screens.switch_steps", "switch_steps", int),
+    ("screens.decision_period", "decision_period", int),
+)
+
 
 class Environment:
     """Isaac Lab environment loader.
@@ -146,26 +162,21 @@ class Environment:
         cfg.__post_init__()
 
     def _apply_sim_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
-        cfg.scene.num_envs = self.num_envs
         cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
+        self._copy_env_cfg_fields(cfg)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))
-        cfg.design_sheet = str(self.design_sheet)
-        cfg.media_root = str(self.media_root)
-        cfg.episode_steps = self.episode_steps
-        cfg.observation.binocular = self.binocular_vision
-        cfg.observation.input_resolution = self.input_resolution
-        cfg.reward_types = tuple(self.reward_types)
-        cfg.record_mode = self.record_mode
-        cfg.motor.enable_neck_flexion = self.enable_neck_flexion
-        cfg.motor.enable_lateral_bending = self.enable_lateral_bending
-        cfg.screens.random_first_frame = self.random_first_frame
-        cfg.screens.switch_steps = self.switch_steps
-        cfg.screens.decision_period = self.decision_period
         _set_if_present(cfg, "seed", config.seed if seed is None else seed)
         if config.dry_run:
             _set_if_present(cfg, "validation_mode", True)
+
+    def _copy_env_cfg_fields(self, cfg) -> None:
+        for cfg_path, env_attr, transform in _ENV_CFG_FIELDS:
+            value = getattr(self, env_attr)
+            if transform is not None:
+                value = transform(value)
+            _set_attr_path(cfg, cfg_path, value)
 
     def _configure_artifacts(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         log_path = config.path / "logs"
@@ -258,6 +269,14 @@ def parse_episode_selector(spec, total_episodes: int) -> tuple[int, ...]:
 def _set_if_present(obj, name: str, value) -> None:
     if hasattr(obj, name):
         setattr(obj, name, value)
+
+
+def _set_attr_path(obj, dotted_name: str, value) -> None:
+    parts = dotted_name.split(".")
+    target = obj
+    for part in parts[:-1]:
+        target = getattr(target, part)
+    setattr(target, parts[-1], value)
 
 
 def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
