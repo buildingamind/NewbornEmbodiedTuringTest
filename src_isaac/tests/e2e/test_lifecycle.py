@@ -49,8 +49,7 @@ def _minimal_task(tmp_path: Path):
     brain = Brain(
         algorithm="PPO",
         encoder="small",
-        batch_size=32,
-        buffer_size=64,
+        algorithm_cfg={"rollouts": 64, "mini_batches": 2},
         wandb={"mode": "disabled"},
     )
     return Task(

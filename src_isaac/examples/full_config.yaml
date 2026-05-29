@@ -67,26 +67,22 @@ brain:
   # (ICM/E3B/RIDE/PseudoCounts/NGU) are added through a skrl env wrapper.
   reward: closeness
 
-  # Encoder output dim. null → use the encoder's default (512).
-  features_dim: null
-
-  # PPO update params.
-  batch_size: 256
-  buffer_size: 2048
-  learning_rate: 1.0e-5
-
   # Save a per-brain checkpoint every N training steps. null = only save at
   # the end of training.
   checkpoint_freq: 500
 
-  # Freeze encoder weights if false (transfer-learning mode).
-  train_encoder: true
-
-  # Encoder-class init kwargs for the selected registered/native encoder.
-  custom_encoder_args: {}
+  # Encoder-class config for the selected registered/native encoder.
+  encoder_cfg:
+    features_dim: 512
+    trainable: true
 
   # Algorithm cfg overrides — merged on top of skrl's *_CFG defaults.
-  custom_algorithm_args: {}
+  algorithm_cfg:
+    learning_rate: 1.0e-5
+    rollouts: 8000
+    mini_batches: 16
+    value_loss_scale: 0.25
+    grad_norm_clip: 0.25
 
   # MLP trunk/action-head settings. Omit to use these defaults.
   model:
@@ -100,14 +96,12 @@ brain:
     output_gain: 0.01
 
   # Reward-function init kwargs for intrinsic rewards.
-  reward_args:
+  reward_cfg:
     beta: 0.2
     kappa: 0.0
     gamma: 0.99
-
-  # Intrinsic reward controls. Ignored for env-side rewards.
-  intrinsic_reward_weight: 1.0
-  train_intrinsic_reward: true
+    weight: 1.0
+    trainable: true
 
   # Weights & Biases logging. skrl's native wandb integration creates one
   # wandb run per agent (per brain). All training metrics that skrl tracks

@@ -92,9 +92,7 @@ def test_hparams_json_records_algorithm_and_lr(shared_run_output):
     expected_keys = {
         "algorithm",
         "encoder",
-        "learning_rate",
-        "batch_size",
-        "buffer_size",
+        "algorithm_cfg",
         "checkpoint_freq",
         "total_timesteps",
     }
@@ -104,7 +102,7 @@ def test_hparams_json_records_algorithm_and_lr(shared_run_output):
     # ("PPO" → "PPO" because the alias matches; "small" → "SmallCNN").
     assert hparams["algorithm"]
     assert hparams["encoder"]
-    assert isinstance(hparams["learning_rate"], (float, int, str))
+    assert isinstance(hparams["algorithm_cfg"]["learning_rate"], (float, int, str))
 
 
 def test_csv_columns_match_unity_log_channel_header(shared_run_output):

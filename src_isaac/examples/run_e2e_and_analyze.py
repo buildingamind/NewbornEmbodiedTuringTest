@@ -59,10 +59,12 @@ CONFIG: dict = {
     "brain": {
         "algorithm": "PPO",
         "encoder": "small",
-        "batch_size": 500,
-        "buffer_size": 4000,
-        "learning_rate": 1.0e-5,
-        "train_encoder": True,
+        "encoder_cfg": {"trainable": True},
+        "algorithm_cfg": {
+            "rollouts": 4000,
+            "mini_batches": 8,
+            "learning_rate": 1.0e-5,
+        },
         "wandb": {
             "mode": "online",
             "project": "nett-skrl",

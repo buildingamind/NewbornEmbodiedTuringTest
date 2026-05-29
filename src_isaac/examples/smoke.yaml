@@ -23,10 +23,12 @@ environment:
 brain:
   algorithm: PPO
   encoder: small
-  batch_size: 64
-  buffer_size: 128
-  learning_rate: 1.0e-5
-  train_encoder: true
+  encoder_cfg:
+    trainable: true
+  algorithm_cfg:
+    learning_rate: 1.0e-5
+    rollouts: 128
+    mini_batches: 2
   wandb:
     mode: disabled                  # never touch wandb cloud from smoke runs
 

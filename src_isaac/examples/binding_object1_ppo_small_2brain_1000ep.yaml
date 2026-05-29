@@ -23,9 +23,10 @@ brain:
   algorithm: PPO
   encoder: small
   reward: closeness
-  learning_rate: 1.0e-5
-  batch_size: 512
-  buffer_size: 2048
+  algorithm_cfg:
+    learning_rate: 1.0e-5
+    rollouts: 2048
+    mini_batches: 4
   checkpoint_freq: 60000
   model:
     hidden_sizes: [64, 64]

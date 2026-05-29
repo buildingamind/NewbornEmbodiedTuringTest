@@ -15,7 +15,7 @@ def policy_device(config: TaskConfig) -> torch.device:
 
 
 def dry_run_timesteps(brain) -> int:
-    return max(brain.batch_size, brain.buffer_size)
+    return brain.algorithm_cfg.dry_run_timesteps()
 
 
 def train_timesteps(brain, config: TaskConfig) -> int:
@@ -46,9 +46,9 @@ def train_hparams(brain, config: TaskConfig, timesteps: int) -> dict:
         "encoder": _name_of(brain.encoder),
         "model": brain.model_cfg.__dict__,
         "reward": str(brain.reward_spec),
-        "learning_rate": brain.learning_rate if not callable(brain.learning_rate) else "callable",
-        "batch_size": brain.batch_size,
-        "buffer_size": brain.buffer_size,
+        "encoder_cfg": brain.encoder_cfg.as_dict(),
+        "algorithm_cfg": _jsonable_cfg(brain.algorithm_cfg.as_dict()),
+        "reward_cfg": brain.reward_cfg.as_dict(),
         "checkpoint_freq": brain.checkpoint_freq,
         "envs_per_agent": brain.envs_per_agent,
         "total_timesteps": brain.train_iterations,
@@ -59,3 +59,7 @@ def train_hparams(brain, config: TaskConfig, timesteps: int) -> dict:
 
 def _name_of(value) -> str:
     return getattr(value, "__name__", str(value))
+
+
+def _jsonable_cfg(data: dict) -> dict:
+    return {k: ("callable" if callable(v) else v) for k, v in data.items()}

@@ -104,8 +104,14 @@ def test_schema_accepts_recording_and_record_mode():
     )
     cfg["episodes"] = {"train": 1, "record": 1}
     cfg["brain"] = {
-        "intrinsic_reward_weight": 0.5,
-        "train_intrinsic_reward": False,
+        "encoder_cfg": {"features_dim": 128, "custom_encoder_flag": True},
+        "algorithm_cfg": {"rollouts": 32, "custom_skrl_flag": True},
+        "reward_cfg": {
+            "beta": 0.1,
+            "weight": 0.5,
+            "trainable": False,
+            "custom_reward_flag": True,
+        },
         "model": {"hidden_sizes": [32, 16], "activation": "relu", "initial_log_std": -0.5},
     }
     cfg["wrappers"] = ["video", "dvs", "retina"]

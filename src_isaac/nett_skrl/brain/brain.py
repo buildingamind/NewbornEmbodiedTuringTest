@@ -13,11 +13,12 @@ small NETT runner wrapper.
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, Optional
+from typing import Any, Optional
 
 import torch
 
 from ..runtime.task import TaskConfig
+from .config import AlgorithmCfg, EncoderCfg, RewardCfg, algorithm_cfg_from
 from .trainer import MultiBrainTrainer, RecordingCfg, TrainCfg
 from .models import ModelCfg, model_cfg_from
 from .run_config import (
@@ -37,6 +38,7 @@ from .env_adapter import NettIsaacLabWrapper
 from .rewards import UnsupportedIntrinsicReward
 from .registry import (
     validate_algorithm,
+    algorithm_spec,
     validate_encoder,
     validate_reward,
 )
@@ -45,7 +47,6 @@ from .registry import (
 logger = logging.getLogger("nett.brain")
 
 _ENV_REWARD_NAMES = {"closeness", "completeness"}
-_DEFAULT_REWARD_ARGS = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}
 _RUNTIME_DEFAULTS = {
     "iterations_per_test_episode": {},
     "steps_per_episode": 0,
@@ -55,10 +56,6 @@ _RUNTIME_DEFAULTS = {
     "test_iterations": {},
     "n_tasks": 0,
 }
-
-
-def _optional_int(value) -> int | None:
-    return int(value) if value is not None else None
 
 
 class Brain:
@@ -73,18 +70,11 @@ class Brain:
         encoder: str | type = "small",
         algorithm: str | type = "PPO",
         reward: str | type | None = "closeness",
-        features_dim: Optional[int] = None,
-        batch_size: int = 512,
-        buffer_size: int = 2048,
-        learning_rate: float | Callable = 1e-5,
         checkpoint_freq: Optional[int] = None,
-        train_encoder: bool = True,
-        custom_encoder_args: Optional[dict[str, Any]] = None,
-        custom_algorithm_args: Optional[dict[str, Any]] = None,
+        encoder_cfg: EncoderCfg | dict[str, Any] | None = None,
+        algorithm_cfg: AlgorithmCfg | dict[str, Any] | None = None,
         model: Optional[dict[str, Any] | ModelCfg] = None,
-        reward_args: Optional[dict[str, Any]] = None,
-        intrinsic_reward_weight: float = 1.0,
-        train_intrinsic_reward: bool = True,
+        reward_cfg: RewardCfg | dict[str, Any] | None = None,
         wandb: Optional[dict[str, Any]] = None,
     ):
         self._assign_attrs({
@@ -94,20 +84,14 @@ class Brain:
             "reward": validate_reward(reward),
         })
         self._raise_if_unsupported_intrinsic_reward(reward)
+        spec = algorithm_spec(self.algorithm)
 
         self._assign_attrs({
-            "features_dim": _optional_int(features_dim),
-            "batch_size": int(batch_size),
-            "buffer_size": int(buffer_size),
-            "learning_rate": learning_rate if callable(learning_rate) else float(learning_rate),
-            "checkpoint_freq": _optional_int(checkpoint_freq),
-            "train_encoder": bool(train_encoder),
-            "custom_encoder_args": dict(custom_encoder_args or {}),
-            "custom_algorithm_args": dict(custom_algorithm_args or {}),
+            "checkpoint_freq": int(checkpoint_freq) if checkpoint_freq is not None else None,
+            "encoder_cfg": EncoderCfg.from_value(encoder_cfg),
+            "algorithm_cfg": algorithm_cfg_from(algorithm_cfg, spec),
             "model_cfg": model if isinstance(model, ModelCfg) else model_cfg_from(model),
-            "reward_args": dict(reward_args or _DEFAULT_REWARD_ARGS),
-            "intrinsic_reward_weight": float(intrinsic_reward_weight),
-            "train_intrinsic_reward": bool(train_intrinsic_reward),
+            "reward_cfg": RewardCfg.from_value(reward_cfg),
             "wandb_cfg": _normalize_wandb_cfg(wandb),
         })
 
@@ -155,7 +139,7 @@ class Brain:
         """Compute step budgets for train + test modes."""
         self.num_brains = int(num_brains)
         self.steps_per_episode = steps_per_episode
-        self.envs_per_agent = max(1, self.batch_size // max(1, steps_per_episode))
+        self.envs_per_agent = self.algorithm_cfg.envs_per_agent_for(steps_per_episode)
         self.n_tasks = len(iterations_per_episode) * num_brains
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
@@ -266,9 +250,9 @@ class Brain:
                 self.reward,
                 env=env,
                 device=device,
-                weight=self.intrinsic_reward_weight,
-                update_enabled=self.train_intrinsic_reward,
-                kwargs=self.reward_args,
+                weight=self.reward_cfg.weight,
+                update_enabled=self.reward_cfg.trainable,
+                kwargs=self.reward_cfg.as_kwargs(),
             )
             for _ in range(env.num_envs)
         ]

@@ -200,9 +200,11 @@ def test_train_smoke_convergence_signal(tmp_path, golden, update_golden):
     """
     cfg = copy.deepcopy(MINIMAL_SMOKE_CFG)
     cfg["episodes"] = {"train": 100}
-    cfg["brain"]["learning_rate"] = 3.0e-4  # PPO-typical; smoke cfg's 1e-5 is too low to learn fast
-    cfg["brain"]["batch_size"] = 64
-    cfg["brain"]["buffer_size"] = 128
+    cfg["brain"].setdefault("algorithm_cfg", {}).update({
+        "learning_rate": 3.0e-4,  # PPO-typical; smoke cfg's 1e-5 is too low to learn fast
+        "rollouts": 128,
+        "mini_batches": 2,
+    })
     cfg_path = tmp_path / "cfg.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg))
 

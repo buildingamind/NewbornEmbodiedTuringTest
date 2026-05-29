@@ -235,8 +235,8 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
     assert seen["steps"] == 150
 
 
-def test_calc_iterations_derives_parallel_envs_per_agent_from_batch_size():
-    brain = Brain(batch_size=512)
+def test_calc_iterations_derives_parallel_envs_per_agent_from_rollout_minibatch_size():
+    brain = Brain(algorithm_cfg={"rollouts": 1024, "mini_batches": 2})
     brain.calc_iterations(
         num_brains=1,
         iterations_per_episode={"Object1": 1},
@@ -324,13 +324,19 @@ class _FakeSkrlEnv:
         )
 
 
+def _tiny_algorithm_cfg(algorithm="PPO", *, rollouts=8, mini_batch_size=2):
+    if algorithm in {"SAC", "TD3", "DDPG"}:
+        return {"memory_size": rollouts, "batch_size": mini_batch_size}
+    return {"rollouts": rollouts, "mini_batches": max(1, rollouts // mini_batch_size)}
+
+
 @pytest.mark.parametrize(
     "algorithm",
     ["PPO", "A2C", "TRPO", "RPO", "CEM", "SAC", "TD3", "DDPG"],
 )
 def test_supported_algorithms_run_one_fake_step(algorithm):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm=algorithm, buffer_size=8, batch_size=2)
+    brain = Brain(algorithm=algorithm, algorithm_cfg=_tiny_algorithm_cfg(algorithm))
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     MultiBrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=1))
 
@@ -341,31 +347,31 @@ def test_supported_algorithms_run_one_fake_step(algorithm):
 )
 def test_supported_algorithms_build_expected_model_keys(algorithm):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm=algorithm, buffer_size=8, batch_size=2)
+    brain = Brain(algorithm=algorithm, algorithm_cfg=_tiny_algorithm_cfg(algorithm))
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     assert set(agent.models) == set(algorithm_spec(brain.algorithm).model_keys)
 
 
 def test_ppo_uses_conservative_nett_stability_defaults():
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2)
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(rollouts=64, mini_batch_size=4))
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     assert agent.cfg.learning_rate == pytest.approx((1e-5, 1e-5))
     assert agent.cfg.rollouts == 64
+    assert agent.cfg.mini_batches == 16
     assert agent.cfg.value_loss_scale == pytest.approx(0.25)
     assert agent.cfg.grad_norm_clip == pytest.approx(0.25)
     assert agent.memory.memory_size == 64
 
 
-def test_custom_algorithm_args_can_override_ppo_stability_defaults():
+def test_algorithm_cfg_can_override_ppo_stability_defaults():
     env = _FakeSkrlEnv()
     brain = Brain(
         algorithm="PPO",
-        buffer_size=8,
-        batch_size=2,
-        learning_rate=2e-5,
-        custom_algorithm_args={
+        algorithm_cfg={
+            "learning_rate": 2e-5,
             "rollouts": 16,
+            "mini_batches": 4,
             "value_loss_scale": 0.75,
             "grad_norm_clip": 0.5,
         },
@@ -373,6 +379,7 @@ def test_custom_algorithm_args_can_override_ppo_stability_defaults():
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     assert agent.cfg.learning_rate == pytest.approx((2e-5, 2e-5))
     assert agent.cfg.rollouts == 16
+    assert agent.cfg.mini_batches == 4
     assert agent.cfg.value_loss_scale == pytest.approx(0.75)
     assert agent.cfg.grad_norm_clip == pytest.approx(0.5)
     assert agent.memory.memory_size == 16
@@ -380,7 +387,7 @@ def test_custom_algorithm_args_can_override_ppo_stability_defaults():
 
 def test_off_policy_agents_keep_replay_buffer_size():
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="SAC", buffer_size=123, batch_size=2)
+    brain = Brain(algorithm="SAC", algorithm_cfg={"memory_size": 123, "batch_size": 2})
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     assert agent.memory.memory_size == 123
 
@@ -406,7 +413,11 @@ def test_value_critic_output_is_bounded_and_finite():
 
 def test_ppo_first_update_keeps_weights_finite():
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", features_dim=16, buffer_size=128, batch_size=32)
+    brain = Brain(
+        algorithm="PPO",
+        encoder_cfg={"features_dim": 16},
+        algorithm_cfg={"rollouts": 128, "mini_batches": 4},
+    )
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     MultiBrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=65))
     for model in agent.models.values():
@@ -453,7 +464,7 @@ def test_wandb_disabled_keeps_directory_but_skips_wandb(tmp_path):
     `experiment_name` must be populated so checkpoints land in the
     canonical `{output}/wandb_runs/brain_{i}/checkpoints/` path."""
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   wandb={"mode": "disabled"})
     config = _FakeTaskConfig(condition="cond", current_mode="train",
                              run_name="run", tmp=tmp_path)
@@ -468,7 +479,7 @@ def test_wandb_disabled_keeps_directory_but_skips_wandb(tmp_path):
 
 def test_wandb_offline_populates_skrl_experiment(tmp_path):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   wandb={"project": "p", "entity": "e", "mode": "offline",
                          "tags": ["custom"], "notes": "n"})
     config = _FakeTaskConfig(condition="condA", current_mode="train",
@@ -500,7 +511,7 @@ def test_wandb_offline_populates_skrl_experiment(tmp_path):
 
 def test_wandb_entity_and_notes_omitted_when_none(tmp_path):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   wandb={"mode": "online"})
     config = _FakeTaskConfig(condition="c", current_mode="test",
                              run_name="r", tmp=tmp_path)
@@ -703,13 +714,13 @@ def test_wandb_scalar_mirror_logs_episode_total_rewards():
 
 def test_wandb_invalid_mode_rejected_at_brain_construction():
     with pytest.raises(ValueError, match="brain.wandb.mode"):
-        Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+        Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
               wandb={"mode": "bogus"})
 
 
 def test_build_agents_without_config_skips_wandb_wiring():
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   wandb={"project": "p", "mode": "offline"})
     # No config kwarg → wandb wiring is skipped so the existing test fixtures
     # (which build agents without TaskConfig) keep working.
@@ -722,7 +733,7 @@ def test_wandb_each_brain_gets_unique_run_name(tmp_path):
         num_envs = 2
 
     env = _TwoBrainEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   wandb={"mode": "offline"})
     config = _FakeTaskConfig(condition="c", current_mode="train",
                              run_name="r", tmp=tmp_path)
@@ -747,7 +758,7 @@ from nett_skrl.brain.experiment import pick_checkpoint as _pick_checkpoint  # no
 
 def test_checkpoint_freq_drives_skrl_checkpoint_interval(tmp_path):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   checkpoint_freq=500, wandb={"mode": "disabled"})
     config = _FakeTaskConfig(condition="c", current_mode="train",
                              run_name="r", tmp=tmp_path)
@@ -761,7 +772,7 @@ def test_checkpoint_freq_drives_skrl_checkpoint_interval(tmp_path):
 
 def test_checkpoint_freq_none_disables_skrl_auto_checkpoint(tmp_path):
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", buffer_size=8, batch_size=2,
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
                   checkpoint_freq=None, wandb={"mode": "disabled"})
     config = _FakeTaskConfig(condition="c", current_mode="train",
                              run_name="r", tmp=tmp_path)

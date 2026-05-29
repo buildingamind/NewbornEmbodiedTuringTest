@@ -20,21 +20,8 @@ def freeze(module: nn.Module) -> None:
         p.requires_grad = False
 
 
-def apply_cfg_overrides(cfg, overrides: dict[str, Any]) -> None:
-    """In-place merge ``overrides`` into ``cfg`` (dataclass or dict)."""
-    if isinstance(cfg, dict):
-        cfg.update(overrides)
-        return
-    for k, v in overrides.items():
-        setattr(cfg, k, v)
-
-
-_DEFAULT_FEATURES_DIM = 512
-
-
-def encoder_kwargs(brain, observation_space) -> dict[str, Any]:
-    features_dim = int(brain.features_dim or _DEFAULT_FEATURES_DIM)
-    return {"features_dim": features_dim, **brain.custom_encoder_args}
+def encoder_cfg_for(brain) -> dict[str, Any]:
+    return brain.encoder_cfg.as_kwargs()
 
 
 def default_algorithm_cfg(brain):
@@ -42,29 +29,15 @@ def default_algorithm_cfg(brain):
     return algorithm_spec(brain.algorithm).cfg_cls()
 
 
-def apply_algorithm_stability_defaults(cfg, spec) -> None:
-    """Conservative defaults for image PPO on NETT's low-variance scenes."""
-    if spec.cls.__name__ != "PPO":
-        return
-    if hasattr(cfg, "rollouts"):
-        apply_cfg_overrides(cfg, {"rollouts": max(int(cfg.rollouts), 64)})
-    if hasattr(cfg, "value_loss_scale"):
-        apply_cfg_overrides(cfg, {"value_loss_scale": 0.25})
-    if hasattr(cfg, "grad_norm_clip"):
-        apply_cfg_overrides(cfg, {"grad_norm_clip": 0.25})
-
-
-def memory_size_for(brain, cfg, spec) -> int:
+def memory_size_for(brain) -> int:
     """Use rollout-sized memory for on-policy skrl agents."""
-    if spec.family in {"on_policy", "cross_entropy"} and hasattr(cfg, "rollouts"):
-        return int(cfg.rollouts)
-    return brain.buffer_size
+    return brain.algorithm_cfg.agent_memory_size()
 
 
 def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     """Build one skrl agent per brain, each owning a contiguous env scope."""
     obs_space, act_space = env.observation_space, env.action_space
-    enc_kwargs = encoder_kwargs(brain, obs_space)
+    encoder_kwargs = encoder_cfg_for(brain)
     spec = algorithm_spec(brain.algorithm)
     num_agents = int(
         getattr(config, "num_brains", None)
@@ -81,13 +54,7 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     agents = []
     for brain_id in range(num_agents):
         cfg = default_algorithm_cfg(brain)
-        apply_algorithm_stability_defaults(cfg, spec)
-        apply_cfg_overrides(cfg, brain.custom_algorithm_args)
-        apply_cfg_overrides(cfg, {"learning_rate": brain.learning_rate})
-        if hasattr(cfg, "mini_batches"):
-            apply_cfg_overrides(cfg, {"mini_batches": max(1, brain.batch_size // 64)})
-        if hasattr(cfg, "batch_size"):
-            apply_cfg_overrides(cfg, {"batch_size": brain.batch_size})
+        brain.algorithm_cfg.apply_to(cfg, spec)
 
         if hasattr(cfg, "value_preprocessor"):
             cfg.value_preprocessor = RunningStandardScaler
@@ -107,20 +74,20 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             )
 
         memory = RandomMemory(
-            memory_size=memory_size_for(brain, cfg, spec),
+            memory_size=memory_size_for(brain),
             num_envs=scope,
             device=device,
         )
         models = build_models_for_algorithm(
             spec,
             encoder_cls=brain.encoder,
-            encoder_kwargs=enc_kwargs,
+            encoder_kwargs=encoder_kwargs,
             observation_space=obs_space,
             action_space=act_space,
             device=device,
             cfg=brain.model_cfg,
         )
-        if not brain.train_encoder:
+        if not brain.encoder_cfg.trainable:
             for model in models.values():
                 if hasattr(model, "encoder"):
                     freeze(model.encoder)

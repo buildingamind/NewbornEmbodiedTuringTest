@@ -2,11 +2,10 @@
 # least one PPO update.
 #
 # Scope: 2 brains, 1 imprint condition (Object1), 2 train episodes, 1 test
-# episode each across 2 test conditions. Train collects 100 timesteps per
-# agent (above the conservative rollouts floor of 64 set by
-# `_apply_algorithm_stability_defaults`), so PPO does at least one full
-# update — exercising the path where RandomMemory's size must equal
-# `cfg.rollouts` to avoid sampling unfilled NaN rows.
+# episode each across 2 test conditions. Train collects at least one full
+# 64-step rollout per agent, so PPO does at least one update — exercising the
+# path where RandomMemory's size must equal `cfg.rollouts` to avoid sampling
+# unfilled NaN rows.
 name: test_phase
 
 environment:
@@ -21,10 +20,12 @@ environment:
 brain:
   algorithm: PPO
   encoder: small
-  batch_size: 32
-  buffer_size: 64
-  learning_rate: 1.0e-5
-  train_encoder: true
+  encoder_cfg:
+    trainable: true
+  algorithm_cfg:
+    learning_rate: 1.0e-5
+    rollouts: 64
+    mini_batches: 2
   wandb:
     mode: disabled                  # smoke runs don't touch wandb cloud
 

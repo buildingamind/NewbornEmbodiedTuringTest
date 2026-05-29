@@ -65,20 +65,20 @@ Common fields:
 - `model`: MLP head settings. Defaults to hidden sizes `[64, 64]`, `elu`
   activation, bounded value output, orthogonal init, and clipped actions.
 - `reward`: env reward string or intrinsic reward name.
-- `features_dim`: encoder feature dimension.
-- `batch_size`, `buffer_size`, `learning_rate`: training parameters. The
-  default learning rate is conservative (`1e-5`) for stable image PPO.
 - `checkpoint_freq`: per-brain checkpoint interval in trainer steps.
-- `train_encoder`: freeze/unfreeze encoder parameters.
-- `custom_encoder_args`: extra encoder constructor kwargs.
-- `custom_algorithm_args`: skrl config overrides.
-- `reward_args`: intrinsic reward constructor kwargs.
-- `intrinsic_reward_weight`: multiplier for intrinsic rewards.
-- `train_intrinsic_reward`: enable/disable intrinsic reward model updates.
+- `encoder_cfg`: encoder constructor config. Defaults include
+  `features_dim: 512` and `trainable: true`; extra keys pass through to
+  custom encoders.
+- `algorithm_cfg`: skrl config overrides. PPO/on-policy configs use
+  `rollouts` and `mini_batches`; off-policy configs use skrl replay-buffer
+  fields such as `memory_size` and `batch_size`. Extra keys pass through to skrl.
+- `reward_cfg`: intrinsic reward constructor config. Defaults include
+  `beta: 0.2`, `kappa: 0.0`, `gamma: 0.99`, `weight: 1.0`, and
+  `trainable: true`; extra keys pass through.
 
-For PPO, NETT applies stable defaults before user overrides:
-`rollouts >= 64`, `value_loss_scale: 0.25`, and `grad_norm_clip: 0.25`.
-Set those fields in `custom_algorithm_args` to override them.
+For PPO, NETT defaults to `learning_rate: 1e-5`, `rollouts: 8000`,
+`mini_batches: 16`, `value_loss_scale: 0.25`, and `grad_norm_clip: 0.25`.
+Set those fields in `algorithm_cfg` to override them.
 
 Native encoder names:
 

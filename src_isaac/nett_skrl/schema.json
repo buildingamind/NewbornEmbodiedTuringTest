@@ -34,17 +34,41 @@
           ],
           "default": "closeness"
         },
-        "features_dim":         { "type": ["integer", "null"], "minimum": 1, "default": null },
-        "batch_size":            { "type": "integer", "minimum": 1, "default": 512 },
-        "buffer_size":           { "type": "integer", "minimum": 1, "default": 2048 },
-        "learning_rate": {
-          "anyOf": [ { "type": "number", "minimum": 0 }, { "not": { "type": "string" } } ],
-          "default": 1e-5
-        },
         "checkpoint_freq":       { "type": ["integer", "null"], "minimum": 1, "default": null },
-        "train_encoder":         { "type": "boolean", "default": true },
-        "custom_encoder_args":   { "type": "object", "default": {} },
-        "custom_algorithm_args": { "type": "object", "default": {} },
+        "encoder_cfg": {
+          "type": "object",
+          "properties": {
+            "features_dim": { "type": "integer", "minimum": 1, "default": 512 },
+            "trainable": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": true,
+          "default": { "features_dim": 512, "trainable": true }
+        },
+        "algorithm_cfg": {
+          "type": "object",
+          "properties": {
+            "learning_rate": {
+              "anyOf": [ { "type": "number", "minimum": 0 }, { "not": { "type": "string" } } ],
+              "default": 1e-5
+            },
+            "rollouts": { "type": "integer", "minimum": 1, "default": 8000 },
+            "mini_batches": { "type": "integer", "minimum": 1, "default": 16 },
+            "value_loss_scale": { "type": ["number", "null"], "default": 0.25 },
+            "grad_norm_clip": { "type": ["number", "null"], "default": 0.25 },
+            "batch_size": { "type": "integer", "minimum": 1, "default": 64 },
+            "memory_size": { "type": "integer", "minimum": 1, "default": 8000 },
+            "gradient_steps": { "type": ["integer", "null"], "minimum": 1, "default": null },
+            "learning_starts": { "type": ["integer", "null"], "minimum": 0, "default": null }
+          },
+          "additionalProperties": true,
+          "default": {
+            "learning_rate": 1e-5,
+            "rollouts": 8000,
+            "mini_batches": 16,
+            "value_loss_scale": 0.25,
+            "grad_norm_clip": 0.25
+          }
+        },
         "model": {
           "type": "object",
           "properties": {
@@ -60,10 +84,18 @@
           "additionalProperties": false,
           "default": {}
         },
-        "reward_args":           { "type": "object",
-                                   "default": { "beta": 0.2, "kappa": 0.0, "gamma": 0.99 } },
-        "intrinsic_reward_weight": { "type": "number", "default": 1.0 },
-        "train_intrinsic_reward": { "type": "boolean", "default": true },
+        "reward_cfg": {
+          "type": "object",
+          "properties": {
+            "beta": { "type": "number", "default": 0.2 },
+            "kappa": { "type": "number", "default": 0.0 },
+            "gamma": { "type": "number", "default": 0.99 },
+            "weight": { "type": "number", "default": 1.0 },
+            "trainable": { "type": "boolean", "default": true }
+          },
+          "additionalProperties": true,
+          "default": { "beta": 0.2, "kappa": 0.0, "gamma": 0.99, "weight": 1.0, "trainable": true }
+        },
         "wandb": {
           "description": "Weights & Biases logging. skrl's native integration creates one wandb run per agent (per brain).",
           "type": "object",

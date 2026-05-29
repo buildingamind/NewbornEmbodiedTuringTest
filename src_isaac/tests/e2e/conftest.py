@@ -42,10 +42,12 @@ MINIMAL_SMOKE_CFG: dict = {
     "brain": {
         "algorithm": "PPO",
         "encoder": "small",
-        "batch_size": 32,
-        "buffer_size": 64,
-        "learning_rate": 1.0e-5,
-        "train_encoder": True,
+        "encoder_cfg": {"trainable": True},
+        "algorithm_cfg": {
+            "rollouts": 64,
+            "mini_batches": 2,
+            "learning_rate": 1.0e-5,
+        },
         "wandb": {"mode": "disabled"},
     },
     "num_brains": 2,
