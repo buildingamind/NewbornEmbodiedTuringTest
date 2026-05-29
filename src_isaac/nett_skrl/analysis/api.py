@@ -33,6 +33,8 @@ from typing import Iterable
 
 logger = logging.getLogger("nett.analysis")
 
+import matplotlib
+import matplotlib.pyplot as plt
 
 # ---------------------------------------------------------------------------
 # Chamber geometry defaults — match ``NETTEnvCfg`` so the gaze-direction
@@ -71,7 +73,9 @@ def analyze(
     test_out = test_viz(root, out / "test", chamber_half_x=chamber_half_x)
 
     summary = _summary_from_outputs(train_out, test_out)
-    (out / "summary.json").write_text(json.dumps(summary, indent=2, sort_keys=True) + "\n")
+    (out / "summary.json").write_text(
+        json.dumps(summary, indent=2, sort_keys=True) + "\n"
+    )
     return out
 
 
@@ -85,7 +89,7 @@ def train_viz(
     out.mkdir(parents=True, exist_ok=True)
 
     rows: list[tuple[str, str, int, float]] = []  # (condition, brain, step, reward)
-    plt = _import_matplotlib()
+    matplotlib.use("Agg", force=False)
     EA = _import_event_accumulator()
 
     for cond_dir in _condition_dirs(root):
@@ -114,7 +118,9 @@ def train_viz(
             fig.savefig(out / f"train_reward_{condition}.png", dpi=120)
             plt.close(fig)
 
-    _write_csv(out / "train_rewards.csv", ["condition", "brain", "step", "reward"], rows)
+    _write_csv(
+        out / "train_rewards.csv", ["condition", "brain", "step", "reward"], rows
+    )
     return out
 
 
@@ -129,7 +135,7 @@ def test_viz(
     out = Path(output_path) if output_path else root / "analysis_test"
     out.mkdir(parents=True, exist_ok=True)
 
-    plt = _import_matplotlib()
+    matplotlib.use("Agg", force=False)
     rows: list[tuple[str, str, str, int, float]] = []
     # (imprint, test_cond, brain_env_id, n_steps, correct_pct)
 
@@ -142,7 +148,9 @@ def test_viz(
 
         # Per-imprint bar chart aggregating across brains for each test cond.
         if plt is not None:
-            _plot_test_preferences(plt, out, imprint, [r for r in rows if r[0] == imprint])
+            _plot_test_preferences(
+                plt, out, imprint, [r for r in rows if r[0] == imprint]
+            )
 
     _write_csv(
         out / "test_preferences.csv",
@@ -168,7 +176,7 @@ def merge(paths: Iterable[str | Path], output_path: str | Path) -> Path:
         if src.exists():
             _copy_tree(src, out)
 
-    plt = _import_matplotlib()
+    matplotlib.use("Agg", force=False)
     train_csv = _find_first(out, "train_rewards.csv")
     if train_csv and plt is not None:
         _replot_train_from_csv(plt, train_csv)
@@ -232,13 +240,18 @@ def _reward_curve_from_tfevents(EA, tfevents_path: Path) -> list[tuple[int, floa
     scalar_tags = ea.Tags().get("scalars", [])
     tag = next((t for t in _REWARD_TAG_HINTS if t in scalar_tags), None)
     if tag is None:
-        tag = next((t for t in scalar_tags if "reward" in t.lower() and "mean" in t.lower()), None)
+        tag = next(
+            (t for t in scalar_tags if "reward" in t.lower() and "mean" in t.lower()),
+            None,
+        )
     if tag is None:
         return []
     return [(int(s.step), float(s.value)) for s in ea.Scalars(tag)]
 
 
-def looking_at_monitor(agent_x: float, agent_z: float, yaw_deg: float, half_x: float) -> str:
+def looking_at_monitor(
+    agent_x: float, agent_z: float, yaw_deg: float, half_x: float
+) -> str:
     """Return ``"left"`` or ``"right"`` for the monitor the agent's forward
     vector points more toward, given the NETT yaw convention
     (``forward = (-sin(yaw), cos(yaw))``)."""
@@ -255,7 +268,9 @@ def looking_at_monitor(agent_x: float, agent_z: float, yaw_deg: float, half_x: f
 
 
 def _test_preference_rows(
-    csv_path: Path, imprint: str, half_x: float,
+    csv_path: Path,
+    imprint: str,
+    half_x: float,
 ) -> list[tuple[str, str, str, int, float]]:
     """Aggregate per (env_id, test_cond) preference percentages from one CSV."""
     buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
@@ -316,9 +331,11 @@ def _summary_from_outputs(train_dir: Path, test_dir: Path) -> dict:
         per_brain_last: dict[tuple[str, str], list[float]] = defaultdict(list)
         with train_csv.open() as f:
             for row in csv.DictReader(f):
-                per_brain_last[(row["condition"], row["brain"])].append(float(row["reward"]))
+                per_brain_last[(row["condition"], row["brain"])].append(
+                    float(row["reward"])
+                )
         for (cond, brain), values in per_brain_last.items():
-            tail = values[-max(1, len(values) // 4):]
+            tail = values[-max(1, len(values) // 4) :]
             summary["train"].setdefault(cond, {})[brain] = {
                 "final_reward_tail_mean": sum(tail) / len(tail),
                 "scalar_count": len(values),
@@ -329,7 +346,9 @@ def _summary_from_outputs(train_dir: Path, test_dir: Path) -> dict:
         per_cond: dict[tuple[str, str], list[float]] = defaultdict(list)
         with test_csv.open() as f:
             for row in csv.DictReader(f):
-                per_cond[(row["imprint"], row["test_condition"])].append(float(row["correct_pct"]))
+                per_cond[(row["imprint"], row["test_condition"])].append(
+                    float(row["correct_pct"])
+                )
         for (imp, tc), values in per_cond.items():
             summary["test"].setdefault(imp, {})[tc] = {
                 "correct_pct_mean": sum(values) / len(values),
@@ -341,7 +360,9 @@ def _summary_from_outputs(train_dir: Path, test_dir: Path) -> dict:
 
 def _replot_train_from_csv(plt, csv_path: Path) -> None:
     """Re-generate per-condition train reward plots from the merged CSV."""
-    per_cond_brain: dict[str, dict[str, list[tuple[int, float]]]] = defaultdict(lambda: defaultdict(list))
+    per_cond_brain: dict[str, dict[str, list[tuple[int, float]]]] = defaultdict(
+        lambda: defaultdict(list)
+    )
     with csv_path.open() as f:
         for row in csv.DictReader(f):
             per_cond_brain[row["condition"]][row["brain"]].append(
@@ -370,13 +391,15 @@ def _replot_test_from_csv(plt, csv_path: Path) -> None:
     rows_by_imprint: dict[str, list[tuple]] = defaultdict(list)
     with csv_path.open() as f:
         for row in csv.DictReader(f):
-            rows_by_imprint[row["imprint"]].append((
-                row["imprint"],
-                row["test_condition"],
-                row["brain_env_id"],
-                int(row["n_steps"]),
-                float(row["correct_pct"]),
-            ))
+            rows_by_imprint[row["imprint"]].append(
+                (
+                    row["imprint"],
+                    row["test_condition"],
+                    row["brain_env_id"],
+                    int(row["n_steps"]),
+                    float(row["correct_pct"]),
+                )
+            )
     for imprint, rows in rows_by_imprint.items():
         _plot_test_preferences(plt, csv_path.parent, f"merged_{imprint}", rows)
 
@@ -413,22 +436,6 @@ def _copy_tree(src: Path, dst: Path) -> None:
         elif not target.exists():
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(item, target)
-
-
-def _import_matplotlib():
-    """Lazy matplotlib import with headless backend; returns ``None`` if absent."""
-    try:
-        import matplotlib
-
-        matplotlib.use("Agg", force=False)
-        import matplotlib.pyplot as plt
-    except ImportError:
-        logger.warning(
-            "matplotlib not installed; analysis CSVs will still be written but "
-            "no PNG plots. Install matplotlib to enable plotting.",
-        )
-        return None
-    return plt
 
 
 def _import_event_accumulator():
