@@ -406,7 +406,7 @@ def test_value_critic_output_is_bounded_and_finite():
 
 def test_ppo_first_update_keeps_weights_finite():
     env = _FakeSkrlEnv()
-    brain = Brain(algorithm="PPO", embedding_dim=16, buffer_size=128, batch_size=32)
+    brain = Brain(algorithm="PPO", features_dim=16, buffer_size=128, batch_size=32)
     agent = _build_agents(brain, env, torch.device("cpu"))[0]
     MultiBrainTrainer(env, [agent], device="cpu").train(TrainCfg(total_timesteps=65))
     for model in agent.models.values():

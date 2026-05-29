@@ -33,7 +33,7 @@ _DEFAULT_FEATURES_DIM = 512
 
 
 def encoder_kwargs(brain, observation_space) -> dict[str, Any]:
-    features_dim = int(brain.embedding_dim or _DEFAULT_FEATURES_DIM)
+    features_dim = int(brain.features_dim or _DEFAULT_FEATURES_DIM)
     return {"features_dim": features_dim, **brain.custom_encoder_args}
 
 

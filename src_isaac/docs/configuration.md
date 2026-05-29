@@ -65,7 +65,7 @@ Common fields:
 - `model`: MLP head settings. Defaults to hidden sizes `[64, 64]`, `elu`
   activation, bounded value output, orthogonal init, and clipped actions.
 - `reward`: env reward string or intrinsic reward name.
-- `embedding_dim`: encoder feature dimension.
+- `features_dim`: encoder feature dimension.
 - `batch_size`, `buffer_size`, `learning_rate`: training parameters. The
   default learning rate is conservative (`1e-5`) for stable image PPO.
 - `checkpoint_freq`: per-brain checkpoint interval in trainer steps.
@@ -74,7 +74,7 @@ Common fields:
 - `custom_algorithm_args`: skrl config overrides.
 - `reward_args`: intrinsic reward constructor kwargs.
 - `intrinsic_reward_weight`: multiplier for intrinsic rewards.
-- `intrinsic_reward_update`: enable/disable intrinsic reward model updates.
+- `train_intrinsic_reward`: enable/disable intrinsic reward model updates.
 
 For PPO, NETT applies stable defaults before user overrides:
 `rollouts >= 64`, `value_loss_scale: 0.25`, and `grad_norm_clip: 0.25`.

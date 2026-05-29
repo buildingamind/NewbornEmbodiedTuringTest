@@ -1,0 +1,61 @@
+"""Small run-time helpers for :mod:`nett_skrl.brain.brain`."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import torch
+
+from ..runtime.task import TaskConfig
+from .trainer import TrainCfg
+
+
+def policy_device(config: TaskConfig) -> torch.device:
+    return torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
+
+
+def dry_run_timesteps(brain) -> int:
+    return max(brain.batch_size, brain.buffer_size)
+
+
+def train_timesteps(brain, config: TaskConfig) -> int:
+    return int(config.train_timesteps or brain.train_iterations)
+
+
+def eval_timesteps(brain, config: TaskConfig) -> int:
+    return brain.test_iterations.get(config.condition, 1) * brain.steps_per_episode
+
+
+def train_cfg_for(brain, config: TaskConfig) -> TrainCfg:
+    output_dir = Path(config.path).parent
+    timesteps = train_timesteps(brain, config)
+    return TrainCfg(
+        total_timesteps=timesteps,
+        hparams_dir=Path(config.path),
+        hparams=train_hparams(brain, config, timesteps),
+        output_dir=output_dir,
+        condition=config.condition,
+        phase=config.current_mode,
+        run_name=output_dir.name,
+    )
+
+
+def train_hparams(brain, config: TaskConfig, timesteps: int) -> dict:
+    return {
+        "algorithm": _name_of(brain.algorithm),
+        "encoder": _name_of(brain.encoder),
+        "model": brain.model_cfg.__dict__,
+        "reward": str(brain.reward_spec),
+        "learning_rate": brain.learning_rate if not callable(brain.learning_rate) else "callable",
+        "batch_size": brain.batch_size,
+        "buffer_size": brain.buffer_size,
+        "checkpoint_freq": brain.checkpoint_freq,
+        "envs_per_agent": brain.envs_per_agent,
+        "total_timesteps": brain.train_iterations,
+        "chunk_timesteps": timesteps,
+        "global_step": config.train_global_step,
+    }
+
+
+def _name_of(value) -> str:
+    return getattr(value, "__name__", str(value))

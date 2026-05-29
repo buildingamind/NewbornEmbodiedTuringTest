@@ -13,7 +13,6 @@ small NETT runner wrapper.
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Any, Callable, Optional
 
 import torch
@@ -21,6 +20,12 @@ import torch
 from ..runtime.task import TaskConfig
 from .trainer import MultiBrainTrainer, RecordingCfg, TrainCfg
 from .models import ModelCfg, model_cfg_from
+from .run_config import (
+    dry_run_timesteps,
+    eval_timesteps,
+    policy_device,
+    train_cfg_for,
+)
 from .agent_factory import build_agents as _build_skrl_agents
 from .experiment import (
     init_agents_for_eval as _init_agents_for_eval_fn,
@@ -39,6 +44,22 @@ from .registry import (
 
 logger = logging.getLogger("nett.brain")
 
+_ENV_REWARD_NAMES = {"closeness", "completeness"}
+_DEFAULT_REWARD_ARGS = {"beta": 0.2, "kappa": 0.0, "gamma": 0.99}
+_RUNTIME_DEFAULTS = {
+    "iterations_per_test_episode": {},
+    "steps_per_episode": 0,
+    "envs_per_agent": 1,
+    "num_brains": None,
+    "train_iterations": 0,
+    "test_iterations": {},
+    "n_tasks": 0,
+}
+
+
+def _optional_int(value) -> int | None:
+    return int(value) if value is not None else None
+
 
 class Brain:
     """Configures and trains N independent skrl agents.
@@ -52,7 +73,7 @@ class Brain:
         encoder: str | type = "small",
         algorithm: str | type = "PPO",
         reward: str | type | None = "closeness",
-        embedding_dim: Optional[int] = None,
+        features_dim: Optional[int] = None,
         batch_size: int = 512,
         buffer_size: int = 2048,
         learning_rate: float | Callable = 1e-5,
@@ -63,39 +84,51 @@ class Brain:
         model: Optional[dict[str, Any] | ModelCfg] = None,
         reward_args: Optional[dict[str, Any]] = None,
         intrinsic_reward_weight: float = 1.0,
-        intrinsic_reward_update: bool = True,
+        train_intrinsic_reward: bool = True,
         wandb: Optional[dict[str, Any]] = None,
     ):
-        self.reward_spec = reward
-        self.encoder = validate_encoder(encoder)
-        self.algorithm = validate_algorithm(algorithm)
-        self.reward = validate_reward(reward)
-        if isinstance(reward, str) and isinstance(self.reward, type) and issubclass(self.reward, UnsupportedIntrinsicReward):
+        self._assign_attrs({
+            "reward_spec": reward,
+            "encoder": validate_encoder(encoder),
+            "algorithm": validate_algorithm(algorithm),
+            "reward": validate_reward(reward),
+        })
+        self._raise_if_unsupported_intrinsic_reward(reward)
+
+        self._assign_attrs({
+            "features_dim": _optional_int(features_dim),
+            "batch_size": int(batch_size),
+            "buffer_size": int(buffer_size),
+            "learning_rate": learning_rate if callable(learning_rate) else float(learning_rate),
+            "checkpoint_freq": _optional_int(checkpoint_freq),
+            "train_encoder": bool(train_encoder),
+            "custom_encoder_args": dict(custom_encoder_args or {}),
+            "custom_algorithm_args": dict(custom_algorithm_args or {}),
+            "model_cfg": model if isinstance(model, ModelCfg) else model_cfg_from(model),
+            "reward_args": dict(reward_args or _DEFAULT_REWARD_ARGS),
+            "intrinsic_reward_weight": float(intrinsic_reward_weight),
+            "train_intrinsic_reward": bool(train_intrinsic_reward),
+            "wandb_cfg": _normalize_wandb_cfg(wandb),
+        })
+
+        self._init_runtime_state()
+
+    def _assign_attrs(self, values: dict[str, Any]) -> None:
+        for name, value in values.items():
+            setattr(self, name, value)
+
+    def _raise_if_unsupported_intrinsic_reward(self, reward: str | type | None) -> None:
+        if (
+            isinstance(reward, str)
+            and isinstance(self.reward, type)
+            and issubclass(self.reward, UnsupportedIntrinsicReward)
+        ):
             self.reward()
 
-        self.embedding_dim = int(embedding_dim) if embedding_dim is not None else None
-        self.batch_size = int(batch_size)
-        self.buffer_size = int(buffer_size)
-        self.learning_rate = learning_rate if callable(learning_rate) else float(learning_rate)
-        self.checkpoint_freq = int(checkpoint_freq) if checkpoint_freq is not None else None
-        self.train_encoder = bool(train_encoder)
-
-        self.custom_encoder_args = dict(custom_encoder_args or {})
-        self.custom_algorithm_args = dict(custom_algorithm_args or {})
-        self.model_cfg = model if isinstance(model, ModelCfg) else model_cfg_from(model)
-        self.reward_args = dict(reward_args or {"beta": 0.2, "kappa": 0.0, "gamma": 0.99})
-        self.intrinsic_reward_weight = float(intrinsic_reward_weight)
-        self.intrinsic_reward_update = bool(intrinsic_reward_update)
-        self.wandb_cfg = _normalize_wandb_cfg(wandb)
-
+    def _init_runtime_state(self) -> None:
         # Populated by NETT.run setup via calc_iterations(...).
-        self.iterations_per_test_episode: dict[str, int] = {}
-        self.steps_per_episode: int = 0
-        self.envs_per_agent: int = 1
-        self.num_brains: int | None = None
-        self.train_iterations: int = 0
-        self.test_iterations: dict[str, int] = {}
-        self.n_tasks: int = 0
+        for name, value in _RUNTIME_DEFAULTS.items():
+            setattr(self, name, dict(value) if isinstance(value, dict) else value)
 
     def env_reward_types(self) -> tuple[str, ...]:
         """Return NETTEnv reward names implied by the legacy ``brain.reward`` field."""
@@ -104,7 +137,7 @@ class Brain:
         if self.reward_spec in {"unsupervised", ""}:
             return ()
         names = tuple(x.strip() for x in self.reward_spec.split(",") if x.strip())
-        if set(names).issubset({"closeness", "completeness"}):
+        if set(names).issubset(_ENV_REWARD_NAMES):
             return names
         return ()
 
@@ -145,18 +178,8 @@ class Brain:
         wandb run, no hparams JSON, no skrl-owned checkpoints — those are all
         the caller's normal-mode responsibility.
         """
-        device = torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
-        wrapped = NettIsaacLabWrapper(envs, device=device)
-        # During a dry-run, force wandb off for the per-agent skrl experiment
-        # cfg so init never runs. Restore on exit so subsequent real runs
-        # keep the user's configured wandb mode.
-        wandb_cfg_backup = self.wandb_cfg
-        if config.dry_run:
-            self.wandb_cfg = {**self.wandb_cfg, "mode": "disabled"}
-        try:
-            agents = _build_skrl_agents(self, wrapped, device, config=config)
-        finally:
-            self.wandb_cfg = wandb_cfg_backup
+        device, wrapped = self._wrapped_env(envs, config)
+        agents = self._build_agents(wrapped, device, config)
         intrinsic_adapters = self._build_intrinsic_adapters(wrapped, device)
 
         if config.dry_run:
@@ -164,9 +187,8 @@ class Brain:
             # replay buffer, run a single update, and commit peak VRAM. The
             # MultiBrainTrainer.train(dry_run=True) path skips hparams and
             # final-checkpoint writes for us.
-            short_steps = max(self.batch_size, self.buffer_size)
-            MultiBrainTrainer(wrapped, agents, device=device).train(
-                TrainCfg(total_timesteps=short_steps),
+            self._trainer(wrapped, agents, device).train(
+                TrainCfg(total_timesteps=dry_run_timesteps(self)),
                 record_cfg=None,
                 intrinsic_reward_adapters=intrinsic_adapters,
                 dry_run=True,
@@ -183,29 +205,11 @@ class Brain:
         # ``output_dir`` is the run-name level (one above the per-condition
         # ``config.path``); the wandb sync helper needs both so it can find
         # config.yaml at the run root AND the per-condition logs/recordings.
-        output_dir = Path(config.path).parent
-        MultiBrainTrainer(wrapped, agents, device=device).train(TrainCfg(
-            total_timesteps=int(config.train_timesteps or self.train_iterations),
-            hparams_dir=Path(config.path),
-            hparams={
-                "algorithm": getattr(self.algorithm, "__name__", str(self.algorithm)),
-                "encoder": getattr(self.encoder, "__name__", str(self.encoder)),
-                "model": self.model_cfg.__dict__,
-                "reward": str(self.reward_spec),
-                "learning_rate": self.learning_rate if not callable(self.learning_rate) else "callable",
-                "batch_size": self.batch_size,
-                "buffer_size": self.buffer_size,
-                "checkpoint_freq": self.checkpoint_freq,
-                "envs_per_agent": self.envs_per_agent,
-                "total_timesteps": self.train_iterations,
-                "chunk_timesteps": int(config.train_timesteps or self.train_iterations),
-                "global_step": config.train_global_step,
-            },
-            output_dir=output_dir,
-            condition=config.condition,
-            phase=config.current_mode,
-            run_name=output_dir.name,
-        ), record_cfg=record_cfg, intrinsic_reward_adapters=intrinsic_adapters)
+        self._trainer(wrapped, agents, device).train(
+            train_cfg_for(self, config),
+            record_cfg=record_cfg,
+            intrinsic_reward_adapters=intrinsic_adapters,
+        )
 
     def test(self, envs, config: TaskConfig) -> dict[int, float]:
         """Greedy rollout. Returns ``{brain_id: mean_reward}``.
@@ -216,23 +220,43 @@ class Brain:
         return values are essentially noise — useful as a smoke check but
         not as a real evaluation.
         """
-        device = torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
-        wrapped = NettIsaacLabWrapper(envs, device=device)
-        agents = _build_skrl_agents(self, wrapped, device, config=config)
+        device, wrapped = self._wrapped_env(envs, config)
+        agents = self._build_agents(wrapped, device, config)
         _init_agents_for_eval_fn(agents)
         _load_latest_checkpoints_fn(agents, config)
-        steps = self.test_iterations.get(config.condition, 1) * self.steps_per_episode
-        return MultiBrainTrainer(wrapped, agents, device=device).eval(total_timesteps=steps)
+        return self._trainer(wrapped, agents, device).eval(
+            total_timesteps=eval_timesteps(self, config)
+        )
 
     def record(self, envs, config: TaskConfig, timesteps: int | None = None) -> None:
         """Run a no-learning rollout to let NETTEnv produce recording artifacts."""
-        device = torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
-        wrapped = NettIsaacLabWrapper(envs, device=device)
+        _, wrapped = self._wrapped_env(envs, config)
         steps = int(timesteps or self.steps_per_episode)
         states, _ = wrapped.reset()
-        for t in range(steps):
-            actions = torch.zeros((wrapped.num_envs, wrapped.action_space.shape[0]), device=states.device)
+        for _ in range(steps):
+            action_shape = (wrapped.num_envs, wrapped.action_space.shape[0])
+            actions = torch.zeros(action_shape, device=states.device)
             states, *_ = wrapped.step(actions)
+
+    def _wrapped_env(self, envs, config: TaskConfig):
+        device = policy_device(config)
+        return device, NettIsaacLabWrapper(envs, device=device)
+
+    def _build_agents(self, wrapped, device: torch.device, config: TaskConfig):
+        # During a dry-run, force wandb off for the per-agent skrl experiment
+        # cfg so init never runs. Restore on exit so subsequent real runs keep
+        # the user's configured wandb mode.
+        wandb_cfg_backup = self.wandb_cfg
+        dry_run = bool(getattr(config, "dry_run", False))
+        if dry_run:
+            self.wandb_cfg = {**self.wandb_cfg, "mode": "disabled"}
+        try:
+            return _build_skrl_agents(self, wrapped, device, config=config)
+        finally:
+            self.wandb_cfg = wandb_cfg_backup
+
+    def _trainer(self, wrapped, agents, device: torch.device) -> MultiBrainTrainer:
+        return MultiBrainTrainer(wrapped, agents, device=device)
 
     def _build_intrinsic_adapters(self, env, device: torch.device) -> list | None:
         if not self.uses_intrinsic_reward():
@@ -243,7 +267,7 @@ class Brain:
                 env=env,
                 device=device,
                 weight=self.intrinsic_reward_weight,
-                update_enabled=self.intrinsic_reward_update,
+                update_enabled=self.train_intrinsic_reward,
                 kwargs=self.reward_args,
             )
             for _ in range(env.num_envs)

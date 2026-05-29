@@ -34,7 +34,7 @@
           ],
           "default": "closeness"
         },
-        "embedding_dim":         { "type": ["integer", "null"], "minimum": 1, "default": null },
+        "features_dim":         { "type": ["integer", "null"], "minimum": 1, "default": null },
         "batch_size":            { "type": "integer", "minimum": 1, "default": 512 },
         "buffer_size":           { "type": "integer", "minimum": 1, "default": 2048 },
         "learning_rate": {
@@ -63,7 +63,7 @@
         "reward_args":           { "type": "object",
                                    "default": { "beta": 0.2, "kappa": 0.0, "gamma": 0.99 } },
         "intrinsic_reward_weight": { "type": "number", "default": 1.0 },
-        "intrinsic_reward_update": { "type": "boolean", "default": true },
+        "train_intrinsic_reward": { "type": "boolean", "default": true },
         "wandb": {
           "description": "Weights & Biases logging. skrl's native integration creates one wandb run per agent (per brain).",
           "type": "object",

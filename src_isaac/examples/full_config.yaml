@@ -68,7 +68,7 @@ brain:
   reward: closeness
 
   # Encoder output dim. null → use the encoder's default (512).
-  embedding_dim: null
+  features_dim: null
 
   # PPO update params.
   batch_size: 256
@@ -107,7 +107,7 @@ brain:
 
   # Intrinsic reward controls. Ignored for env-side rewards.
   intrinsic_reward_weight: 1.0
-  intrinsic_reward_update: true
+  train_intrinsic_reward: true
 
   # Weights & Biases logging. skrl's native wandb integration creates one
   # wandb run per agent (per brain). All training metrics that skrl tracks
