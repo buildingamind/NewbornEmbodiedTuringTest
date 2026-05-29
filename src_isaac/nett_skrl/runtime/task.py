@@ -109,9 +109,3 @@ def _set_seeds(seed: int) -> None:
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
 
-
-def run_task(task: Task) -> None:
-    """Run one (condition × N brains) task through the Isaac mode supervisor."""
-    from .isaac_mode_runner import IsaacModeRunner
-
-    IsaacModeRunner(task).run()

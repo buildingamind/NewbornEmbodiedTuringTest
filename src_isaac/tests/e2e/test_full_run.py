@@ -19,7 +19,7 @@ Critical pathways covered:
                                                   ``final_agent.pt`` and
                                                   weights actually load)
 
-The warn-on-nonzero-exit contract from ``IsaacModeRunner._spawn_mode_subprocess``
+The warn-on-nonzero-exit contract from ``task_runner._spawn_mode_subprocess``
 is exercised separately in ``test_lifecycle.py`` with a fake mp.Process — a
 real-Isaac monkeypatch does not cross the spawn boundary so it cannot be
 verified here.
@@ -97,7 +97,7 @@ def test_train_then_test_two_brains(run_nett, e2e_smoke_cfg):
 def test_train_test_record_three_mode_pipeline(run_nett, e2e_smoke_cfg):
     """All three modes run in sequence and each produces its CSV log.
 
-    Each mode runs in a fresh subprocess (per ``IsaacModeRunner``); this
+    Each mode runs in a fresh subprocess (per ``task_runner.run_task``); this
     test fails if any mode silently aborts the chain. The
     recording-artifact pipeline has its own surface and is exercised
     separately — here we only require the per-mode CSV to land.

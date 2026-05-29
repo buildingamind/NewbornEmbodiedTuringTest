@@ -23,101 +23,111 @@ from nett_skrl.recording import RecordingCfg, export_recordings
 from .task import Task, TaskConfig, _set_seeds
 
 
-class IsaacModeRunner:
-    """Run one condition's train/test/record modes in fresh Isaac workers."""
-
-    def __init__(self, task: Task) -> None:
-        self.task = task
-
-    def run(self) -> None:
-        config = self.task.config
-        _set_seeds(config.seed)
-        if config.dry_run:
-            config.logger.info("Spawning dry-run subprocess for condition %s", config.condition)
-            self._spawn_mode_subprocess("train")
-            config.logger.info("Dry-run subprocess complete")
-            return
-
-        (config.path / "logs").mkdir(exist_ok=True, parents=True)
-        for mode in config.modes:
-            if mode == "train" and config.eval_freq:
-                self._run_train_with_eval_milestones()
-                continue
-            config.logger.info("Spawning %s subprocess for condition %s", mode, config.condition)
-            self._spawn_mode_subprocess(mode)
-            config.logger.info("Mode %s subprocess complete", mode)
-
-    def _run_train_with_eval_milestones(self) -> None:
-        config = self.task.config
-        total = int(getattr(self.task.agent.brain, "train_iterations", 0) or 0)
-        eval_freq = int(config.eval_freq or 0)
-        if total <= 0 or eval_freq <= 0:
-            self._spawn_mode_subprocess("train")
-            return
-
-        boundaries = _training_boundaries(
-            total,
-            eval_freq=eval_freq,
-            checkpoint_freq=getattr(self.task.agent.brain, "checkpoint_freq", None),
+def run_task(task: Task) -> None:
+    """Run one (condition × N brains) task: train/test/record in fresh Isaac workers."""
+    config = task.config
+    _set_seeds(config.seed)
+    if config.dry_run:
+        config.logger.info(
+            "Spawning dry-run subprocess for condition %s", config.condition
         )
-        previous = 0
-        for boundary in boundaries:
-            chunk = boundary - previous
-            if chunk > 0:
-                config.logger.info(
-                    "Spawning train subprocess for condition %s: steps %d..%d",
-                    config.condition,
-                    previous,
-                    boundary,
-                )
-                self._spawn_mode_subprocess(
-                    "train",
-                    train_timesteps=chunk,
-                    train_global_step=boundary,
-                )
-                self._copy_final_checkpoints_to_global_step(boundary)
-            if boundary % eval_freq == 0:
-                config.logger.info(
-                    "Spawning metrics-only eval at train step %d for condition %s",
-                    boundary,
-                    config.condition,
-                )
-                self._spawn_mode_subprocess(
-                    "test",
-                    eval_step=boundary,
-                    eval_metrics_only=True,
-                )
-            previous = boundary
+        _spawn_mode_subprocess(task, "train")
+        config.logger.info("Dry-run subprocess complete")
+        return
 
-    def _copy_final_checkpoints_to_global_step(self, step: int) -> None:
-        freq = getattr(self.task.agent.brain, "checkpoint_freq", None)
-        if not freq or step % int(freq) != 0:
-            return
-        for brain_id in range(1, int(self.task.config.num_brains) + 1):
-            ckpt_dir = self.task.config.path / "wandb_runs" / f"brain_{brain_id}" / "checkpoints"
-            src = ckpt_dir / "final_agent.pt"
-            dst = ckpt_dir / f"agent_{step}.pt"
-            if not src.exists():
-                self.task.config.logger.warning("checkpoint alias skipped; missing %s", src)
-                continue
-            shutil.copy2(src, dst)
+    (config.path / "logs").mkdir(exist_ok=True, parents=True)
+    for mode in config.modes:
+        if mode == "train" and config.eval_freq:
+            _run_train_with_eval_milestones(task)
+            continue
+        config.logger.info(
+            "Spawning %s subprocess for condition %s", mode, config.condition
+        )
+        _spawn_mode_subprocess(task, mode)
+        config.logger.info("Mode %s subprocess complete", mode)
 
-    def _spawn_mode_subprocess(self, mode: str, **overrides) -> None:
-        import multiprocessing as mp
 
-        ctx = mp.get_context("spawn")
-        p = ctx.Process(target=_run_single_mode, args=(self.task, mode, overrides), daemon=False)
-        p.start()
-        p.join()
-        if p.exitcode != 0:
-            if not _is_tolerated_isaac_teardown_exit(p.exitcode):
-                raise RuntimeError(f"Mode {mode} subprocess failed with exit code {p.exitcode}")
-            self.task.config.logger.warning(
-                "Mode %s subprocess exited with code %d (likely Isaac Sim teardown "
-                "SIGSEGV; outputs on disk should still be intact)",
-                mode,
-                p.exitcode,
+def _run_train_with_eval_milestones(task: Task) -> None:
+    config = task.config
+    total = int(getattr(task.agent.brain, "train_iterations", 0) or 0)
+    eval_freq = int(config.eval_freq or 0)
+    if total <= 0 or eval_freq <= 0:
+        _spawn_mode_subprocess(task, "train")
+        return
+
+    boundaries = _training_boundaries(
+        total,
+        eval_freq=eval_freq,
+        checkpoint_freq=getattr(task.agent.brain, "checkpoint_freq", None),
+    )
+    previous = 0
+    for boundary in boundaries:
+        chunk = boundary - previous
+        if chunk > 0:
+            config.logger.info(
+                "Spawning train subprocess for condition %s: steps %d..%d",
+                config.condition,
+                previous,
+                boundary,
             )
+            _spawn_mode_subprocess(
+                task,
+                "train",
+                train_timesteps=chunk,
+                train_global_step=boundary,
+            )
+            _copy_final_checkpoints_to_global_step(task, boundary)
+        if boundary % eval_freq == 0:
+            config.logger.info(
+                "Spawning metrics-only eval at train step %d for condition %s",
+                boundary,
+                config.condition,
+            )
+            _spawn_mode_subprocess(
+                task,
+                "test",
+                eval_step=boundary,
+                eval_metrics_only=True,
+            )
+        previous = boundary
+
+
+def _copy_final_checkpoints_to_global_step(task: Task, step: int) -> None:
+    freq = getattr(task.agent.brain, "checkpoint_freq", None)
+    if not freq or step % int(freq) != 0:
+        return
+    for brain_id in range(1, int(task.config.num_brains) + 1):
+        ckpt_dir = (
+            task.config.path / "wandb_runs" / f"brain_{brain_id}" / "checkpoints"
+        )
+        src = ckpt_dir / "final_agent.pt"
+        dst = ckpt_dir / f"agent_{step}.pt"
+        if not src.exists():
+            task.config.logger.warning("checkpoint alias skipped; missing %s", src)
+            continue
+        shutil.copy2(src, dst)
+
+
+def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    p = ctx.Process(
+        target=_run_single_mode, args=(task, mode, overrides), daemon=False
+    )
+    p.start()
+    p.join()
+    if p.exitcode != 0:
+        if not _is_tolerated_isaac_teardown_exit(p.exitcode):
+            raise RuntimeError(
+                f"Mode {mode} subprocess failed with exit code {p.exitcode}"
+            )
+        task.config.logger.warning(
+            "Mode %s subprocess exited with code %d (likely Isaac Sim teardown "
+            "SIGSEGV; outputs on disk should still be intact)",
+            mode,
+            p.exitcode,
+        )
 
 
 def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> None:
@@ -126,6 +136,7 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     # recognize (e.g. pytest's ``-m``). Spawn forwards the parent's argv
     # verbatim, so scrub it down to the script name before any Isaac import.
     import sys
+
     sys.argv = sys.argv[:1] or ["nett-skrl"]
 
     config = task.config
@@ -135,13 +146,19 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
         (config.path / "logs").mkdir(exist_ok=True, parents=True)
 
     run_config = config.for_mode(mode, **(overrides or {}))
-    agent.body.adjust_to_agent(agent.env, num_brains=config.num_brains)
+    agent.body.adjust_to_agent(
+        agent.env,
+        num_brains=config.num_brains,
+        num_envs=config.num_envs,
+    )
     loaded = agent.body.embed(agent.env, run_config)
     if mode == "train":
         agent.brain.train(
             loaded,
             run_config,
-            record_cfg=_make_record_cfg(agent.env, run_config) if not config.dry_run else None,
+            record_cfg=(
+                _make_record_cfg(agent.env, run_config) if not config.dry_run else None
+            ),
         )
     elif mode == "record":
         agent.brain.record(loaded, run_config)
@@ -204,7 +221,13 @@ def _write_eval_metrics(config: TaskConfig, metrics: dict[int, float], brain) ->
     with csv_path.open("a", newline="") as f:
         writer = csv.DictWriter(
             f,
-            fieldnames=["eval_step", "condition", "brain_id", "mean_reward", "timesteps"],
+            fieldnames=[
+                "eval_step",
+                "condition",
+                "brain_id",
+                "mean_reward",
+                "timesteps",
+            ],
         )
         if write_header:
             writer.writeheader()

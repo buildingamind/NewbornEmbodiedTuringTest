@@ -1,6 +1,6 @@
 """Subprocess-lifecycle regression tests.
 
-The subprocess-per-mode refactor in ``IsaacModeRunner`` is load-bearing for
+The subprocess-per-mode refactor in ``task_runner`` is load-bearing for
 two reasons: it bypasses Kit's fragile teardown SIGSEGV, and it keeps the
 parent worker free of Isaac imports so a second mode's ``SimulationContext``
 can be created cleanly. These tests lock in both guarantees without
@@ -73,20 +73,18 @@ def test_run_task_does_not_import_isaac_modules_in_parent(monkeypatch, tmp_path)
     only orchestrates. We neuter the spawn step to keep the test fast and
     assert that no Isaac module name appears in ``sys.modules`` afterwards.
     """
-    from nett_skrl.runtime import isaac_mode_runner
+    from nett_skrl.runtime import task_runner
 
     monkeypatch.setattr(
-        isaac_mode_runner.IsaacModeRunner,
+        task_runner,
         "_spawn_mode_subprocess",
-        lambda self, mode: None,
+        lambda task, mode, **overrides: None,
     )
 
     before = set(sys.modules)
     task = _minimal_task(tmp_path)
 
-    from nett_skrl.runtime.task import run_task
-
-    run_task(task)
+    task_runner.run_task(task)
 
     new = set(sys.modules) - before
     isaac_new = {m for m in new if m.startswith(("isaaclab", "omni"))}
@@ -106,12 +104,12 @@ def test_exit_worker_cleanly_registers_os_exit_atexit(monkeypatch):
     in the same process. If a future refactor stops registering it, Isaac
     Sim's teardown SIGSEGV will surface as a worker-level error again.
     """
-    from nett_skrl.runtime import isaac_mode_runner
+    from nett_skrl.runtime import task_runner
 
     calls: list[tuple] = []
     monkeypatch.setattr(atexit, "register", lambda *args, **kw: calls.append((args, kw)))
 
-    isaac_mode_runner._exit_worker_cleanly(logging.getLogger("test_lifecycle"))
+    task_runner._exit_worker_cleanly(logging.getLogger("test_lifecycle"))
 
     matches = [args for args, _ in calls if args and args[0] is os._exit and args[1:] == (0,)]
     assert matches, f"expected atexit.register(os._exit, 0); got {calls!r}"
@@ -126,7 +124,7 @@ def test_exit_worker_cleanly_finishes_wandb_runs_before_exit(monkeypatch):
     the only place this finish happens — this test makes sure it does.
     """
     import wandb as wandb_mod
-    from nett_skrl.runtime import isaac_mode_runner
+    from nett_skrl.runtime import task_runner
 
     state = {"finished": 0}
 
@@ -140,7 +138,7 @@ def test_exit_worker_cleanly_finishes_wandb_runs_before_exit(monkeypatch):
     # Do not actually os._exit during the test process.
     monkeypatch.setattr(atexit, "register", lambda *a, **kw: None)
 
-    isaac_mode_runner._exit_worker_cleanly(logging.getLogger("test_lifecycle"))
+    task_runner._exit_worker_cleanly(logging.getLogger("test_lifecycle"))
 
     assert state["finished"] == 3, f"wandb.finish called {state['finished']} times; expected 3"
 
@@ -168,7 +166,7 @@ class _FakeProcess:
 
 def test_spawn_mode_subprocess_warns_on_teardown_signal(monkeypatch, caplog, tmp_path):
     """Known Isaac teardown signals warn so flushed artifacts remain usable."""
-    from nett_skrl.runtime import isaac_mode_runner
+    from nett_skrl.runtime import task_runner
 
     class _FakeCtx:
         @staticmethod
@@ -178,10 +176,9 @@ def test_spawn_mode_subprocess_warns_on_teardown_signal(monkeypatch, caplog, tmp
     monkeypatch.setattr("multiprocessing.get_context", lambda mode: _FakeCtx())
 
     task = _minimal_task(tmp_path)
-    runner = isaac_mode_runner.IsaacModeRunner(task)
 
     with caplog.at_level(logging.WARNING):
-        runner._spawn_mode_subprocess("train")
+        task_runner._spawn_mode_subprocess(task, "train")
 
     assert any("exited with code -11" in rec.message for rec in caplog.records), \
         f"no warning logged about exit code -11; got: {[r.message for r in caplog.records]}"
@@ -189,7 +186,7 @@ def test_spawn_mode_subprocess_warns_on_teardown_signal(monkeypatch, caplog, tmp
 
 def test_spawn_mode_subprocess_raises_on_python_failure(monkeypatch, tmp_path):
     """Ordinary Python failures must fail the run instead of looking successful."""
-    from nett_skrl.runtime import isaac_mode_runner
+    from nett_skrl.runtime import task_runner
 
     class _FakeCtx:
         @staticmethod
@@ -198,6 +195,6 @@ def test_spawn_mode_subprocess_raises_on_python_failure(monkeypatch, tmp_path):
 
     monkeypatch.setattr("multiprocessing.get_context", lambda mode: _FakeCtx())
 
-    runner = isaac_mode_runner.IsaacModeRunner(_minimal_task(tmp_path))
+    task = _minimal_task(tmp_path)
     with pytest.raises(RuntimeError, match="failed with exit code 1"):
-        runner._spawn_mode_subprocess("train")
+        task_runner._spawn_mode_subprocess(task, "train")

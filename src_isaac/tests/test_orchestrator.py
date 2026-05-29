@@ -13,7 +13,7 @@ import csv
 import torch
 
 from nett_skrl.brain.trainer import MultiBrainTrainer, TrainCfg
-from nett_skrl.runtime.isaac_mode_runner import (
+from nett_skrl.runtime.task_runner import (
     _is_tolerated_isaac_teardown_exit,
     _training_boundaries,
     _write_eval_metrics,

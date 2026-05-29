@@ -1,7 +1,8 @@
 """NETT runtime — process pool, per-task state, and mode-subprocess lifecycle."""
 
 from .executor import Executor
-from .task import Agent, Task, TaskConfig, run_task
+from .task import Agent, Task, TaskConfig
+from .task_runner import run_task
 from .tasklist import build_tasks, validate_tasklist
 
 __all__ = [
