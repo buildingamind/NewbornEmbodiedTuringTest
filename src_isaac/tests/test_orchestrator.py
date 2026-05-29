@@ -1,8 +1,8 @@
-"""Unit tests for MultiBrainTrainer's per-env-slice dispatch.
+"""Unit tests for MultiBrainTrainer's per-env-scope dispatch.
 
 Mocks both the env and the skrl agents so this runs without Isaac Sim and
 without skrl's optimizer step. The point is to lock the slicing contract:
-N agents each see only their env-slice for act/record_transition.
+N agents each see only their contiguous env scope for act/record_transition.
 """
 
 from __future__ import annotations
@@ -106,6 +106,31 @@ def test_trainer_dispatches_each_slice_to_its_agent():
         for obs in agent.act_calls:
             assert obs.shape == (1, env.obs_dim)
         assert agent.post_calls == 4
+
+
+def test_trainer_dispatches_parallel_env_scope_to_single_agent():
+    env = _FakeEnv(num_envs=2)
+    agent = _FakeAgent()
+    trainer = MultiBrainTrainer(env, [agent], device="cpu")
+    trainer.train(TrainCfg(total_timesteps=4))
+
+    assert len(agent.act_calls) == 4
+    assert len(agent.record_calls) == 4
+    for obs in agent.act_calls:
+        assert obs.shape == (2, env.obs_dim)
+
+
+def test_trainer_dispatches_parallel_env_scopes_to_multiple_agents():
+    env = _FakeEnv(num_envs=4)
+    agents = [_FakeAgent() for _ in range(2)]
+    trainer = MultiBrainTrainer(env, agents, device="cpu")
+    trainer.train(TrainCfg(total_timesteps=4))
+
+    assert trainer.scopes == [2, 2]
+    for agent in agents:
+        assert len(agent.act_calls) == 4
+        for obs in agent.act_calls:
+            assert obs.shape == (2, env.obs_dim)
 
 
 def test_trainer_eval_switches_mode_to_eval():

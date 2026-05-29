@@ -12,6 +12,7 @@ def build_tasks(
     body,
     env,
     num_brains: int,
+    num_envs: int,
     conditions: list[str],
     output_dir: Path,
     modes: list[str],
@@ -26,6 +27,7 @@ def build_tasks(
             episodes=episodes,
             memory=memory,
             num_brains=num_brains,
+            num_envs=num_envs,
             brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
         )
@@ -40,7 +42,11 @@ def validate_tasklist(tasks: list[Task]) -> None:
         run_config = config.for_mode("train")
         log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)
-        task.agent.body.adjust_to_agent(task.agent.env, num_brains=config.num_brains)
+        task.agent.body.adjust_to_agent(
+            task.agent.env,
+            num_brains=config.num_brains,
+            num_envs=config.num_envs,
+        )
         loaded = task.agent.env.load(run_config)
         try:
             loaded = task.agent.body.wrap(loaded)

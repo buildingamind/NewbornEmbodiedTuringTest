@@ -62,12 +62,24 @@ def memory_size_for(brain, cfg, spec) -> int:
 
 
 def build_agents(brain, env, device: torch.device, *, config=None) -> list:
-    """Build one skrl agent per env slice."""
+    """Build one skrl agent per brain, each owning a contiguous env scope."""
     obs_space, act_space = env.observation_space, env.action_space
     enc_kwargs = encoder_kwargs(brain, obs_space)
     spec = algorithm_spec(brain.algorithm)
+    num_agents = int(
+        getattr(config, "num_brains", None)
+        or getattr(brain, "num_brains", None)
+        or env.num_envs
+    )
+    if num_agents < 1:
+        raise ValueError(f"num_brains must be >= 1; got {num_agents}.")
+    if env.num_envs % num_agents != 0:
+        raise ValueError(
+            f"env.num_envs ({env.num_envs}) must be divisible by num_brains ({num_agents})."
+        )
+    scope = env.num_envs // num_agents
     agents = []
-    for brain_id in range(env.num_envs):
+    for brain_id in range(num_agents):
         cfg = default_algorithm_cfg(brain)
         apply_algorithm_stability_defaults(cfg, spec)
         apply_cfg_overrides(cfg, brain.custom_algorithm_args)
@@ -96,7 +108,7 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
 
         memory = RandomMemory(
             memory_size=memory_size_for(brain, cfg, spec),
-            num_envs=1,
+            num_envs=scope,
             device=device,
         )
         models = build_models_for_algorithm(

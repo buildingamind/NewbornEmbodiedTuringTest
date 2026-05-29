@@ -235,6 +235,17 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
     assert seen["steps"] == 150
 
 
+def test_calc_iterations_derives_parallel_envs_per_agent_from_batch_size():
+    brain = Brain(batch_size=512)
+    brain.calc_iterations(
+        num_brains=1,
+        iterations_per_episode={"Object1": 1},
+        episodes={"train": 1},
+        steps_per_episode=200,
+    )
+    assert brain.envs_per_agent == 2
+
+
 def test_brain_train_uses_chunk_timesteps_and_loads_resume_checkpoint(monkeypatch, tmp_path):
     brain = Brain(wandb={"mode": "disabled"})
     brain.train_iterations = 100

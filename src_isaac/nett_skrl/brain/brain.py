@@ -4,9 +4,10 @@ Public surface matches the legacy class so existing YAML configs Just Work:
 ``Brain(encoder=, algorithm=, reward=, ...)`` plus ``.train()`` /
 ``.test()`` / ``.calc_iterations()``.
 
-Internally it builds N skrl agents (one per env-slice == one per brain), wires
-each to its own memory + optimizer, and delegates training to skrl's
-``SequentialTrainer`` through a small NETT runner wrapper.
+Internally it builds N skrl agents (one per brain), gives each agent a
+contiguous scope of parallel env rows, wires each to its own memory +
+optimizer, and delegates training to skrl's ``SequentialTrainer`` through a
+small NETT runner wrapper.
 """
 
 from __future__ import annotations
@@ -90,6 +91,8 @@ class Brain:
         # Populated by NETT.run setup via calc_iterations(...).
         self.iterations_per_test_episode: dict[str, int] = {}
         self.steps_per_episode: int = 0
+        self.envs_per_agent: int = 1
+        self.num_brains: int | None = None
         self.train_iterations: int = 0
         self.test_iterations: dict[str, int] = {}
         self.n_tasks: int = 0
@@ -117,7 +120,9 @@ class Brain:
         steps_per_episode: int,
     ) -> None:
         """Compute step budgets for train + test modes."""
+        self.num_brains = int(num_brains)
         self.steps_per_episode = steps_per_episode
+        self.envs_per_agent = max(1, self.batch_size // max(1, steps_per_episode))
         self.n_tasks = len(iterations_per_episode) * num_brains
         if "train" in episodes:
             self.train_iterations = episodes["train"] * steps_per_episode
@@ -191,6 +196,7 @@ class Brain:
                 "batch_size": self.batch_size,
                 "buffer_size": self.buffer_size,
                 "checkpoint_freq": self.checkpoint_freq,
+                "envs_per_agent": self.envs_per_agent,
                 "total_timesteps": self.train_iterations,
                 "chunk_timesteps": int(config.train_timesteps or self.train_iterations),
                 "global_step": config.train_global_step,

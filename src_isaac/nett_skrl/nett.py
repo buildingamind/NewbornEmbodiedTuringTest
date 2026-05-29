@@ -5,8 +5,8 @@ benchmark run(s) out. The behavioral differences are entirely below the
 public API:
 
   - One process per imprint condition (not per brain x condition).
-  - num_envs == num_brains inside each Isaac Sim process; N brains share the
-    vectorized env via :class:`MultiBrainTrainer`.
+  - N brains share one vectorized Isaac env via :class:`MultiBrainTrainer`;
+    each brain can own multiple parallel env rows.
   - No mlagents port juggling; Isaac Sim doesn't reserve ports.
   - ``task_memory`` declares (or ``"auto"`` measures) per-task VRAM so the
     scheduler can pack multiple tasks per GPU.
@@ -172,10 +172,12 @@ class NETT:
             episodes, steps_per_episode,
         )
         base_brain.iterations_per_test_episode = base_env.iterations_per_test_episode
+        num_envs = int(num_brains) * int(base_brain.envs_per_agent)
 
         base_body.adjust_to_agent(
             base_env,
             num_brains=num_brains,
+            num_envs=num_envs,
             episode_steps=steps_per_episode,
         )
 
@@ -184,7 +186,7 @@ class NETT:
             task_memory, base_brain, base_body, base_env, output_dir,
         )
         tasklist = build_tasks(
-            base_brain, base_body, base_env, num_brains, base_env.conditions,
+            base_brain, base_body, base_env, num_brains, num_envs, base_env.conditions,
             output_dir, modes, episodes, memory, brain_id_offset, eval_freq,
         )
 
@@ -254,9 +256,16 @@ class NETT:
         condition = env.conditions[0]
 
         task = Task(
-            brain, body, env, condition, output_dir,
-            modes=["train"], episodes={"train": 1}, memory=None,
+            brain, 
+            body, 
+            env, 
+            condition, 
+            output_dir,
+            modes=["train"], 
+            episodes={"train": 1}, 
+            memory=None,
             num_brains=env.num_brains,
+            num_envs=env.num_envs,
         )
         task.set_device(device)
         task.set_dry_run(True)

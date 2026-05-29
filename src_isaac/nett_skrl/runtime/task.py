@@ -2,8 +2,8 @@
 
 In the Isaac Lab port, N brains share one process (and one vectorized env)
 per imprint condition. ``TaskConfig`` no longer carries a single ``brain_id``;
-it carries ``num_brains`` so the Brain layer can allocate N agents over
-``env.num_envs == num_brains`` env-slices.
+it carries ``num_brains`` and ``num_envs`` so the Brain layer can allocate N
+agents over contiguous env scopes.
 """
 
 from __future__ import annotations
@@ -34,6 +34,7 @@ class TaskConfig:
     episodes: dict[str, int] | None = None
     memory: Optional[float] = None
     num_brains: int = 1
+    num_envs: int | None = None
     brain_id_offset: int = 0
     eval_freq: int | None = None
     train_timesteps: int | None = None
@@ -53,6 +54,7 @@ class TaskConfig:
         object.__setattr__(self, "output_dir", output_dir)
         object.__setattr__(self, "modes", list(self.modes))
         object.__setattr__(self, "episodes", dict(self.episodes or {}))
+        object.__setattr__(self, "num_envs", int(self.num_envs or self.num_brains))
         digest = hashlib.sha256(self.condition.encode("utf-8")).digest()
         object.__setattr__(self, "seed", (int.from_bytes(digest[:8], "big") * 7919) % (2**31 - 1))
         object.__setattr__(self, "name", output_dir.stem)
@@ -85,12 +87,14 @@ class Task:
         episodes: dict[str, int] | None = None,
         memory: Optional[float] = None,
         num_brains: int = 1,
+        num_envs: int | None = None,
         brain_id_offset: int = 0,
         eval_freq: int | None = None,
     ) -> None:
         self.config = TaskConfig(
             condition, output_dir, modes, episodes, memory,
-            num_brains=num_brains, brain_id_offset=brain_id_offset,
+            num_brains=num_brains, num_envs=num_envs,
+            brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
         )
         self.agent = Agent(brain, body, env)

@@ -9,8 +9,8 @@ Key differences from the legacy Unity path:
     - No Unity executable; design sheet + media root drive the experiment.
     - No multi-port worker contention; one Isaac Sim process per condition.
     - Vectorization handled by `cfg.scene.num_envs` inside Isaac Lab, not by
-      gym `SubprocVecEnv`. `num_envs` is set equal to `num_brains` so the N
-      brains share a single vectorized env (each env-slice == one brain).
+      gym `SubprocVecEnv`. `num_envs` may be larger than `num_brains` so each
+      brain can own a contiguous parallel env scope.
 """
 
 from __future__ import annotations
@@ -19,7 +19,12 @@ import logging
 from pathlib import Path
 from typing import Optional
 
+from isaaclab.app import AppLauncher
+from nett_isaac.nett_env import NETTEnv
+from nett_isaac.nett_env_cfg import NETTEnvCfg
+
 from ..runtime.task import TaskConfig
+from .design import get_experiment_design, validate_conditions
 
 logger = logging.getLogger("nett.environment")
 
@@ -60,8 +65,6 @@ class Environment:
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
     ):
-        from .design import get_experiment_design, validate_conditions
-
         self.design_sheet = Path(design_sheet)
         self.media_root = Path(media_root)
         if not self.media_root.exists():
@@ -92,17 +95,20 @@ class Environment:
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
         self.num_brains = 1  # overridden by adjust_to_agent()
+        self.num_envs = 1  # total vectorized Isaac env rows
 
         self._sim_app = None  # populated lazily on first load()
 
-    def adjust_to_agent(self, num_brains: int, **kwargs) -> None:
+    def adjust_to_agent(self, num_brains: int, num_envs: int | None = None, **kwargs) -> None:
         """Bind agent-side knobs before `load()`.
 
-        Stores num_brains so `load()` can set ``cfg.scene.num_envs``. Extra
-        kwargs (``input_resolution``, ``binocular_vision``, ``reward_types``,
-        ``episode_steps``) override constructor defaults.
+        Stores num_brains and total num_envs so `load()` can set
+        ``cfg.scene.num_envs``. Extra kwargs (``input_resolution``,
+        ``binocular_vision``, ``reward_types``, ``episode_steps``) override
+        constructor defaults.
         """
-        self.num_brains = num_brains
+        self.num_brains = int(num_brains)
+        self.num_envs = int(num_envs if num_envs is not None else num_brains)
         for k, v in kwargs.items():
             if hasattr(self, k):
                 setattr(self, k, v)
@@ -115,17 +121,12 @@ class Environment:
         Returns the raw `NETTEnv`; the caller (Brain.train) is responsible for
         wrapping it with ``skrl.envs.wrappers.torch.wrap_env``.
         """
-        from isaaclab.app import AppLauncher
-
         if self._sim_app is None:
             self._sim_app = AppLauncher(
                 headless=self.headless,
                 enable_cameras=True,
                 device=f"cuda:{getattr(config, 'device', 0)}",
             ).app
-
-        from nett_isaac.nett_env import NETTEnv
-        from nett_isaac.nett_env_cfg import NETTEnvCfg
 
         cfg_kwargs = {}
         if self.asset_root is not None:
@@ -136,7 +137,7 @@ class Environment:
 
     def _configure_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         """Apply NETT-skrl settings to a fresh ``NETTEnvCfg`` and refresh derived fields."""
-        cfg.scene.num_envs = self.num_brains
+        cfg.scene.num_envs = self.num_envs
         cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
         if hasattr(cfg, "asset_root") and self.asset_root is not None:

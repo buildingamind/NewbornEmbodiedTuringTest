@@ -1,8 +1,8 @@
 """``MultiBrainTrainer`` — NETT wrapper around skrl's ``SequentialTrainer``.
 
-One skrl agent owns one vectorized env slice. The env wrappers used during
- the training loop (intrinsic-reward injection + the small skrl-compat shim)
-live in :mod:`nett_skrl.brain.env_wrappers`.
+One skrl agent owns one contiguous vectorized env scope. The env wrappers used
+during the training loop (intrinsic-reward injection + the small skrl-compat
+shim) live in :mod:`nett_skrl.brain.env_wrappers`.
 """
 
 from __future__ import annotations
@@ -52,19 +52,22 @@ class TrainCfg:
 class MultiBrainTrainer:
     """Thin NETT wrapper over skrl ``SequentialTrainer``.
 
-    One skrl agent owns one vectorized env slice. ``SequentialTrainer`` handles
+    One skrl agent owns one vectorized env scope. ``SequentialTrainer`` handles
     the act/step/record/update loop through its native ``agents`` + ``scopes``
     support; this class preserves NETT output layout and eval/record hooks.
     """
 
     def __init__(self, env, agents: list, device: str | torch.device = "cuda"):
-        if env.num_envs != len(agents):
+        if len(agents) < 1:
+            raise ValueError("MultiBrainTrainer requires at least one agent.")
+        if env.num_envs % len(agents) != 0:
             raise ValueError(
-                f"env.num_envs ({env.num_envs}) must equal num_brains "
-                f"({len(agents)}); each env-slice is one brain."
+                f"env.num_envs ({env.num_envs}) must be divisible by num_brains "
+                f"({len(agents)}); each brain owns one contiguous env scope."
             )
         self.env = env
         self.agents = agents
+        self.scopes = [env.num_envs // len(agents)] * len(agents)
         self.device = torch.device(device)
 
     @staticmethod
@@ -153,12 +156,10 @@ class MultiBrainTrainer:
         trainer = SequentialTrainer(
             env=env,
             agents=self.agents if len(self.agents) > 1 else self.agents[0],
-            scopes=[1] * len(self.agents) if len(self.agents) > 1 else None,
+            scopes=self.scopes if len(self.agents) > 1 else None,
             cfg={
-                "timesteps": int(timesteps),
+                "timesteps": timesteps,
                 "headless": True,
-                "disable_progressbar": True,
-                "close_environment_at_exit": False,
             },
         )
         trainer.train()
@@ -179,7 +180,12 @@ class MultiBrainTrainer:
                 # Env runs on CPU (NETTEnvCfg.sim.device='cpu'); ``totals``
                 # is on the policy device. Move rewards
                 # to the totals device before accumulating.
-                totals += rewards.squeeze(-1).to(totals.device, non_blocking=True)
+                reward_rows = rewards.reshape(self.env.num_envs, -1).mean(dim=1)
+                offset = 0
+                for i, scope in enumerate(self.scopes):
+                    scoped_rewards = reward_rows[offset : offset + scope]
+                    totals[i] += scoped_rewards.to(totals.device, non_blocking=True).mean()
+                    offset += scope
                 observations = next_observations
         # Finish the eval-phase wandb runs so they aren't left ``crashed``.
         # Skrl creates a fresh wandb run for each phase (different ``id`` per
@@ -191,11 +197,13 @@ class MultiBrainTrainer:
     def _collect_actions_for_eval(self, observations: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
         states = self.env.state() if hasattr(self.env, "state") else None
         actions = []
-        for i, agent in enumerate(self.agents):
-            obs_i = observations[i : i + 1]
-            state_i = states[i : i + 1] if states is not None else None
+        offset = 0
+        for agent, scope in zip(self.agents, self.scopes):
+            obs_i = observations[offset : offset + scope]
+            state_i = states[offset : offset + scope] if states is not None else None
             action_i, outputs = agent.act(obs_i, state_i, timestep=timestep, timesteps=timesteps)
             actions.append(outputs.get("mean_actions", action_i))
+            offset += scope
         return torch.cat(actions, dim=0)
 
     @staticmethod
@@ -211,7 +219,7 @@ class MultiBrainTrainer:
         out = Path(cfg.hparams_dir) / "logs"
         out.mkdir(parents=True, exist_ok=True)
         env_timesteps = int(cfg.total_timesteps)
-        train_steps = env_timesteps * max(1, len(self.agents))
+        train_steps = env_timesteps * max(1, self.env.num_envs)
         payload = {
             "skrl_train_total_s": elapsed_s,
             "env_timesteps": env_timesteps,
