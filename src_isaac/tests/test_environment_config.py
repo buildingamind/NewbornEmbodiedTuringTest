@@ -97,9 +97,9 @@ def test_configure_cfg_refreshes_derived_fields_and_seed(tmp_path):
     assert cfg.screens.random_first_frame is True
     assert cfg.screens.switch_steps == 9
     assert cfg.screens.decision_period == 3
-    assert cfg.record_path.endswith("recordings/egocentric/train")
+    assert cfg.egocentric_record_path.endswith("recordings/egocentric/train")
     assert cfg.chamber_record_path.endswith("recordings/chamber/train")
-    assert cfg.record_episodes == (0, 2)
+    assert cfg.egocentric_record_episodes == (0, 2)
     assert cfg.chamber_record_episodes == (1, 2)
     assert cfg.seed == 999
     assert cfg.post_init_calls == 1
@@ -182,6 +182,7 @@ def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, mon
             self.log_path = None
             self.profile_path = None
             self.record_path = None
+            self.egocentric_record_path = None
             self.record_episodes = None
             self.egocentric_record_episodes = None
             self.chamber_record_path = None
@@ -235,7 +236,7 @@ def test_recording_episode_empty_selector_disables_path(tmp_path):
 
     env._configure_cfg(cfg, task)
 
-    assert not hasattr(cfg, "record_path")
+    assert not hasattr(cfg, "egocentric_record_path")
 
 
 def test_metrics_only_eval_disables_recording_paths(tmp_path):
@@ -257,7 +258,7 @@ def test_metrics_only_eval_disables_recording_paths(tmp_path):
 
     env._configure_cfg(cfg, task)
 
-    assert not hasattr(cfg, "record_path")
+    assert not hasattr(cfg, "egocentric_record_path")
     assert not hasattr(cfg, "chamber_record_path")
 
 

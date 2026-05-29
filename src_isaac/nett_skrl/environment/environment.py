@@ -28,6 +28,8 @@ from .design import get_experiment_design, validate_conditions
 
 logger = logging.getLogger("nett.environment")
 
+_RECORDING_TARGETS = ("egocentric", "chamber")
+
 
 class Environment:
     """Isaac Lab environment loader.
@@ -118,8 +120,9 @@ class Environment:
     def load(self, config: TaskConfig, seed: Optional[int] = None):
         """Launch Isaac Sim and instantiate ``NETTEnv``.
 
-        Returns the raw `NETTEnv`; the caller (Brain.train) is responsible for
-        wrapping it with ``skrl.envs.wrappers.torch.wrap_env``.
+        Returns the raw `NETTEnv`; the Brain layer wraps it with
+        ``NettIsaacLabWrapper`` after body-side observation wrappers are
+        applied.
         """
         if self._sim_app is None:
             self._sim_app = AppLauncher(
@@ -137,11 +140,17 @@ class Environment:
 
     def _configure_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         """Apply NETT-skrl settings to a fresh ``NETTEnvCfg`` and refresh derived fields."""
+        self._apply_sim_cfg(cfg, config, seed)
+        if not config.dry_run:
+            self._configure_artifacts(cfg, config, seed)
+        cfg.__post_init__()
+
+    def _apply_sim_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         cfg.scene.num_envs = self.num_envs
         cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
-        if hasattr(cfg, "asset_root") and self.asset_root is not None:
-            cfg.asset_root = str(self.asset_root)
+        if self.asset_root is not None:
+            _set_if_present(cfg, "asset_root", str(self.asset_root))
         cfg.design_sheet = str(self.design_sheet)
         cfg.media_root = str(self.media_root)
         cfg.episode_steps = self.episode_steps
@@ -154,40 +163,37 @@ class Environment:
         cfg.screens.random_first_frame = self.random_first_frame
         cfg.screens.switch_steps = self.switch_steps
         cfg.screens.decision_period = self.decision_period
-        if hasattr(cfg, "seed"):
-            cfg.seed = config.seed if seed is None else seed
-        if hasattr(cfg, "validation_mode") and config.dry_run:
-            cfg.validation_mode = True
+        _set_if_present(cfg, "seed", config.seed if seed is None else seed)
+        if config.dry_run:
+            _set_if_present(cfg, "validation_mode", True)
 
-        # In a dry-run we don't want any on-disk artifacts (CSV log, profile,
-        # recordings): the only output that matters is the parent reading the
-        # post-train free VRAM via ``mem.txt``.
-        if not config.dry_run:
-            log_path = config.path / "logs"
-            log_path.mkdir(exist_ok=True, parents=True)
-            cfg.log_path = str(
-                log_path / f"{config.current_mode}_{config.condition}_{seed or 0}.csv"
-            )
-            if hasattr(cfg, "profile_path"):
-                cfg.profile_path = str(
-                    log_path / f"profile_{config.current_mode}_{config.condition}_{seed or 0}.json"
-                )
+    def _configure_artifacts(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
+        log_path = config.path / "logs"
+        log_path.mkdir(exist_ok=True, parents=True)
+        suffix = f"{config.current_mode}_{config.condition}_{seed or 0}"
+        cfg.log_path = str(log_path / f"{suffix}.csv")
+        _set_if_present(cfg, "profile_path", str(log_path / f"profile_{suffix}.json"))
 
-            egocentric_episodes = self._recording_episodes("egocentric", config)
-            if egocentric_episodes:
-                recording_path = config.path / "recordings" / "egocentric" / config.current_mode
-                recording_path.mkdir(exist_ok=True, parents=True)
-                cfg.record_path = str(recording_path)
-                cfg.record_episodes = egocentric_episodes
-                cfg.egocentric_record_episodes = egocentric_episodes
-            chamber_episodes = self._recording_episodes("chamber", config)
-            if chamber_episodes:
-                chamber_path = config.path / "recordings" / "chamber" / config.current_mode
-                chamber_path.mkdir(exist_ok=True, parents=True)
-                setattr(cfg, "chamber_record_path", str(chamber_path))
-                setattr(cfg, "chamber_record_episodes", chamber_episodes)
+        for kind in _RECORDING_TARGETS:
+            self._configure_recording_target(cfg, config, kind)
 
-        cfg.__post_init__()
+    def _configure_recording_target(self, cfg, config: TaskConfig, kind: str) -> None:
+        episodes = self._recording_episodes(kind, config)
+        if not episodes:
+            return
+        recording_path = config.path / "recordings" / kind / config.current_mode
+        recording_path.mkdir(exist_ok=True, parents=True)
+        setattr(cfg, f"{kind}_record_path", str(recording_path))
+        setattr(cfg, f"{kind}_record_episodes", episodes)
+        if kind == "egocentric":
+            self._set_egocentric_legacy_recording_attrs(cfg, recording_path, episodes)
+
+    def _set_egocentric_legacy_recording_attrs(
+        self, cfg, recording_path: Path, episodes: tuple[int, ...]
+    ) -> None:
+        """Bridge nett_isaac's generic egocentric recording field names."""
+        _set_if_present(cfg, "record_path", str(recording_path))
+        _set_if_present(cfg, "record_episodes", episodes)
 
     def _recording_episodes(self, kind: str, config: TaskConfig) -> tuple[int, ...]:
         """Resolve episode indices to record for camera ``kind`` in this phase.
@@ -247,6 +253,11 @@ def parse_episode_selector(spec, total_episodes: int) -> tuple[int, ...]:
                 raise ValueError(f"Invalid recording episodes selector: {spec!r}")
             return tuple(universe[slice(start, stop, step)])
     raise ValueError(f"Invalid recording episodes selector: {spec!r}")
+
+
+def _set_if_present(obj, name: str, value) -> None:
+    if hasattr(obj, name):
+        setattr(obj, name, value)
 
 
 def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
