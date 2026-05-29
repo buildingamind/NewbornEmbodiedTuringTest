@@ -20,13 +20,13 @@ import torch
 
 from nett_skrl.recording import RecordingCfg, export_recordings
 
-from .task import Task, TaskConfig, _set_seeds
+from .task import Task, TaskConfig, set_seeds
 
 
 def run_task(task: Task) -> None:
     """Run one (condition × N brains) task: train/test/record in fresh Isaac workers."""
     config = task.config
-    _set_seeds(config.seed)
+    set_seeds(config.seed)
     if config.dry_run:
         config.logger.info(
             "Spawning dry-run subprocess for condition %s", config.condition
@@ -141,7 +141,7 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
 
     config = task.config
     agent = task.agent
-    _set_seeds(config.seed)
+    set_seeds(config.seed)
     if not config.dry_run:
         (config.path / "logs").mkdir(exist_ok=True, parents=True)
 

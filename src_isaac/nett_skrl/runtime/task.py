@@ -106,7 +106,7 @@ class Task:
         self.config = replace(self.config, dry_run=dry_run)
 
 
-def _set_seeds(seed: int) -> None:
+def set_seeds(seed: int) -> None:
     """Reproducibility — same call site as legacy, minus cv2 (deferred until needed)."""
     np.random.seed(seed)
     random.seed(seed)
