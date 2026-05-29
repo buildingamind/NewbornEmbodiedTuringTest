@@ -646,6 +646,61 @@ def test_wandb_scalar_mirror_no_op_without_run():
     assert agent.write_calls == 1  # original ran, no wandb call attempted
 
 
+def test_wandb_scalar_mirror_logs_episode_total_rewards():
+    from nett_skrl.brain.experiment import attach_wandb_scalar_mirror
+
+    class _FakeRun:
+        def __init__(self) -> None:
+            self.logged: list[dict] = []
+
+        def log(self, data, step=None) -> None:
+            self.logged.append(dict(data))
+
+    class _FakeAgent:
+        def __init__(self) -> None:
+            self.tracking_data = {}
+            self.record_calls = 0
+
+        def init(self, *, trainer_cfg=None):
+            pass
+
+        def record_transition(self, **kwargs):
+            self.record_calls += 1
+
+        def write_tracking_data(self, *, timestep, timesteps):
+            pass
+
+    agent = _FakeAgent()
+    attach_wandb_scalar_mirror(agent)
+    agent._nett_wandb_run = _FakeRun()
+
+    agent.record_transition(
+        rewards=torch.tensor([[1.0], [2.0]]),
+        terminated=torch.tensor([[False], [False]]),
+        truncated=torch.tensor([[False], [False]]),
+        timestep=1,
+    )
+    agent.record_transition(
+        rewards=torch.tensor([[3.0], [4.0]]),
+        terminated=torch.tensor([[True], [False]]),
+        truncated=torch.tensor([[False], [False]]),
+        timestep=2,
+    )
+    agent.record_transition(
+        rewards=torch.tensor([[5.0], [6.0]]),
+        terminated=torch.tensor([[False], [False]]),
+        truncated=torch.tensor([[False], [True]]),
+        timestep=3,
+    )
+
+    assert agent.record_calls == 3
+    logged = agent._nett_wandb_run.logged
+    assert [row["rollout/ep_rew_total"] for row in logged] == [4.0, 12.0]
+    assert [row["rollout/env_index"] for row in logged] == [0, 1]
+    assert [row["rollout/episode"] for row in logged] == [1, 2]
+    assert [row["Stats/nett_timestep"] for row in logged] == [2, 3]
+
+
 def test_wandb_invalid_mode_rejected_at_brain_construction():
     with pytest.raises(ValueError, match="brain.wandb.mode"):
         Brain(algorithm="PPO", buffer_size=8, batch_size=2,

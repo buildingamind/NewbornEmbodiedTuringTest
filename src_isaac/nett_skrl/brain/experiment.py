@@ -118,7 +118,10 @@ def attach_wandb_scalar_mirror(agent) -> None:
 
     original_init = agent.init
     original_write = agent.write_tracking_data
+    original_record = getattr(agent, "record_transition", None)
     _n_updates: list[int] = [0]
+    _episode_returns: list[torch.Tensor | None] = [None]
+    _episode_count: list[int] = [0]
 
     def init_with_wandb_capture(*args, **kwargs):
         result = original_init(*args, **kwargs)
@@ -143,12 +146,52 @@ def attach_wandb_scalar_mirror(agent) -> None:
             # so W&B won't warn about conflicting step values.
             run.define_metric("Stats/nett_timestep")
             run.define_metric("Stats/nett_*", step_metric="Stats/nett_timestep")
+            run.define_metric("rollout/episode")
+            run.define_metric("rollout/*", step_metric="Stats/nett_timestep")
             run.define_metric("train/n_updates")
             run.define_metric("train/*", step_metric="train/n_updates")
         return result
 
     _last_flush_time: list[float] = [time.perf_counter()]
     _last_flush_step: list[int] = [0]
+
+    def record_with_episode_return_tracking(*args, **kwargs):
+        result = original_record(*args, **kwargs)
+        try:
+            rewards = kwargs.get("rewards")
+            if rewards is None:
+                return result
+            reward_tensor = torch.as_tensor(rewards).detach().reshape(-1).cpu()
+            if _episode_returns[0] is None or _episode_returns[0].numel() != reward_tensor.numel():
+                _episode_returns[0] = torch.zeros_like(reward_tensor, dtype=torch.float32)
+            returns = _episode_returns[0]
+            returns += reward_tensor.to(dtype=returns.dtype)
+
+            terminated = kwargs.get("terminated", kwargs.get("dones"))
+            truncated = kwargs.get("truncated")
+            done = _done_tensor(terminated, truncated, reward_tensor.numel(), torch)
+            if not bool(done.any()):
+                return result
+
+            run = getattr(agent, "_nett_wandb_run", None)
+            timestep = int(kwargs.get("timestep", kwargs.get("timesteps", 0)) or 0)
+            for env_index in done.nonzero(as_tuple=False).reshape(-1).tolist():
+                total_reward = float(returns[env_index].item())
+                _episode_count[0] += 1
+                if run is not None:
+                    try:
+                        run.log({
+                            "Stats/nett_timestep": timestep,
+                            "rollout/episode": _episode_count[0],
+                            "rollout/env_index": int(env_index),
+                            "rollout/ep_rew_total": total_reward,
+                        })
+                    except Exception:
+                        logger.debug("wandb episode return log failed", exc_info=True)
+                returns[env_index] = 0.0
+        except Exception:
+            logger.debug("episode return tracking failed", exc_info=True)
+        return result
 
     def write_with_wandb_mirror(*, timestep, timesteps):
         tracking_payload = _tracking_data_payload(getattr(agent, "tracking_data", {}))
@@ -185,6 +228,8 @@ def attach_wandb_scalar_mirror(agent) -> None:
         return result
 
     agent.init = init_with_wandb_capture
+    if original_record is not None:
+        agent.record_transition = record_with_episode_return_tracking
     agent.write_tracking_data = write_with_wandb_mirror
     agent._nett_wandb_scalar_mirror_attached = True
 
@@ -204,6 +249,16 @@ def _tracking_data_payload(tracking_data: dict[str, list]) -> dict[str, float]:
         else:
             payload[key] = float(np.mean(values))
     return payload
+
+
+def _done_tensor(terminated, truncated, size: int, torch) -> Any:
+    """Return a flat bool tensor marking completed env rows."""
+    done = torch.zeros(size, dtype=torch.bool)
+    if terminated is not None:
+        done |= torch.as_tensor(terminated).detach().reshape(-1).cpu().bool()
+    if truncated is not None:
+        done |= torch.as_tensor(truncated).detach().reshape(-1).cpu().bool()
+    return done
 
 
 def _sb3_train_aliases(agent, tracking_payload: dict[str, float], torch, np) -> dict[str, float]:
