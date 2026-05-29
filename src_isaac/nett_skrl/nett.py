@@ -205,28 +205,18 @@ class NETT:
 
     def _log_wandb_viewing_instructions(
         self,
-        run_name: str,
         brain_cfg: dict,
-        conditions: list[str],
-        num_brains: int,
     ) -> None:
         wandb_cfg = (brain_cfg or {}).get("wandb", {}) or {}
         if wandb_cfg.get("mode", "online") != "online":
             return
         project = wandb_cfg.get("project", "nett-skrl")
         entity = wandb_cfg.get("entity") or "<your-default-entity>"
-        self.logger.info("W&B online logging is enabled.")
-        self.logger.info("Authenticate first with `wandb login` or WANDB_API_KEY.")
-        self.logger.info("Open: https://wandb.ai/%s/%s", entity, project)
-        self.logger.info("Filter/group by condition and tags from brain.wandb.tags.")
-        for condition in conditions:
-            for brain_id in range(1, int(num_brains) + 1):
-                self.logger.info(
-                    "Expected W&B run: %s/%s/brain_%d",
-                    run_name,
-                    condition,
-                    brain_id,
-                )
+        self.logger.info(
+            f"""W&B online logging is enabled.
+                Authenticate first with `wandb login` or WANDB_API_KEY.
+                Open: https://wandb.ai/{entity}/{project}"""
+        )
 
     # --- Memory estimation -------------------------------------------------
 
