@@ -34,7 +34,7 @@ from .experiment import (
     normalize_wandb_cfg as _normalize_wandb_cfg,
 )
 from .intrinsic_adapter import IntrinsicRewardAdapter
-from .env_adapter import NettIsaacLabWrapper
+from .env_adapter import IsaacEnvWrapper
 from .rewards import UnsupportedIntrinsicReward
 from .registry import (
     validate_algorithm,
@@ -224,7 +224,7 @@ class Brain:
 
     def _wrapped_env(self, envs, config: TaskConfig):
         device = policy_device(config)
-        return device, NettIsaacLabWrapper(envs, device=device)
+        return device, IsaacEnvWrapper(envs, device=device)
 
     def _build_agents(self, wrapped, device: torch.device, config: TaskConfig):
         # During a dry-run, force wandb off for the per-agent skrl experiment

@@ -2,7 +2,7 @@
 
 These classes provide the legacy NETT reward names without depending on SB3
 callbacks or the optional ``rllte`` package. They operate on the flattened
-policy observations emitted by :class:`nett_skrl.brain.env_adapter.NettIsaacLabWrapper`.
+policy observations emitted by :class:`nett_skrl.brain.env_adapter.IsaacEnvWrapper`.
 """
 
 from __future__ import annotations

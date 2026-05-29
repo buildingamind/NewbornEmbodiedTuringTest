@@ -29,7 +29,12 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 from .experiment import get_wandb_run_by_id, wandb_run_id
 
@@ -49,15 +54,11 @@ def sync_outputs_to_wandb(
     Safe to call even when wandb is disabled or some artifacts are missing
     — every step is best-effort and exceptions are logged, not raised.
     """
-    try:
-        import wandb
-    except ImportError:
+    if wandb is None:
         logger.debug("wandb not installed; skipping output sync")
         return
 
     condition_dir = Path(output_dir) / condition
-    logs_dir = condition_dir / "logs"
-    rec_dir = condition_dir / "recordings"
 
     for brain_id, agent in enumerate(agents, start=1):
         run_id = wandb_run_id(run_name, condition, brain_id, phase)
@@ -65,23 +66,27 @@ def sync_outputs_to_wandb(
         if run is None:
             logger.debug(
                 "no wandb Run for brain_%d (id=%s); skipping upload",
-                brain_id, run_id,
+                brain_id,
+                run_id,
             )
             continue
 
-        env_id = brain_id - 1
         _upload_checkpoints(run, agent)
-        _upload_recordings(run, wandb, rec_dir, phase=phase, env_id=env_id)
+        _upload_recordings(
+            run,
+            condition_dir / "recordings",
+            phase=phase,
+            env_id=brain_id - 1,
+        )
         _upload_shared_files(
             run,
             condition_dir=condition_dir,
-            logs_dir=logs_dir,
             phase=phase,
             condition=condition,
         )
 
 
-def _safe_save(run, path: Path, base_path: Path, policy: str = "now") -> None:
+def _safe_save(run: Any, path: Path, base_path: Path, policy: str = "now") -> None:
     """``run.save`` wrapper that swallows + logs failures.
 
     ``policy='now'`` uploads immediately rather than at the end of the
@@ -95,19 +100,27 @@ def _safe_save(run, path: Path, base_path: Path, policy: str = "now") -> None:
         logger.exception("wandb run.save failed: %s", path)
 
 
-def _upload_checkpoints(run, agent) -> None:
+def _save_existing(run: Any, paths: Iterable[Path], *, base_path: Path) -> None:
+    for path in paths:
+        if path.exists():
+            _safe_save(run, path, base_path=base_path)
+
+
+def _upload_checkpoints(run: Any, agent: Any) -> None:
     exp_dir = getattr(agent, "experiment_dir", None)
     if not exp_dir:
         return
     ckpt_dir = Path(exp_dir) / "checkpoints"
     if not ckpt_dir.is_dir():
         return
-    parent = Path(exp_dir).parent  # wandb_runs/
-    for ckpt in sorted(ckpt_dir.glob("*.pt")):
-        _safe_save(run, ckpt, base_path=parent)
+    _save_existing(
+        run,
+        sorted(ckpt_dir.glob("*.pt")),
+        base_path=Path(exp_dir).parent,
+    )
 
 
-def _upload_recordings(run, wandb_module, rec_dir: Path, *, phase: str, env_id: int) -> None:
+def _upload_recordings(run: Any, rec_dir: Path, *, phase: str, env_id: int) -> None:
     """Upload MP4 recordings under ``recordings/<kind>/<phase>/env_<env_id>``.
 
     Both per-frame PNGs and the exported MP4 live under the same
@@ -117,34 +130,43 @@ def _upload_recordings(run, wandb_module, rec_dir: Path, *, phase: str, env_id: 
     """
     if not rec_dir.exists():
         return
-    base_path = rec_dir.parent  # condition_dir
+    for kind, mp4 in _iter_recording_mp4s(rec_dir, phase=phase, env_id=env_id):
+        _log_video(run, mp4, kind=kind)
+        _safe_save(run, mp4, base_path=rec_dir.parent)
+
+
+def _iter_recording_mp4s(
+    rec_dir: Path,
+    *,
+    phase: str,
+    env_id: int,
+) -> Iterable[tuple[str, Path]]:
+    env_prefix = f"env_{env_id}"
     for kind in ("egocentric", "chamber"):
         kind_dir = rec_dir / kind / phase
         if not kind_dir.exists():
             continue
-        env_prefix = f"env_{env_id}"
         for env_subdir in kind_dir.iterdir():
-            if not env_subdir.is_dir() or not env_subdir.name.startswith(env_prefix):
-                continue
-            for mp4 in sorted(env_subdir.rglob("*.mp4")):
-                _log_video(run, wandb_module, mp4, kind=kind)
-                _safe_save(run, mp4, base_path=base_path)
+            if env_subdir.is_dir() and env_subdir.name.startswith(env_prefix):
+                for mp4 in sorted(env_subdir.rglob("*.mp4")):
+                    yield kind, mp4
 
 
-def _log_video(run, wandb_module, mp4: Path, *, kind: str) -> None:
+def _log_video(run: Any, mp4: Path, *, kind: str) -> None:
     """Log an MP4 as ``wandb.Video`` so it renders in the W&B media panel."""
+    if wandb is None:
+        return
     key = f"video/{kind}/{mp4.parent.name}/{mp4.stem}"
     try:
-        run.log({key: wandb_module.Video(str(mp4))})
+        run.log({key: wandb.Video(str(mp4))})
     except Exception:
         logger.exception("wandb.Video log failed: %s", mp4)
 
 
 def _upload_shared_files(
-    run,
+    run: Any,
     *,
     condition_dir: Path,
-    logs_dir: Path,
     phase: str,
     condition: str,
 ) -> None:
@@ -154,18 +176,24 @@ def _upload_shared_files(
     wandb is self-contained — there's no global "run" view that aggregates
     across brains.
     """
-    # config.yaml lives at the run-name level (one above condition_dir).
-    run_root = condition_dir.parent
-    config_yaml = run_root / "config.yaml"
-    if config_yaml.exists():
-        _safe_save(run, config_yaml, base_path=run_root)
+    _save_existing(run, _iter_run_files(condition_dir), base_path=condition_dir.parent)
+    _save_existing(
+        run,
+        _iter_log_files(condition_dir / "logs", phase=phase, condition=condition),
+        base_path=condition_dir,
+    )
 
-    candidates: Iterable[Path] = (
+
+def _iter_run_files(condition_dir: Path) -> Iterable[Path]:
+    """Files saved relative to the run-name directory."""
+    yield condition_dir.parent / "config.yaml"
+
+
+def _iter_log_files(logs_dir: Path, *, phase: str, condition: str) -> Iterable[Path]:
+    """Files saved relative to the condition directory."""
+    yield from (
         *logs_dir.glob(f"{phase}_{condition}_*.csv"),
         *logs_dir.glob(f"profile_{phase}_{condition}_*.json"),
         logs_dir / "hparams.json",
         logs_dir / "train_timing.json",
     )
-    for path in candidates:
-        if path.exists():
-            _safe_save(run, path, base_path=condition_dir)

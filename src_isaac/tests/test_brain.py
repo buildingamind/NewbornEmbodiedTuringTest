@@ -21,7 +21,7 @@ from nett_skrl.brain.models import ValueCritic, model_cfg_from
 from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
 from nett_skrl.brain.encoders import NETTFeatureExtractor, Resnet10CNN, Resnet18CNN, SmallCNN
 from nett_skrl.brain.rewards import E3B, ICM, PseudoCounts, RIDE
-from nett_skrl.brain.env_adapter import NettIsaacLabWrapper
+from nett_skrl.brain.env_adapter import IsaacEnvWrapper
 from nett_skrl.brain.registry import algorithm_spec, register_reward
 
 
@@ -288,7 +288,7 @@ def test_brain_train_uses_chunk_timesteps_and_loads_resume_checkpoint(monkeypatc
     assert seen["load"] == (["agent"], "train")
 
 
-def test_nett_wrapper_uses_actual_policy_observation_space():
+def test_isaac_env_wrapper_uses_actual_policy_observation_space():
     class _WrappedLikeEnv:
         num_envs = 2
         observation_space = gym.spaces.Dict(
@@ -299,20 +299,20 @@ def test_nett_wrapper_uses_actual_policy_observation_space():
         def reset(self, seed=None):
             return {"policy": np.zeros((2, 3, 16, 16), dtype=np.uint8)}, {}
 
-    wrapped = NettIsaacLabWrapper(_WrappedLikeEnv(), device="cpu")
+    wrapped = IsaacEnvWrapper(_WrappedLikeEnv(), device="cpu")
     assert wrapped.observation_space.shape == (3, 16, 16)
     obs, _ = wrapped.reset()
     assert obs.shape == (2, 3 * 16 * 16)
     assert obs.device.type == "cpu"
 
 
-def test_nett_wrapper_exposes_skrl_optional_env_api():
+def test_isaac_env_wrapper_exposes_skrl_optional_env_api():
     class _MinimalEnv:
         num_envs = 1
         observation_space = gym.spaces.Box(0, 255, (4,), dtype=np.uint8)
         action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
 
-    wrapped = NettIsaacLabWrapper(_MinimalEnv(), device="cpu")
+    wrapped = IsaacEnvWrapper(_MinimalEnv(), device="cpu")
     assert wrapped.num_agents == 1
     assert wrapped.state() is None
     assert wrapped.render() is None
