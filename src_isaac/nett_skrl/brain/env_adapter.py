@@ -35,6 +35,10 @@ class NettIsaacLabWrapper(Wrapper):
         self._policy_device = torch.device(device or "cpu")
 
     @property
+    def num_agents(self) -> int:
+        return int(getattr(self._env, "num_agents", 1))
+
+    @property
     def observation_space(self) -> gym.Space:
         return _policy_space(self._env)
 
@@ -96,7 +100,9 @@ class NettIsaacLabWrapper(Wrapper):
         return self._states
 
     def render(self, *args, **kwargs) -> Any:
-        return self._env.render(*args, **kwargs)
+        if hasattr(self._env, "render"):
+            return self._env.render(*args, **kwargs)
+        return None
 
     def close(self) -> None:
         if hasattr(self._env, "close"):

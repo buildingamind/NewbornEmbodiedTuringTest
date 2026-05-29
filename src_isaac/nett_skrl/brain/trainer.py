@@ -20,6 +20,7 @@ from ..recording.export import RecordingCfg, export_recordings
 from .env_wrappers import (
     IntrinsicRewardEnvWrapper,
     SkrlEnvCompatibilityWrapper,
+    needs_skrl_compat,
 )
 
 logger = logging.getLogger("nett.trainer")
@@ -100,7 +101,8 @@ class MultiBrainTrainer:
             IntrinsicRewardEnvWrapper(self.env, intrinsic_reward_adapters)
             if intrinsic_reward_adapters else self.env
         )
-        train_env = SkrlEnvCompatibilityWrapper(train_env)
+        if needs_skrl_compat(train_env):
+            train_env = SkrlEnvCompatibilityWrapper(train_env)
         # One contiguous skrl run — no chunking needed now that NETT no
         # longer interrupts to write its own checkpoints.
         start = time.perf_counter()
