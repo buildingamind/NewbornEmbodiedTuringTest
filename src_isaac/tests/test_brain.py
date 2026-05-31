@@ -898,23 +898,11 @@ def test_tensorboard_tracking_tracks_episode_total_rewards():
         def log(self, data, step=None) -> None:
             self.logged.append(dict(data))
 
-    class _FakeWriter:
-        def __init__(self) -> None:
-            self.scalars: list[tuple[str, float, int]] = []
-            self.flushes = 0
-
-        def add_scalar(self, tag, scalar_value, global_step=None):
-            self.scalars.append((tag, float(scalar_value), int(global_step)))
-
-        def flush(self):
-            self.flushes += 1
-
     class _FakeAgent:
         def __init__(self) -> None:
             self.tracking_data = {}
             self.record_calls = 0
             self.tracked: list[tuple[str, float]] = []
-            self.writer = _FakeWriter()
 
         def init(self, *, trainer_cfg=None):
             pass
@@ -953,18 +941,13 @@ def test_tensorboard_tracking_tracks_episode_total_rewards():
 
     assert agent.record_calls == 3
     assert agent._nett_wandb_run.logged == []
-    assert agent.tracked == []
     tracked: dict[str, list[float]] = {}
-    scalar_steps: dict[str, list[int]] = {}
-    for key, value, step in agent.writer.scalars:
+    for key, value in agent.tracked:
         tracked.setdefault(key, []).append(value)
-        scalar_steps.setdefault(key, []).append(step)
     assert tracked["rollout/ep_rew_total"] == [4.0, 12.0]
     assert tracked["rollout/env_index"] == [0.0, 1.0]
     assert tracked["rollout/episode"] == [1.0, 2.0]
     assert tracked["rollout/ep_len"] == [2.0, 3.0]
-    assert scalar_steps["rollout/ep_rew_total"] == [1, 2]
-    assert agent.writer.flushes == 2
 
 
 def test_wandb_invalid_mode_rejected_at_brain_construction():

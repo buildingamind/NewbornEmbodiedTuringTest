@@ -230,12 +230,12 @@ def attach_tensorboard_tracking(agent) -> None:
                 total_reward = float(returns[env_index].item())
                 total_length = float(lengths[env_index].item())
                 _episode_count[0] += 1
-                _write_episode_scalars(agent, {
+                _track_many(agent, {
                     "rollout/episode": _episode_count[0],
                     "rollout/env_index": int(env_index),
                     "rollout/ep_len": total_length,
                     "rollout/ep_rew_total": total_reward,
-                }, step=_episode_count[0])
+                })
                 returns[env_index] = 0.0
                 lengths[env_index] = 0.0
         except Exception:
@@ -315,52 +315,6 @@ def _track_many(agent, payload: dict[str, float]) -> None:
     if isinstance(tracking_data, dict):
         for key, value in payload.items():
             tracking_data.setdefault(key, []).append(float(value))
-
-
-def _write_episode_scalars(agent, payload: dict[str, float], *, step: int) -> None:
-    """Write completed-episode summaries at episode-number TensorBoard steps.
-
-    skrl's ``track_data`` path buffers values and flushes their aggregate at
-    the trainer timestep. That is right for training losses and instantaneous
-    reward windows, but misleading for completed-episode summaries: W&B then
-    gives them the same x-axis density as skrl's rollout stats. These scalars
-    are episode events, so stamp them with the completed episode count.
-    """
-    writer = _episode_scalar_writer(agent)
-    if writer is None:
-        _track_many(agent, payload)
-        return
-    try:
-        for key, value in payload.items():
-            writer.add_scalar(key, float(value), global_step=int(step))
-        if hasattr(writer, "flush"):
-            writer.flush()
-    except Exception:
-        logger.debug("episode TensorBoard scalar write failed", exc_info=True)
-        _track_many(agent, payload)
-
-
-def _episode_scalar_writer(agent):
-    writer = getattr(agent, "writer", None)
-    if writer is not None and hasattr(writer, "add_scalar"):
-        return writer
-
-    cached = getattr(agent, "_nett_episode_writer", None)
-    if cached is not None:
-        return cached
-
-    exp_dir = getattr(agent, "experiment_dir", None)
-    if not exp_dir:
-        return None
-    try:
-        from torch.utils.tensorboard import SummaryWriter
-    except Exception:
-        logger.debug("torch TensorBoard SummaryWriter unavailable", exc_info=True)
-        return None
-
-    writer = SummaryWriter(log_dir=str(exp_dir))
-    agent._nett_episode_writer = writer
-    return writer
 
 
 def _tracking_data_payload(tracking_data: dict[str, list]) -> dict[str, float]:
@@ -484,17 +438,6 @@ def finish_agent_wandb_runs(agents) -> None:
     no-ops.
     """
     for agent in agents:
-        writer = getattr(agent, "_nett_episode_writer", None)
-        if writer is not None:
-            try:
-                if hasattr(writer, "flush"):
-                    writer.flush()
-                if hasattr(writer, "close"):
-                    writer.close()
-            except Exception:
-                logger.debug("episode TensorBoard writer close failed", exc_info=True)
-            agent._nett_episode_writer = None
-
         run = getattr(agent, "_nett_wandb_run", None)
         if run is None:
             continue
