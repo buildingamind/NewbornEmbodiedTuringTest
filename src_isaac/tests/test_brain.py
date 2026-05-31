@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 import torch
 import torch.nn as nn
+from skrl.agents.torch import ExperimentCfg
 
 from nett_skrl.brain.agent_factory import build_agents as _build_agents
 from nett_skrl.brain.brain import Brain, IntrinsicRewardAdapter
@@ -598,6 +599,7 @@ def test_wandb_disabled_keeps_directory_but_skips_wandb(tmp_path):
                              run_name="run", tmp=tmp_path)
     agent = _build_agents(brain, env, torch.device("cpu"), config=config)[0]
     exp = agent.cfg.experiment
+    assert isinstance(exp, ExperimentCfg)
     assert exp.wandb is False
     assert exp.wandb_kwargs == {}
     # Directory + experiment_name still set so checkpoints work without wandb
@@ -615,6 +617,7 @@ def test_wandb_offline_populates_skrl_experiment(tmp_path):
     agent = _build_agents(brain, env, torch.device("cpu"), config=config)[0]
 
     exp = agent.cfg.experiment
+    assert isinstance(exp, ExperimentCfg)
     assert exp.wandb is True
     assert exp.experiment_name == "brain_1"
     assert exp.directory.endswith("wandb_runs")
@@ -891,6 +894,8 @@ def test_wandb_each_brain_gets_unique_run_name(tmp_path):
     assert agents[1].cfg.experiment.experiment_name == "brain_2"
     # The two cfg.experiment objects must be independent — otherwise the
     # second agent's overrides would clobber the first.
+    assert isinstance(agents[0].cfg.experiment, ExperimentCfg)
+    assert isinstance(agents[1].cfg.experiment, ExperimentCfg)
     assert agents[0].cfg.experiment is not agents[1].cfg.experiment
 
 

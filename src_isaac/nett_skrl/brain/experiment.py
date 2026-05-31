@@ -8,6 +8,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from skrl.agents.torch import ExperimentCfg
+
 logger = logging.getLogger("nett.brain")
 
 # Registry of every wandb Run created in this process, keyed by the
@@ -55,20 +57,78 @@ def apply_experiment_cfg(
     if not hasattr(cfg, "experiment"):
         return
 
-    exp = cfg.experiment
-    exp.directory = str(output_dir / "wandb_runs")
-    exp.experiment_name = f"brain_{brain_id}"
-    if getattr(exp, "write_interval", "auto") == "auto":
-        exp.write_interval = 100
-    exp.checkpoint_interval = int(checkpoint_freq) if checkpoint_freq else 0
-    exp.store_separately = False
+    cfg.experiment = make_experiment_cfg(
+        previous=getattr(cfg, "experiment", None),
+        wandb_cfg=wandb_cfg,
+        checkpoint_freq=checkpoint_freq,
+        condition=condition,
+        brain_id=brain_id,
+        phase=phase,
+        output_dir=output_dir,
+        run_name=run_name,
+    )
 
+
+def make_experiment_cfg(
+    *,
+    previous: Any = None,
+    wandb_cfg: dict[str, Any],
+    checkpoint_freq: int | None,
+    condition: str,
+    brain_id: int,
+    phase: str,
+    output_dir: Path,
+    run_name: str,
+) -> ExperimentCfg:
+    """Build skrl's official experiment config for one brain."""
+    write_interval = getattr(previous, "write_interval", "auto")
+    if write_interval == "auto":
+        write_interval = 100
+
+    wandb = False
+    wandb_kwargs: dict[str, Any] = {}
     if wandb_cfg["mode"] == "disabled":
-        return
+        return ExperimentCfg(
+            directory=str(output_dir / "wandb_runs"),
+            experiment_name=f"brain_{brain_id}",
+            write_interval=write_interval,
+            checkpoint_interval=int(checkpoint_freq) if checkpoint_freq else 0,
+            store_separately=False,
+            wandb=wandb,
+            wandb_kwargs=wandb_kwargs,
+        )
 
-    exp.wandb = True
+    wandb = True
     _install_wandb_init_capture()
-    wandb_kwargs: dict[str, Any] = {
+    wandb_kwargs = _wandb_kwargs(
+        wandb_cfg=wandb_cfg,
+        condition=condition,
+        brain_id=brain_id,
+        phase=phase,
+        output_dir=output_dir,
+        run_name=run_name,
+    )
+    return ExperimentCfg(
+        directory=str(output_dir / "wandb_runs"),
+        experiment_name=f"brain_{brain_id}",
+        write_interval=write_interval,
+        checkpoint_interval=int(checkpoint_freq) if checkpoint_freq else 0,
+        store_separately=False,
+        wandb=wandb,
+        wandb_kwargs=wandb_kwargs,
+    )
+
+
+def _wandb_kwargs(
+    *,
+    wandb_cfg: dict[str, Any],
+    condition: str,
+    brain_id: int,
+    phase: str,
+    output_dir: Path,
+    run_name: str,
+) -> dict[str, Any]:
+    kwargs: dict[str, Any] = {
         "project": wandb_cfg["project"],
         "mode": wandb_cfg["mode"],
         "group": condition,
@@ -82,10 +142,10 @@ def apply_experiment_cfg(
         "sync_tensorboard": True,
     }
     if wandb_cfg["entity"] is not None:
-        wandb_kwargs["entity"] = wandb_cfg["entity"]
+        kwargs["entity"] = wandb_cfg["entity"]
     if wandb_cfg["notes"] is not None:
-        wandb_kwargs["notes"] = wandb_cfg["notes"]
-    exp.wandb_kwargs = wandb_kwargs
+        kwargs["notes"] = wandb_cfg["notes"]
+    return kwargs
 
 
 def attach_tensorboard_tracking(agent) -> None:
