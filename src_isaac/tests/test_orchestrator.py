@@ -10,10 +10,12 @@ from __future__ import annotations
 import json
 import csv
 import logging
+from concurrent.futures import Future
 from types import SimpleNamespace
 
 import torch
 
+import nett_skrl.nett as nett_module
 from nett_skrl.brain.run_recorder import RunRecorder
 from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
 from nett_skrl.recording import RecordingCfg
@@ -409,6 +411,63 @@ def test_parallel_env_planning_caps_to_brain_multiple():
         max_parallel_envs=10,
     ) == 9
     assert num_env_candidates(9, 3) == [9, 6, 3]
+
+
+def test_single_run_logs_wandb_instructions_without_argument_mismatch(monkeypatch, tmp_path):
+    class _Brain:
+        envs_per_brain = 1
+        iterations_per_test_episode = {}
+
+        def __init__(self, **kwargs):
+            self.wandb_cfg = kwargs.get("wandb", {})
+
+        def env_reward_types(self):
+            return ()
+
+        def calc_iterations(self, *args):
+            pass
+
+    class _Body:
+        def adjust_to_agent(self, env, **kwargs):
+            env.num_brains = kwargs["num_brains"]
+            env.num_envs = kwargs["num_envs"]
+
+    class _Environment:
+        conditions = ["Object1"]
+        iterations_per_test_episode = {"Object1": 1}
+        num_brains = 1
+        num_envs = 1
+
+        def __init__(self, **kwargs):
+            pass
+
+    class _Executor:
+        def submit(self, *args, **kwargs):
+            fut = Future()
+            fut.set_result(None)
+            return fut
+
+    assigned = []
+    monkeypatch.setattr(nett_module, "Brain", _Brain)
+    monkeypatch.setattr(nett_module, "Body", _Body)
+    monkeypatch.setattr(nett_module, "Environment", _Environment)
+    monkeypatch.setattr(nett_module, "build_tasks", lambda *args, **kwargs: ["task"])
+    monkeypatch.setattr(nett_module, "future_wait", lambda *args, **kwargs: None)
+
+    nett = object.__new__(NETT)
+    nett.logger = logging.getLogger("test")
+    nett.output_path = tmp_path
+    nett.executor = _Executor()
+    nett._assign_task = assigned.append
+
+    nett.single_run(
+        name="run",
+        environment={"design_sheet": "design.csv", "media_root": "media"},
+        brain={"wandb": {"mode": "online", "project": "nett-test"}},
+        task_memory=1.0,
+    )
+
+    assert assigned == ["task"]
 
 
 def test_auto_memory_resolution_searches_down_to_safe_env_count(tmp_path):

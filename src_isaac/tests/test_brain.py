@@ -521,6 +521,20 @@ def test_off_policy_agents_keep_replay_buffer_size():
     assert agent.memory.memory_size == 123
 
 
+def test_encoder_trainable_cfg_does_not_leak_to_encoder_constructor():
+    env = _FakeSkrlEnv()
+    brain = Brain(
+        algorithm="PPO",
+        encoder_cfg={"features_dim": 16, "trainable": False},
+        algorithm_cfg=_tiny_algorithm_cfg("PPO"),
+    )
+    agent = _build_agents(brain, env, torch.device("cpu"))[0]
+
+    for model in agent.models.values():
+        assert model.encoder.features_dim == 16
+        assert all(not param.requires_grad for param in model.encoder.parameters())
+
+
 def test_value_critic_output_is_bounded_and_finite():
     space = gym.spaces.Box(low=0, high=255, shape=(16, 16, 3), dtype=np.uint8)
     action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
@@ -736,6 +750,84 @@ def test_tensorboard_tracking_routes_supplemental_metrics_to_tensorboard():
     assert payload["train/std"] == pytest.approx(0.7)
     assert payload["train/loss"] == pytest.approx(2.47)
     assert payload["train/n_updates"] == 1
+
+
+def test_init_wrap_registers_skrl_logdir_with_wandb_for_sync():
+    """sync_tensorboard=True silently no-ops on skrl's writer because skrl's
+    ``EventFileWriter`` import is bound before wandb patches the module — we
+    have to register skrl's experiment_dir on the run explicitly.
+    """
+    from nett_skrl.brain.experiment import attach_tensorboard_tracking
+    from nett_skrl.brain import experiment as exp_mod
+
+    callback_calls: list[tuple] = []
+
+    class _FakeRun:
+        def _tensorboard_callback(self, logdir, save=True, root_logdir=""):
+            callback_calls.append((logdir, save, root_logdir))
+
+    class _FakeExperimentCfg:
+        wandb_kwargs = {"id": "test-run-id-sync"}
+
+    class _FakeCfg:
+        experiment = _FakeExperimentCfg()
+
+    class _FakeAgent:
+        def __init__(self) -> None:
+            self.cfg = _FakeCfg()
+            self.experiment_dir = "/tmp/skrl_logs/brain_1"
+            self.tracking_data = {}
+
+        def init(self, *, trainer_cfg=None):
+            pass
+
+        def track_data(self, tag, value):
+            pass
+
+        def write_tracking_data(self, *, timestep, timesteps):
+            pass
+
+    agent = _FakeAgent()
+    attach_tensorboard_tracking(agent)
+
+    fake_run = _FakeRun()
+    exp_mod._wandb_runs_by_id["test-run-id-sync"] = fake_run
+    try:
+        agent.init(trainer_cfg={})
+    finally:
+        exp_mod._wandb_runs_by_id.pop("test-run-id-sync", None)
+
+    assert callback_calls == [("/tmp/skrl_logs/brain_1", True, "")]
+
+
+def test_init_wrap_skips_sync_registration_when_no_run_captured():
+    """No captured Run (wandb disabled or import failed) → no callback call."""
+    from nett_skrl.brain.experiment import attach_tensorboard_tracking
+
+    class _FakeExperimentCfg:
+        wandb_kwargs: dict = {}
+
+    class _FakeCfg:
+        experiment = _FakeExperimentCfg()
+
+    class _FakeAgent:
+        def __init__(self) -> None:
+            self.cfg = _FakeCfg()
+            self.experiment_dir = "/tmp/skrl_logs/brain_1"
+            self.tracking_data = {}
+
+        def init(self, *, trainer_cfg=None):
+            pass
+
+        def track_data(self, tag, value):
+            pass
+
+        def write_tracking_data(self, *, timestep, timesteps):
+            pass
+
+    agent = _FakeAgent()
+    attach_tensorboard_tracking(agent)
+    agent.init(trainer_cfg={})  # must not raise
 
 
 def test_finish_agent_wandb_runs_calls_finish_and_clears():

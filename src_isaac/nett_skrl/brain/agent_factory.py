@@ -21,7 +21,9 @@ def freeze(module: nn.Module) -> None:
 
 
 def encoder_cfg_for(brain) -> dict[str, Any]:
-    return brain.encoder_cfg.as_kwargs()
+    kwargs = brain.encoder_cfg.as_kwargs()
+    kwargs.pop("trainable", None)
+    return kwargs
 
 
 def default_algorithm_cfg(brain):

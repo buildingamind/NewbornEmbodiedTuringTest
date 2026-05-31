@@ -199,6 +199,7 @@ def attach_tensorboard_tracking(agent) -> None:
             pass
         run = _wandb_runs_by_id.get(run_id) if run_id else None
         agent._nett_wandb_run = run
+        _register_skrl_logdir_for_sync(agent, run)
         return result
 
     _last_flush_time: list[float] = [time.perf_counter()]
@@ -268,6 +269,36 @@ def attach_tensorboard_tracking(agent) -> None:
         agent.record_transition = record_with_episode_return_tracking
     agent.write_tracking_data = write_with_tensorboard_tracking
     agent._nett_tensorboard_tracking_attached = True
+
+
+def _register_skrl_logdir_for_sync(agent, run) -> None:
+    """Tell wandb to tail skrl's TensorBoard event dir for this Run.
+
+    Why: ``wandb.init(sync_tensorboard=True)`` patches
+    ``tensorboard.summary.writer.event_file_writer.EventFileWriter`` at the
+    module level so newly-constructed writers self-register their logdir.
+    skrl's ``skrl/utils/tensorboard.py`` imports ``EventFileWriter`` with
+    ``from ... import EventFileWriter`` *at module load*, so its local
+    reference points at the unpatched original class — wandb's patched
+    subclass is never constructed, and skrl's events never sync. Without
+    this, every scalar skrl writes (Reward/*, Loss/*, our train/* and
+    rollout/* aliases routed through ``track_data``) is invisible in W&B.
+
+    Calling ``_tensorboard_callback`` is what wandb's own patched writer
+    does — we just invoke it directly with skrl's ``experiment_dir``.
+    """
+    if run is None:
+        return
+    logdir = getattr(agent, "experiment_dir", None)
+    if not logdir:
+        return
+    callback = getattr(run, "_tensorboard_callback", None)
+    if callback is None:
+        return
+    try:
+        callback(str(logdir), save=True)
+    except Exception:
+        logger.debug("wandb tensorboard sync registration failed", exc_info=True)
 
 
 def _track_many(agent, payload: dict[str, float]) -> None:

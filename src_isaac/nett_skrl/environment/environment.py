@@ -19,10 +19,6 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from isaaclab.app import AppLauncher
-from nett_isaac.nett_env import NETTEnv
-from nett_isaac.nett_env_cfg import NETTEnvCfg
-
 from ..runtime.task import TaskConfig
 from .design import get_experiment_design, validate_conditions
 
@@ -140,12 +136,17 @@ class Environment:
         ``IsaacEnvWrapper`` after body-side observation wrappers are
         applied.
         """
+        from isaaclab.app import AppLauncher
+
         if self._sim_app is None:
             self._sim_app = AppLauncher(
                 headless=self.headless,
                 enable_cameras=True,
                 device=f"cuda:{getattr(config, 'device', 0)}",
             ).app
+
+        from nett_isaac.nett_env import NETTEnv
+        from nett_isaac.nett_env_cfg import NETTEnvCfg
 
         cfg_kwargs = {}
         if self.asset_root is not None:
@@ -282,8 +283,8 @@ def _set_attr_path(obj, dotted_name: str, value) -> None:
 def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
     """Infer a private Isaac asset root from user-provided asset paths."""
     required = (
-        Path("chick/robot_chick.usd"),
-        Path("chamber/chamber1.usd"),
+        Path("chick/robot_chick2.usd"),
+        Path("chamber/chamber2.usd"),
         Path("design_sheets/example_design.csv"),
     )
     for raw in paths:

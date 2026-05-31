@@ -128,8 +128,8 @@ def test_configure_cfg_can_disable_neck_action_dofs(tmp_path):
 def test_configure_cfg_infers_private_asset_root(tmp_path):
     assets = tmp_path / "assets"
     for rel in (
-        "chick/robot_chick.usd",
-        "chamber/chamber1.usd",
+        "chick/robot_chick2.usd",
+        "chamber/chamber2.usd",
         "design_sheets/example_design.csv",
     ):
         path = assets / rel
@@ -152,8 +152,8 @@ def test_configure_cfg_infers_private_asset_root(tmp_path):
 def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, monkeypatch):
     assets = tmp_path / "assets"
     for rel in (
-        "chick/robot_chick.usd",
-        "chamber/chamber1.usd",
+        "chick/robot_chick2.usd",
+        "chamber/chamber2.usd",
         "design_sheets/example_design.csv",
     ):
         path = assets / rel

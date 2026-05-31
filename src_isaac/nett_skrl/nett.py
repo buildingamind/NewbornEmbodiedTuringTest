@@ -164,10 +164,7 @@ class NETT:
                 environment["reward_types"] = list(inferred_rewards)
         base_env = Environment(**environment)
         self._log_wandb_viewing_instructions(
-            name,
             brain or {},
-            base_env.conditions,
-            num_brains,
         )
 
         base_brain.calc_iterations(
