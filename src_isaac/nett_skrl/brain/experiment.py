@@ -15,8 +15,7 @@ logger = logging.getLogger("nett.brain")
 # run_name/condition/brain_id/phase — see ``_wandb_run_id``). skrl's
 # multi-brain path calls ``wandb.init(reinit="create_new")`` once per
 # brain, and ``wandb.run`` only ever points at the most-recently-created
-# Run; post-training file uploads need each brain's own Run object so we
-# capture them here via a ``wandb.init`` monkey-patch.
+# Run; capture each handle so we can finish all of them cleanly.
 _wandb_runs_by_id: dict[str, Any] = {}
 _wandb_init_patched = False
 
@@ -89,31 +88,30 @@ def apply_experiment_cfg(
     exp.wandb_kwargs = wandb_kwargs
 
 
-def attach_wandb_scalar_mirror(agent) -> None:
-    """Add supplemental metrics to wandb alongside skrl's tensorboard sync.
+def attach_tensorboard_tracking(agent) -> None:
+    """Add supplemental metrics to skrl's TensorBoard stream.
 
     skrl writes scalars (rewards, losses, etc.) to local tensorboard event
     files via its own ``SummaryWriter``; ``sync_tensorboard=True`` watches
-    those files and uploads them to wandb automatically. This function also
-    logs a direct wandb mirror so every brain's scalars are attributed to the
-    correct Run, and adds SB3-compatible PPO ``train/...`` aliases plus live
-    SPS (steps per second).
+    those files and uploads them to wandb automatically. This function tracks
+    NETT-specific rollout metrics, SB3-compatible PPO ``train/...`` aliases,
+    and live SPS (steps per second) through skrl's ``agent.track_data`` so
+    TensorBoard and wandb share one scalar source of truth.
 
     Implementation is per-instance method wrapping (NOT class
     mutation): we replace ``agent.init`` and ``agent.write_tracking_data``
-    on each agent we build. ``agent.init`` captures the just-created
-    ``wandb.run`` as ``agent._nett_wandb_run`` so each brain's scalars
-    attribute to that brain's wandb run (in multi-brain runs the global
-    ``wandb.run`` only points at the most-recently-init'd one, which
-    would mis-attribute).
+    on each agent we build. ``agent.init`` still captures the just-created
+    ``wandb.run`` as ``agent._nett_wandb_run`` so each per-brain run can be
+    finished cleanly (in multi-brain runs the global ``wandb.run`` only points
+    at the most-recently-init'd one).
 
     Safe when wandb is disabled or not installed: the wrapper falls
-    through to ``original_write`` and skips the wandb log call.
+    through to skrl's original methods.
     """
     import numpy as np
     import torch
 
-    if getattr(agent, "_nett_wandb_scalar_mirror_attached", False):
+    if getattr(agent, "_nett_tensorboard_tracking_attached", False):
         return
 
     original_init = agent.init
@@ -121,6 +119,7 @@ def attach_wandb_scalar_mirror(agent) -> None:
     original_record = getattr(agent, "record_transition", None)
     _n_updates: list[int] = [0]
     _episode_returns: list[torch.Tensor | None] = [None]
+    _episode_lengths: list[torch.Tensor | None] = [None]
     _episode_count: list[int] = [0]
 
     def init_with_wandb_capture(*args, **kwargs):
@@ -140,16 +139,6 @@ def attach_wandb_scalar_mirror(agent) -> None:
             pass
         run = _wandb_runs_by_id.get(run_id) if run_id else None
         agent._nett_wandb_run = run
-        if run is not None and hasattr(run, "define_metric"):
-            # sync_tensorboard=True owns the global step counter; our
-            # supplemental metrics (SPS etc.) use a dedicated step field
-            # so W&B won't warn about conflicting step values.
-            run.define_metric("Stats/nett_timestep")
-            run.define_metric("Stats/nett_*", step_metric="Stats/nett_timestep")
-            run.define_metric("rollout/episode")
-            run.define_metric("rollout/*", step_metric="Stats/nett_timestep")
-            run.define_metric("train/n_updates")
-            run.define_metric("train/*", step_metric="train/n_updates")
         return result
 
     _last_flush_time: list[float] = [time.perf_counter()]
@@ -164,8 +153,11 @@ def attach_wandb_scalar_mirror(agent) -> None:
             reward_tensor = torch.as_tensor(rewards).detach().reshape(-1).cpu()
             if _episode_returns[0] is None or _episode_returns[0].numel() != reward_tensor.numel():
                 _episode_returns[0] = torch.zeros_like(reward_tensor, dtype=torch.float32)
+                _episode_lengths[0] = torch.zeros_like(reward_tensor, dtype=torch.float32)
             returns = _episode_returns[0]
+            lengths = _episode_lengths[0]
             returns += reward_tensor.to(dtype=returns.dtype)
+            lengths += 1.0
 
             terminated = kwargs.get("terminated", kwargs.get("dones"))
             truncated = kwargs.get("truncated")
@@ -173,35 +165,25 @@ def attach_wandb_scalar_mirror(agent) -> None:
             if not bool(done.any()):
                 return result
 
-            run = getattr(agent, "_nett_wandb_run", None)
-            timestep = int(kwargs.get("timestep", kwargs.get("timesteps", 0)) or 0)
             for env_index in done.nonzero(as_tuple=False).reshape(-1).tolist():
                 total_reward = float(returns[env_index].item())
+                total_length = float(lengths[env_index].item())
                 _episode_count[0] += 1
-                if run is not None:
-                    try:
-                        run.log({
-                            "Stats/nett_timestep": timestep,
-                            "rollout/episode": _episode_count[0],
-                            "rollout/env_index": int(env_index),
-                            "rollout/ep_rew_total": total_reward,
-                        })
-                    except Exception:
-                        logger.debug("wandb episode return log failed", exc_info=True)
+                _track_many(agent, {
+                    "rollout/episode": _episode_count[0],
+                    "rollout/env_index": int(env_index),
+                    "rollout/ep_len": total_length,
+                    "rollout/ep_rew_total": total_reward,
+                })
                 returns[env_index] = 0.0
+                lengths[env_index] = 0.0
         except Exception:
             logger.debug("episode return tracking failed", exc_info=True)
         return result
 
-    def write_with_wandb_mirror(*, timestep, timesteps):
+    def write_with_tensorboard_tracking(*, timestep, timesteps):
         tracking_payload = _tracking_data_payload(getattr(agent, "tracking_data", {}))
         train_payload = _sb3_train_aliases(agent, tracking_payload, torch, np)
-
-        result = original_write(timestep=timestep, timesteps=timesteps)
-
-        run = getattr(agent, "_nett_wandb_run", None)
-        if run is None:
-            return result
 
         now = time.perf_counter()
         elapsed = now - _last_flush_time[0]
@@ -213,25 +195,35 @@ def attach_wandb_scalar_mirror(agent) -> None:
             _n_updates[0] += 1
             train_payload["train/n_updates"] = _n_updates[0]
 
-        payload = {**tracking_payload, **train_payload}
+        payload = dict(train_payload)
         payload["Stats/nett_timestep"] = int(timestep)
         if elapsed > 0 and step_delta > 0:
             payload["Stats/nett_sps"] = step_delta / elapsed
 
-        if not payload:
-            return result
-
-        try:
-            run.log(payload)
-        except Exception:
-            logger.debug("wandb supplemental log failed", exc_info=True)
-        return result
+        _track_many(agent, payload)
+        return original_write(timestep=timestep, timesteps=timesteps)
 
     agent.init = init_with_wandb_capture
     if original_record is not None:
         agent.record_transition = record_with_episode_return_tracking
-    agent.write_tracking_data = write_with_wandb_mirror
-    agent._nett_wandb_scalar_mirror_attached = True
+    agent.write_tracking_data = write_with_tensorboard_tracking
+    agent._nett_tensorboard_tracking_attached = True
+
+
+def _track_many(agent, payload: dict[str, float]) -> None:
+    """Track scalars through skrl so TensorBoard and wandb stay aligned."""
+    if not payload:
+        return
+    track_data = getattr(agent, "track_data", None)
+    if callable(track_data):
+        for key, value in payload.items():
+            track_data(key, float(value))
+        return
+
+    tracking_data = getattr(agent, "tracking_data", None)
+    if isinstance(tracking_data, dict):
+        for key, value in payload.items():
+            tracking_data.setdefault(key, []).append(float(value))
 
 
 def _tracking_data_payload(tracking_data: dict[str, list]) -> dict[str, float]:
@@ -350,7 +342,7 @@ def finish_agent_wandb_runs(agents) -> None:
     skrl doesn't tear wandb down on its own, so without this the wandb UI
     leaves runs in the ``crashed`` state (parent process exits before
     ``wandb.finish`` is called). Calling ``.finish()`` on each Run flushes
-    pending uploads and marks the run ``finished``. Also clears
+    pending TensorBoard sync and marks the run ``finished``. Also clears
     ``agent._nett_wandb_run`` so subsequent calls on the same agent are
     no-ops.
     """
@@ -388,22 +380,6 @@ def pick_checkpoint(ckpt_dir: Path) -> Path | None:
 def _wandb_run_id(run_name: str, condition: str, brain_id: int, phase: str) -> str:
     raw = f"{run_name}:{condition}:brain_{brain_id}:{phase}".encode("utf-8")
     return "nett-" + hashlib.sha256(raw).hexdigest()[:24]
-
-
-def wandb_run_id(run_name: str, condition: str, brain_id: int, phase: str) -> str:
-    """Public alias of the deterministic per-brain wandb run id."""
-    return _wandb_run_id(run_name, condition, brain_id, phase)
-
-
-def get_wandb_run_by_id(run_id: str):
-    """Return the captured wandb Run for ``run_id``, or ``None`` if not seen.
-
-    Only populated after ``_install_wandb_init_capture`` has run and the
-    matching ``wandb.init`` has fired (which happens inside skrl's
-    ``Agent.init``). Callers should tolerate ``None`` (wandb disabled,
-    init not yet run, or different run_id).
-    """
-    return _wandb_runs_by_id.get(run_id)
 
 
 def _install_wandb_init_capture() -> None:

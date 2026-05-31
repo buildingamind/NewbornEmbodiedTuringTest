@@ -27,9 +27,9 @@ class TrainCfg:
     only where the JSON hparams backup file is written; skrl captures hparams
     into wandb independently.
 
-    ``output_dir`` / ``condition`` / ``phase`` / ``run_name`` are passed
-    through to the post-train wandb upload. Leave them
-    ``None`` to skip the upload entirely — the trainer still runs.
+    ``output_dir`` / ``condition`` / ``phase`` / ``run_name`` are retained for
+    run-layout compatibility; checkpoints, scalars, and videos are written
+    through skrl/TensorBoard paths.
     """
 
     total_timesteps: int

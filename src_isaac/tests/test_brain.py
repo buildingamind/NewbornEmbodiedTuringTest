@@ -548,15 +548,17 @@ def test_wandb_entity_and_notes_omitted_when_none(tmp_path):
     assert kw["resume"] == "allow"
 
 
-def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
-    """The per-agent scalar mirror should call ``wandb.run.log`` with the
-    same aggregated values skrl is about to flush to its writer.
+def test_tensorboard_tracking_routes_supplemental_metrics_to_tensorboard():
+    """The per-agent wrapper should add NETT scalars to skrl tracking data.
 
-    The mirror's init wrap looks up the Run via ``_wandb_runs_by_id`` keyed
-    by ``agent.cfg.experiment.wandb_kwargs["id"]`` — NOT via the global
-    ``wandb.run`` (which skrl's ``reinit="create_new"`` mode leaves unset).
+    The init wrap still looks up the Run via ``_wandb_runs_by_id`` keyed by
+    ``agent.cfg.experiment.wandb_kwargs["id"]`` so it can be finished cleanly
+    later — NOT via the global ``wandb.run`` (which skrl's
+    ``reinit="create_new"`` mode leaves unset). Scalars themselves go through
+    ``track_data`` so skrl writes them to TensorBoard, and wandb gets them from
+    ``sync_tensorboard=True``.
     """
-    from nett_skrl.brain.experiment import attach_wandb_scalar_mirror
+    from nett_skrl.brain.experiment import attach_tensorboard_tracking
     from nett_skrl.brain import experiment as exp_mod
 
     class _FakeRun:
@@ -585,9 +587,14 @@ def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
             self.cfg = _FakeCfg()
             self.init_calls = 0
             self.write_calls = 0
+            self.tracked: list[tuple[str, float]] = []
 
         def init(self, *, trainer_cfg=None):
             self.init_calls += 1
+
+        def track_data(self, tag, value):
+            self.tracked.append((tag, value))
+            self.tracking_data.setdefault(tag, []).append(value)
 
         def write_tracking_data(self, *, timestep, timesteps):
             self.write_calls += 1
@@ -595,9 +602,9 @@ def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
             self.tracking_data = {k: [] for k in self.tracking_data}
 
     agent = _FakeAgent()
-    attach_wandb_scalar_mirror(agent)
+    attach_tensorboard_tracking(agent)
     # Idempotent
-    attach_wandb_scalar_mirror(agent)
+    attach_tensorboard_tracking(agent)
 
     # Pre-populate the captured-runs map as ``_install_wandb_init_capture``
     # would after the real ``wandb.init`` call returns the Run.
@@ -612,13 +619,9 @@ def test_wandb_scalar_mirror_routes_tracking_data_to_wandb():
         exp_mod._wandb_runs_by_id.pop("test-run-id-xyz", None)
 
     assert agent.write_calls == 1, "original write_tracking_data should still run"
-    assert len(fake_run.logged) == 1
-    payload, step = fake_run.logged[0]
-    assert step is None
+    assert fake_run.logged == []
+    payload = dict(agent.tracked)
     assert payload["Stats/nett_timestep"] == 42
-    assert payload["Loss / Policy loss"] == pytest.approx(2.0)     # mean
-    assert payload["Reward/Total (max)"] == pytest.approx(0.9)      # max
-    assert payload["Reward/Total (min)"] == pytest.approx(-0.5)     # min
     assert payload["train/policy_gradient_loss"] == pytest.approx(2.0)
     assert payload["train/value_loss"] == pytest.approx(0.5)
     assert payload["train/entropy_loss"] == pytest.approx(-0.03)
@@ -658,30 +661,35 @@ def test_finish_agent_wandb_runs_calls_finish_and_clears():
     assert run_b.finished == 1
 
 
-def test_wandb_scalar_mirror_no_op_without_run():
-    """When ``_nett_wandb_run`` is None the mirror falls through cleanly."""
-    from nett_skrl.brain.experiment import attach_wandb_scalar_mirror
+def test_tensorboard_tracking_tracks_tensorboard_metrics_without_run():
+    """Supplemental TensorBoard metrics do not require a wandb Run handle."""
+    from nett_skrl.brain.experiment import attach_tensorboard_tracking
 
     class _FakeAgent:
         def __init__(self) -> None:
             self.tracking_data = {"k": [1.0]}
             self.write_calls = 0
+            self.tracked: list[tuple[str, float]] = []
 
         def init(self, *, trainer_cfg=None):
             pass
+
+        def track_data(self, tag, value):
+            self.tracked.append((tag, value))
 
         def write_tracking_data(self, *, timestep, timesteps):
             self.write_calls += 1
 
     agent = _FakeAgent()
-    attach_wandb_scalar_mirror(agent)
+    attach_tensorboard_tracking(agent)
     agent._nett_wandb_run = None
     agent.write_tracking_data(timestep=0, timesteps=1)
-    assert agent.write_calls == 1  # original ran, no wandb call attempted
+    assert agent.write_calls == 1
+    assert dict(agent.tracked)["Stats/nett_timestep"] == 0
 
 
-def test_wandb_scalar_mirror_logs_episode_total_rewards():
-    from nett_skrl.brain.experiment import attach_wandb_scalar_mirror
+def test_tensorboard_tracking_tracks_episode_total_rewards():
+    from nett_skrl.brain.experiment import attach_tensorboard_tracking
 
     class _FakeRun:
         def __init__(self) -> None:
@@ -694,6 +702,7 @@ def test_wandb_scalar_mirror_logs_episode_total_rewards():
         def __init__(self) -> None:
             self.tracking_data = {}
             self.record_calls = 0
+            self.tracked: list[tuple[str, float]] = []
 
         def init(self, *, trainer_cfg=None):
             pass
@@ -701,11 +710,14 @@ def test_wandb_scalar_mirror_logs_episode_total_rewards():
         def record_transition(self, **kwargs):
             self.record_calls += 1
 
+        def track_data(self, tag, value):
+            self.tracked.append((tag, value))
+
         def write_tracking_data(self, *, timestep, timesteps):
             pass
 
     agent = _FakeAgent()
-    attach_wandb_scalar_mirror(agent)
+    attach_tensorboard_tracking(agent)
     agent._nett_wandb_run = _FakeRun()
 
     agent.record_transition(
@@ -728,11 +740,14 @@ def test_wandb_scalar_mirror_logs_episode_total_rewards():
     )
 
     assert agent.record_calls == 3
-    logged = agent._nett_wandb_run.logged
-    assert [row["rollout/ep_rew_total"] for row in logged] == [4.0, 12.0]
-    assert [row["rollout/env_index"] for row in logged] == [0, 1]
-    assert [row["rollout/episode"] for row in logged] == [1, 2]
-    assert [row["Stats/nett_timestep"] for row in logged] == [2, 3]
+    assert agent._nett_wandb_run.logged == []
+    tracked: dict[str, list[float]] = {}
+    for key, value in agent.tracked:
+        tracked.setdefault(key, []).append(value)
+    assert tracked["rollout/ep_rew_total"] == [4.0, 12.0]
+    assert tracked["rollout/env_index"] == [0.0, 1.0]
+    assert tracked["rollout/episode"] == [1.0, 2.0]
+    assert tracked["rollout/ep_len"] == [2.0, 3.0]
 
 
 def test_wandb_invalid_mode_rejected_at_brain_construction():

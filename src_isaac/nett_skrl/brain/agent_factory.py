@@ -10,7 +10,7 @@ import torch.nn as nn
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 
-from .experiment import apply_experiment_cfg, attach_wandb_scalar_mirror
+from .experiment import apply_experiment_cfg, attach_tensorboard_tracking
 from .models import build_models_for_algorithm
 from .registry import algorithm_spec
 
@@ -100,10 +100,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             action_space=act_space,
             device=device,
         )
-        # Per-agent method wrappers so each agent's tracked scalars
-        # (reward, loss, etc.) land on its own wandb.run. Cheap when
-        # wandb is disabled — the wrapper short-circuits if no run.
-        if config is not None and brain.wandb_cfg.get("mode") != "disabled":
-            attach_wandb_scalar_mirror(agent)
+        # Per-agent method wrappers so NETT supplemental scalars are tracked
+        # through skrl's TensorBoard writer. W&B picks them up from
+        # sync_tensorboard=True when enabled.
+        if config is not None:
+            attach_tensorboard_tracking(agent)
         agents.append(agent)
     return agents

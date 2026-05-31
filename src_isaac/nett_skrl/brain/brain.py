@@ -185,10 +185,8 @@ class Brain:
         # ``brain/experiment.py``) — it writes ``agent_{step}.pt`` +
         # ``best_agent.pt`` to each agent's experiment_dir. ``hparams_dir`` is
         # just where the hparams.json backup gets written; skrl captures the
-        # same hparams into wandb automatically via ``wandb.init(config=...)``.
-        # ``output_dir`` is the run-name level (one above the per-condition
-        # ``config.path``); the wandb sync helper needs both so it can find
-        # config.yaml at the run root AND the per-condition logs/recordings.
+        # same hparams into wandb automatically via ``wandb.init(config=...)``
+        # when W&B is enabled.
         self._trainer(wrapped, agents, device).train(
             train_cfg_for(self, config),
             record_cfg=record_cfg,

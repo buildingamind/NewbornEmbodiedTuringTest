@@ -19,6 +19,7 @@ from pathlib import Path
 import torch
 
 from nett_skrl.recording import RecordingCfg, export_recordings
+from nett_skrl.brain.run_recorder import log_recordings_to_tensorboard_dirs
 
 from .task import Task, TaskConfig, set_seeds
 
@@ -282,6 +283,11 @@ def _export_recordings(env, config: TaskConfig) -> None:
     cfg = _make_record_cfg(env, config)
     if cfg is not None:
         export_recordings(cfg)
+        log_recordings_to_tensorboard_dirs(
+            experiment_root=config.path / "wandb_runs",
+            num_brains=config.num_brains,
+            cfg=cfg,
+        )
 
 
 def _exit_worker_cleanly(logger: logging.Logger) -> None:
