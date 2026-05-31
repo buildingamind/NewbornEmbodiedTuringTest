@@ -33,6 +33,7 @@ from .experiment import (
     load_latest_checkpoints as _load_latest_checkpoints_fn,
     normalize_wandb_cfg as _normalize_wandb_cfg,
 )
+from .run_recorder import RunRecorder
 from .intrinsic_adapter import IntrinsicRewardAdapter
 from .env_adapter import IsaacEnvWrapper
 from .rewards import UnsupportedIntrinsicReward
@@ -193,7 +194,12 @@ class Brain:
             intrinsic_reward_adapters=intrinsic_adapters,
         )
 
-    def test(self, envs, config: TaskConfig) -> dict[int, float]:
+    def test(
+        self,
+        envs,
+        config: TaskConfig,
+        record_cfg: RecordingCfg | None = None,
+    ) -> dict[int, float]:
         """Greedy rollout. Returns ``{brain_id: mean_reward}``.
 
         If checkpoints exist under ``{config.path}/wandb_runs/brain_{i}/checkpoints/``, the
@@ -206,19 +212,40 @@ class Brain:
         agents = self._build_agents(wrapped, device, config)
         _init_agents_for_eval_fn(agents)
         _load_latest_checkpoints_fn(agents, config)
-        return self._trainer(wrapped, agents, device).eval(
-            total_timesteps=eval_timesteps(self, config)
-        )
+        recorder = RunRecorder(agents, wrapped.num_envs)
+        try:
+            metrics = self._trainer(wrapped, agents, device).eval(
+                total_timesteps=eval_timesteps(self, config)
+            )
+        except Exception:
+            recorder.after_rollout(None)
+            raise
+        recorder.after_rollout(record_cfg)
+        return metrics
 
-    def record(self, envs, config: TaskConfig, timesteps: int | None = None) -> None:
+    def record(
+        self,
+        envs,
+        config: TaskConfig,
+        timesteps: int | None = None,
+        record_cfg: RecordingCfg | None = None,
+    ) -> None:
         """Run a no-learning rollout to let NETTEnv produce recording artifacts."""
-        _, wrapped = self._wrapped_env(envs, config)
-        steps = int(timesteps or self.steps_per_episode)
-        states, _ = wrapped.reset()
-        for _ in range(steps):
-            action_shape = (wrapped.num_envs, wrapped.action_space.shape[0])
-            actions = torch.zeros(action_shape, device=states.device)
-            states, *_ = wrapped.step(actions)
+        device, wrapped = self._wrapped_env(envs, config)
+        agents = self._build_agents(wrapped, device, config)
+        _init_agents_for_eval_fn(agents)
+        recorder = RunRecorder(agents, wrapped.num_envs)
+        try:
+            steps = int(timesteps or self.steps_per_episode)
+            states, _ = wrapped.reset()
+            for _ in range(steps):
+                action_shape = (wrapped.num_envs, wrapped.action_space.shape[0])
+                actions = torch.zeros(action_shape, device=states.device)
+                states, *_ = wrapped.step(actions)
+        except Exception:
+            recorder.after_rollout(None)
+            raise
+        recorder.after_rollout(record_cfg)
 
     def _wrapped_env(self, envs, config: TaskConfig):
         device = policy_device(config)

@@ -39,10 +39,19 @@ class RunRecorder:
         if cfg.hparams_dir:
             self._write_train_timing(cfg, elapsed_s)
         self.save_final_checkpoints()
-        if record_cfg:
-            export_recordings(record_cfg)
-            log_agent_recordings_to_tensorboard(self.agents, record_cfg)
-        self.finish_wandb_runs()
+        try:
+            if record_cfg:
+                self._export_and_log_recordings(record_cfg)
+        finally:
+            self.finish_wandb_runs()
+
+    def after_rollout(self, record_cfg: RecordingCfg | None = None) -> None:
+        """Finalize a non-training rollout while skrl/wandb runs are alive."""
+        try:
+            if record_cfg:
+                self._export_and_log_recordings(record_cfg)
+        finally:
+            self.finish_wandb_runs()
 
     def finish_wandb_runs(self) -> None:
         from .experiment import finish_agent_wandb_runs
@@ -58,6 +67,10 @@ class RunRecorder:
             ckpt_dir = Path(exp_dir) / "checkpoints"
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             agent.save(str(ckpt_dir / "final_agent.pt"))
+
+    def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
+        export_recordings(record_cfg)
+        log_agent_recordings_to_tensorboard(self.agents, record_cfg)
 
     def _write_hparams(self, cfg: TrainCfg) -> None:
         out = Path(cfg.hparams_dir) / "logs"
@@ -87,20 +100,6 @@ def log_agent_recordings_to_tensorboard(agents: list, cfg: RecordingCfg) -> None
     """Write exported MP4 recordings to each live agent's skrl TensorBoard log."""
     for brain_id, agent in enumerate(agents, start=1):
         writer, close_writer = _tensorboard_writer(agent)
-        _log_env_recordings(writer, close_writer, cfg, env_id=brain_id - 1)
-
-
-def log_recordings_to_tensorboard_dirs(
-    *,
-    experiment_root: Path,
-    num_brains: int,
-    cfg: RecordingCfg,
-) -> None:
-    """Write exported MP4s into existing per-brain skrl TensorBoard dirs."""
-    for brain_id in range(1, int(num_brains) + 1):
-        writer, close_writer = _tensorboard_writer_for_dir(
-            Path(experiment_root) / f"brain_{brain_id}"
-        )
         _log_env_recordings(writer, close_writer, cfg, env_id=brain_id - 1)
 
 

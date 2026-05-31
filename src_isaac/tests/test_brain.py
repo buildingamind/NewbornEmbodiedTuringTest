@@ -235,6 +235,111 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
     assert seen["steps"] == 150
 
 
+def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
+    brain = Brain(wandb={"mode": "disabled"})
+    brain.steps_per_episode = 10
+    brain.test_iterations = {"Object1": 1}
+    calls = []
+    agents = ["agent"]
+
+    class _Trainer:
+        def __init__(self, wrapped, seen_agents, device):
+            assert seen_agents is agents
+
+        def eval(self, total_timesteps):
+            calls.append(("eval", total_timesteps))
+            return {0: 1.0}
+
+    class _Recorder:
+        def __init__(self, seen_agents, num_envs):
+            calls.append(("recorder", seen_agents, num_envs))
+
+        def after_rollout(self, record_cfg=None):
+            calls.append(("after_rollout", record_cfg))
+
+    monkeypatch.setattr("nett_skrl.brain.brain.BrainTrainer", _Trainer)
+    monkeypatch.setattr("nett_skrl.brain.brain.RunRecorder", _Recorder)
+    monkeypatch.setattr(
+        "nett_skrl.brain.brain._build_skrl_agents",
+        lambda brain, wrapped, device, **_: agents,
+    )
+    monkeypatch.setattr(
+        "nett_skrl.brain.brain._init_agents_for_eval_fn",
+        lambda seen_agents: calls.append(("init", seen_agents)),
+    )
+    monkeypatch.setattr(
+        "nett_skrl.brain.brain._load_latest_checkpoints_fn",
+        lambda seen_agents, config: calls.append(("load", seen_agents)),
+    )
+
+    class _Config:
+        device = 0
+        condition = "Object1"
+        path = tmp_path
+        dry_run = False
+
+    record_cfg = object()
+    assert brain.test(_FakeSkrlEnv(), _Config(), record_cfg=record_cfg) == {0: 1.0}
+    assert calls == [
+        ("init", agents),
+        ("load", agents),
+        ("eval", 10),
+        ("recorder", agents, 1),
+        ("after_rollout", record_cfg),
+    ]
+
+
+def test_brain_record_initializes_agents_and_finalizes_recordings(monkeypatch, tmp_path):
+    brain = Brain(wandb={"mode": "disabled"})
+    brain.steps_per_episode = 3
+    calls = []
+    agents = ["agent"]
+
+    class _Recorder:
+        def __init__(self, seen_agents, num_envs):
+            calls.append(("recorder", seen_agents, num_envs))
+
+        def after_rollout(self, record_cfg=None):
+            calls.append(("after_rollout", record_cfg))
+
+    monkeypatch.setattr("nett_skrl.brain.brain.RunRecorder", _Recorder)
+    monkeypatch.setattr(
+        "nett_skrl.brain.brain._build_skrl_agents",
+        lambda brain, wrapped, device, **_: agents,
+    )
+    monkeypatch.setattr(
+        "nett_skrl.brain.brain._init_agents_for_eval_fn",
+        lambda seen_agents: calls.append(("init", seen_agents)),
+    )
+
+    class _Config:
+        device = 0
+        condition = "Object1"
+        path = tmp_path
+        dry_run = False
+
+    class _RecordEnv(_FakeSkrlEnv):
+        def reset(self):
+            return torch.zeros(1, 64, 64, 3, dtype=torch.uint8), {}
+
+        def step(self, actions):
+            return (
+                torch.zeros(1, 64, 64, 3, dtype=torch.uint8),
+                torch.zeros(1, 1),
+                torch.zeros(1, 1, dtype=torch.bool),
+                torch.zeros(1, 1, dtype=torch.bool),
+                {},
+            )
+
+    record_cfg = object()
+    brain.record(_RecordEnv(), _Config(), record_cfg=record_cfg)
+    assert calls == [
+        ("init", agents),
+        ("recorder", agents, 1),
+        ("after_rollout", record_cfg),
+    ]
+
+
 def test_calc_iterations_derives_parallel_envs_per_brain_from_rollout_minibatch_size():
     brain = Brain(algorithm_cfg={"rollouts": 1024, "mini_batches": 2})
     brain.calc_iterations(
@@ -392,7 +497,7 @@ def test_algorithm_cfg_can_override_ppo_stability_defaults():
     brain = Brain(
         algorithm="PPO",
         algorithm_cfg={
-            "learning_rate": 2e-5,
+            "learning_rate": 3e-4, #2e-5,
             "rollouts": 16,
             "mini_batches": 4,
             "value_loss_scale": 0.75,

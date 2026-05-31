@@ -158,6 +158,25 @@ def test_trainer_eval_switches_mode_to_eval():
     assert all(a.mode == "eval" for a in agents)
 
 
+def test_trainer_eval_does_not_finish_wandb_runs():
+    class _Run:
+        def __init__(self) -> None:
+            self.finished = 0
+
+        def finish(self):
+            self.finished += 1
+
+    env = _FakeEnv(num_envs=1)
+    agent = _FakeAgent()
+    run = _Run()
+    agent._nett_wandb_run = run
+
+    BrainTrainer(env, [agent], device="cpu").eval(total_timesteps=1)
+
+    assert run.finished == 0
+    assert agent._nett_wandb_run is run
+
+
 def test_trainer_eval_zero_steps_returns_zero_without_reset():
     env = _FakeEnv(num_envs=2)
     agents = [_FakeAgent() for _ in range(2)]
@@ -243,6 +262,32 @@ def test_run_recorder_logs_recordings_to_tensorboard_after_export(monkeypatch, t
     ]
 
 
+def test_run_recorder_rollout_finalizer_exports_logs_then_finishes(monkeypatch, tmp_path):
+    calls = []
+
+    class _Run:
+        def finish(self):
+            calls.append("finish")
+
+    def _export(cfg):
+        calls.append("export")
+
+    def _log(agents, cfg):
+        calls.append("tensorboard")
+
+    monkeypatch.setattr("nett_skrl.brain.run_recorder.export_recordings", _export)
+    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_agent_recordings_to_tensorboard", _log)
+
+    agent = _FakeAgent()
+    agent._nett_wandb_run = _Run()
+    RunRecorder([agent], num_envs=1).after_rollout(
+        RecordingCfg(root=tmp_path / "recordings", egocentric_enabled=True)
+    )
+
+    assert calls == ["export", "tensorboard", "finish"]
+    assert agent._nett_wandb_run is None
+
+
 def test_run_recorder_tensorboard_video_logging_uses_brain_env_scope(monkeypatch, tmp_path):
     class _Writer:
         def __init__(self) -> None:
@@ -299,6 +344,57 @@ def test_run_recorder_does_not_require_complete_wandb_context(tmp_path):
     )
     recorder.after_train(complete, elapsed_s=1.0)
     assert agent.saved
+
+
+def test_single_mode_passes_record_cfg_into_brain_record_and_test(monkeypatch, tmp_path):
+    from nett_skrl.runtime import task_runner
+
+    calls = []
+    record_cfg = object()
+
+    class _Config:
+        dry_run = False
+        seed = 123
+        path = tmp_path
+        num_brains = 1
+        num_envs = 1
+        eval_step = None
+        logger = logging.getLogger("test")
+
+        def for_mode(self, mode, **overrides):
+            calls.append(("for_mode", mode, overrides))
+            return self
+
+    class _Body:
+        def adjust_to_agent(self, env, **kwargs):
+            calls.append(("adjust", kwargs))
+
+        def embed(self, env, config):
+            calls.append(("embed", config))
+            return "loaded-env"
+
+    class _Brain:
+        def record(self, loaded, config, *, record_cfg=None):
+            calls.append(("record", loaded, record_cfg))
+
+        def test(self, loaded, config, *, record_cfg=None):
+            calls.append(("test", loaded, record_cfg))
+            return {}
+
+    task = SimpleNamespace(
+        config=_Config(),
+        agent=SimpleNamespace(body=_Body(), brain=_Brain(), env=SimpleNamespace()),
+    )
+
+    monkeypatch.setattr(task_runner, "set_seeds", lambda seed: calls.append(("seed", seed)))
+    monkeypatch.setattr(task_runner, "_make_record_cfg", lambda env, config: record_cfg)
+    monkeypatch.setattr(task_runner, "_exit_worker_cleanly", lambda logger: calls.append(("exit", logger)))
+
+    task_runner._run_single_mode(task, "record")
+    task_runner._run_single_mode(task, "test")
+
+    assert ("record", "loaded-env", record_cfg) in calls
+    assert ("test", "loaded-env", record_cfg) in calls
 
 
 def test_parallel_env_planning_caps_to_brain_multiple():

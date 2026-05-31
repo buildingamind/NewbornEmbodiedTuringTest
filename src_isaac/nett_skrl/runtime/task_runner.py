@@ -18,8 +18,7 @@ from pathlib import Path
 
 import torch
 
-from nett_skrl.recording import RecordingCfg, export_recordings
-from nett_skrl.brain.run_recorder import log_recordings_to_tensorboard_dirs
+from nett_skrl.recording import RecordingCfg
 
 from .task import Task, TaskConfig, set_seeds
 
@@ -162,13 +161,19 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
             ),
         )
     elif mode == "record":
-        agent.brain.record(loaded, run_config)
-        _export_recordings(agent.env, run_config)
+        agent.brain.record(
+            loaded,
+            run_config,
+            record_cfg=_make_record_cfg(agent.env, run_config),
+        )
     else:
-        metrics = agent.brain.test(loaded, run_config)
+        metrics = agent.brain.test(
+            loaded,
+            run_config,
+            record_cfg=_make_record_cfg(agent.env, run_config),
+        )
         if run_config.eval_step is not None:
             _write_eval_metrics(run_config, metrics, agent.brain)
-        _export_recordings(agent.env, run_config)
     run_config.logger.info("Mode %s complete", mode)
 
     if config.dry_run:
@@ -277,17 +282,6 @@ def _make_record_cfg(env, config: TaskConfig) -> RecordingCfg | None:
         egocentric_enabled=ego_enabled,
         chamber_enabled=chamber_enabled,
     )
-
-
-def _export_recordings(env, config: TaskConfig) -> None:
-    cfg = _make_record_cfg(env, config)
-    if cfg is not None:
-        export_recordings(cfg)
-        log_recordings_to_tensorboard_dirs(
-            experiment_root=config.path / "wandb_runs",
-            num_brains=config.num_brains,
-            cfg=cfg,
-        )
 
 
 def _exit_worker_cleanly(logger: logging.Logger) -> None:

@@ -139,7 +139,6 @@ class BrainTrainer:
                     totals[i] += scoped_rewards.to(totals.device, non_blocking=True).mean()
                     offset += scope
                 observations = next_observations
-        RunRecorder(self.agents, self.env.num_envs).finish_wandb_runs()
         return {i: float(totals[i].item() / total_timesteps) for i in range(len(self.agents))}
 
     def _collect_actions_for_eval(self, observations: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
