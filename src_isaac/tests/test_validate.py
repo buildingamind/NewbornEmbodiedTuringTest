@@ -19,7 +19,7 @@ from nett_skrl.brain.registry import (
 )
 from nett_skrl.brain.encoders import NETTFeatureExtractor
 from nett_skrl.body.wrappers.registry import validate_wrappers
-from nett_skrl.utils.validate import validate_config
+from nett_skrl.validate import validate_config
 
 
 _SCHEMA = json.loads((Path(nett_skrl.__file__).parent / "schema.json").read_text())

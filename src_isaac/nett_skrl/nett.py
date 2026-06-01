@@ -35,7 +35,7 @@ from .runtime import (
 )
 from .runtime.memory import MemoryManager
 from .runtime.parallel_envs import capped_num_envs, num_env_candidates
-from .utils import validate_config
+from .validate import validate_config
 from .runtime.tasklist import validate_tasklist
 
 

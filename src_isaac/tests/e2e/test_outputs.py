@@ -79,7 +79,7 @@ def test_run_output_tree_matches_documented_structure(shared_run_output):
 
 def test_config_yaml_round_trips_back_into_NETT(shared_run_output):
     """Saved config.yaml passes schema validation when re-parsed."""
-    from nett_skrl.utils.validate import validate_config
+    from nett_skrl.validate import validate_config
 
     raw = yaml.safe_load((shared_run_output / "config.yaml").read_text())
     schema = json.loads((Path(__import__("nett_skrl").__file__).parent / "schema.json").read_text())
