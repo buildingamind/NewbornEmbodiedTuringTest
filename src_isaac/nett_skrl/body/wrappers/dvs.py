@@ -76,20 +76,19 @@ class DVS(gym.ObservationWrapper):
         """Per-key output shape after the DVS transform.
 
         ``stacked_shape`` is the FrameStackObservation-wrapped shape — first
-        axis is the stack dim. Drops the stack dim and the leading dim if it's
-        a singleton (channels-first), then permutes to CHW.
+        axis is the stack dim. Output is HWC.
         """
         # Drop the leading stack dim.
         s = stacked_shape[1:]
         if len(s) == 4:
-            # legacy (stack, channels, width, height) input
+            # legacy stacked input — assume (channels, width, height) order
             channels, width, height = s[0], s[1], s[2]
         else:
             # (H, W, C) input — what NETTEnv returns.
             height, width, channels = s[0], s[1], s[2]
         if not self.is_color:
             channels = 1
-        return gym.spaces.Box(shape=(channels, height, width), low=0, high=255, dtype=np.uint8)
+        return gym.spaces.Box(shape=(height, width, channels), low=0, high=255, dtype=np.uint8)
 
     def _create_grayscale(self, image):
         """
@@ -125,7 +124,7 @@ class DVS(gym.ObservationWrapper):
         return change
 
     def _transform_pair(self, prev: np.ndarray, current: np.ndarray) -> np.ndarray:
-        """Run the DVS pipeline on a (prev, current) frame pair, returning CHW uint8."""
+        """Run the DVS pipeline on a (prev, current) HWC frame pair, returning HWC uint8."""
         if not self.is_color:
             prev = self._create_grayscale(prev)
             current = self._create_grayscale(current)
@@ -135,7 +134,7 @@ class DVS(gym.ObservationWrapper):
 
         if not self.is_color:
             dc = np.expand_dims(dc, axis=2)  # (H, W) -> (H, W, 1)
-        return np.transpose(dc, (2, 0, 1))
+        return dc
 
     def observation(self, obs):
         """Performs the DVS transformation on the observation.
@@ -154,9 +153,9 @@ class DVS(gym.ObservationWrapper):
                 out[key] = self._transform_pair(prev, current)
             return out
 
-        # Legacy gym path: obs is a 2-element stack of CHW frames.
-        prev = np.transpose(_as_numpy(obs[0]), (1, 2, 0))
-        current = np.transpose(_as_numpy(obs[1]), (1, 2, 0))
+        # Legacy gym path: obs is a 2-element stack of HWC frames.
+        prev = _as_numpy(obs[0])
+        current = _as_numpy(obs[1])
         return self._transform_pair(prev, current)
 
     def threshold(self, change):

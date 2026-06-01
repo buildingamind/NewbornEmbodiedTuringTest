@@ -133,7 +133,7 @@ class Environment:
         """Launch Isaac Sim and instantiate ``NETTEnv``.
 
         Returns the raw `NETTEnv`; the Brain layer wraps it with
-        ``IsaacEnvWrapper`` after body-side observation wrappers are
+        ``body.skrl_adapter.IsaacEnvWrapper`` after body-side observation wrappers are
         applied.
         """
         from isaaclab.app import AppLauncher

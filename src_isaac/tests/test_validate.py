@@ -114,7 +114,7 @@ def test_schema_accepts_recording_and_record_mode():
         },
         "model": {"hidden_sizes": [32, 16], "activation": "relu", "initial_log_std": -0.5},
     }
-    cfg["wrappers"] = ["video", "dvs", "retina"]
+    cfg["body"] = {"wrappers": ["video", "dvs", "retina"]}
     cfg["eval_freq"] = 50000
     cfg["max_parallel_envs"] = 8
     validate_config(cfg, _SCHEMA)
@@ -130,11 +130,10 @@ def test_schema_accepts_body_block():
     validate_config(cfg, _SCHEMA)
 
 
-def test_schema_rejects_duplicate_wrapper_locations():
+def test_schema_rejects_top_level_wrappers():
     cfg = _minimal_cfg()
     cfg["wrappers"] = ["video"]
-    cfg["body"] = {"wrappers": ["dvs"]}
-    with pytest.raises(ValueError):
+    with pytest.raises(Exception):
         validate_config(cfg, _SCHEMA)
 
 

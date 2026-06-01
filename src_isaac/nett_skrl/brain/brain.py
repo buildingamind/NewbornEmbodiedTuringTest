@@ -38,7 +38,7 @@ from .experiment import (
     normalize_wandb_cfg as _normalize_wandb_cfg,
 )
 from .intrinsic_adapter import IntrinsicRewardAdapter
-from .env_adapter import IsaacEnvWrapper
+from ..body.skrl_adapter import IsaacEnvWrapper
 from .rewards import UnsupportedIntrinsicReward
 from .registry import (
     validate_algorithm,

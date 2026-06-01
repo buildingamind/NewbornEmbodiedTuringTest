@@ -53,7 +53,8 @@ class Retina(gym.ObservationWrapper):
                 key = list(self.env.observation_space.spaces.keys())[0]
                 shape = self.env.observation_space.spaces[key].shape
                 if len(shape) == 4:
-                    _, channels, width, height = shape
+                    # already stacked HWC: (stack, H, W, C)
+                    _, height, width, channels = shape
                 elif len(shape) == 3:
                     height, width, channels = shape
                     self.env = gym.wrappers.FrameStackObservation(env, stack_size=2)
@@ -64,7 +65,8 @@ class Retina(gym.ObservationWrapper):
             else:
                 shape = self.env.observation_space.shape
                 if len(shape) == 4:
-                    _, channels, width, height = shape
+                    # already stacked HWC: (stack, H, W, C)
+                    _, height, width, channels = shape
                 elif len(shape) == 3:
                     height, width, channels = shape
                     self.env = gym.wrappers.FrameStackObservation(env, 2)
@@ -103,24 +105,14 @@ class Retina(gym.ObservationWrapper):
             for key in obs.keys():
                 prev: np.ndarray = _as_numpy(obs[key][-2])
                 current: np.ndarray = _as_numpy(obs[key][-1])
-                # prev = np.transpose(obs[key][-2], (1, 2, 0))  # move channels to last dimension
-                # current = np.transpose(obs[key][-1], (1, 2, 0))  # move channels to last dimension
                 out[key] = self.retina.process(image=prev, next_image=current).astype(
                     np.uint8
                 )
             return out
         else:
-            # grab the last 2 images from the stack
             prev: np.ndarray = _as_numpy(obs[-2])
             current: np.ndarray = _as_numpy(obs[-1])
-            # prev = np.transpose(obs[-2], (1, 2, 0))  # move channels to last dimension
-            # current = np.transpose(obs[-1], (1, 2, 0))  # move channels to last dimension
-            out = self.retina.process(image=prev, next_image=current)
-
-            # change to channel first, w, h
-            # out = np.transpose(out, (2, 0, 1))
-
-            return out.astype(np.uint8)
+            return self.retina.process(image=prev, next_image=current).astype(np.uint8)
 
     def reset(self, **kwargs):
         """
@@ -207,8 +199,8 @@ class ArtificialRetina:
         )
 
     def process(self, image: np.ndarray, next_image: np.ndarray):
-        # prev_tensor = torch.from_numpy(image).to(self.device)
-        current_tensor = torch.from_numpy(next_image).to(self.device)
+        # Internal processing (torchvision) requires CHW tensors; convert at the boundary.
+        current_tensor = torch.from_numpy(np.ascontiguousarray(next_image)).permute(2, 0, 1).to(self.device)
 
         # dynamically adjust the fovea location based on optic flow magnitude
         if self.foveation_type == "dynamic":
@@ -255,8 +247,8 @@ class ArtificialRetina:
                 strength=self.magnifi_strength,
                 radius=self.magnifi_radius,
             )
-        # convert to numpy
-        return retina_image.cpu().numpy()
+        # Convert CHW → HWC before returning as numpy.
+        return retina_image.permute(1, 2, 0).cpu().numpy()
 
     def create_retina_filter(self):
         x: torch.Tensor
@@ -350,13 +342,9 @@ class ArtificialRetina:
     def dynamic_fovea(
         self, prev_frame: np.ndarray, current_frame: np.ndarray, grid_size=(10, 10)
     ) -> tuple[int, int]:
-        # Convert to grayscale
-        prev_gray = cv2.cvtColor(
-            np.transpose(prev_frame, (1, 2, 0)), cv2.COLOR_RGB2GRAY
-        )
-        current_gray = cv2.cvtColor(
-            np.transpose(current_frame, (1, 2, 0)), cv2.COLOR_RGB2GRAY
-        )
+        # Convert to grayscale — frames arrive as HWC numpy, which cv2 expects.
+        prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_RGB2GRAY)
+        current_gray = cv2.cvtColor(current_frame, cv2.COLOR_RGB2GRAY)
 
         # Calculate optical flow
         flow = cv2.calcOpticalFlowFarneback(

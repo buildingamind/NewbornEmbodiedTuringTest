@@ -84,7 +84,11 @@ def prepare_image_tensor(
     *,
     device: torch.device | None = None,
 ) -> torch.Tensor:
-    """Restore flattened image observations and return float CHW tensors."""
+    """Restore flattened CHW image observations and return float BCHW tensors ready for CNNs.
+
+    ChannelsFirst (applied last in Body.wrap) guarantees observations arrive in
+    CHW order, so no permute is needed here.
+    """
     x = observations
     if device is not None and x.device != device:
         x = x.to(device, non_blocking=True)
@@ -98,6 +102,4 @@ def prepare_image_tensor(
         high_value = float(np.max(high)) if high is not None else 1.0
         if high_value > 1.0:
             x = x / 255.0
-    if x.ndim == 4 and len(observation_space.shape) == 3 and image_layout(observation_space.shape) == "hwc":
-        x = x.permute(0, 3, 1, 2).contiguous()
     return x

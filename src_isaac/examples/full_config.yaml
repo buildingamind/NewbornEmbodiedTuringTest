@@ -119,11 +119,12 @@ brain:
     notes: null                 # free-form notes attached to every run
 
 # ----------------------------------------------------------------------------
-# Optional observation transforms applied after the env.
-# Supported: "dvs", "retina", "video".
+# Body — observation transforms and perception-side overrides.
+# Supported wrappers: "dvs", "retina", "video".
 # Use environment.binocular_vision for binocular egocentric cameras.
 # ----------------------------------------------------------------------------
-wrappers: []
+body:
+  wrappers: []
 
 # ----------------------------------------------------------------------------
 # Top-level run parameters.

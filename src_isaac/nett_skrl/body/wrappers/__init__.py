@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from .channels_first import ChannelsFirst
 from .registry import _WRAPPER_SPECS, validate_wrappers, wrapper_list
 
 
@@ -14,6 +15,6 @@ def __getattr__(name: str):
     raise AttributeError(name)
 
 
-__all__ = ["validate_wrappers", "wrapper_list"] + sorted(
+__all__ = ["ChannelsFirst", "validate_wrappers", "wrapper_list"] + sorted(
     {class_name for _, class_name in _WRAPPER_SPECS.values()}
 )

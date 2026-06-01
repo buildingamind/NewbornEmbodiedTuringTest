@@ -52,13 +52,8 @@ def _modes_from_episodes(episodes: dict[str, int]) -> list[str]:
     return [m for m in ("train", "test", "record") if episodes.get(m, 0) > 0]
 
 
-def _make_body(body: Optional[dict], wrappers: Optional[list]) -> Body:
-    body_config = dict(body or {})
-    if wrappers and body_config.get("wrappers"):
-        raise ValueError("Specify body.wrappers or legacy wrappers, not both.")
-    if wrappers:
-        body_config["wrappers"] = wrappers
-    return Body(**body_config)
+def _make_body(body: Optional[dict]) -> Body:
+    return Body(**dict(body or {}))
 
 
 class JobTooBigError(ValueError):
@@ -119,7 +114,6 @@ class NETT:
         self,
         name: str,
         environment: dict,
-        wrappers: Optional[list] = None,
         body: Optional[dict] = None,
         brain: Optional[dict] = None,
         episodes: Optional[dict[str, int]] = None,
@@ -131,6 +125,8 @@ class NETT:
         max_parallel_envs: int | None = None,
         **kwargs,
     ) -> None:
+        if "wrappers" in kwargs:
+            raise TypeError("Configure observation wrappers under body.wrappers.")
         episodes = episodes or {"train": 5000, "test": 100}
         if not set(episodes).issubset({"train", "test", "record"}) or not episodes:
             raise ValueError("Episodes must use only 'train', 'test', and/or 'record' keys.")
@@ -140,7 +136,6 @@ class NETT:
             "name": name,
             "environment": environment,
             "body": dict(body or {}),
-            "wrappers": list(wrappers or []),
             "brain": brain,
             "episodes": episodes,
             "steps_per_episode": steps_per_episode,
@@ -156,7 +151,7 @@ class NETT:
             f.write(yaml.dump(input_params))
 
         base_brain = Brain(**(brain or {}))
-        base_body = _make_body(body, wrappers)
+        base_body = _make_body(body)
         environment = dict(environment)
         if "reward_types" not in environment:
             inferred_rewards = base_brain.env_reward_types()

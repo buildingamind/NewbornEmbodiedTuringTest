@@ -120,18 +120,6 @@
       },
       "additionalProperties": false
     },
-    "wrappers": {
-      "description": "Optional observation transforms; names come from the wrapper registry.",
-      "type": "array",
-      "uniqueItems": true,
-      "items": {
-        "anyOf": [
-          { "type": "string" },
-          { "not": { "type": "string" } }
-        ]
-      },
-      "default": []
-    },
     "body": {
       "description": "Agent body settings. Prefer this block for observation wrappers and perception-side overrides.",
       "type": "object",

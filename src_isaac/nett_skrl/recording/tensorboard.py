@@ -5,6 +5,8 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
+import numpy as np
+
 from .export import RecordingCfg
 
 logger = logging.getLogger("nett.recording")
@@ -57,6 +59,52 @@ def _iter_recording_mp4s(rec_dir: Path, *, env_id: int):
             if env_subdir.is_dir() and env_subdir.name.startswith(env_prefix):
                 for mp4 in sorted(env_subdir.glob("*.mp4")):
                     yield kind, mp4
+
+
+def log_wrapper_egocentric_to_tensorboard(
+    completed_episodes: list[tuple[str, list]],
+    agents: list,
+    *,
+    fps: int = 24,
+) -> None:
+    """Write ChannelsFirst-buffered CHW frames directly to each agent's TensorBoard.
+
+    ``completed_episodes`` is a list of ``(tag, frames)`` pairs where each
+    frame is a ``(C, H, W)`` uint8 numpy array.  Frames are already CHW so no
+    permute is required — this is the second (and last) explicit format
+    conversion point in the pipeline (the first is ChannelsFirst itself).
+    """
+    import torch
+
+    # Group episodes by env_id extracted from the tag ("env_N/episode_M").
+    by_env: dict[int, list[tuple[str, list]]] = {}
+    for tag, frames in completed_episodes:
+        try:
+            env_id = int(tag.split("/")[0].split("_")[1])
+        except (IndexError, ValueError):
+            env_id = 0
+        by_env.setdefault(env_id, []).append((tag, frames))
+
+    for brain_id, agent in enumerate(agents, start=1):
+        env_id = brain_id - 1
+        episodes = by_env.get(env_id, [])
+        if not episodes:
+            continue
+        writer = _recording_video_writer(agent)
+        if writer is None:
+            continue
+        try:
+            for tag, frames in episodes:
+                if not frames:
+                    continue
+                # stack (T, C, H, W) then unsqueeze batch dim → (1, T, C, H, W)
+                tensor = torch.as_tensor(np.stack(frames)).unsqueeze(0)
+                writer.add_video(f"video/egocentric/{tag}", tensor, fps=int(fps))
+            writer.flush()
+        except Exception:
+            logger.exception("failed to write wrapper egocentric frames to TensorBoard")
+        finally:
+            writer.close()
 
 
 def _add_video(writer, mp4: Path, *, tag: str, fps: int) -> None:

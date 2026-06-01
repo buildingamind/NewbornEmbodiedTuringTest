@@ -84,7 +84,10 @@ class BrainTrainer:
         ``hparams.json``, skip ``train_timing.json``, skip final checkpoints
         and recording exports.
         """
-        recorder = RunRecorder(self.agents, self.env.num_envs)
+        egocentric_rec = _find_egocentric_recorder(self.env)
+        if egocentric_rec is not None and record_cfg is not None and record_cfg.egocentric_enabled:
+            egocentric_rec.set_recording(True)
+        recorder = RunRecorder(self.agents, self.env.num_envs, egocentric_recorder=egocentric_rec)
         recorder.before_train(cfg, dry_run=dry_run)
 
         train_env = (
@@ -154,3 +157,17 @@ class BrainTrainer:
 
 
 MultiBrainTrainer = BrainTrainer
+
+
+def _find_egocentric_recorder(env):
+    """Traverse the env wrapper chain to find a ChannelsFirst recorder.
+
+    Uses duck typing (checks for set_recording / drain_completed_episodes) to
+    avoid importing from the body package here.
+    """
+    current = env
+    while current is not None:
+        if hasattr(current, "set_recording") and hasattr(current, "drain_completed_episodes"):
+            return current
+        current = getattr(current, "_env", None) or getattr(current, "env", None)
+    return None

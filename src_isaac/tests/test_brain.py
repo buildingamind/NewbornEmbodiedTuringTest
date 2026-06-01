@@ -17,12 +17,12 @@ from skrl.agents.torch import ExperimentCfg
 from nett_skrl.brain.agent_factory import build_agents as _build_agents
 from nett_skrl.brain.brain import Brain, IntrinsicRewardAdapter
 from nett_skrl.brain.models import features_forward as _features_forward
-from nett_skrl.observation import to_chw_space as _hwc_to_chw_space
+from nett_skrl.body.observation import to_chw_space as _hwc_to_chw_space
 from nett_skrl.brain.models import ValueCritic, model_cfg_from
 from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
 from nett_skrl.brain.encoders import NETTFeatureExtractor, Resnet10CNN, Resnet18CNN, SmallCNN
 from nett_skrl.brain.rewards import E3B, ICM, PseudoCounts, RIDE
-from nett_skrl.brain.env_adapter import IsaacEnvWrapper
+from nett_skrl.body.skrl_adapter import IsaacEnvWrapper
 from nett_skrl.brain.registry import algorithm_spec, register_reward
 
 # TODO(reward-refactor): Run `uv run pytest tests/test_brain.py -q` after the
@@ -46,28 +46,30 @@ def test_hwc_to_chw_space_non_image_passthrough():
 
 
 @pytest.mark.parametrize("encoder_cls", [SmallCNN, Resnet10CNN, Resnet18CNN])
-def test_native_encoders_accept_hwc_and_flat_obs(encoder_cls):
-    space = gym.spaces.Box(low=0, high=255, shape=(64, 64, 3), dtype=np.uint8)
+def test_native_encoders_accept_chw_and_flat_obs(encoder_cls):
+    # ChannelsFirst wrapper guarantees CHW by the time data reaches an encoder.
+    space = gym.spaces.Box(low=0, high=255, shape=(3, 64, 64), dtype=np.uint8)
     encoder = encoder_cls(space, features_dim=16)
-    hwc = torch.zeros(2, 64, 64, 3, dtype=torch.uint8)
-    flat = hwc.view(2, -1)
-    assert encoder(hwc).shape == (2, 16)
+    chw = torch.zeros(2, 3, 64, 64, dtype=torch.uint8)
+    flat = chw.view(2, -1)
+    assert encoder(chw).shape == (2, 16)
     assert encoder(flat).shape == (2, 16)
 
 
 @pytest.mark.parametrize("encoder_cls", [SmallCNN, Resnet10CNN, Resnet18CNN])
 @pytest.mark.parametrize("resolution", [16, 32, 64])
 def test_native_encoders_accept_schema_valid_resolutions(encoder_cls, resolution):
-    space = gym.spaces.Box(low=0, high=255, shape=(resolution, resolution, 3), dtype=np.uint8)
+    space = gym.spaces.Box(low=0, high=255, shape=(3, resolution, resolution), dtype=np.uint8)
     encoder = encoder_cls(space, features_dim=16)
-    obs = torch.zeros(2, resolution, resolution, 3, dtype=torch.uint8)
+    obs = torch.zeros(2, 3, resolution, resolution, dtype=torch.uint8)
     assert encoder(obs).shape == (2, 16)
 
 
 def test_native_encoders_accept_channel_stacked_video_obs():
-    space = gym.spaces.Box(low=0, high=255, shape=(16, 16, 9), dtype=np.uint8)
+    # Channel-stacked CHW: Video wrapper stacks on axis 0 for CHW.
+    space = gym.spaces.Box(low=0, high=255, shape=(9, 16, 16), dtype=np.uint8)
     encoder = SmallCNN(space, features_dim=16)
-    obs = torch.zeros(2, 16, 16, 9, dtype=torch.uint8)
+    obs = torch.zeros(2, 9, 16, 16, dtype=torch.uint8)
     assert encoder(obs).shape == (2, 16)
 
 
@@ -91,29 +93,30 @@ class _Stub:
 
 
 def _make_stub_for(obs_shape: tuple[int, int, int]):
-    encoder = nn.Conv2d(obs_shape[2], 4, kernel_size=1)  # accepts CHW
+    # obs_shape is CHW — ChannelsFirst guarantees CHW before encoders see data.
+    encoder = nn.Conv2d(obs_shape[0], 4, kernel_size=1)
     trunk = nn.Identity()
     obs_space = gym.spaces.Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
     return _Stub(obs_space, encoder, trunk)
 
 
 def test_features_forward_reshapes_flat_obs():
-    stub = _make_stub_for((4, 8, 3))
-    flat = torch.zeros(2, 4 * 8 * 3, dtype=torch.uint8)
+    stub = _make_stub_for((3, 4, 8))  # CHW
+    flat = torch.zeros(2, 3 * 4 * 8, dtype=torch.uint8)
     out = _features_forward(stub, {"observations": flat})
     assert out.shape == (2, 4, 4, 8)  # (B, out_channels, H, W)
 
 
 def test_features_forward_uint8_to_float():
-    stub = _make_stub_for((4, 8, 3))
-    img = torch.full((1, 4, 8, 3), 255, dtype=torch.uint8)
+    stub = _make_stub_for((3, 4, 8))  # CHW
+    img = torch.full((1, 3, 4, 8), 255, dtype=torch.uint8)
     out = _features_forward(stub, {"observations": img})
     assert out.dtype == torch.float32
 
 
 def test_features_forward_states_key_fallback():
-    stub = _make_stub_for((4, 8, 3))
-    img = torch.zeros(1, 4, 8, 3, dtype=torch.uint8)
+    stub = _make_stub_for((3, 4, 8))  # CHW
+    img = torch.zeros(1, 3, 4, 8, dtype=torch.uint8)
     # No "observations" key — falls back to "states" (skrl 2.x convention).
     out = _features_forward(stub, {"states": img})
     assert out.shape == (1, 4, 4, 8)

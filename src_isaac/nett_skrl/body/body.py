@@ -11,6 +11,7 @@ from typing import Optional
 import gymnasium as gym
 
 from .utils import validate_wrappers
+from .wrappers.channels_first import ChannelsFirst
 
 
 class Body:
@@ -38,6 +39,7 @@ class Body:
         self.wrappers = validate_wrappers(wrappers)
         self.binocular_vision = binocular_vision
         self.input_resolution = input_resolution
+        self._channels_first: ChannelsFirst | None = None
 
     def adjust_to_agent(self, env, *, num_brains: int, **kwargs) -> None:
         """Apply body-side settings to an environment before loading it."""
@@ -54,7 +56,8 @@ class Body:
         return self.wrap(loaded)
 
     def wrap(self, loaded_env):
-        """Apply configured observation wrappers to a loaded environment."""
+        """Apply configured observation wrappers, then ChannelsFirst as the terminal step."""
         for wrapper in self.wrappers:
             loaded_env = wrapper(loaded_env)
-        return loaded_env
+        self._channels_first = ChannelsFirst(loaded_env)
+        return self._channels_first

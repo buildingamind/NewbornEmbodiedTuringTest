@@ -8,7 +8,7 @@ import gymnasium as gym
 import numpy as np
 import torch
 
-from ...observation import channel_stack_frames, channel_stack_space
+from ..observation import channel_stack_frames, channel_stack_space
 
 
 class Video(gym.Wrapper):

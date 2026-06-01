@@ -6,7 +6,7 @@ import gymnasium as gym
 import torch
 import torch.nn as nn
 
-from ...observation import image_channels_hw
+from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 
 

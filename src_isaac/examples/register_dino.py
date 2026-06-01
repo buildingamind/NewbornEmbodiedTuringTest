@@ -15,7 +15,7 @@ import torch.nn as nn
 from nett_skrl.brain import Brain
 from nett_skrl.brain.encoders import NETTFeatureExtractor
 from nett_skrl.brain.registry import register_encoder
-from nett_skrl.observation import image_channels_hw, prepare_image_tensor
+from nett_skrl.body.observation import image_channels_hw, prepare_image_tensor
 
 
 class DinoV1Adapter(NETTFeatureExtractor):

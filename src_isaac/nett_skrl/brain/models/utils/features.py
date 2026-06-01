@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ....observation import prepare_image_tensor
+from ....body.observation import prepare_image_tensor
 
 
 def features_forward(model, inputs):

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from .export import RecordingCfg, export_recordings
-from .tensorboard import log_recording_videos_to_tensorboard
+from .tensorboard import log_recording_videos_to_tensorboard, log_wrapper_egocentric_to_tensorboard
 
 if TYPE_CHECKING:
     from nett_skrl.brain.trainer import TrainCfg
@@ -19,9 +19,16 @@ logger = logging.getLogger("nett.recorder")
 class RunRecorder:
     """Writes run outputs around skrl training without owning the train loop."""
 
-    def __init__(self, agents: list, num_envs: int) -> None:
+    def __init__(
+        self,
+        agents: list,
+        num_envs: int,
+        *,
+        egocentric_recorder=None,
+    ) -> None:
         self.agents = agents
         self.num_envs = int(num_envs)
+        self._egocentric_recorder = egocentric_recorder
 
     def before_train(self, cfg: TrainCfg, *, dry_run: bool = False) -> None:
         if cfg.hparams_dir and not dry_run:
@@ -72,6 +79,12 @@ class RunRecorder:
     def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
         export_recordings(record_cfg)
         log_recording_videos_to_tensorboard(self.agents, record_cfg)
+        if self._egocentric_recorder is not None:
+            episodes = self._egocentric_recorder.drain_completed_episodes()
+            if episodes:
+                log_wrapper_egocentric_to_tensorboard(
+                    episodes, self.agents, fps=record_cfg.fps
+                )
 
     def _write_hparams(self, cfg: TrainCfg) -> None:
         out = Path(cfg.hparams_dir) / "logs"
