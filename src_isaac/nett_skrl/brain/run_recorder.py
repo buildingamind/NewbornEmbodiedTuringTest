@@ -54,7 +54,7 @@ class RunRecorder:
             self.finish_wandb_runs()
 
     def finish_wandb_runs(self) -> None:
-        from .experiment import finish_agent_wandb_runs
+        from .wandb import finish_agent_wandb_runs
 
         finish_agent_wandb_runs(self.agents)
 
@@ -70,7 +70,7 @@ class RunRecorder:
 
     def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
         export_recordings(record_cfg)
-        log_agent_recordings_to_tensorboard(self.agents, record_cfg)
+        log_recording_videos_to_tensorboard(self.agents, record_cfg)
 
     def _write_hparams(self, cfg: TrainCfg) -> None:
         out = Path(cfg.hparams_dir) / "logs"
@@ -96,44 +96,41 @@ class RunRecorder:
             json.dump(payload, f, indent=2, sort_keys=True)
 
 
-def log_agent_recordings_to_tensorboard(agents: list, cfg: RecordingCfg) -> None:
-    """Write exported MP4 recordings to each live agent's skrl TensorBoard log."""
+def log_recording_videos_to_tensorboard(agents: list, cfg: RecordingCfg) -> None:
+    """Write exported MP4 videos to each agent's skrl TensorBoard run directory."""
     for brain_id, agent in enumerate(agents, start=1):
-        writer, close_writer = _tensorboard_writer(agent)
-        _log_env_recordings(writer, close_writer, cfg, env_id=brain_id - 1)
+        videos = list(_iter_recording_mp4s(cfg.root, env_id=brain_id - 1))
+        if not videos:
+            continue
+        writer = _recording_video_writer(agent)
+        if writer is None:
+            continue
+        _add_recording_videos(writer, videos, fps=cfg.fps)
 
 
-def _log_env_recordings(writer, close_writer: bool, cfg: RecordingCfg, *, env_id: int) -> None:
-    if writer is None:
-        return
+def _add_recording_videos(writer, videos: list[tuple[str, Path]], *, fps: int) -> None:
     try:
-        for kind, mp4 in _iter_recording_mp4s(cfg.root, env_id=env_id):
-            _add_video(writer, mp4, tag=f"video/{kind}/{mp4.parent.name}/{mp4.stem}", fps=cfg.fps)
-        if hasattr(writer, "flush"):
-            writer.flush()
+        for kind, mp4 in videos:
+            _add_video(writer, mp4, tag=f"video/{kind}/{mp4.parent.name}/{mp4.stem}", fps=fps)
+        writer.flush()
     finally:
-        if close_writer and hasattr(writer, "close"):
-            writer.close()
+        writer.close()
 
 
-def _tensorboard_writer(agent):
-    writer = getattr(agent, "writer", None)
-    if writer is not None and hasattr(writer, "add_video"):
-        return writer, False
-
+def _recording_video_writer(agent):
     exp_dir = getattr(agent, "experiment_dir", None)
     if not exp_dir:
-        return None, False
-    return _tensorboard_writer_for_dir(Path(exp_dir))
+        return None
+    return _recording_video_writer_for_dir(Path(exp_dir))
 
 
-def _tensorboard_writer_for_dir(exp_dir: Path):
+def _recording_video_writer_for_dir(exp_dir: Path):
     try:
         from torch.utils.tensorboard import SummaryWriter
     except Exception:
-        logger.debug("torch TensorBoard SummaryWriter unavailable", exc_info=True)
-        return None, False
-    return SummaryWriter(log_dir=str(exp_dir)), True
+        logger.debug("torch TensorBoard SummaryWriter unavailable for video logging", exc_info=True)
+        return None
+    return SummaryWriter(log_dir=str(exp_dir))
 
 
 def _iter_recording_mp4s(rec_dir: Path, *, env_id: int):
@@ -158,7 +155,11 @@ def _add_video(writer, mp4: Path, *, tag: str, fps: int) -> None:
         if tensor.ndim == 3:
             tensor = tensor.unsqueeze(-1).expand(-1, -1, -1, 3)
         if tensor.ndim != 4:
-            logger.debug("skipping TensorBoard video with unsupported shape %s: %s", tuple(tensor.shape), mp4)
+            logger.debug(
+                "skipping TensorBoard video with unsupported shape %s: %s",
+                tuple(tensor.shape),
+                mp4,
+            )
             return
         tensor = tensor.permute(0, 3, 1, 2).unsqueeze(0)
         writer.add_video(tag, tensor, fps=int(fps))

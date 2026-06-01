@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any
 
 import torch
@@ -10,7 +9,7 @@ import torch.nn as nn
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 
-from .experiment import apply_experiment_cfg, attach_tensorboard_tracking
+from .experiment import apply_experiment_cfg
 from .models import build_models_for_algorithm
 from .registry import algorithm_spec
 
@@ -63,16 +62,11 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             cfg.value_preprocessor_kwargs = {"size": 1, "device": device}
 
         if config is not None:
-            output_dir = Path(config.path)
             apply_experiment_cfg(
                 cfg,
-                wandb_cfg=brain.wandb_cfg,
-                checkpoint_freq=brain.checkpoint_freq,
-                condition=config.condition,
+                brain=brain,
+                config=config,
                 brain_id=brain_id + 1,
-                phase=config.current_mode,
-                output_dir=output_dir,
-                run_name=output_dir.parent.name,
             )
 
         memory = RandomMemory(
@@ -102,10 +96,5 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             action_space=act_space,
             device=device,
         )
-        # Per-agent method wrappers so NETT supplemental scalars are tracked
-        # through skrl's TensorBoard writer. W&B picks them up from
-        # sync_tensorboard=True when enabled.
-        if config is not None:
-            attach_tensorboard_tracking(agent)
         agents.append(agent)
     return agents

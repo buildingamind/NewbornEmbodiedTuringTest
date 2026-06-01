@@ -107,7 +107,12 @@
                          "description": "online = upload; offline = local only; disabled = skip wandb entirely." },
             "tags":    { "type": "array", "items": { "type": "string" }, "default": [],
                          "description": "Extra wandb tags appended to the auto-tags (run/condition/brain/phase)." },
-            "notes":   { "type": ["string", "null"], "default": null }
+            "notes":   { "type": ["string", "null"], "default": null },
+            "kwargs": {
+              "type": "object",
+              "default": {},
+              "description": "Additional wandb.init kwargs passed through skrl. NETT-owned run layout keys take precedence."
+            }
           },
           "additionalProperties": false,
           "default": {}

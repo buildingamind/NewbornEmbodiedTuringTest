@@ -28,11 +28,11 @@ from .run_config import (
     train_cfg_for,
 )
 from .agent_factory import build_agents as _build_skrl_agents
+from .checkpoints import load_latest_checkpoints as _load_latest_checkpoints_fn
 from .experiment import (
-    init_agents_for_eval as _init_agents_for_eval_fn,
-    load_latest_checkpoints as _load_latest_checkpoints_fn,
     normalize_wandb_cfg as _normalize_wandb_cfg,
 )
+from .wandb import init_agents_for_eval as _init_agents_for_eval_fn
 from .run_recorder import RunRecorder
 from .intrinsic_adapter import IntrinsicRewardAdapter
 from .env_adapter import IsaacEnvWrapper

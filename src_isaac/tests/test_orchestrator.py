@@ -245,7 +245,7 @@ def test_run_recorder_logs_recordings_to_tensorboard_after_export(monkeypatch, t
         calls.append(("tensorboard", cfg.root))
 
     monkeypatch.setattr("nett_skrl.brain.run_recorder.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_agent_recordings_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_recording_videos_to_tensorboard", _log)
     agent = _FakeAgent()
     recorder = RunRecorder([agent], num_envs=1)
 
@@ -278,7 +278,7 @@ def test_run_recorder_rollout_finalizer_exports_logs_then_finishes(monkeypatch, 
         calls.append("tensorboard")
 
     monkeypatch.setattr("nett_skrl.brain.run_recorder.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_agent_recordings_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_recording_videos_to_tensorboard", _log)
 
     agent = _FakeAgent()
     agent._nett_wandb_run = _Run()
@@ -290,21 +290,28 @@ def test_run_recorder_rollout_finalizer_exports_logs_then_finishes(monkeypatch, 
     assert agent._nett_wandb_run is None
 
 
-def test_run_recorder_tensorboard_video_logging_uses_brain_env_scope(monkeypatch, tmp_path):
+def test_run_recorder_video_logging_uses_pytorch_writer_for_recording_videos(monkeypatch, tmp_path):
     class _Writer:
         def __init__(self) -> None:
             self.videos = []
             self.flushed = False
+            self.closed = False
 
         def add_video(self, tag, tensor, fps):
             self.videos.append((tag, tuple(tensor.shape), fps))
 
+        def add_scalar(self, *args, **kwargs):
+            raise AssertionError("recording video logger must not write scalars")
+
         def flush(self):
             self.flushed = True
 
+        def close(self):
+            self.closed = True
+
     writer = _Writer()
     agent = _FakeAgent()
-    agent.writer = writer
+    agent.experiment_dir = str(tmp_path / "wandb_runs" / "brain_1")
     recorder = RunRecorder([agent], num_envs=1)
 
     rec_dir = tmp_path / "recordings" / "egocentric" / "train" / "env_000000"
@@ -316,19 +323,47 @@ def test_run_recorder_tensorboard_video_logging_uses_brain_env_scope(monkeypatch
         writer.add_video(tag, torch.zeros(1, 2, 3, 4, 4), fps)
 
     monkeypatch.setattr("nett_skrl.brain.run_recorder._add_video", _add_video)
-    from nett_skrl.brain.run_recorder import log_agent_recordings_to_tensorboard
+    monkeypatch.setattr(
+        "nett_skrl.brain.run_recorder._recording_video_writer_for_dir",
+        lambda exp_dir: writer,
+    )
+    from nett_skrl.brain.run_recorder import log_recording_videos_to_tensorboard
 
-    log_agent_recordings_to_tensorboard(
+    log_recording_videos_to_tensorboard(
         [agent],
         RecordingCfg(root=tmp_path / "recordings", fps=12, egocentric_enabled=True)
     )
 
     assert writer.flushed is True
+    assert writer.closed is True
     assert writer.videos == [(
         "video/egocentric/env_000000/env_000000",
         (1, 2, 3, 4, 4),
         12,
     )]
+
+
+def test_run_recorder_video_logging_opens_writer_only_when_videos_exist(monkeypatch, tmp_path):
+    calls = []
+
+    def _writer(exp_dir):
+        calls.append(exp_dir)
+        raise AssertionError("writer should not open when there are no recording videos")
+
+    monkeypatch.setattr(
+        "nett_skrl.brain.run_recorder._recording_video_writer_for_dir",
+        _writer,
+    )
+    from nett_skrl.brain.run_recorder import log_recording_videos_to_tensorboard
+
+    agent = _FakeAgent()
+    agent.experiment_dir = str(tmp_path / "wandb_runs" / "brain_1")
+    log_recording_videos_to_tensorboard(
+        [agent],
+        RecordingCfg(root=tmp_path / "recordings", egocentric_enabled=True),
+    )
+
+    assert calls == []
 
 
 def test_run_recorder_does_not_require_complete_wandb_context(tmp_path):

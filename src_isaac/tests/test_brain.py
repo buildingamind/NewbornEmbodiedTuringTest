@@ -677,175 +677,66 @@ def test_wandb_entity_and_notes_omitted_when_none(tmp_path):
     assert kw["resume"] == "allow"
 
 
-def test_tensorboard_tracking_routes_supplemental_metrics_to_tensorboard():
-    """The per-agent wrapper should add NETT scalars to skrl tracking data.
+def test_build_agents_does_not_monkeypatch_skrl_agent_methods(tmp_path):
+    env = _FakeSkrlEnv()
+    brain = Brain(algorithm="PPO", algorithm_cfg=_tiny_algorithm_cfg(),
+                  wandb={"mode": "offline"})
+    config = _FakeTaskConfig(condition="c", current_mode="train",
+                             run_name="r", tmp=tmp_path)
+    agent = _build_agents(brain, env, torch.device("cpu"), config=config)[0]
 
-    The init wrap still looks up the Run via ``_wandb_runs_by_id`` keyed by
-    ``agent.cfg.experiment.wandb_kwargs["id"]`` so it can be finished cleanly
-    later — NOT via the global ``wandb.run`` (which skrl's
-    ``reinit="create_new"`` mode leaves unset). Scalars themselves go through
-    ``track_data`` so skrl writes them to TensorBoard, and wandb gets them from
-    ``sync_tensorboard=True``.
-    """
-    from nett_skrl.brain.experiment import attach_tensorboard_tracking
-    from nett_skrl.brain import experiment as exp_mod
-
-    class _FakeRun:
-        def __init__(self) -> None:
-            self.logged: list[tuple[dict, int]] = []
-
-        def log(self, data, step=None) -> None:
-            self.logged.append((dict(data), step))
-
-    class _FakeExperimentCfg:
-        wandb_kwargs = {"id": "test-run-id-xyz"}
-
-    class _FakeCfg:
-        experiment = _FakeExperimentCfg()
-
-    class _FakeAgent:
-        def __init__(self) -> None:
-            self.tracking_data = {
-                "Loss / Policy loss": [1.0, 3.0],
-                "Loss / Value loss": [0.25, 0.75],
-                "Loss / Entropy loss": [-0.02, -0.04],
-                "Policy / Standard deviation": [0.6, 0.8],
-                "Reward/Total (max)": [0.2, 0.9],
-                "Reward/Total (min)": [-0.5, 0.1],
-            }
-            self.cfg = _FakeCfg()
-            self.init_calls = 0
-            self.write_calls = 0
-            self.tracked: list[tuple[str, float]] = []
-
-        def init(self, *, trainer_cfg=None):
-            self.init_calls += 1
-
-        def track_data(self, tag, value):
-            self.tracked.append((tag, value))
-            self.tracking_data.setdefault(tag, []).append(value)
-
-        def write_tracking_data(self, *, timestep, timesteps):
-            self.write_calls += 1
-            # mimic skrl: clear after flush
-            self.tracking_data = {k: [] for k in self.tracking_data}
-
-    agent = _FakeAgent()
-    attach_tensorboard_tracking(agent)
-    # Idempotent
-    attach_tensorboard_tracking(agent)
-
-    # Pre-populate the captured-runs map as ``_install_wandb_init_capture``
-    # would after the real ``wandb.init`` call returns the Run.
-    fake_run = _FakeRun()
-    exp_mod._wandb_runs_by_id["test-run-id-xyz"] = fake_run
-    try:
-        agent.init(trainer_cfg={})
-        assert agent._nett_wandb_run is fake_run, \
-            "init wrap should resolve the Run by id, not via wandb.run"
-        agent.write_tracking_data(timestep=42, timesteps=1000)
-    finally:
-        exp_mod._wandb_runs_by_id.pop("test-run-id-xyz", None)
-
-    assert agent.write_calls == 1, "original write_tracking_data should still run"
-    assert fake_run.logged == []
-    payload = dict(agent.tracked)
-    assert payload["Stats/nett_timestep"] == 42
-    assert payload["train/policy_gradient_loss"] == pytest.approx(2.0)
-    assert payload["train/value_loss"] == pytest.approx(0.5)
-    assert payload["train/entropy_loss"] == pytest.approx(-0.03)
-    assert payload["train/std"] == pytest.approx(0.7)
-    assert payload["train/loss"] == pytest.approx(2.47)
-    assert payload["train/n_updates"] == 1
+    assert "_nett_tensorboard_tracking_attached" not in agent.__dict__
+    assert "init" not in agent.__dict__
+    assert "record_transition" not in agent.__dict__
+    assert "write_tracking_data" not in agent.__dict__
 
 
-def test_init_wrap_registers_skrl_logdir_with_wandb_for_sync():
-    """sync_tensorboard=True silently no-ops on skrl's writer because skrl's
-    ``EventFileWriter`` import is bound before wandb patches the module — we
-    have to register skrl's experiment_dir on the run explicitly.
-    """
-    from nett_skrl.brain.experiment import attach_tensorboard_tracking
-    from nett_skrl.brain import experiment as exp_mod
+def test_wandb_kwargs_pass_through_with_nett_layout_precedence(tmp_path):
+    env = _FakeSkrlEnv()
+    brain = Brain(
+        algorithm="PPO",
+        algorithm_cfg=_tiny_algorithm_cfg(),
+        wandb={
+            "mode": "offline",
+            "project": "nett-project",
+            "kwargs": {
+                "anonymous": "allow",
+                "name": "user-name-must-not-win",
+                "dir": "/tmp/user-dir-must-not-win",
+                "sync_tensorboard": False,
+                "config": {"user": "config-must-not-win"},
+            },
+        },
+    )
+    config = _FakeTaskConfig(condition="cond", current_mode="train",
+                             run_name="run", tmp=tmp_path)
+    agent = _build_agents(brain, env, torch.device("cpu"), config=config)[0]
+    kw = _normalize_kwargs(agent.cfg)
 
-    callback_calls: list[tuple] = []
-
-    class _FakeRun:
-        def _tensorboard_callback(self, logdir, save=True, root_logdir=""):
-            callback_calls.append((logdir, save, root_logdir))
-
-    class _FakeExperimentCfg:
-        wandb_kwargs = {"id": "test-run-id-sync"}
-
-    class _FakeCfg:
-        experiment = _FakeExperimentCfg()
-
-    class _FakeAgent:
-        def __init__(self) -> None:
-            self.cfg = _FakeCfg()
-            self.experiment_dir = "/tmp/skrl_logs/brain_1"
-            self.tracking_data = {}
-
-        def init(self, *, trainer_cfg=None):
-            pass
-
-        def track_data(self, tag, value):
-            pass
-
-        def write_tracking_data(self, *, timestep, timesteps):
-            pass
-
-    agent = _FakeAgent()
-    attach_tensorboard_tracking(agent)
-
-    fake_run = _FakeRun()
-    exp_mod._wandb_runs_by_id["test-run-id-sync"] = fake_run
-    try:
-        agent.init(trainer_cfg={})
-    finally:
-        exp_mod._wandb_runs_by_id.pop("test-run-id-sync", None)
-
-    assert callback_calls == [("/tmp/skrl_logs/brain_1", True, "")]
-
-
-def test_init_wrap_skips_sync_registration_when_no_run_captured():
-    """No captured Run (wandb disabled or import failed) → no callback call."""
-    from nett_skrl.brain.experiment import attach_tensorboard_tracking
-
-    class _FakeExperimentCfg:
-        wandb_kwargs: dict = {}
-
-    class _FakeCfg:
-        experiment = _FakeExperimentCfg()
-
-    class _FakeAgent:
-        def __init__(self) -> None:
-            self.cfg = _FakeCfg()
-            self.experiment_dir = "/tmp/skrl_logs/brain_1"
-            self.tracking_data = {}
-
-        def init(self, *, trainer_cfg=None):
-            pass
-
-        def track_data(self, tag, value):
-            pass
-
-        def write_tracking_data(self, *, timestep, timesteps):
-            pass
-
-    agent = _FakeAgent()
-    attach_tensorboard_tracking(agent)
-    agent.init(trainer_cfg={})  # must not raise
+    assert kw["anonymous"] == "allow"
+    assert kw["name"] == "run/cond/brain_1"
+    assert kw["dir"] == str(config.path)
+    assert kw["sync_tensorboard"] is True
+    assert kw["project"] == "nett-project"
+    assert kw["config"]["run"]["condition"] == "cond"
+    assert kw["config"]["run"]["brain_id"] == 1
+    assert kw["config"]["brain"]["algorithm"] == "PPO"
+    assert kw["config"]["training"]["checkpoint_freq"] is None
 
 
 def test_finish_agent_wandb_runs_calls_finish_and_clears():
     """``finish_agent_wandb_runs`` calls ``.finish()`` on each captured Run
     and clears ``_nett_wandb_run`` so subsequent calls are no-ops.
     """
-    from nett_skrl.brain.experiment import finish_agent_wandb_runs
+    from nett_skrl.brain.wandb import finish_agent_wandb_runs
 
     class _FakeRun:
         def __init__(self) -> None:
             self.finished = 0
+            self.callbacks = []
+
+        def _tensorboard_callback(self, logdir, save=True, root_logdir=""):
+            self.callbacks.append((logdir, save, root_logdir))
 
         def finish(self) -> None:
             self.finished += 1
@@ -855,106 +746,19 @@ def test_finish_agent_wandb_runs_calls_finish_and_clears():
     run_a, run_b = _FakeRun(), _FakeRun()
     a, b, c = _A(), _A(), _A()
     a._nett_wandb_run = run_a
+    a.experiment_dir = "/tmp/skrl_logs/brain_1"
     b._nett_wandb_run = run_b
     # c has no _nett_wandb_run — must not error
     finish_agent_wandb_runs([a, b, c])
     assert run_a.finished == 1
     assert run_b.finished == 1
+    assert run_a.callbacks == [("/tmp/skrl_logs/brain_1", True, "")]
     assert a._nett_wandb_run is None
     assert b._nett_wandb_run is None
     # Idempotent: second call doesn't double-finish
     finish_agent_wandb_runs([a, b, c])
     assert run_a.finished == 1
     assert run_b.finished == 1
-
-
-def test_tensorboard_tracking_tracks_tensorboard_metrics_without_run():
-    """Supplemental TensorBoard metrics do not require a wandb Run handle."""
-    from nett_skrl.brain.experiment import attach_tensorboard_tracking
-
-    class _FakeAgent:
-        def __init__(self) -> None:
-            self.tracking_data = {"k": [1.0]}
-            self.write_calls = 0
-            self.tracked: list[tuple[str, float]] = []
-
-        def init(self, *, trainer_cfg=None):
-            pass
-
-        def track_data(self, tag, value):
-            self.tracked.append((tag, value))
-
-        def write_tracking_data(self, *, timestep, timesteps):
-            self.write_calls += 1
-
-    agent = _FakeAgent()
-    attach_tensorboard_tracking(agent)
-    agent._nett_wandb_run = None
-    agent.write_tracking_data(timestep=0, timesteps=1)
-    assert agent.write_calls == 1
-    assert dict(agent.tracked)["Stats/nett_timestep"] == 0
-
-
-def test_tensorboard_tracking_tracks_episode_total_rewards():
-    from nett_skrl.brain.experiment import attach_tensorboard_tracking
-
-    class _FakeRun:
-        def __init__(self) -> None:
-            self.logged: list[dict] = []
-
-        def log(self, data, step=None) -> None:
-            self.logged.append(dict(data))
-
-    class _FakeAgent:
-        def __init__(self) -> None:
-            self.tracking_data = {}
-            self.record_calls = 0
-            self.tracked: list[tuple[str, float]] = []
-
-        def init(self, *, trainer_cfg=None):
-            pass
-
-        def record_transition(self, **kwargs):
-            self.record_calls += 1
-
-        def track_data(self, tag, value):
-            self.tracked.append((tag, value))
-
-        def write_tracking_data(self, *, timestep, timesteps):
-            pass
-
-    agent = _FakeAgent()
-    attach_tensorboard_tracking(agent)
-    agent._nett_wandb_run = _FakeRun()
-
-    agent.record_transition(
-        rewards=torch.tensor([[1.0], [2.0]]),
-        terminated=torch.tensor([[False], [False]]),
-        truncated=torch.tensor([[False], [False]]),
-        timestep=1,
-    )
-    agent.record_transition(
-        rewards=torch.tensor([[3.0], [4.0]]),
-        terminated=torch.tensor([[True], [False]]),
-        truncated=torch.tensor([[False], [False]]),
-        timestep=2,
-    )
-    agent.record_transition(
-        rewards=torch.tensor([[5.0], [6.0]]),
-        terminated=torch.tensor([[False], [False]]),
-        truncated=torch.tensor([[False], [True]]),
-        timestep=3,
-    )
-
-    assert agent.record_calls == 3
-    assert agent._nett_wandb_run.logged == []
-    tracked: dict[str, list[float]] = {}
-    for key, value in agent.tracked:
-        tracked.setdefault(key, []).append(value)
-    assert tracked["rollout/ep_rew_total"] == [4.0, 12.0]
-    assert tracked["rollout/env_index"] == [0.0, 1.0]
-    assert tracked["rollout/episode"] == [1.0, 2.0]
-    assert tracked["rollout/ep_len"] == [2.0, 3.0]
 
 
 def test_wandb_invalid_mode_rejected_at_brain_construction():
@@ -1000,7 +804,7 @@ def test_wandb_each_brain_gets_unique_run_name(tmp_path):
 
 # ---------- checkpoint wiring ----------
 
-from nett_skrl.brain.experiment import pick_checkpoint as _pick_checkpoint  # noqa: E402
+from nett_skrl.brain.checkpoints import pick_checkpoint as _pick_checkpoint  # noqa: E402
 
 
 def test_checkpoint_freq_drives_skrl_checkpoint_interval(tmp_path):
@@ -1064,7 +868,7 @@ def test_pick_checkpoint_missing_dir_returns_none(tmp_path):
 def test_load_latest_checkpoints_reads_skrl_path(tmp_path, monkeypatch):
     """`load_latest_checkpoints` must look under `wandb_runs/brain_i/checkpoints/`,
     matching the path skrl writes to via cfg.experiment.directory + experiment_name."""
-    from nett_skrl.brain.experiment import load_latest_checkpoints
+    from nett_skrl.brain.checkpoints import load_latest_checkpoints
 
     ckpt_dir = tmp_path / "wandb_runs" / "brain_1" / "checkpoints"
     ckpt_dir.mkdir(parents=True)
@@ -1085,7 +889,7 @@ def test_load_latest_checkpoints_reads_skrl_path(tmp_path, monkeypatch):
 
 
 def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
-    from nett_skrl.brain.experiment import load_latest_checkpoints
+    from nett_skrl.brain.checkpoints import load_latest_checkpoints
 
     class _FakeAgent:
         def load(self, path):
