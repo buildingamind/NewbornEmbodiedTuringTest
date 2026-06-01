@@ -244,8 +244,8 @@ def test_run_recorder_logs_recordings_to_tensorboard_after_export(monkeypatch, t
     def _log(agents, cfg):
         calls.append(("tensorboard", cfg.root))
 
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_recording_videos_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.recording.export_recordings", _export)
+    monkeypatch.setattr("nett_skrl.recording.log_recording_videos_to_tensorboard", _log)
     agent = _FakeAgent()
     recorder = RunRecorder([agent], num_envs=1)
 
@@ -277,8 +277,8 @@ def test_run_recorder_rollout_finalizer_exports_logs_then_finishes(monkeypatch, 
     def _log(agents, cfg):
         calls.append("tensorboard")
 
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.brain.run_recorder.log_recording_videos_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.recording.export_recordings", _export)
+    monkeypatch.setattr("nett_skrl.recording.log_recording_videos_to_tensorboard", _log)
 
     agent = _FakeAgent()
     agent._nett_wandb_run = _Run()
@@ -322,12 +322,12 @@ def test_run_recorder_video_logging_uses_pytorch_writer_for_recording_videos(mon
     def _add_video(writer, mp4_path, *, tag, fps):
         writer.add_video(tag, torch.zeros(1, 2, 3, 4, 4), fps)
 
-    monkeypatch.setattr("nett_skrl.brain.run_recorder._add_video", _add_video)
+    monkeypatch.setattr("nett_skrl.recording.tensorboard._add_video", _add_video)
     monkeypatch.setattr(
-        "nett_skrl.brain.run_recorder._recording_video_writer_for_dir",
+        "nett_skrl.recording.tensorboard._recording_video_writer_for_dir",
         lambda exp_dir: writer,
     )
-    from nett_skrl.brain.run_recorder import log_recording_videos_to_tensorboard
+    from nett_skrl.recording import log_recording_videos_to_tensorboard
 
     log_recording_videos_to_tensorboard(
         [agent],
@@ -351,10 +351,10 @@ def test_run_recorder_video_logging_opens_writer_only_when_videos_exist(monkeypa
         raise AssertionError("writer should not open when there are no recording videos")
 
     monkeypatch.setattr(
-        "nett_skrl.brain.run_recorder._recording_video_writer_for_dir",
+        "nett_skrl.recording.tensorboard._recording_video_writer_for_dir",
         _writer,
     )
-    from nett_skrl.brain.run_recorder import log_recording_videos_to_tensorboard
+    from nett_skrl.recording import log_recording_videos_to_tensorboard
 
     agent = _FakeAgent()
     agent.experiment_dir = str(tmp_path / "wandb_runs" / "brain_1")
