@@ -10,9 +10,8 @@ from pathlib import Path
 import torch
 from skrl.trainers.torch import SequentialTrainer
 
-from ..recording.export import RecordingCfg
+from ..recording import RecordingCfg, RunRecorder
 from .env_wrappers import IntrinsicRewardEnvWrapper
-from .run_recorder import RunRecorder
 
 logger = logging.getLogger("nett.trainer")
 

@@ -16,7 +16,7 @@ from types import SimpleNamespace
 import torch
 
 import nett_skrl.nett as nett_module
-from nett_skrl.brain.run_recorder import RunRecorder
+from nett_skrl.recording import RunRecorder
 from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
 from nett_skrl.recording import RecordingCfg
 from nett_skrl.nett import NETT

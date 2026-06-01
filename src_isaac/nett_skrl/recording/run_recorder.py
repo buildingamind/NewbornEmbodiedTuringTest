@@ -1,4 +1,4 @@
-"""Run output recording for :mod:`nett_skrl.brain.trainer`."""
+"""Run output recording/finalization for skrl training and rollouts."""
 
 from __future__ import annotations
 
@@ -7,10 +7,11 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .. import recording
+from .export import RecordingCfg, export_recordings
+from .tensorboard import log_recording_videos_to_tensorboard
 
 if TYPE_CHECKING:
-    from .trainer import TrainCfg
+    from nett_skrl.brain.trainer import TrainCfg
 
 logger = logging.getLogger("nett.recorder")
 
@@ -31,7 +32,7 @@ class RunRecorder:
         cfg: TrainCfg,
         *,
         elapsed_s: float,
-        record_cfg: recording.RecordingCfg | None = None,
+        record_cfg: RecordingCfg | None = None,
         dry_run: bool = False,
     ) -> None:
         if dry_run:
@@ -45,7 +46,7 @@ class RunRecorder:
         finally:
             self.finish_wandb_runs()
 
-    def after_rollout(self, record_cfg: recording.RecordingCfg | None = None) -> None:
+    def after_rollout(self, record_cfg: RecordingCfg | None = None) -> None:
         """Finalize a non-training rollout while skrl/wandb runs are alive."""
         try:
             if record_cfg:
@@ -68,9 +69,9 @@ class RunRecorder:
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             agent.save(str(ckpt_dir / "final_agent.pt"))
 
-    def _export_and_log_recordings(self, record_cfg: recording.RecordingCfg) -> None:
-        recording.export_recordings(record_cfg)
-        recording.log_recording_videos_to_tensorboard(self.agents, record_cfg)
+    def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
+        export_recordings(record_cfg)
+        log_recording_videos_to_tensorboard(self.agents, record_cfg)
 
     def _write_hparams(self, cfg: TrainCfg) -> None:
         out = Path(cfg.hparams_dir) / "logs"

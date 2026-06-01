@@ -728,7 +728,7 @@ def test_finish_agent_wandb_runs_calls_finish_and_clears():
     """``finish_agent_wandb_runs`` calls ``.finish()`` on each captured Run
     and clears ``_nett_wandb_run`` so subsequent calls are no-ops.
     """
-    from nett_skrl.brain.wandb import finish_agent_wandb_runs
+    from nett_skrl.recording import finish_agent_wandb_runs
 
     class _FakeRun:
         def __init__(self) -> None:
@@ -804,7 +804,7 @@ def test_wandb_each_brain_gets_unique_run_name(tmp_path):
 
 # ---------- checkpoint wiring ----------
 
-from nett_skrl.brain.checkpoints import pick_checkpoint as _pick_checkpoint  # noqa: E402
+from nett_skrl.recording import pick_checkpoint as _pick_checkpoint  # noqa: E402
 
 
 def test_checkpoint_freq_drives_skrl_checkpoint_interval(tmp_path):
@@ -868,7 +868,7 @@ def test_pick_checkpoint_missing_dir_returns_none(tmp_path):
 def test_load_latest_checkpoints_reads_skrl_path(tmp_path, monkeypatch):
     """`load_latest_checkpoints` must look under `wandb_runs/brain_i/checkpoints/`,
     matching the path skrl writes to via cfg.experiment.directory + experiment_name."""
-    from nett_skrl.brain.checkpoints import load_latest_checkpoints
+    from nett_skrl.recording import load_latest_checkpoints
 
     ckpt_dir = tmp_path / "wandb_runs" / "brain_1" / "checkpoints"
     ckpt_dir.mkdir(parents=True)
@@ -889,7 +889,7 @@ def test_load_latest_checkpoints_reads_skrl_path(tmp_path, monkeypatch):
 
 
 def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
-    from nett_skrl.brain.checkpoints import load_latest_checkpoints
+    from nett_skrl.recording import load_latest_checkpoints
 
     class _FakeAgent:
         def load(self, path):

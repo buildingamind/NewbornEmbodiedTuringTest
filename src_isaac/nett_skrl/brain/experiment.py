@@ -7,7 +7,7 @@ from typing import Any
 
 from skrl.agents.torch import ExperimentCfg
 
-from .wandb import install_wandb_init_capture, wandb_run_id
+from ..recording import install_wandb_init_capture, wandb_run_id
 
 WANDB_CFG_DEFAULTS: dict[str, Any] = {
     "project": "nett-skrl",

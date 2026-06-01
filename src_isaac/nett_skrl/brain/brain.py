@@ -18,8 +18,14 @@ from typing import Any, Optional
 import torch
 
 from ..runtime.task import TaskConfig
+from ..recording import (
+    RecordingCfg,
+    RunRecorder,
+    init_agents_for_eval as _init_agents_for_eval_fn,
+    load_latest_checkpoints as _load_latest_checkpoints_fn,
+)
 from .config import AlgorithmCfg, EncoderCfg, RewardCfg, algorithm_cfg_from
-from .trainer import BrainTrainer, RecordingCfg, TrainCfg
+from .trainer import BrainTrainer, TrainCfg
 from .models import ModelCfg, model_cfg_from
 from .run_config import (
     dry_run_timesteps,
@@ -28,12 +34,9 @@ from .run_config import (
     train_cfg_for,
 )
 from .agent_factory import build_agents as _build_skrl_agents
-from .checkpoints import load_latest_checkpoints as _load_latest_checkpoints_fn
 from .experiment import (
     normalize_wandb_cfg as _normalize_wandb_cfg,
 )
-from .wandb import init_agents_for_eval as _init_agents_for_eval_fn
-from .run_recorder import RunRecorder
 from .intrinsic_adapter import IntrinsicRewardAdapter
 from .env_adapter import IsaacEnvWrapper
 from .rewards import UnsupportedIntrinsicReward
