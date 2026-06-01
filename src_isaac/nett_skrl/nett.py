@@ -55,7 +55,7 @@ def _modes_from_episodes(episodes: dict[str, int]) -> list[str]:
 def _make_body(body: Optional[dict], wrappers: Optional[list]) -> Body:
     body_config = dict(body or {})
     if wrappers and body_config.get("wrappers"):
-        raise ValueError("Specify body.wrappers or top-level wrappers, not both.")
+        raise ValueError("Specify body.wrappers or legacy wrappers, not both.")
     if wrappers:
         body_config["wrappers"] = wrappers
     return Body(**body_config)

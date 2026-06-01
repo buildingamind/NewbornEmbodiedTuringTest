@@ -4,7 +4,7 @@ import gymnasium as gym
 import numpy as np
 import torch
 
-from nett_skrl.wrappers import Video
+from nett_skrl.body.wrappers import Video
 
 
 class _DictEnv(gym.Env):

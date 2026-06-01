@@ -1,7 +1,7 @@
 """Env-side wrappers used by the skrl training loop.
 
 These wrappers sit between skrl and the Isaac/Gym env. They are deliberately
-kept out of :mod:`nett_skrl.wrappers`, which is reserved for observation
+kept out of :mod:`nett_skrl.body.wrappers`, which is reserved for observation
 transforms such as video frame stacking, DVS, and retina preprocessing.
 """
 

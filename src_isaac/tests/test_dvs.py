@@ -6,7 +6,7 @@ import gymnasium as gym
 import numpy as np
 import pytest
 
-from nett_skrl.wrappers import DVS
+from nett_skrl.body.wrappers import DVS
 
 
 def _box(h: int = 32, w: int = 32, c: int = 3) -> gym.spaces.Box:
