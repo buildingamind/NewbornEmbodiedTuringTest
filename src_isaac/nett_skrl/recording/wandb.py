@@ -33,8 +33,11 @@ def install_wandb_init_capture() -> None:
     def _patched_init(*args, **kwargs):
         run = original_init(*args, **kwargs)
         run_id = kwargs.get("id")
-        if run is not None and run_id:
-            _wandb_runs_by_id[run_id] = run
+        if run is not None:
+            run.define_metric("step")
+            run.define_metric("*", step_metric="step")
+            if run_id:
+                _wandb_runs_by_id[run_id] = run
         return run
 
     _patched_init._nett_wraps_wandb_init = True
