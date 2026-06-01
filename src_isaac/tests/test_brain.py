@@ -25,6 +25,13 @@ from nett_skrl.brain.rewards import E3B, ICM, PseudoCounts, RIDE
 from nett_skrl.brain.env_adapter import IsaacEnvWrapper
 from nett_skrl.brain.registry import algorithm_spec, register_reward
 
+# TODO(reward-refactor): Run `uv run pytest tests/test_brain.py -q` after the
+# Isaac Lab private dependency is available to confirm the new reward package
+# imports through the full nett_skrl package and all Brain registry paths.
+# TODO(reward-refactor): Add a focused reward smoke test that instantiates each
+# exported reward from `nett_skrl.brain.rewards`, calls `compute` and `update`,
+# and verifies output shape, finite values, and metric/count state changes.
+
 
 def test_hwc_to_chw_space_image():
     s = gym.spaces.Box(low=0, high=255, shape=(64, 128, 3), dtype=np.uint8)
