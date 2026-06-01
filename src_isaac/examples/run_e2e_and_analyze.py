@@ -63,7 +63,7 @@ CONFIG: dict = {
         "algorithm_cfg": {
             "rollouts": 4000,
             "mini_batches": 8,
-            "learning_rate": 1.0e-5,
+            "learning_rate": 3e-4, #1.0e-5,
         },
         "wandb": {
             "mode": "online",

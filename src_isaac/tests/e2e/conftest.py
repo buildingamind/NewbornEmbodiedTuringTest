@@ -46,7 +46,7 @@ MINIMAL_SMOKE_CFG: dict = {
         "algorithm_cfg": {
             "rollouts": 64,
             "mini_batches": 2,
-            "learning_rate": 1.0e-5,
+            "learning_rate": 3e-4, #1.0e-5,
         },
         "wandb": {"mode": "disabled"},
     },
