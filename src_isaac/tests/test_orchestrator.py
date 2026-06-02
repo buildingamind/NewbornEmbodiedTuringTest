@@ -72,8 +72,9 @@ class _FakeEnv:
 class _FakeAgent:
     """Records every call so the test can assert per-slice indexing."""
 
-    def __init__(self, act_dim: int = 2) -> None:
+    def __init__(self, act_dim: int = 2, action_value: float = 0.0) -> None:
         self.act_dim = act_dim
+        self.action_value = float(action_value)
         self.act_calls: list = []
         self.record_calls: list = []
         self.post_calls = 0
@@ -93,8 +94,13 @@ class _FakeAgent:
 
     def act(self, observations, states, *, timestep, timesteps):
         self.act_calls.append(observations.clone())
-        # Stub action: zeros, same batch dim as obs.
-        return torch.zeros(observations.shape[0], self.act_dim), {}
+        # Stub action: constant value, same batch dim as obs.
+        return torch.full(
+            (observations.shape[0], self.act_dim),
+            self.action_value,
+            dtype=observations.dtype,
+            device=observations.device,
+        ), {}
 
     def record_transition(self, **kwargs):
         self.record_calls.append({k: v for k, v in kwargs.items() if k != "infos"})
@@ -149,6 +155,34 @@ def test_trainer_dispatches_parallel_env_scopes_to_multiple_agents():
         assert len(agent.act_calls) == 4
         for obs in agent.act_calls:
             assert obs.shape == (2, env.obs_dim)
+
+
+def test_trainer_keeps_brain_scopes_from_mixing_observations_actions_and_rewards():
+    class _ScopedEnv(_FakeEnv):
+        def _obs(self) -> torch.Tensor:
+            rows = torch.arange(self.num_envs, dtype=torch.float32, device=self.device)
+            return rows.unsqueeze(1).repeat(1, self.obs_dim)
+
+        def step(self, actions):
+            assert torch.all(actions[:2] == 1.0)
+            assert torch.all(actions[2:] == 2.0)
+            self._t += 1
+            return (
+                self._obs(),
+                torch.arange(self.num_envs, dtype=torch.float32, device=self.device).view(-1, 1),
+                torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device),
+                torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device),
+                {},
+            )
+
+    env = _ScopedEnv(num_envs=4)
+    agents = [_FakeAgent(action_value=1.0), _FakeAgent(action_value=2.0)]
+    BrainTrainer(env, agents, device="cpu").train(TrainCfg(total_timesteps=1))
+
+    assert torch.equal(agents[0].act_calls[0][:, 0], torch.tensor([0.0, 1.0]))
+    assert torch.equal(agents[1].act_calls[0][:, 0], torch.tensor([2.0, 3.0]))
+    assert torch.equal(agents[0].record_calls[0]["rewards"].flatten(), torch.tensor([0.0, 1.0]))
+    assert torch.equal(agents[1].record_calls[0]["rewards"].flatten(), torch.tensor([2.0, 3.0]))
 
 
 def test_trainer_eval_switches_mode_to_eval():
@@ -583,11 +617,15 @@ class _Intrinsic:
         self.value = value
         self.watch_calls = 0
         self.update_calls = 0
+        self.watch_samples = []
+        self.compute_samples = []
 
     def watch(self, *args):
         self.watch_calls += 1
+        self.watch_samples.append(tuple(x.clone() for x in args))
 
     def compute(self, **kwargs):
+        self.compute_samples.append({k: v.clone() for k, v in kwargs.items()})
         return torch.full_like(kwargs["rewards"], self.value)
 
     def update(self):
@@ -613,6 +651,59 @@ def test_intrinsic_reward_is_added_before_record_transition():
     assert intrinsic.watch_calls == 1
     assert intrinsic.update_calls == 1
     assert recorded_reward.item() == 1.5
+
+
+def test_intrinsic_reward_keeps_env_rows_distinct_before_record_transition():
+    class _RowRewardEnv(_FakeEnv):
+        def _obs(self) -> torch.Tensor:
+            rows = torch.arange(self.num_envs, dtype=torch.float32, device=self.device)
+            return rows.unsqueeze(1).repeat(1, self.obs_dim) + self._t
+
+        def step(self, actions):
+            self._t += 1
+            return (
+                self._obs(),
+                torch.tensor([[1.0], [10.0]], device=self.device),
+                torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device),
+                torch.zeros(self.num_envs, 1, dtype=torch.bool, device=self.device),
+                {},
+            )
+
+    env = _RowRewardEnv(num_envs=2)
+    agent = _FakeAgent(action_value=3.0)
+    adapters = [_Intrinsic(value=0.25), _Intrinsic(value=0.75)]
+
+    BrainTrainer(env, [agent], device="cpu").train(
+        TrainCfg(total_timesteps=1),
+        intrinsic_reward_adapters=adapters,
+    )
+
+    recorded_reward = agent.record_calls[0]["rewards"]
+    assert torch.equal(recorded_reward, torch.tensor([[1.25], [10.75]]))
+    for env_id, adapter in enumerate(adapters):
+        assert adapter.watch_calls == 1
+        assert adapter.update_calls == 1
+        sample = adapter.compute_samples[0]
+        assert sample["observations"].shape == (1, env.obs_dim)
+        assert sample["actions"].shape == (1, env.act_dim)
+        assert sample["rewards"].shape == (1, 1)
+        assert sample["observations"][0, 0].item() == float(env_id)
+
+
+def test_intrinsic_reward_requires_one_adapter_per_env_row():
+    env = _FakeEnv(num_envs=2)
+    agent = _FakeAgent()
+    trainer = BrainTrainer(env, [agent], device="cpu")
+
+    try:
+        trainer.train(
+            TrainCfg(total_timesteps=1),
+            intrinsic_reward_adapters=[_Intrinsic(value=0.5)],
+        )
+    except ValueError as e:
+        assert "one intrinsic reward adapter per env row" in str(e)
+    else:
+        raise AssertionError("expected ValueError for missing per-env intrinsic adapter")
 
 
 def test_eval_checkpoint_boundaries_use_eval_and_checkpoint_milestones():
