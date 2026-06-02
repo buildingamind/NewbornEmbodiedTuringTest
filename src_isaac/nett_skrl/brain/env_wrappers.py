@@ -11,12 +11,22 @@ import torch
 
 
 class IntrinsicRewardEnvWrapper:
-    """Reward-shaping wrapper used before skrl records transitions."""
+    """Reward-shaping wrapper used before skrl records transitions.
+
+    Intrinsic rewards are intentionally applied one env row at a time. The
+    vectorized env is only a synchronous transport for faster stepping; each
+    brain-env-condition instance keeps its own reward state and transition.
+    """
 
     def __init__(self, env, adapters: list) -> None:
         self._env = env
         self.adapters = adapters
         self._last_observations = None
+        if len(self.adapters) != int(self._env.num_envs):
+            raise ValueError(
+                f"expected one intrinsic reward adapter per env row "
+                f"({self._env.num_envs}); got {len(self.adapters)}"
+            )
 
     def __getattr__(self, name):
         return getattr(self._env, name)
@@ -30,6 +40,9 @@ class IntrinsicRewardEnvWrapper:
         next_observations, rewards, terminated, truncated, infos = self._env.step(actions)
         if self._last_observations is not None:
             rewards = rewards.clone()
+            # Keep env rows behaviorally independent even though the wrapped
+            # env steps a batch. Do not combine observations, actions, rewards,
+            # or intrinsic-reward state across env rows here.
             for i, adapter in enumerate(self.adapters):
                 obs_i = self._last_observations[i : i + 1]
                 next_i = next_observations[i : i + 1]
