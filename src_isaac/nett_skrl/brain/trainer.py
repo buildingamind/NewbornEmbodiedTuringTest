@@ -107,10 +107,15 @@ class BrainTrainer:
         )
 
     def _run_skrl_train(self, env, timesteps: int) -> None:
+        import gc
+        # Default GC threshold (700, 10, 10) can allow USD/Gf Python wrapper
+        # objects with reference cycles to accumulate for hundreds of steps before
+        # gen-0 collection runs. Tighten gen-0 to keep per-step object backlog small.
+        gc.set_threshold(200, 5, 5)
         trainer = SequentialTrainer(
             env=env,
             agents=self.agents if len(self.agents) > 1 else self.agents[0],
-            scopes=self.scopes if len(self.agents) > 1 else None,
+            scopes=list(self.scopes) if len(self.agents) > 1 else None,
             cfg={
                 "timesteps": timesteps,
                 "headless": True,
@@ -134,12 +139,10 @@ class BrainTrainer:
                 # Env runs on CPU (NETTEnvCfg.sim.device='cpu'); ``totals``
                 # is on the policy device. Move rewards
                 # to the totals device before accumulating.
-                reward_rows = rewards.reshape(self.env.num_envs, -1).mean(dim=1)
-                offset = 0
-                for i, scope in enumerate(self.scopes):
-                    scoped_rewards = reward_rows[offset : offset + scope]
-                    totals[i] += scoped_rewards.to(totals.device, non_blocking=True).mean()
-                    offset += scope
+                # Metric-only aggregation after the env step: this does not
+                # feed back into training transitions or reward shaping.
+                reward_rows = rewards.reshape(len(self.agents), self.scopes[0], -1).mean(dim=2)
+                totals += reward_rows.to(totals.device, non_blocking=True).mean(dim=1)
                 observations = next_observations
         return {i: float(totals[i].item() / total_timesteps) for i in range(len(self.agents))}
 
