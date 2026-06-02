@@ -89,7 +89,7 @@ def _wandb_kwargs(*, brain, config, brain_id: int, experiment_name: str) -> dict
             "reinit": "create_new",
             "id": wandb_run_id(run_name, condition, brain_id, phase),
             "resume": "allow",
-            "sync_tensorboard": True,
+            "sync_tensorboard": False,
             "config": _wandb_config_payload(
                 brain=brain,
                 config=config,

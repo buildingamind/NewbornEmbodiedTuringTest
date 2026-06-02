@@ -33,8 +33,11 @@ def install_wandb_init_capture() -> None:
     def _patched_init(*args, **kwargs):
         run = original_init(*args, **kwargs)
         run_id = kwargs.get("id")
-        if run is not None and run_id:
-            _wandb_runs_by_id[run_id] = run
+        if run is not None:
+            run.define_metric("global_step")
+            run.define_metric("*", step_metric="global_step")
+            if run_id:
+                _wandb_runs_by_id[run_id] = run
         return run
 
     _patched_init._nett_wraps_wandb_init = True
@@ -43,21 +46,22 @@ def install_wandb_init_capture() -> None:
 
 
 def attach_wandb_init_hook(agent) -> None:
-    """Wrap agent.init to register skrl's TensorBoard logdir for wandb sync.
+    """Wrap agent.init to forward skrl scalars directly to the W&B run.
 
-    wandb.init(sync_tensorboard=True) patches EventFileWriter at the module
-    level, but skrl imports it with ``from ... import EventFileWriter`` at
-    load time — its local reference is the unpatched class, so skrl's writer
-    never self-registers and skrl's TensorBoard events never reach W&B.
-    Calling _register_skrl_logdir_for_sync right after agent.init() (when
-    wandb.init has run and experiment_dir exists) is the only reliable fix.
+    W&B's sync_tensorboard file-watching fails when the event file lives
+    outside os.getcwd() (the path-relative-to-cwd check in the SDK rejects
+    paths under /tmp or any other absolute directory).  Patching the writer
+    after agent.init() creates it gives us a reliable, path-independent path:
+    each add_scalar call writes the TensorBoard event AND calls run.log()
+    directly, so scalars always appear in W&B regardless of where the output
+    directory is.
     """
     if getattr(agent, "_nett_wandb_init_hook_attached", False):
         return
 
     original_init = agent.init
 
-    def _init_with_logdir_sync(*args, **kwargs):
+    def _init_with_writer_hook(*args, **kwargs):
         result = original_init(*args, **kwargs)
         run_id = None
         try:
@@ -66,10 +70,10 @@ def attach_wandb_init_hook(agent) -> None:
             pass
         run = _wandb_runs_by_id.get(run_id) if run_id else None
         agent._nett_wandb_run = run
-        _register_skrl_logdir_for_sync(agent, run)
+        _attach_writer_forwarding_hook(agent, run)
         return result
 
-    agent.init = _init_with_logdir_sync
+    agent.init = _init_with_writer_hook
     agent._nett_wandb_init_hook_attached = True
 
 
@@ -85,7 +89,6 @@ def finish_agent_wandb_runs(agents) -> None:
         run = _wandb_run_for_agent(agent)
         if run is None:
             continue
-        _register_skrl_logdir_for_sync(agent, run)
         try:
             run.finish()
         except Exception:
@@ -109,15 +112,42 @@ def _wandb_run_for_agent(agent):
     return run
 
 
-def _register_skrl_logdir_for_sync(agent, run) -> None:
-    """Tell wandb to tail skrl's TensorBoard event directory for this Run."""
+def _attach_writer_forwarding_hook(agent, run) -> None:
+    """Wrap agent.writer.add_scalar to also forward each scalar to the W&B run.
+
+    skrl calls write_tracking_data() at rollout boundaries, which calls
+    writer.add_scalar() for each tracked metric.  By forwarding here we bypass
+    the TensorBoard file-sync path entirely — no binary event files, no path
+    checks, no flowcontrol backup from uploading large files.
+    """
     if run is None:
         return
-    logdir = getattr(agent, "experiment_dir", None)
-    callback = getattr(run, "_tensorboard_callback", None)
-    if not logdir or callback is None:
+    writer = getattr(agent, "writer", None)
+    if writer is None:
         return
-    try:
-        callback(str(logdir), save=True)
-    except Exception:
-        logger.debug("wandb tensorboard sync registration failed", exc_info=True)
+    if getattr(writer, "_nett_wandb_forwarding", False):
+        return
+
+    original_add_scalar = writer.add_scalar
+
+    def _forwarding_add_scalar(*, tag: str, value: float, timestep: int) -> None:
+        original_add_scalar(tag=tag, value=value, timestep=timestep)
+        try:
+            run.log({tag: value, "global_step": timestep}, commit=False)
+        except Exception:
+            pass
+
+    writer.add_scalar = _forwarding_add_scalar
+    writer._nett_wandb_forwarding = True
+
+    # Commit the buffered scalars after each write_tracking_data flush so they
+    # arrive as one batch per rollout rather than trickling in individually.
+    original_write_tracking = getattr(agent, "write_tracking_data", None)
+    if original_write_tracking is not None:
+        def _write_tracking_with_commit(**kwargs):
+            original_write_tracking(**kwargs)
+            try:
+                run.log({}, commit=True)
+            except Exception:
+                pass
+        agent.write_tracking_data = _write_tracking_with_commit
