@@ -37,16 +37,29 @@ def image_channels_hw(space_or_shape) -> tuple[int, int, int]:
 
 
 def to_chw_space(space: gym.Space) -> gym.Space:
-    """Convert HWC image Box spaces to CHW; leave everything else unchanged."""
-    if not isinstance(space, gym.spaces.Box) or len(space.shape) != 3:
+    """Convert HWC image Box spaces to CHW; leave everything else unchanged.
+
+    Handles both 3D (H, W, C) and 4D batched (N, H, W, C) layouts from Isaac
+    Lab vectorized environments.
+    """
+    if not isinstance(space, gym.spaces.Box):
         return space
-    channels, height, width = image_channels_hw(space)
-    if image_layout(space.shape) == "chw":
-        return space
-    low = np.zeros((channels, height, width), dtype=space.dtype)
-    high_value = 255 if np.issubdtype(space.dtype, np.integer) else 1.0
-    high = np.full((channels, height, width), high_value, dtype=space.dtype)
-    return gym.spaces.Box(low=low, high=high, dtype=space.dtype)
+    if len(space.shape) == 3:
+        channels, height, width = image_channels_hw(space)
+        if image_layout(space.shape) == "chw":
+            return space
+        low = np.zeros((channels, height, width), dtype=space.dtype)
+        high_value = 255 if np.issubdtype(space.dtype, np.integer) else 1.0
+        high = np.full((channels, height, width), high_value, dtype=space.dtype)
+        return gym.spaces.Box(low=low, high=high, dtype=space.dtype)
+    if len(space.shape) == 4 and image_layout(space.shape[1:]) == "hwc":
+        # Isaac Lab batched space: (N, H, W, C) → (N, C, H, W)
+        n, h, w, c = space.shape
+        low = np.zeros((n, c, h, w), dtype=space.dtype)
+        high_value = 255 if np.issubdtype(space.dtype, np.integer) else 1.0
+        high = np.full((n, c, h, w), high_value, dtype=space.dtype)
+        return gym.spaces.Box(low=low, high=high, dtype=space.dtype)
+    return space
 
 
 def channel_stack_space(space: gym.Space, frames: int) -> gym.Space:

@@ -74,7 +74,8 @@ CONFIG: dict = {
     "episodes": {"train": 1000, "test": 1},
     "steps_per_episode": 200,
     "eval_freq": 25000000,   # past total (200k) → no mid-train eval; avoids 2-sim OOM
-    "task_memory": 4,
+    "task_memory": 1,
+    "max_parallel_envs": 4,
 }
 
 

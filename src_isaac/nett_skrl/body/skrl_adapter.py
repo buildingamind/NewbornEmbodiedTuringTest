@@ -116,14 +116,21 @@ def _obs_value(observations, key: str, default=None):
 def _policy_space(env) -> gym.Space:
     policy_space = _space_value(getattr(env, "observation_space", None), "policy")
     if policy_space is not None:
-        return policy_space
+        return _unbatch_space(policy_space)
 
     try:
         single = env.single_observation_space
     except Exception:
-        return env.observation_space
+        return _unbatch_space(env.observation_space)
 
-    return _space_value(single, "policy", default=single)
+    return _unbatch_space(_space_value(single, "policy", default=single))
+
+
+def _unbatch_space(space: gym.Space) -> gym.Space:
+    """Strip the leading N (num-envs) dim from a 4D Isaac Lab batched space."""
+    if not isinstance(space, gym.spaces.Box) or len(space.shape) != 4:
+        return space
+    return gym.spaces.Box(low=space.low[0], high=space.high[0], dtype=space.dtype)
 
 
 def _space_value(space, key: str, default=None):

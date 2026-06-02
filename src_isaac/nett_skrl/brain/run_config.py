@@ -19,7 +19,9 @@ def dry_run_timesteps(brain) -> int:
 
 
 def train_timesteps(brain, config: TaskConfig) -> int:
-    return int(config.train_timesteps or brain.train_iterations)
+    base = int(config.train_timesteps or brain.train_iterations)
+    envs_per_brain = max(1, getattr(brain, "envs_per_brain", 1))
+    return max(1, base // envs_per_brain)
 
 
 def eval_timesteps(brain, config: TaskConfig) -> int:

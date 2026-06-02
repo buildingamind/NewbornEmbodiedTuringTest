@@ -141,7 +141,7 @@ class OnPolicyAlgorithmCfg(AlgorithmCfg):
         return int(self.rollouts)
 
     def envs_per_brain_for(self, steps_per_episode: int) -> int:
-        return max(1, self.rollout_batch_size() // max(1, steps_per_episode))
+        return max(1, self.rollouts // max(1, steps_per_episode))
 
 
 class OffPolicyAlgorithmCfg(AlgorithmCfg):
