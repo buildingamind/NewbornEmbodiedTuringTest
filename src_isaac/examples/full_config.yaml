@@ -46,6 +46,12 @@ environment:
   # only training).
   reward_types: [closeness]
 
+  # Isaac Sim RTX render mode. RealTimeRenderer uses the Storm rasterizer
+  # (no ray tracing) — lowest GPU cost, recommended for training.
+  # RayTracingLighting is Isaac's default (hardware RT via DXR/Vulkan).
+  # PathTracing is full path-trace (slowest). Empty string = Isaac default.
+  render_mode: RealTimeRenderer
+
 # ----------------------------------------------------------------------------
 # Brain — skrl algorithm + model spec.
 # ----------------------------------------------------------------------------
