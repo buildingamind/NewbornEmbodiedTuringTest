@@ -78,6 +78,7 @@ class Environment:
         decision_period: int = 1,
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
+        render_mode: str = "RealTimeRenderer",
     ):
         self.design_sheet = Path(design_sheet)
         self.media_root = Path(media_root)
@@ -108,6 +109,7 @@ class Environment:
         self.decision_period = int(decision_period or 1)
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
+        self.render_mode = render_mode
         self.num_brains = 1  # overridden by adjust_to_agent()
         self.num_envs = 1  # total vectorized Isaac env rows
 
@@ -139,6 +141,11 @@ class Environment:
         from isaaclab.app import AppLauncher
 
         if self._sim_app is None:
+            if self.render_mode:
+                import sys
+                flag = f"--/rtx/rendermode={self.render_mode}"
+                if flag not in sys.argv:
+                    sys.argv.append(flag)
             self._sim_app = AppLauncher(
                 headless=self.headless,
                 enable_cameras=True,

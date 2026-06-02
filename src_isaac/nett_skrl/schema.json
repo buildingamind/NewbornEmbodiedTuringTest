@@ -175,6 +175,13 @@
           "type": "array",
           "items": { "type": "string" },
           "default": []
+        },
+        "render_mode": {
+          "description": "Isaac Sim RTX render mode. RealTimeRenderer = rasterizer (no ray tracing, lowest GPU cost). RayTracingLighting = hardware RT (Isaac default). PathTracing = full path trace (slowest). Empty string leaves Isaac's built-in default in place.",
+          "type": "string",
+          "enum": ["RealTimeRenderer", "RayTracingLighting", "PathTracing", ""],
+          "default": "RealTimeRenderer"
+        },
         }
       },
       "required": ["design_sheet", "media_root"],
