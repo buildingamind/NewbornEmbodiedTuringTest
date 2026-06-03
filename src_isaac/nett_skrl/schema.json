@@ -79,7 +79,8 @@
             "value_bound": { "type": ["number", "null"], "default": 10.0 },
             "orthogonal_init": { "type": "boolean", "default": true },
             "hidden_gain": { "type": "number", "exclusiveMinimum": 0, "default": 1.4142135623730951 },
-            "output_gain": { "type": "number", "exclusiveMinimum": 0, "default": 0.01 }
+            "output_gain": { "type": "number", "exclusiveMinimum": 0, "default": 0.01 },
+            "shared_encoder": { "type": "boolean", "default": false }
           },
           "additionalProperties": false,
           "default": {}
@@ -154,6 +155,7 @@
         "headless":         { "type": "boolean", "default": true },
         "binocular_vision": { "type": "boolean", "default": true },
         "input_resolution": { "type": "integer", "minimum": 16, "default": 64 },
+        "camera_fov":       { "type": "number", "minimum": 10, "maximum": 200, "default": 120.0 },
         "record_mode":      { "type": "string", "enum": ["tSNE", "spatial"], "default": "tSNE" },
         "random_first_frame": { "type": "boolean", "default": false },
         "switch_steps":     { "type": "integer", "minimum": 0, "default": 0 },

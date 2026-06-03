@@ -9,6 +9,7 @@ from .gaussian_actor import GaussianActor
 from .model_cfg import ModelCfg
 from .q_critic import QCritic
 from .value_critic import ValueCritic
+from .utils.init import orthogonal_init
 
 
 def build_models_for_algorithm(
@@ -21,7 +22,22 @@ def build_models_for_algorithm(
     device,
     cfg: ModelCfg,
 ) -> dict[str, nn.Module]:
-    """Build the skrl model dictionary required by an ``AlgorithmSpec``."""
+    """Build the skrl model dictionary required by an ``AlgorithmSpec``.
+
+    When ``cfg.shared_encoder`` is True, a single encoder instance is created
+    and its reference is shared between the actor and all critic models — the
+    same behaviour as SB3's ``share_features_extractor=True``. The shared
+    encoder and its trunk are each initialised once; each model head gets its
+    own independent MLP trunk so the critic can still learn a different value
+    basis from the actor.
+    """
+    # Build one shared encoder if requested; otherwise each model builds its own.
+    shared_enc = None
+    if cfg.shared_encoder:
+        shared_enc = encoder_cls(observation_space, **encoder_kwargs)
+        shared_enc.to(device)
+        if cfg.orthogonal_init:
+            shared_enc.apply(lambda m: orthogonal_init(m, cfg.hidden_gain))
 
     model_kwargs = {
         "encoder_cls": encoder_cls,
@@ -30,6 +46,7 @@ def build_models_for_algorithm(
         "action_space": action_space,
         "device": device,
         "cfg": cfg,
+        "shared_encoder": shared_enc,
     }
 
     def actor():

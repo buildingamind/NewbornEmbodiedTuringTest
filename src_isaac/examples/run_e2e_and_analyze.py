@@ -37,7 +37,7 @@ OUTPUT = Path("/tmp/nett_e2e_out")
 # 32 GB box — keep eval_freq above total step count so only the post-train
 # test phase runs).
 CONFIG: dict = {
-    "name": f"e2e_1000ep_{datetime.now():%Y%m%d_%H%M%S}",
+    "name": f"e2e_1kep_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
         "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
         "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
@@ -45,25 +45,29 @@ CONFIG: dict = {
         "headless": True,
         "binocular_vision": False,
         "input_resolution": 64,
+        # Unity monocular = 60° FOV (narrow: agent must face monitor directly).
+        # Isaac default is 120° (wide periphery lets agent earn reward without
+        # facing monitor → no visual discrimination signal).  Match Unity.
+        "camera_fov": 60.0,
         "reward_types": ["closeness"],
-        # Recording: per camera, per phase, with the legacy NETT selector
-        # format. Selector forms: slice string ("0:5:1" = episodes 0..4
-        # step 1), integer N (single episode index N), list of indices,
-        # or null (= every episode in that phase). Omit a phase to skip it.
-        "recording": {
-            "fps": 24,
-            "egocentric": {"train": [0], "test": [0]},
-            "chamber":    {"train": [0], "test": [0]},
-        },
     },
     "brain": {
         "algorithm": "PPO",
         "encoder": "small",
         "encoder_cfg": {"trainable": True},
         "algorithm_cfg": {
-            "rollouts": 4000,
+            # rollouts=2000 → envs_per_brain=2000/200=10 envs, 100 PPO updates
+            # per 1k episodes (vs 50 with rollouts=4000/20 envs).
+            # Same wall-clock time, 2× gradient updates.
+            "rollouts": 2000,
             "mini_batches": 8,
-            "learning_rate": 3e-4, #1.0e-5,
+            "learning_rate": 3e-4,
+            "value_loss_scale": 0.5,
+            "grad_norm_clip": 0.5,
+        },
+        "model": {
+            "value_bound": None,
+            "shared_encoder": True,
         },
         "wandb": {
             "mode": "online",
@@ -71,7 +75,9 @@ CONFIG: dict = {
         },
     },
     "num_brains": 1,
-    "episodes": {"train": 1000, "test": 1},
+    # 1 000 episodes = 50 per-env with 20 envs; 50 PPO updates.
+    # Reward shaping prevents the gradient explosion so the full budget runs.
+    "episodes": {"train": 1200, "test": 1},
     "steps_per_episode": 200,
     "eval_freq": 25000000,   # past total (200k) → no mid-train eval; avoids 2-sim OOM
     "task_memory": 1,

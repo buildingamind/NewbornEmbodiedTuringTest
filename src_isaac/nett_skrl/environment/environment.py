@@ -33,6 +33,7 @@ _ENV_CFG_FIELDS = (
     ("episode_steps", "episode_steps", int),
     ("observation.binocular", "binocular_vision", bool),
     ("observation.input_resolution", "input_resolution", int),
+    ("observation.fov", "camera_fov", float),
     ("reward_types", "reward_types", tuple),
     ("record_mode", "record_mode", None),
     ("motor.enable_neck_flexion", "enable_neck_flexion", bool),
@@ -79,6 +80,7 @@ class Environment:
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
         render_mode: str = "RealTimeRenderer",
+        camera_fov: float = 120.0,
     ):
         self.design_sheet = Path(design_sheet)
         self.media_root = Path(media_root)
@@ -110,6 +112,7 @@ class Environment:
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
         self.render_mode = render_mode
+        self.camera_fov = float(camera_fov)
         self.num_brains = 1  # overridden by adjust_to_agent()
         self.num_envs = 1  # total vectorized Isaac env rows
 

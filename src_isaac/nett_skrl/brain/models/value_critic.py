@@ -15,7 +15,7 @@ from .utils.init import init_output
 class ValueCritic(DeterministicMixin, Model, FeatureBackbone):
     """V(s) critic for on-policy continuous agents."""
 
-    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg):
+    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg, shared_encoder=None):
         Model.__init__(
             self,
             observation_space=observation_space,
@@ -23,7 +23,7 @@ class ValueCritic(DeterministicMixin, Model, FeatureBackbone):
             device=device,
         )
         DeterministicMixin.__init__(self, clip_actions=False)
-        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg)
+        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.value_head = nn.Linear(last, 1)
         self.value_bound = cfg.value_bound
         init_output(self.value_head, cfg)

@@ -19,6 +19,7 @@ class ModelCfg:
     orthogonal_init: bool = True
     hidden_gain: float = math.sqrt(2.0)
     output_gain: float = 0.01
+    shared_encoder: bool = False
 
 
 def model_cfg_from(value: dict[str, Any] | None = None) -> ModelCfg:

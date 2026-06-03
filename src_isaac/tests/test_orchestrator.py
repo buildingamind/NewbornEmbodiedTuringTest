@@ -40,11 +40,13 @@ class _FakeEnv:
         self.device = torch.device(device)
         self._t = 0
         self.num_agents = 1
+        self.reset_calls = 0
 
     def _obs(self) -> torch.Tensor:
         return torch.randn(self.num_envs, self.obs_dim, device=self.device)
 
     def reset(self):
+        self.reset_calls += 1
         return self._obs(), {}
 
     def step(self, actions):
@@ -185,13 +187,28 @@ def test_trainer_keeps_brain_scopes_from_mixing_observations_actions_and_rewards
     assert torch.equal(agents[1].record_calls[0]["rewards"].flatten(), torch.tensor([2.0, 3.0]))
 
 
-def test_trainer_eval_switches_mode_to_eval():
+def test_trainer_eval_switches_mode_to_eval(monkeypatch):
+    progress_calls = []
+
+    def _fake_tqdm(iterable, **kwargs):
+        progress_calls.append(kwargs)
+        return iterable
+
+    monkeypatch.setattr("nett_skrl.brain.trainer.tqdm", _fake_tqdm)
     env = _FakeEnv(num_envs=2)
     agents = [_FakeAgent() for _ in range(2)]
     trainer = BrainTrainer(env, agents, device="cpu")
-    means = trainer.eval(total_timesteps=3)
+    means = trainer.eval(total_timesteps=3, desc="test Object1")
     assert set(means.keys()) == {0, 1}
     assert all(a.mode == "eval" for a in agents)
+    assert progress_calls == [
+        {
+            "total": 3,
+            "desc": "test Object1",
+            "unit": "timestep",
+            "file": __import__("sys").stdout,
+        }
+    ]
 
 
 def test_trainer_eval_does_not_finish_wandb_runs():
@@ -218,6 +235,24 @@ def test_trainer_eval_zero_steps_returns_zero_without_reset():
     agents = [_FakeAgent() for _ in range(2)]
     trainer = BrainTrainer(env, agents, device="cpu")
     assert trainer.eval(total_timesteps=0) == {0: 0.0, 1: 0.0}
+    assert env.reset_calls == 0
+
+
+def test_trainer_eval_can_disable_progress(monkeypatch):
+    def _fail_tqdm(*args, **kwargs):
+        raise AssertionError("progress bar should not be constructed")
+
+    monkeypatch.setattr("nett_skrl.brain.trainer.tqdm", _fail_tqdm)
+    env = _FakeEnv(num_envs=1)
+    agent = _FakeAgent()
+
+    means = BrainTrainer(env, [agent], device="cpu").eval(
+        total_timesteps=1,
+        show_progress=False,
+    )
+
+    assert set(means) == {0}
+    assert env.reset_calls == 1
 
 
 def test_trainer_raises_on_env_agent_mismatch():

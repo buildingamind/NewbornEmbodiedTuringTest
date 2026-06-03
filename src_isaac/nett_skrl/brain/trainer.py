@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import logging
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 import torch
 from skrl.trainers.torch import SequentialTrainer
+from tqdm import tqdm
 
 from ..recording import RecordingCfg, RunRecorder
 from .env_wrappers import IntrinsicRewardEnvWrapper
@@ -123,7 +125,13 @@ class BrainTrainer:
         )
         trainer.train()
 
-    def eval(self, total_timesteps: int) -> dict[int, float]:
+    def eval(
+        self,
+        total_timesteps: int,
+        *,
+        desc: str | None = None,
+        show_progress: bool = True,
+    ) -> dict[int, float]:
         """Deterministic rollout returning mean reward per brain."""
         if total_timesteps <= 0:
             logger.info("eval skipped: total_timesteps=%d", total_timesteps)
@@ -132,8 +140,17 @@ class BrainTrainer:
             self._set_mode(agent, False)
         totals = torch.zeros(len(self.agents), device=self.device)
         observations, _ = self.env.reset()
+        steps = range(total_timesteps)
+        if show_progress:
+            steps = tqdm(
+                steps,
+                total=total_timesteps,
+                desc=desc or "eval",
+                unit="timestep",
+                file=sys.stdout,
+            )
         with torch.no_grad():
-            for t in range(total_timesteps):
+            for t in steps:
                 actions = self._collect_actions_for_eval(observations, t, total_timesteps)
                 next_observations, rewards, *_ = self.env.step(actions)
                 # Env runs on CPU (NETTEnvCfg.sim.device='cpu'); ``totals``

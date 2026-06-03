@@ -218,8 +218,9 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
         def __init__(self, *args, **kwargs):
             pass
 
-        def eval(self, total_timesteps):
+        def eval(self, total_timesteps, **kwargs):
             seen["steps"] = total_timesteps
+            seen["eval_kwargs"] = kwargs
             return {}
 
     monkeypatch.setattr("nett_skrl.brain.brain.BrainTrainer", _Trainer)
@@ -240,10 +241,12 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
     class _Config:
         device = 0
         condition = "Object1"
+        current_mode = "test"
         path = "."
 
     brain.test(_Env(), _Config())
     assert seen["steps"] == 150
+    assert seen["eval_kwargs"] == {"desc": "test Object1"}
 
 
 def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
@@ -257,8 +260,8 @@ def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
         def __init__(self, wrapped, seen_agents, device):
             assert seen_agents is agents
 
-        def eval(self, total_timesteps):
-            calls.append(("eval", total_timesteps))
+        def eval(self, total_timesteps, **kwargs):
+            calls.append(("eval", total_timesteps, kwargs))
             return {0: 1.0}
 
     class _Recorder:
@@ -286,6 +289,7 @@ def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
     class _Config:
         device = 0
         condition = "Object1"
+        current_mode = "test"
         path = tmp_path
         dry_run = False
 
@@ -294,8 +298,8 @@ def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
     assert calls == [
         ("init", agents),
         ("load", agents),
-        ("eval", 10),
         ("recorder", agents, 1),
+        ("eval", 10, {"desc": "test Object1"}),
         ("after_rollout", record_cfg),
     ]
 
@@ -562,6 +566,36 @@ def test_value_critic_output_is_bounded_and_finite():
     value, _ = critic.compute({"observations": torch.full((4, 16, 16, 3), 255, dtype=torch.uint8)})
     assert torch.isfinite(value).all()
     assert value.abs().max() <= 3.0
+
+
+def test_shared_encoder_same_object_across_models():
+    """Actor and critic must share the identical encoder instance when shared_encoder=True."""
+    env = _FakeSkrlEnv()
+    brain = Brain(
+        algorithm="PPO",
+        encoder_cfg={"features_dim": 16},
+        algorithm_cfg=_tiny_algorithm_cfg("PPO"),
+        model={"shared_encoder": True},
+    )
+    agent = _build_agents(brain, env, torch.device("cpu"))[0]
+    models = list(agent.models.values())
+    assert len(models) >= 2, "PPO must have at least policy + value models"
+    encoder_ids = {id(m.encoder) for m in models}
+    assert len(encoder_ids) == 1, "All models should share the exact same encoder instance"
+
+
+def test_shared_encoder_false_gives_independent_encoders():
+    env = _FakeSkrlEnv()
+    brain = Brain(
+        algorithm="PPO",
+        encoder_cfg={"features_dim": 16},
+        algorithm_cfg=_tiny_algorithm_cfg("PPO"),
+        model={"shared_encoder": False},
+    )
+    agent = _build_agents(brain, env, torch.device("cpu"))[0]
+    models = list(agent.models.values())
+    encoder_ids = {id(m.encoder) for m in models}
+    assert len(encoder_ids) == len(models), "Each model should have its own encoder"
 
 
 def test_ppo_first_update_keeps_weights_finite():

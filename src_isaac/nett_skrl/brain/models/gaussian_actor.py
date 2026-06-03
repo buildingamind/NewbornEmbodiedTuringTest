@@ -15,7 +15,7 @@ from .utils.init import init_output
 class GaussianActor(GaussianMixin, Model, FeatureBackbone):
     """Continuous Gaussian actor for PPO/A2C/TRPO/RPO/SAC/CEM."""
 
-    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg):
+    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg, shared_encoder=None):
         Model.__init__(
             self,
             observation_space=observation_space,
@@ -26,7 +26,7 @@ class GaussianActor(GaussianMixin, Model, FeatureBackbone):
             self,
             clip_actions=cfg.clip_actions,
         )
-        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg)
+        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.mean_layer = nn.Linear(last, self.num_actions)
         init_output(self.mean_layer, cfg)
         self.log_std = nn.Parameter(torch.full((self.num_actions,), float(cfg.initial_log_std)))

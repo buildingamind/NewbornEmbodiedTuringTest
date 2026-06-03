@@ -29,6 +29,7 @@ dependencies = [
     "wandb>=0.17",
     "jsonschema",
     "pyyaml",
+    "tqdm",
 ]
 
 [project.optional-dependencies]

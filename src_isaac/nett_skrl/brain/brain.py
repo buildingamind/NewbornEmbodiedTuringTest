@@ -62,6 +62,12 @@ _RUNTIME_DEFAULTS = {
 }
 
 
+def _eval_progress_desc(config: TaskConfig) -> str:
+    mode = getattr(config, "current_mode", None) or "eval"
+    condition = getattr(config, "condition", None)
+    return f"{mode} {condition}" if condition else str(mode)
+
+
 class Brain:
     """Configures and trains N independent skrl agents.
 
@@ -218,7 +224,8 @@ class Brain:
         recorder = RunRecorder(agents, wrapped.num_envs)
         try:
             metrics = self._trainer(wrapped, agents, device).eval(
-                total_timesteps=eval_timesteps(self, config)
+                total_timesteps=eval_timesteps(self, config),
+                desc=_eval_progress_desc(config),
             )
         except Exception:
             recorder.after_rollout(None)

@@ -834,6 +834,7 @@ dependencies = [
     { name = "opencv-python-headless" },
     { name = "pyyaml" },
     { name = "skrl" },
+    { name = "tqdm" },
     { name = "wandb" },
 ]
 
@@ -852,6 +853,7 @@ requires-dist = [
     { name = "opencv-python-headless" },
     { name = "pyyaml" },
     { name = "skrl", specifier = ">=2.0.0" },
+    { name = "tqdm" },
     { name = "wandb", specifier = ">=0.17" },
 ]
 provides-extras = ["notebook"]

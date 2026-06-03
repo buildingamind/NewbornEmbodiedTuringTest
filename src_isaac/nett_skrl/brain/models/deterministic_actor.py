@@ -15,7 +15,7 @@ from .utils.init import init_output
 class DeterministicActor(DeterministicMixin, Model, FeatureBackbone):
     """Continuous deterministic actor for TD3/DDPG."""
 
-    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg):
+    def __init__(self, *, encoder_cls, encoder_kwargs, observation_space, action_space, device, cfg: ModelCfg, shared_encoder=None):
         Model.__init__(
             self,
             observation_space=observation_space,
@@ -23,7 +23,7 @@ class DeterministicActor(DeterministicMixin, Model, FeatureBackbone):
             device=device,
         )
         DeterministicMixin.__init__(self, clip_actions=cfg.clip_actions)
-        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg)
+        last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.action_head = nn.Linear(last, self.num_actions)
         init_output(self.action_head, cfg)
 
