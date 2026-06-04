@@ -55,6 +55,7 @@ def _run_train_with_eval_milestones(task: Task) -> None:
         _spawn_mode_subprocess(task, "train")
         return
 
+    eval_num_envs = _compute_eval_num_envs(task)
     boundaries = _training_boundaries(
         total,
         eval_freq=eval_freq,
@@ -75,19 +76,23 @@ def _run_train_with_eval_milestones(task: Task) -> None:
                 "train",
                 train_timesteps=chunk,
                 train_global_step=boundary,
+                train_start_step=previous,
             )
             _copy_final_checkpoints_to_global_step(task, boundary)
         if boundary % eval_freq == 0:
             config.logger.info(
-                "Spawning metrics-only eval at train step %d for condition %s",
+                "Spawning metrics-only eval at train step %d for condition %s "
+                "(eval_num_envs=%d)",
                 boundary,
                 config.condition,
+                eval_num_envs,
             )
             _spawn_mode_subprocess(
                 task,
                 "test",
                 eval_step=boundary,
                 eval_metrics_only=True,
+                num_envs=eval_num_envs,
             )
         previous = boundary
 
@@ -146,10 +151,12 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
         (config.path / "logs").mkdir(exist_ok=True, parents=True)
 
     run_config = config.for_mode(mode, **(overrides or {}))
+    # Use run_config.num_envs: may differ from config.num_envs when eval_num_envs
+    # is passed as an override for mid-training eval subprocesses.
     agent.body.adjust_to_agent(
         agent.env,
         num_brains=config.num_brains,
-        num_envs=config.num_envs,
+        num_envs=run_config.num_envs,
     )
     loaded = agent.body.embed(agent.env, run_config)
     if mode == "train":
@@ -181,6 +188,36 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
 
     torch.cuda.empty_cache()
     _exit_worker_cleanly(run_config.logger)
+
+
+def _compute_eval_num_envs(task: Task) -> int:
+    """Largest num_envs ≤ max_parallel_envs that cleanly divides total test episodes.
+
+    Total test episodes = num_test_tasks × episodes["test"].  Prefers a value
+    that is also a multiple of num_brains (so BrainTrainer's divisibility check
+    passes); falls back to any divisor of total_test_episodes if needed.
+    """
+    config = task.config
+    num_brains = max(1, int(config.num_brains))
+    episodes_test = int((config.episodes or {}).get("test", 1))
+    num_test_tasks = max(1, task.agent.env.iterations_per_test_episode.get(config.condition, 1))
+    total_test_episodes = num_test_tasks * episodes_test
+
+    max_envs = config.max_parallel_envs
+    # Cap at total_test_episodes so NETTEnv never gets empty episode slots.
+    cap = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
+    cap = max(1, cap)
+
+    # First pass: prefer largest multiple of num_brains ≤ cap that divides total.
+    start = max(num_brains, (cap // num_brains) * num_brains)
+    for n in range(start, 0, -num_brains):
+        if total_test_episodes % n == 0:
+            return n
+
+    # Second pass (rare — e.g. total_test_episodes not divisible by num_brains):
+    # relax the divisibility-of-total constraint but KEEP the num_brains-multiple
+    # constraint so BrainTrainer's (num_envs % num_brains == 0) check never fails.
+    return start if start > 0 else num_brains
 
 
 def _training_boundaries(

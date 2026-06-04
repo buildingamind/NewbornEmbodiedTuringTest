@@ -37,8 +37,10 @@ class TaskConfig:
     num_envs: int | None = None
     brain_id_offset: int = 0
     eval_freq: int | None = None
+    max_parallel_envs: int | None = None
     train_timesteps: int | None = None
     train_global_step: int | None = None
+    train_start_step: int | None = None
     eval_step: int | None = None
     eval_metrics_only: bool = False
     device: int | None = None
@@ -90,12 +92,14 @@ class Task:
         num_envs: int | None = None,
         brain_id_offset: int = 0,
         eval_freq: int | None = None,
+        max_parallel_envs: int | None = None,
     ) -> None:
         self.config = TaskConfig(
             condition, output_dir, modes, episodes, memory,
             num_brains=num_brains, num_envs=num_envs,
             brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
+            max_parallel_envs=max_parallel_envs,
         )
         self.agent = Agent(brain, body, env)
 

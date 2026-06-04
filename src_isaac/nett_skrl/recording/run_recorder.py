@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from .export import RecordingCfg, export_recordings
 from .tensorboard import log_recording_videos_to_tensorboard, log_wrapper_egocentric_to_tensorboard
-from .wandb import log_recording_videos_to_wandb, log_test_metrics_to_wandb
+from .wandb import log_eval_bar_to_wandb, log_recording_videos_to_wandb, log_test_metrics_to_wandb
 
 if TYPE_CHECKING:
     from nett_skrl.brain.trainer import TrainCfg
@@ -59,12 +59,24 @@ class RunRecorder:
         record_cfg: RecordingCfg | None = None,
         *,
         metrics: dict | None = None,
+        eval_bar_info: dict | None = None,
     ) -> None:
-        """Finalize a non-training rollout while skrl/wandb runs are alive."""
+        """Finalize a non-training rollout while skrl/wandb runs are alive.
+
+        When ``eval_bar_info`` is provided (mid-training eval checkpoint), only
+        the analysis bar-chart preferences are logged to W&B — not the raw
+        mean reward — so the eval W&B section stays clean.  For normal
+        (end-of-training) test runs, ``eval_bar_info`` is ``None`` and the
+        mean reward is logged as usual.
+        """
         try:
             if record_cfg:
                 self._export_and_log_recordings(record_cfg)
-            if metrics is not None:
+            if eval_bar_info is not None:
+                # Mid-training eval: log bar-chart values at training-step x.
+                log_eval_bar_to_wandb(self.agents, eval_bar_info)
+            elif metrics is not None:
+                # Normal post-training test: log mean reward per brain.
                 log_test_metrics_to_wandb(self.agents, metrics)
         finally:
             self.finish_wandb_runs()

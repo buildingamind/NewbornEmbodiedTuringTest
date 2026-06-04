@@ -192,7 +192,12 @@ class Environment:
     def _configure_artifacts(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)
-        suffix = f"{config.current_mode}_{config.condition}_{seed or 0}"
+        # Append eval_step to the filename for mid-training eval subprocesses so
+        # each eval's CSV is uniquely named and parseable per-checkpoint by the
+        # W&B bar-chart logger.
+        eval_step = getattr(config, "eval_step", None)
+        eval_suffix = f"_{eval_step}" if eval_step is not None else ""
+        suffix = f"{config.current_mode}_{config.condition}_{seed or 0}{eval_suffix}"
         cfg.log_path = str(log_path / f"{suffix}.csv")
         _set_if_present(cfg, "profile_path", str(log_path / f"profile_{suffix}.json"))
 

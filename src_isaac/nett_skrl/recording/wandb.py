@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
 import logging
+import math
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("nett.brain")
+
+_DEFAULT_CHAMBER_HALF_X = 33.15
 
 _wandb_runs_by_id: dict[str, Any] = {}
 _wandb_init_patched = False
@@ -151,6 +156,97 @@ def log_test_metrics_to_wandb(agents: list, metrics: dict) -> None:
                 logger.debug("failed to log test metrics to wandb", exc_info=True)
 
 
+def log_eval_bar_to_wandb(agents: list, eval_bar_info: dict) -> None:
+    """Log mid-training eval bar-chart preferences to each brain's W&B run.
+
+    Reads the test CSV written by NETTEnv during the eval subprocess, computes
+    mean correct-monitor preference per test condition (the same values shown
+    in the ``test_viz`` bar chart), and logs them under ``eval/<test_cond>/correct_pct``
+    using ``global_step`` as the x-axis so the series aligns with training
+    reward curves in W&B.
+
+    ``eval_bar_info`` must contain:
+        eval_step   — total env-interaction count at which this eval was triggered
+        global_step — eval_step converted to per-env steps (training x-axis units)
+        condition   — imprint condition string
+        path        — TaskConfig.path (parent directory that contains ``logs/``)
+    """
+    logs = Path(eval_bar_info["path"]) / "logs"
+    eval_step = eval_bar_info["eval_step"]
+    global_step = eval_bar_info["global_step"]
+
+    by_cond: dict[str, list[float]] = defaultdict(list)
+    # Each mid-training eval writes its CSV with the eval_step in the filename
+    # (see environment.py::_configure_artifacts).
+    for csv_path in sorted(logs.glob(f"test_*_{eval_step}.csv")):
+        for tc, pct in _preferences_from_csv(csv_path).items():
+            by_cond[tc].extend(pct)
+
+    if not by_cond:
+        logger.debug(
+            "log_eval_bar_to_wandb: no test_*_%d.csv found under %s", eval_step, logs
+        )
+        return
+
+    for agent in agents:
+        run = _wandb_run_for_agent(agent)
+        if run is None:
+            continue
+        payload: dict = {f"eval/{tc}/correct_pct": sum(v) / len(v) for tc, v in by_cond.items()}
+        payload["global_step"] = global_step
+        try:
+            run.log(payload, commit=True)
+        except Exception:
+            logger.debug("log_eval_bar_to_wandb: run.log failed", exc_info=True)
+
+
+def _preferences_from_csv(csv_path: Path) -> dict[str, list[float]]:
+    """Return {test_cond: [correct_pct_per_row]} from a NETTEnv test log CSV."""
+    by_cond: dict[str, list[dict]] = defaultdict(list)
+    try:
+        with csv_path.open(newline="") as f:
+            for row in csv.DictReader(f):
+                tc = row.get("test.cond", "")
+                if tc:
+                    by_cond[tc].append(row)
+    except Exception:
+        logger.debug("_preferences_from_csv: failed to read %s", csv_path, exc_info=True)
+        return {}
+
+    result: dict[str, list[float]] = {}
+    for tc, rows in by_cond.items():
+        correct = 0
+        total = 0
+        for row in rows:
+            try:
+                ax = float(row["agent.x"])
+                az = float(row["agent.z"])
+                yaw = float(row["agent.angle"])
+                correct_monitor = row.get("correct.monitor", "")
+            except (KeyError, ValueError):
+                continue
+            looking = _looking_at_monitor(ax, az, yaw)
+            correct += int(looking == correct_monitor)
+            total += 1
+        if total > 0:
+            result[tc] = [correct / total]
+    return result
+
+
+def _looking_at_monitor(ax: float, az: float, yaw_deg: float) -> str:
+    """Return 'left' or 'right' for the monitor the agent's gaze vector points toward."""
+    half_x = _DEFAULT_CHAMBER_HALF_X
+    rad = math.radians(yaw_deg)
+    fx, fy = -math.sin(rad), math.cos(rad)
+    left_dx, left_dy = -half_x - ax, -az
+    right_dx, right_dy = half_x - ax, -az
+    left_norm = math.hypot(left_dx, left_dy) or 1.0
+    right_norm = math.hypot(right_dx, right_dy) or 1.0
+    left_dot = (left_dx * fx + left_dy * fy) / left_norm
+    right_dot = (right_dx * fx + right_dy * fy) / right_norm
+    return "left" if left_dot > right_dot else "right"
+
+
 def _iter_mp4s_for_brain(rec_dir, *, env_id: int):
     """Yield (kind, mp4_path) for all exported MP4s belonging to env_id."""
     env_prefix = f"env_{env_id}"
@@ -199,7 +295,11 @@ def _attach_writer_forwarding_hook(agent, run) -> None:
                 payload[k] = float(np.mean(v))
         original_write_tracking(timestep=timestep, timesteps=timesteps)
         if payload:
-            payload["global_step"] = timestep
+            # Apply the per-chunk offset so global_step accumulates continuously
+            # across eval_freq training chunks.  skrl 2.x always starts its
+            # local timestep counter at 0; _nett_timestep_offset corrects this.
+            offset = getattr(agent, "_nett_timestep_offset", 0)
+            payload["global_step"] = timestep + offset
             try:
                 run.log(payload, commit=True)
             except Exception:

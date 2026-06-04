@@ -246,7 +246,7 @@ def test_brain_test_uses_full_episode_steps(monkeypatch):
 
     brain.test(_Env(), _Config())
     assert seen["steps"] == 150
-    assert seen["eval_kwargs"] == {"desc": "test Object1"}
+    assert seen["eval_kwargs"] == {"desc": "test  [Object1]"}
 
 
 def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
@@ -299,7 +299,7 @@ def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
         ("init", agents),
         ("load", agents),
         ("recorder", agents, 1),
-        ("eval", 10, {"desc": "test Object1"}),
+        ("eval", 10, {"desc": "test  [Object1]"}),
         ("after_rollout", record_cfg),
     ]
 

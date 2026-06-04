@@ -31,9 +31,14 @@ class TrainCfg:
     ``output_dir`` / ``condition`` / ``phase`` / ``run_name`` are retained for
     run-layout compatibility; checkpoints, scalars, and videos are written
     through skrl/TensorBoard paths.
+
+    ``initial_timestep`` offsets skrl's internal step counter so that
+    ``global_step`` in W&B accumulates continuously across training chunks
+    when ``eval_freq`` splits training into multiple subprocesses.
     """
 
     total_timesteps: int
+    initial_timestep: int = 0
     hparams_dir: Path | None = None
     hparams: dict | None = None
     output_dir: Path | None = None
@@ -99,7 +104,7 @@ class BrainTrainer:
         # One contiguous skrl run — no chunking needed now that NETT no
         # longer interrupts to write its own checkpoints.
         start = time.perf_counter()
-        self._run_skrl_train(train_env, cfg.total_timesteps)
+        self._run_skrl_train(train_env, cfg.total_timesteps, initial_timestep=cfg.initial_timestep)
         train_elapsed = time.perf_counter() - start
         recorder.after_train(
             cfg,
@@ -108,12 +113,18 @@ class BrainTrainer:
             dry_run=dry_run,
         )
 
-    def _run_skrl_train(self, env, timesteps: int) -> None:
+    def _run_skrl_train(self, env, timesteps: int, initial_timestep: int = 0) -> None:
         import gc
         # Default GC threshold (700, 10, 10) can allow USD/Gf Python wrapper
         # objects with reference cycles to accumulate for hundreds of steps before
         # gen-0 collection runs. Tighten gen-0 to keep per-step object backlog small.
         gc.set_threshold(200, 5, 5)
+        # Store the per-env step offset so the W&B forwarding hook can add it
+        # to skrl's local timestep counter (which always starts at 0 in
+        # SequentialTrainer 2.x) to make global_step cumulative across chunks.
+        if initial_timestep > 0:
+            for agent in self.agents:
+                agent._nett_timestep_offset = int(initial_timestep)
         trainer = SequentialTrainer(
             env=env,
             agents=self.agents if len(self.agents) > 1 else self.agents[0],

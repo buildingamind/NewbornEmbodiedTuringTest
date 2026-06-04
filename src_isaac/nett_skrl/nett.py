@@ -190,6 +190,7 @@ class NETT:
         tasklist = build_tasks(
             base_brain, base_body, base_env, num_brains, num_envs, base_env.conditions,
             output_dir, modes, episodes, memory, brain_id_offset, eval_freq,
+            max_parallel_envs=max_parallel_envs,
         )
 
         # Per-task validation runs against the local Isaac Lab build — skip if

@@ -63,9 +63,12 @@ _RUNTIME_DEFAULTS = {
 
 
 def _eval_progress_desc(config: TaskConfig) -> str:
+    condition = getattr(config, "condition", None) or ""
+    eval_step = getattr(config, "eval_step", None)
+    if eval_step is not None:
+        return f"eval @ step {eval_step}  [{condition}]" if condition else f"eval @ step {eval_step}"
     mode = getattr(config, "current_mode", None) or "eval"
-    condition = getattr(config, "condition", None)
-    return f"{mode} {condition}" if condition else str(mode)
+    return f"{mode}  [{condition}]" if condition else str(mode)
 
 
 class Brain:
@@ -222,6 +225,20 @@ class Brain:
         _init_agents_for_eval_fn(agents)
         _load_latest_checkpoints_fn(agents, config)
         recorder = RunRecorder(agents, wrapped.num_envs)
+
+        # For mid-training eval, build metadata so the recorder can log
+        # bar-chart preferences to W&B at the correct training-step x position.
+        eval_bar_info = None
+        eval_step = getattr(config, "eval_step", None)
+        if eval_step is not None:
+            envs_per_brain = max(1, getattr(self, "envs_per_brain", 1))
+            eval_bar_info = {
+                "eval_step": int(eval_step),
+                "global_step": int(eval_step) // envs_per_brain,
+                "condition": config.condition,
+                "path": config.path,
+            }
+
         try:
             metrics = self._trainer(wrapped, agents, device).eval(
                 total_timesteps=eval_timesteps(self, config),
@@ -230,7 +247,7 @@ class Brain:
         except Exception:
             recorder.after_rollout(None)
             raise
-        recorder.after_rollout(record_cfg, metrics=metrics)
+        recorder.after_rollout(record_cfg, metrics=metrics, eval_bar_info=eval_bar_info)
         return metrics
 
     def record(
