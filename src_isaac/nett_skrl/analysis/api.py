@@ -160,6 +160,127 @@ def test_viz(
     return out
 
 
+def log_analysis_to_wandb(
+    run_dir: str | Path,
+    analysis_dir: str | Path | None = None,
+) -> None:
+    """Resume per-condition W&B runs and upload analysis PNGs and summary scalars.
+
+    Reads ``run_dir/config.yaml`` to recover the experiment name and wandb
+    settings, then for each condition resumes brain_1's run (using
+    :func:`nett_skrl.recording.wandb.wandb_run_id`) and uploads:
+
+    * ``analysis/train_reward_{condition}.png`` as ``analysis/train_reward_curve``
+    * ``analysis/test_preference_{condition}.png`` as ``analysis/test_preference``
+    * Per-condition scalars from ``analysis/summary.json``
+
+    Does nothing when ``brain.wandb.mode`` is ``"disabled"`` or when
+    ``config.yaml`` is absent.
+    """
+    import json
+    import yaml as _yaml
+
+    run_dir = Path(run_dir)
+    analysis_dir = Path(analysis_dir) if analysis_dir else run_dir / "analysis"
+
+    config_path = run_dir / "config.yaml"
+    if not config_path.exists():
+        logger.warning("log_analysis_to_wandb: no config.yaml at %s", config_path)
+        return
+
+    with config_path.open() as f:
+        config = _yaml.safe_load(f)
+
+    run_name = config.get("name", run_dir.name)
+    brain_cfg = config.get("brain") or {}
+    wandb_cfg = brain_cfg.get("wandb") or {}
+    mode = wandb_cfg.get("mode", "online")
+    if mode == "disabled":
+        return
+
+    try:
+        import wandb
+        from nett_skrl.recording.wandb import wandb_run_id
+    except ImportError as exc:
+        logger.warning("log_analysis_to_wandb: missing dependency (%s)", exc)
+        return
+
+    project = wandb_cfg.get("project", "nett-skrl")
+    entity = wandb_cfg.get("entity")
+
+    summary: dict = {}
+    summary_path = analysis_dir / "summary.json"
+    if summary_path.exists():
+        with summary_path.open() as f:
+            summary = json.load(f)
+
+    for cond_dir in sorted(run_dir.iterdir()):
+        if not cond_dir.is_dir() or cond_dir.name.startswith((".", "_")):
+            continue
+        if not ((cond_dir / "logs").exists() or (cond_dir / "wandb_runs").exists()):
+            continue
+        condition = cond_dir.name
+
+        run_id = wandb_run_id(run_name, condition, 1)
+        init_kwargs: dict = {
+            "id": run_id,
+            "resume": "allow",
+            "project": project,
+            "mode": mode,
+            "dir": str(run_dir),
+        }
+        if entity:
+            init_kwargs["entity"] = entity
+
+        try:
+            run = wandb.init(**init_kwargs)
+        except Exception:
+            logger.warning(
+                "log_analysis_to_wandb: wandb.init failed for condition %s",
+                condition,
+                exc_info=True,
+            )
+            continue
+
+        if run is None:
+            continue
+
+        try:
+            payload: dict = {}
+
+            train_png = analysis_dir / "train" / f"train_reward_{condition}.png"
+            if train_png.exists():
+                payload["analysis/train_reward_curve"] = wandb.Image(str(train_png))
+
+            test_png = analysis_dir / "test" / f"test_preference_{condition}.png"
+            if test_png.exists():
+                payload["analysis/test_preference"] = wandb.Image(str(test_png))
+
+            if "train" in summary and condition in summary["train"]:
+                for brain, data in summary["train"][condition].items():
+                    val = data.get("final_reward_tail_mean")
+                    if val is not None:
+                        payload[f"analysis/train_final_reward_{brain}"] = float(val)
+
+            if "test" in summary and condition in summary["test"]:
+                for tc, data in summary["test"][condition].items():
+                    val = data.get("correct_pct_mean")
+                    if val is not None:
+                        payload[f"analysis/test_{tc}_correct_pct"] = float(val)
+
+            if payload:
+                run.log(payload)
+        except Exception:
+            logger.warning(
+                "log_analysis_to_wandb: error logging condition %s", condition, exc_info=True
+            )
+        finally:
+            try:
+                run.finish()
+            except Exception:
+                pass
+
+
 def merge(paths: Iterable[str | Path], output_path: str | Path) -> Path:
     """Combine multiple analysis output trees + re-aggregate the CSVs.
 
@@ -208,6 +329,7 @@ __all__ = [
     "DEFAULT_CHAMBER_HALF_X",
     "DEFAULT_CHAMBER_HALF_Y",
     "analyze",
+    "log_analysis_to_wandb",
     "merge",
     "normalize_isaac_output",
     "test_viz",

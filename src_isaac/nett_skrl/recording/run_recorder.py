@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from .export import RecordingCfg, export_recordings
 from .tensorboard import log_recording_videos_to_tensorboard, log_wrapper_egocentric_to_tensorboard
+from .wandb import log_recording_videos_to_wandb, log_test_metrics_to_wandb
 
 if TYPE_CHECKING:
     from nett_skrl.brain.trainer import TrainCfg
@@ -53,11 +54,18 @@ class RunRecorder:
         finally:
             self.finish_wandb_runs()
 
-    def after_rollout(self, record_cfg: RecordingCfg | None = None) -> None:
+    def after_rollout(
+        self,
+        record_cfg: RecordingCfg | None = None,
+        *,
+        metrics: dict | None = None,
+    ) -> None:
         """Finalize a non-training rollout while skrl/wandb runs are alive."""
         try:
             if record_cfg:
                 self._export_and_log_recordings(record_cfg)
+            if metrics is not None:
+                log_test_metrics_to_wandb(self.agents, metrics)
         finally:
             self.finish_wandb_runs()
 
@@ -79,6 +87,7 @@ class RunRecorder:
     def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
         export_recordings(record_cfg)
         log_recording_videos_to_tensorboard(self.agents, record_cfg)
+        log_recording_videos_to_wandb(self.agents, record_cfg)
         if self._egocentric_recorder is not None:
             episodes = self._egocentric_recorder.drain_completed_episodes()
             if episodes:

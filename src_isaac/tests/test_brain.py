@@ -268,7 +268,7 @@ def test_brain_test_finalizes_recordings_after_eval(monkeypatch, tmp_path):
         def __init__(self, seen_agents, num_envs):
             calls.append(("recorder", seen_agents, num_envs))
 
-        def after_rollout(self, record_cfg=None):
+        def after_rollout(self, record_cfg=None, **kwargs):
             calls.append(("after_rollout", record_cfg))
 
     monkeypatch.setattr("nett_skrl.brain.brain.BrainTrainer", _Trainer)
@@ -314,7 +314,7 @@ def test_brain_record_initializes_agents_and_finalizes_recordings(monkeypatch, t
         def __init__(self, seen_agents, num_envs):
             calls.append(("recorder", seen_agents, num_envs))
 
-        def after_rollout(self, record_cfg=None):
+        def after_rollout(self, record_cfg=None, **kwargs):
             calls.append(("after_rollout", record_cfg))
 
     monkeypatch.setattr("nett_skrl.brain.brain.RunRecorder", _Recorder)
@@ -690,7 +690,7 @@ def test_wandb_offline_populates_skrl_experiment(tmp_path):
     assert kw["reinit"] == "create_new"
     assert kw["resume"] == "allow"
     assert kw["id"].startswith("nett-")
-    assert kw["sync_tensorboard"] is True
+    assert kw["sync_tensorboard"] is False
     # auto-tags + user tags
     assert kw["tags"] == ["run42", "condA", "brain_1", "train", "custom"]
     # local wandb cache co-located with NETT output
@@ -753,7 +753,7 @@ def test_wandb_kwargs_pass_through_with_nett_layout_precedence(tmp_path):
     assert kw["anonymous"] == "allow"
     assert kw["name"] == "run/cond/brain_1"
     assert kw["dir"] == str(config.path)
-    assert kw["sync_tensorboard"] is True
+    assert kw["sync_tensorboard"] is False
     assert kw["project"] == "nett-project"
     assert kw["config"]["run"]["condition"] == "cond"
     assert kw["config"]["run"]["brain_id"] == 1
@@ -789,7 +789,6 @@ def test_finish_agent_wandb_runs_calls_finish_and_clears():
     finish_agent_wandb_runs([a, b, c])
     assert run_a.finished == 1
     assert run_b.finished == 1
-    assert run_a.callbacks == [("/tmp/skrl_logs/brain_1", True, "")]
     assert a._nett_wandb_run is None
     assert b._nett_wandb_run is None
     # Idempotent: second call doesn't double-finish

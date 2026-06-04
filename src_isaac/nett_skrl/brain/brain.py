@@ -230,7 +230,7 @@ class Brain:
         except Exception:
             recorder.after_rollout(None)
             raise
-        recorder.after_rollout(record_cfg)
+        recorder.after_rollout(record_cfg, metrics=metrics)
         return metrics
 
     def record(

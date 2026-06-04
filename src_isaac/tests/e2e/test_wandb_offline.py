@@ -34,12 +34,13 @@ def _find_wandb_run_dirs(condition_dir: Path) -> list[Path]:
 
 
 def test_wandb_offline_creates_one_run_per_brain(run_nett, e2e_smoke_cfg):
-    """Each brain spawns its own offline wandb run with the expected artifacts.
+    """Each brain has a single offline wandb run that covers all phases.
 
-    With ``reinit='create_new'`` the same worker process holds N parallel
-    runs alive — this is the wiring that breaks silently if wandb is ever
-    downgraded below 0.17 or if ``apply_experiment_cfg`` stops setting
-    ``reinit``. Asserting one wandb run per brain catches both regressions.
+    Train and test phases share the same run ID (phase is excluded from the
+    hash), so the test subprocess resumes rather than creates a new run.
+    For N brains, there are exactly N wandb run directories — one per brain.
+    ``reinit='create_new'`` lets multiple brains initialise concurrently in
+    the same subprocess without conflicting.
     """
     e2e_smoke_cfg["brain"]["wandb"] = {"mode": "offline", "project": "nett-e2e"}
     e2e_smoke_cfg["episodes"] = {"train": 2}

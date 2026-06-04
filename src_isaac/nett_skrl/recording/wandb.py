@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger("nett.brain")
@@ -12,8 +13,14 @@ _wandb_runs_by_id: dict[str, Any] = {}
 _wandb_init_patched = False
 
 
-def wandb_run_id(run_name: str, condition: str, brain_id: int, phase: str) -> str:
-    raw = f"{run_name}:{condition}:brain_{brain_id}:{phase}".encode("utf-8")
+def wandb_run_id(run_name: str, condition: str, brain_id: int) -> str:
+    """Stable run ID shared across all phases (train, test) for this brain.
+
+    Removing phase from the hash means the test subprocess resumes the
+    training run rather than creating a separate one, so all phases appear
+    in a single W&B run.
+    """
+    raw = f"{run_name}:{condition}:brain_{brain_id}".encode("utf-8")
     return "nett-" + hashlib.sha256(raw).hexdigest()[:24]
 
 
@@ -112,42 +119,91 @@ def _wandb_run_for_agent(agent):
     return run
 
 
-def _attach_writer_forwarding_hook(agent, run) -> None:
-    """Wrap agent.writer.add_scalar to also forward each scalar to the W&B run.
+def log_recording_videos_to_wandb(agents: list, cfg) -> None:
+    """Upload exported MP4 recordings to each agent's active W&B run."""
+    try:
+        import wandb as _wandb
+    except ImportError:
+        return
+    for brain_id, agent in enumerate(agents, start=1):
+        run = _wandb_run_for_agent(agent)
+        if run is None:
+            continue
+        for kind, mp4 in _iter_mp4s_for_brain(cfg.root, env_id=brain_id - 1):
+            try:
+                tag = f"video/{kind}/{mp4.parent.name}/{mp4.stem}"
+                run.log({tag: _wandb.Video(str(mp4), fps=int(cfg.fps), format="mp4")}, commit=False)
+            except Exception:
+                logger.debug("failed to log video to wandb: %s", mp4, exc_info=True)
 
-    skrl calls write_tracking_data() at rollout boundaries, which calls
-    writer.add_scalar() for each tracked metric.  By forwarding here we bypass
-    the TensorBoard file-sync path entirely — no binary event files, no path
-    checks, no flowcontrol backup from uploading large files.
+
+def log_test_metrics_to_wandb(agents: list, metrics: dict) -> None:
+    """Log test-phase mean reward for each brain to its W&B run."""
+    for brain_idx, agent in enumerate(agents):
+        run = _wandb_run_for_agent(agent)
+        if run is None:
+            continue
+        mean_reward = metrics.get(brain_idx)
+        if mean_reward is not None:
+            try:
+                run.log({"test/mean_reward": float(mean_reward)}, commit=True)
+            except Exception:
+                logger.debug("failed to log test metrics to wandb", exc_info=True)
+
+
+def _iter_mp4s_for_brain(rec_dir, *, env_id: int):
+    """Yield (kind, mp4_path) for all exported MP4s belonging to env_id."""
+    env_prefix = f"env_{env_id}"
+    for kind in ("egocentric", "chamber"):
+        kind_dir = Path(rec_dir) / kind
+        if not kind_dir.exists():
+            continue
+        for env_subdir in kind_dir.rglob("*"):
+            if env_subdir.is_dir() and env_subdir.name.startswith(env_prefix):
+                for mp4 in sorted(env_subdir.glob("*.mp4")):
+                    yield kind, mp4
+
+
+def _attach_writer_forwarding_hook(agent, run) -> None:
+    """Wrap agent.write_tracking_data to forward all rollout scalars to W&B.
+
+    skrl calls write_tracking_data() every write_interval steps, which aggregates
+    tracking_data and writes to the TensorBoard event file.  We read tracking_data
+    BEFORE that call clears it, build the same aggregations skrl would write, and
+    log them all in a single run.log() call.  This bypasses the TensorBoard
+    file-sync path entirely — no binary event files, no path checks, no flowcontrol
+    backup from uploading large files.
     """
+    import numpy as np
+
     if run is None:
         return
-    writer = getattr(agent, "writer", None)
-    if writer is None:
-        return
-    if getattr(writer, "_nett_wandb_forwarding", False):
+    if getattr(agent, "_nett_wandb_forwarding", False):
         return
 
-    original_add_scalar = writer.add_scalar
-
-    def _forwarding_add_scalar(*, tag: str, value: float, timestep: int) -> None:
-        original_add_scalar(tag=tag, value=value, timestep=timestep)
-        try:
-            run.log({tag: value, "global_step": timestep}, commit=False)
-        except Exception:
-            pass
-
-    writer.add_scalar = _forwarding_add_scalar
-    writer._nett_wandb_forwarding = True
-
-    # Commit the buffered scalars after each write_tracking_data flush so they
-    # arrive as one batch per rollout rather than trickling in individually.
     original_write_tracking = getattr(agent, "write_tracking_data", None)
-    if original_write_tracking is not None:
-        def _write_tracking_with_commit(**kwargs):
-            original_write_tracking(**kwargs)
+    if original_write_tracking is None:
+        return
+
+    def _write_tracking_with_wandb(*, timestep: int, timesteps: int) -> None:
+        # Snapshot tracking_data before original_write_tracking clears it.
+        payload: dict = {}
+        for k, v in agent.tracking_data.items():
+            if not v:
+                continue
+            if k.endswith("(min)"):
+                payload[k] = float(np.min(v))
+            elif k.endswith("(max)"):
+                payload[k] = float(np.max(v))
+            else:
+                payload[k] = float(np.mean(v))
+        original_write_tracking(timestep=timestep, timesteps=timesteps)
+        if payload:
+            payload["global_step"] = timestep
             try:
-                run.log({}, commit=True)
+                run.log(payload, commit=True)
             except Exception:
                 pass
-        agent.write_tracking_data = _write_tracking_with_commit
+
+    agent.write_tracking_data = _write_tracking_with_wandb
+    agent._nett_wandb_forwarding = True

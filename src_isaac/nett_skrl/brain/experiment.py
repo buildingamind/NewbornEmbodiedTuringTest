@@ -87,7 +87,7 @@ def _wandb_kwargs(*, brain, config, brain_id: int, experiment_name: str) -> dict
             "tags": [run_name, condition, experiment_name, phase, *wandb_cfg["tags"]],
             "dir": str(config.path),
             "reinit": "create_new",
-            "id": wandb_run_id(run_name, condition, brain_id, phase),
+            "id": wandb_run_id(run_name, condition, brain_id),
             "resume": "allow",
             "sync_tensorboard": False,
             "config": _wandb_config_payload(

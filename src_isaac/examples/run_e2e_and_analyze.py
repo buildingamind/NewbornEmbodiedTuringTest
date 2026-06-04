@@ -25,9 +25,9 @@ from datetime import datetime
 from pathlib import Path
 
 from nett_skrl import NETT
-from nett_skrl.analysis import analyze
+from nett_skrl.analysis import analyze, log_analysis_to_wandb
 
-OUTPUT = Path("/tmp/nett_e2e_out")
+OUTPUT = Path("~/nett_e2e_out").expanduser()
 
 # Mirrors the config that successfully completed a full run on 2026-05-24
 # (200,000 timesteps, ~88 min, 1,997 wandb scalar flushes, 15 keys).
@@ -115,3 +115,5 @@ if __name__ == "__main__":
         log.info("analyzing: %s", run_dir)
         out = analyze(run_dir)
         log.info("  → %s", out)
+        log.info("uploading analysis graphs to W&B: %s", run_dir)
+        log_analysis_to_wandb(run_dir, out)
