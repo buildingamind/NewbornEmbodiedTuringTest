@@ -7,6 +7,7 @@ policy observations emitted by :class:`nett_skrl.body.skrl_adapter.IsaacEnvWrapp
 
 from __future__ import annotations
 
+from .cltt import CLTTReward
 from .e3b import E3B
 from .icm import ICM
 from .pseudo_counts import PseudoCounts
@@ -24,6 +25,7 @@ RND = UnsupportedIntrinsicReward.named("RND")
 
 
 __all__ = [
+    "CLTTReward",
     "Disagreement",
     "E3B",
     "Fabric",

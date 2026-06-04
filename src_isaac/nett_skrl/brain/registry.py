@@ -34,6 +34,7 @@ from typing import Callable
 from . import encoders
 from .encoders import NETTFeatureExtractor
 from .rewards import (
+    CLTTReward,
     Disagreement,
     E3B,
     Fabric,
@@ -121,6 +122,13 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "large": encoders.Resnet18CNN,
     "Resnet10CNN": encoders.Resnet10CNN,
     "Resnet18CNN": encoders.Resnet18CNN,
+    # Compact model suite (< 600 K total parameters with PPO heads)
+    "compact_cnn": encoders.CompactCNN,
+    "compact_vit": encoders.CompactViT,
+    "compact_3dcnn": encoders.Compact3DCNN,
+    "compact_vivit": encoders.CompactViViT,
+    "simclr_cltt": encoders.SimCLRCLTT,
+    "guess_what_moves": encoders.GuessWhatMoves,
 }
 
 
@@ -150,6 +158,8 @@ reward_mapping: dict[str, type | None] = {
     "closeness": None,
     "completeness": None,
     "closeness,completeness": None,
+    "CLTT": CLTTReward,
+    "CLTTReward": CLTTReward,
     "E3B": E3B,
     "ICM": ICM,
     "NGU": NGU,

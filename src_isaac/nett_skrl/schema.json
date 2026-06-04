@@ -184,6 +184,11 @@
           "enum": ["RealTimeRenderer", "RayTracingLighting", "PathTracing", ""],
           "default": "RealTimeRenderer"
         },
+        "tracemalloc_interval": {
+          "description": "Debug: take a Python heap snapshot every N simulation steps and log the top allocators to stdout. 0 = disabled. Useful for diagnosing per-step memory growth; negligible overhead when disabled.",
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
         }
       },
       "required": ["design_sheet", "media_root"],

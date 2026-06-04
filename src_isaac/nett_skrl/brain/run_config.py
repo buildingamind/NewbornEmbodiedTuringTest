@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from pathlib import Path
 
 import torch
@@ -25,14 +26,26 @@ def train_timesteps(brain, config: TaskConfig) -> int:
 
 
 def eval_timesteps(brain, config: TaskConfig) -> int:
-    return brain.test_iterations.get(config.condition, 1) * brain.steps_per_episode
+    total_episodes = brain.test_iterations.get(config.condition, 1)
+    # Split test episodes evenly across parallel envs so the eval loop runs
+    # for exactly ceil(total/num_envs) × steps_per_episode iterations rather
+    # than the full serial budget (which would repeat each task num_envs times).
+    num_envs = max(1, int(getattr(config, "num_envs", None) or 1))
+    episodes_per_env = math.ceil(total_episodes / num_envs)
+    return episodes_per_env * brain.steps_per_episode
 
 
 def train_cfg_for(brain, config: TaskConfig) -> TrainCfg:
     output_dir = Path(config.path).parent
     timesteps = train_timesteps(brain, config)
+    # Offset skrl's internal timestep counter so global_step in W&B accumulates
+    # continuously across training chunks created by eval_freq splitting.
+    start_step = int(getattr(config, "train_start_step", None) or 0)
+    envs_per_brain = max(1, getattr(brain, "envs_per_brain", 1))
+    initial_timestep = start_step // envs_per_brain
     return TrainCfg(
         total_timesteps=timesteps,
+        initial_timestep=initial_timestep,
         hparams_dir=Path(config.path),
         hparams=train_hparams(brain, config, timesteps),
         output_dir=output_dir,

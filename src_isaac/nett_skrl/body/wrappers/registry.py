@@ -6,6 +6,7 @@ import gymnasium as gym
 
 _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "dvs": ("nett_skrl.body.wrappers.dvs", "DVS"),
+    "framestack": ("nett_skrl.body.wrappers.framestack", "FrameStack"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }
