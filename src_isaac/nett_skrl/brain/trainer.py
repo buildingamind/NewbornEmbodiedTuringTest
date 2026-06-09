@@ -142,6 +142,7 @@ class BrainTrainer:
         *,
         desc: str | None = None,
         show_progress: bool = True,
+        policy: str = "agent",
     ) -> dict[int, float]:
         """Deterministic rollout returning mean reward per brain."""
         if total_timesteps <= 0:
@@ -162,7 +163,9 @@ class BrainTrainer:
             )
         with torch.no_grad():
             for t in steps:
-                actions = self._collect_actions_for_eval(observations, t, total_timesteps)
+                actions = self._collect_actions_for_eval(
+                    observations, t, total_timesteps, policy=policy
+                )
                 next_observations, rewards, *_ = self.env.step(actions)
                 # Env runs on CPU (NETTEnvCfg.sim.device='cpu'); ``totals``
                 # is on the policy device. Move rewards
@@ -174,7 +177,19 @@ class BrainTrainer:
                 observations = next_observations
         return {i: float(totals[i].item() / total_timesteps) for i in range(len(self.agents))}
 
-    def _collect_actions_for_eval(self, observations: torch.Tensor, timestep: int, timesteps: int) -> torch.Tensor:
+    def _collect_actions_for_eval(
+        self,
+        observations: torch.Tensor,
+        timestep: int,
+        timesteps: int,
+        *,
+        policy: str = "agent",
+    ) -> torch.Tensor:
+        if policy == "target_side_oracle":
+            oracle_actions = self._target_side_oracle_actions()
+            if oracle_actions is not None:
+                return oracle_actions
+
         states = self.env.state() if hasattr(self.env, "state") else None
         actions = []
         offset = 0
@@ -185,6 +200,44 @@ class BrainTrainer:
             actions.append(outputs.get("mean_actions", action_i))
             offset += scope
         return torch.cat(actions, dim=0)
+
+    def _target_side_oracle_actions(self) -> torch.Tensor | None:
+        """Closed-loop test policy that steers toward the env's target monitor.
+
+        This policy is opt-in and only used during evaluation. It reads the
+        same target side the environment uses for test logging/reward geometry,
+        then outputs continuous wheel actions that point the chick at that
+        monitor from its current pose.
+        """
+        raw = _unwrap_env(self.env)
+        screens = getattr(raw, "screens", None)
+        motor = getattr(raw, "motor", None)
+        cfg = getattr(raw, "cfg", None)
+        if screens is None or motor is None or cfg is None:
+            return None
+
+        action_space = self.env.action_space
+        action_dim = int(getattr(action_space, "shape", (2,))[0])
+        actions = torch.zeros((self.env.num_envs, action_dim), device=self.device)
+        x = motor.x.to(self.device)
+        z = motor.z_pos.to(self.device)
+        yaw = motor.yaw_deg.to(self.device)
+        target_x = torch.empty_like(x)
+        target_z = torch.zeros_like(z)
+        half_x = float(getattr(cfg, "chamber_half_x", 33.15))
+
+        for env_id in range(self.env.num_envs):
+            side = screens.target_side(env_id)
+            target_x[env_id] = -half_x if side == "left" else half_x
+
+        dx = target_x - x
+        dz = target_z - z
+        desired_yaw = torch.rad2deg(torch.atan2(-dx, dz)).remainder(360.0)
+        error = (desired_yaw - yaw + 180.0).remainder(360.0) - 180.0
+        turn_limit = float(getattr(getattr(cfg, "motor", None), "body_turn_speed_limit", 20.0))
+        actions[:, 0] = (error / max(turn_limit, 1e-6)).clamp(-1.0, 1.0)
+        actions[:, 1] = torch.where(error.abs() < 45.0, 1.0, 0.15)
+        return actions
 
 
 MultiBrainTrainer = BrainTrainer
@@ -202,3 +255,18 @@ def _find_egocentric_recorder(env):
             return current
         current = getattr(current, "_env", None) or getattr(current, "env", None)
     return None
+
+
+def _unwrap_env(env):
+    current = env
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "screens") and hasattr(current, "motor"):
+            return current
+        current = (
+            getattr(current, "_env", None)
+            or getattr(current, "env", None)
+            or getattr(current, "_unwrapped", None)
+        )
+    return env

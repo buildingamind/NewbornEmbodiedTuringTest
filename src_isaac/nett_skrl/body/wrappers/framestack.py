@@ -18,6 +18,8 @@ import gymnasium as gym
 import numpy as np
 import torch
 
+from ..observation import channel_stack_frames, channel_stack_space
+
 
 class FrameStack(gym.Wrapper):
     """Stack the last ``n_stack`` observations on the channel axis.
@@ -32,37 +34,20 @@ class FrameStack(gym.Wrapper):
         self._frames: deque = deque(maxlen=self.n_stack)
         self._base_obs_space = env.observation_space
 
-        obs_space = env.observation_space
-        if isinstance(obs_space, gym.spaces.Box):
-            shape = list(obs_space.shape)
-            if len(shape) == 3:
-                # Single-env HWC: stack on channel (last) axis
-                shape[-1] *= self.n_stack
-            elif len(shape) == 4:
-                # Batched NHWC: stack on channel (last) axis
-                shape[-1] *= self.n_stack
-            else:
-                shape[-1] *= self.n_stack
-            high_val = 255 if np.issubdtype(obs_space.dtype, np.integer) else 1.0
-            self.observation_space = gym.spaces.Box(
-                low=np.zeros(shape, dtype=obs_space.dtype),
-                high=np.full(shape, high_val, dtype=obs_space.dtype),
-                dtype=obs_space.dtype,
-            )
-        else:
-            self.observation_space = obs_space
+        self.observation_space = channel_stack_space(env.observation_space, self.n_stack)
 
     def reset(self, **kwargs):
         obs, info = self.env.reset(**kwargs)
         # Fill the frame buffer with the reset observation repeated n_stack times
         self._frames.clear()
+        policy_obs = _policy_obs(obs)
         for _ in range(self.n_stack):
-            self._frames.append(_obs_to_numpy(obs))
-        return self._stacked(), info
+            self._frames.append(_obs_to_numpy(policy_obs))
+        return _replace_policy_obs(obs, self._stacked()), info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
-        obs_np = _obs_to_numpy(obs)
+        obs_np = _obs_to_numpy(_policy_obs(obs))
 
         # For vectorised envs: reset per-env frame buffers when episodes end.
         done = _done_mask(terminated, truncated)
@@ -76,13 +61,25 @@ class FrameStack(gym.Wrapper):
                     frame[env_id] = obs_np[env_id]
 
         self._frames.append(obs_np)
-        return self._stacked(), reward, terminated, truncated, info
+        return _replace_policy_obs(obs, self._stacked()), reward, terminated, truncated, info
 
     # ------------------------------------------------------------------
 
     def _stacked(self) -> np.ndarray:
         # Stack frames on the last (channel) axis
-        return np.concatenate(list(self._frames), axis=-1)
+        return channel_stack_frames(list(self._frames))
+
+
+def _policy_obs(obs):
+    return obs.get("policy", obs) if isinstance(obs, dict) else obs
+
+
+def _replace_policy_obs(obs, policy):
+    if not isinstance(obs, dict):
+        return policy
+    out = dict(obs)
+    out["policy"] = policy
+    return out
 
 
 def _obs_to_numpy(obs) -> np.ndarray:

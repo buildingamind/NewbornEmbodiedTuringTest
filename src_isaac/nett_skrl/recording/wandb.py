@@ -67,25 +67,32 @@ def attach_wandb_init_hook(agent) -> None:
     each add_scalar call writes the TensorBoard event AND calls run.log()
     directly, so scalars always appear in W&B regardless of where the output
     directory is.
+
+    The hook is installed at the *class* level (via a dynamic subclass) so that
+    ``agent.__dict__`` is not polluted with an ``'init'`` entry — skrl agents
+    expect ``init`` to remain a proper bound method, not an instance override.
     """
     if getattr(agent, "_nett_wandb_init_hook_attached", False):
         return
 
-    original_init = agent.init
+    original_cls = type(agent)
+    original_init = original_cls.init
 
-    def _init_with_writer_hook(*args, **kwargs):
-        result = original_init(*args, **kwargs)
+    def _init_with_writer_hook(self, *args, **kwargs):
+        result = original_init(self, *args, **kwargs)
         run_id = None
         try:
-            run_id = agent.cfg.experiment.wandb_kwargs.get("id")
+            run_id = self.cfg.experiment.wandb_kwargs.get("id")
         except AttributeError:
             pass
         run = _wandb_runs_by_id.get(run_id) if run_id else None
-        agent._nett_wandb_run = run
-        _attach_writer_forwarding_hook(agent, run)
+        self._nett_wandb_run = run
+        _attach_writer_forwarding_hook(self, run)
         return result
 
-    agent.init = _init_with_writer_hook
+    # Subclass so that 'init' lives on the class, not in agent.__dict__.
+    hooked_cls = type(original_cls.__name__, (original_cls,), {"init": _init_with_writer_hook})
+    agent.__class__ = hooked_cls
     agent._nett_wandb_init_hook_attached = True
 
 

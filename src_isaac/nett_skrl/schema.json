@@ -34,6 +34,12 @@
           ],
           "default": "closeness"
         },
+        "evaluation_policy": {
+          "description": "Evaluation-time action source. 'agent' uses the trained policy; 'target_side_oracle' steers toward the design-sheet target monitor during test rollouts.",
+          "type": "string",
+          "enum": ["agent", "target_side_oracle"],
+          "default": "agent"
+        },
         "checkpoint_freq":       { "type": ["integer", "null"], "minimum": 1, "default": null },
         "encoder_cfg": {
           "type": "object",

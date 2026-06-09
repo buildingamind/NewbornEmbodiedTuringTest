@@ -89,12 +89,19 @@ class Brain:
         model: Optional[dict[str, Any] | ModelCfg] = None,
         reward_cfg: RewardCfg | dict[str, Any] | None = None,
         wandb: Optional[dict[str, Any]] = None,
+        evaluation_policy: str = "agent",
     ):
+        if evaluation_policy not in {"agent", "target_side_oracle"}:
+            raise ValueError(
+                "evaluation_policy must be 'agent' or 'target_side_oracle'; "
+                f"got {evaluation_policy!r}"
+            )
         self._assign_attrs({
             "reward_spec": reward,
             "encoder": validate_encoder(encoder),
             "algorithm": validate_algorithm(algorithm),
             "reward": validate_reward(reward),
+            "evaluation_policy": evaluation_policy,
         })
         self._raise_if_unsupported_intrinsic_reward(reward)
         spec = algorithm_spec(self.algorithm)
@@ -239,10 +246,14 @@ class Brain:
                 "path": config.path,
             }
 
+        eval_kwargs = {"desc": _eval_progress_desc(config)}
+        if self.evaluation_policy != "agent":
+            eval_kwargs["policy"] = self.evaluation_policy
+
         try:
             metrics = self._trainer(wrapped, agents, device).eval(
                 total_timesteps=eval_timesteps(self, config),
-                desc=_eval_progress_desc(config),
+                **eval_kwargs,
             )
         except Exception:
             recorder.after_rollout(None)

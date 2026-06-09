@@ -73,7 +73,7 @@ def test_dvs_dict_obs_step():
     env.reset()
     obs, *_ = env.step(env.action_space.sample())
     assert isinstance(obs, dict)
-    assert obs["policy"].shape[0] in (1, 3)
+    assert obs["policy"].shape[-1] in (1, 3)  # DVS outputs HWC; ChannelsFirst converts later
 
 
 if __name__ == "__main__":

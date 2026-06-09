@@ -40,10 +40,13 @@ def run_task(task: Task) -> None:
         if mode == "train" and config.eval_freq:
             _run_train_with_eval_milestones(task)
             continue
+        overrides = {}
+        if mode == "test":
+            overrides["num_envs"] = _compute_eval_num_envs(task)
         config.logger.info(
             "Spawning %s subprocess for condition %s", mode, config.condition
         )
-        _spawn_mode_subprocess(task, mode)
+        _spawn_mode_subprocess(task, mode, **overrides)
         config.logger.info("Mode %s subprocess complete", mode)
 
 
@@ -235,10 +238,10 @@ def _training_boundaries(
 
 def _is_tolerated_isaac_teardown_exit(exitcode: int | None) -> bool:
     # multiprocessing reports Unix signals as negative numbers. Isaac/Kit can
-    # segfault or abort during teardown after all Python-side artifacts have
-    # flushed; ordinary positive exit codes are real failures and must stop
-    # the run.
-    return exitcode in {-6, -11, 134, 139}
+    # segfault, abort, or get SIGKILL'd (OOM killer or manual kill after
+    # artifacts are flushed) during teardown; ordinary positive exit codes are
+    # real failures and must stop the run.
+    return exitcode in {-6, -9, -11, 134, 139}
 
 
 def _write_eval_metrics(config: TaskConfig, metrics: dict[int, float], brain) -> None:

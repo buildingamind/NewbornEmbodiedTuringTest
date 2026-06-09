@@ -5,6 +5,7 @@ import numpy as np
 import torch
 
 from nett_skrl.body.wrappers import Video
+from nett_skrl.body.wrappers.framestack import FrameStack
 
 
 class _DictEnv(gym.Env):
@@ -73,3 +74,43 @@ def test_video_stacks_cuda_tensor_policy_without_cpu_transfer():
     assert isinstance(obs["policy"], torch.Tensor)
     assert obs["policy"].device.type == "cuda"
     assert obs["policy"].shape == (4, 4, 6)
+
+
+class _BatchedDictEnv(gym.Env):
+    action_space = gym.spaces.Box(-1.0, 1.0, (2, 1), dtype=np.float32)
+
+    def __init__(self):
+        self.observation_space = gym.spaces.Dict(
+            {
+                "policy": gym.spaces.Box(0, 255, (2, 4, 4, 3), dtype=np.uint8),
+                "critic": gym.spaces.Box(-1.0, 1.0, (2, 5), dtype=np.float32),
+            }
+        )
+
+    def reset(self, *, seed=None, options=None):
+        return {
+            "policy": np.zeros((2, 4, 4, 3), dtype=np.uint8),
+            "critic": np.zeros((2, 5), dtype=np.float32),
+        }, {}
+
+    def step(self, action):
+        return {
+            "policy": np.ones((2, 4, 4, 3), dtype=np.uint8),
+            "critic": np.ones((2, 5), dtype=np.float32),
+        }, np.zeros(2), np.array([True, False]), np.array([False, False]), {}
+
+
+def test_framestack_stacks_batched_dict_policy_and_preserves_critic():
+    env = FrameStack(_BatchedDictEnv(), n_stack=2)
+
+    obs, _ = env.reset()
+
+    assert env.observation_space["policy"].shape == (2, 4, 4, 6)
+    assert env.observation_space["critic"].shape == (2, 5)
+    assert obs["policy"].shape == (2, 4, 4, 6)
+    assert obs["critic"].shape == (2, 5)
+
+    obs, *_ = env.step(np.zeros((2, 1), dtype=np.float32))
+
+    assert obs["policy"].shape == (2, 4, 4, 6)
+    assert obs["critic"].shape == (2, 5)

@@ -313,8 +313,8 @@ def test_run_recorder_logs_recordings_to_tensorboard_after_export(monkeypatch, t
     def _log(agents, cfg):
         calls.append(("tensorboard", cfg.root))
 
-    monkeypatch.setattr("nett_skrl.recording.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.recording.log_recording_videos_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.recording.run_recorder.export_recordings", _export)
+    monkeypatch.setattr("nett_skrl.recording.run_recorder.log_recording_videos_to_tensorboard", _log)
     agent = _FakeAgent()
     recorder = RunRecorder([agent], num_envs=1)
 
@@ -346,8 +346,8 @@ def test_run_recorder_rollout_finalizer_exports_logs_then_finishes(monkeypatch, 
     def _log(agents, cfg):
         calls.append("tensorboard")
 
-    monkeypatch.setattr("nett_skrl.recording.export_recordings", _export)
-    monkeypatch.setattr("nett_skrl.recording.log_recording_videos_to_tensorboard", _log)
+    monkeypatch.setattr("nett_skrl.recording.run_recorder.export_recordings", _export)
+    monkeypatch.setattr("nett_skrl.recording.run_recorder.log_recording_videos_to_tensorboard", _log)
 
     agent = _FakeAgent()
     agent._nett_wandb_run = _Run()

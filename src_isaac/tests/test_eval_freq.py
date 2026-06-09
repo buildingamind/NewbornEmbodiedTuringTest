@@ -523,6 +523,40 @@ def test_orchestration_eval_num_envs_cleanly_divides_test_episodes(tmp_path):
         f"eval_num_envs {eval_num_envs} does not cleanly divide total_test_episodes={total_test_episodes}"
 
 
+def test_orchestration_final_test_uses_parallel_test_envs(tmp_path):
+    """Normal post-training test uses the same parallel env sizing as eval."""
+    from nett_skrl.runtime.task_runner import run_task
+
+    task = _make_orchestration_task(
+        tmp_path,
+        eval_freq=None,
+        total_train_steps=0,
+        episodes_test=1,
+        num_test_tasks=52,
+        max_parallel_envs=52,
+        num_envs=10,
+    )
+    task.config = type(task.config)(
+        condition=task.config.condition,
+        output_dir=task.config.output_dir,
+        modes=["test"],
+        episodes=task.config.episodes,
+        num_brains=task.config.num_brains,
+        num_envs=task.config.num_envs,
+        max_parallel_envs=task.config.max_parallel_envs,
+    )
+
+    spawned: list[tuple] = []
+
+    def fake_spawn(task, mode, **overrides):
+        spawned.append((mode, dict(overrides)))
+
+    with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", fake_spawn):
+        run_task(task)
+
+    assert spawned == [("test", {"num_envs": 52})]
+
+
 def test_orchestration_eval_is_metrics_only_no_recording_contamination(tmp_path):
     """Eval subprocess has eval_metrics_only=True so no training artifacts bleed in."""
     from nett_skrl.runtime.task_runner import _run_train_with_eval_milestones

@@ -334,7 +334,7 @@ def test_brain_record_initializes_agents_and_finalizes_recordings(monkeypatch, t
         dry_run = False
 
     class _RecordEnv(_FakeSkrlEnv):
-        def reset(self):
+        def reset(self, *, seed=None, options=None):
             return torch.zeros(1, 64, 64, 3, dtype=torch.uint8), {}
 
         def step(self, actions):
@@ -355,7 +355,8 @@ def test_brain_record_initializes_agents_and_finalizes_recordings(monkeypatch, t
     ]
 
 
-def test_calc_iterations_derives_parallel_envs_per_brain_from_rollout_minibatch_size():
+def test_calc_iterations_derives_parallel_envs_per_brain_from_rollouts():
+    # envs = rollouts // steps_per_episode so buffer stays rollouts×obs (not rollouts×mini_batches×obs)
     brain = Brain(algorithm_cfg={"rollouts": 1024, "mini_batches": 2})
     brain.calc_iterations(
         num_brains=1,
@@ -363,7 +364,7 @@ def test_calc_iterations_derives_parallel_envs_per_brain_from_rollout_minibatch_
         episodes={"train": 1},
         steps_per_episode=200,
     )
-    assert brain.envs_per_brain == 2
+    assert brain.envs_per_brain == 5  # 1024 // 200 = 5
 
 
 def test_brain_train_uses_chunk_timesteps_and_loads_resume_checkpoint(monkeypatch, tmp_path):
@@ -512,7 +513,7 @@ def test_algorithm_cfg_can_override_ppo_stability_defaults():
     brain = Brain(
         algorithm="PPO",
         algorithm_cfg={
-            "learning_rate": 3e-4, #2e-5,
+            "learning_rate": 2e-5,
             "rollouts": 16,
             "mini_batches": 4,
             "value_loss_scale": 0.75,
@@ -620,9 +621,9 @@ def test_native_encoders_do_not_inherit_sb3_base_class():
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
 def test_features_forward_moves_cpu_obs_to_cuda_model():
-    stub = _make_stub_for((4, 8, 3))
+    stub = _make_stub_for((3, 4, 8))  # CHW — ChannelsFirst guarantees CHW before encoders
     stub.encoder = stub.encoder.cuda()
-    img = torch.zeros(1, 4, 8, 3, dtype=torch.uint8)  # CPU
+    img = torch.zeros(1, 3, 4, 8, dtype=torch.uint8)  # CPU CHW
     out = _features_forward(stub, {"observations": img})
     assert out.device.type == "cuda"
 
@@ -936,3 +937,41 @@ def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
 
     # Must not raise; logs a warning and moves on.
     load_latest_checkpoints([_FakeAgent()], _Cfg())
+
+
+def test_target_side_oracle_actions_steer_toward_target_monitors():
+    from nett_skrl.brain.trainer import BrainTrainer
+
+    class _Screens:
+        def target_side(self, env_id):
+            return ("left", "right")[env_id]
+
+    class _MotorCfg:
+        body_turn_speed_limit = 20.0
+
+    class _Cfg:
+        chamber_half_x = 33.15
+        motor = _MotorCfg()
+
+    class _Motor:
+        x = torch.zeros(2)
+        z_pos = torch.zeros(2)
+        yaw_deg = torch.zeros(2)
+
+    class _ActionSpace:
+        shape = (2,)
+
+    class _Env:
+        num_envs = 2
+        action_space = _ActionSpace()
+        screens = _Screens()
+        motor = _Motor()
+        cfg = _Cfg()
+
+    trainer = BrainTrainer(_Env(), [object()], device="cpu")
+    actions = trainer._target_side_oracle_actions()
+
+    assert actions.shape == (2, 2)
+    assert actions[0, 0] > 0.0
+    assert actions[1, 0] < 0.0
+    assert torch.all(actions[:, 1] > 0.0)

@@ -36,6 +36,15 @@ logger = logging.getLogger("nett.analysis")
 import matplotlib
 import matplotlib.pyplot as plt
 
+# Same per-condition palette as the original Unity-era ``test_viz`` so bar
+# charts are visually consistent across the two backends. "rest" always gets
+# the neutral darkgrey used there (it's the no-discrimination baseline).
+CUSTOM_PALETTE = [
+    "#3F8CB7", "#FCEF88", "#5D5797", "#62AC6B", "#B74779", "#2C4E98",
+    "#CCCCE7", "#08625B", "#D15056", "#F2A541", "#FFC0CB", "#A9A9A9",
+    "#8FBC8F", "#E6E6FA", "#FFD700", "#40E0D0", "#FF6347", "#90EE90",
+]
+
 # ---------------------------------------------------------------------------
 # Chamber geometry defaults — match ``NETTEnvCfg`` so the gaze-direction
 # heuristic in ``test_viz`` matches the world the agents actually trained in.
@@ -189,7 +198,11 @@ def log_analysis_to_wandb(
         return
 
     with config_path.open() as f:
-        config = _yaml.safe_load(f)
+        try:
+            config = _yaml.safe_load(f)
+        except _yaml.constructor.ConstructorError:
+            f.seek(0)
+            config = _yaml.load(f, Loader=_yaml.BaseLoader)
 
     run_name = config.get("name", run_dir.name)
     brain_cfg = config.get("brain") or {}
@@ -329,6 +342,7 @@ __all__ = [
     "DEFAULT_CHAMBER_HALF_X",
     "DEFAULT_CHAMBER_HALF_Y",
     "analyze",
+    "in_correct_chamber_third",
     "log_analysis_to_wandb",
     "merge",
     "normalize_isaac_output",
@@ -376,7 +390,13 @@ def looking_at_monitor(
 ) -> str:
     """Return ``"left"`` or ``"right"`` for the monitor the agent's forward
     vector points more toward, given the NETT yaw convention
-    (``forward = (-sin(yaw), cos(yaw))``)."""
+    (``forward = (-sin(yaw), cos(yaw))``).
+
+    .. deprecated::
+        This gaze-direction heuristic is kept for backward compatibility.
+        New code should use :func:`in_correct_chamber_third` which measures
+        physical proximity to the correct monitor rather than gaze direction.
+    """
     rad = math.radians(yaw_deg)
     fx, fy = -math.sin(rad), math.cos(rad)
     # Monitor centers sit on the X-walls at world y = 0.
@@ -389,12 +409,69 @@ def looking_at_monitor(
     return "left" if left_dot > right_dot else "right"
 
 
+def in_correct_chamber_third(
+    agent_x: float, correct_monitor: str, half_x: float
+) -> tuple[bool, bool]:
+    """Return ``(in_outer_third, in_correct_third)`` for a single agent position.
+
+    The chamber spans ``[-half_x, +half_x]`` along the x-axis.  The left and
+    right monitors sit on the x-walls.  Only the outermost third of the chamber
+    on each side (closest to the respective monitor) contributes to the
+    preference score:
+
+    - left outer third  : agent_x < -half_x / 3
+    - right outer third : agent_x >  half_x / 3
+    - middle third      : excluded from both numerator and denominator
+
+    Preference (``correct_pct``) is defined as::
+
+        steps in correct outer third
+        ─────────────────────────────────────────────
+        steps in left outer third  +  steps in right outer third
+
+    This matches the NETT chick-experiment convention: time spent physically
+    closest to the imprinted object's monitor, ignoring centre-of-chamber
+    pauses where neither preference is expressed.
+
+    Args:
+        agent_x: Agent x-position in world coordinates.
+        correct_monitor: ``"left"`` or ``"right"`` — which wall holds the
+            correct (imprinted) stimulus for this trial.
+        half_x: Half-width of the chamber (default ``DEFAULT_CHAMBER_HALF_X``).
+
+    Returns:
+        (in_outer_third, in_correct_third): both bools.
+        ``in_outer_third`` is ``True`` when the step counts toward the
+        denominator; ``in_correct_third`` additionally counts toward the
+        numerator.
+    """
+    if not math.isfinite(agent_x):
+        return False, False
+    threshold = half_x / 3.0
+    in_left = agent_x < -threshold
+    in_right = agent_x > threshold
+    in_outer = in_left or in_right
+    in_correct = (correct_monitor == "left" and in_left) or (
+        correct_monitor == "right" and in_right
+    )
+    return in_outer, in_correct
+
+
 def _test_preference_rows(
     csv_path: Path,
     imprint: str,
     half_x: float,
 ) -> list[tuple[str, str, str, int, float]]:
-    """Aggregate per (env_id, test_cond) preference percentages from one CSV."""
+    """Aggregate per (env_id, test_cond) preference percentages from one CSV.
+
+    Preference is computed as the fraction of steps spent in the outer third of
+    the chamber on the correct-monitor side out of all steps spent in either
+    outer third (left or right).  Steps in the middle third of the chamber are
+    excluded from both numerator and denominator — they reflect neither
+    preference nor avoidance.
+
+    See :func:`in_correct_chamber_third` for the exact threshold definition.
+    """
     buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
     with csv_path.open() as f:
         for row in csv.DictReader(f):
@@ -404,18 +481,23 @@ def _test_preference_rows(
     for (env_id, test_cond), rows in buckets.items():
         if not rows:
             continue
-        correct = 0
+        outer_count = 0
+        correct_count = 0
         for row in rows:
             try:
                 ax = float(row["agent.x"])
-                az = float(row["agent.z"])
-                yaw = float(row["agent.angle"])
             except (KeyError, ValueError):
                 continue
-            looking = looking_at_monitor(ax, az, yaw, half_x)
-            if looking == row.get("correct.monitor", ""):
-                correct += 1
-        out.append((imprint, test_cond, env_id, len(rows), correct / len(rows)))
+            correct_monitor = row.get("correct.monitor", "")
+            in_outer, in_correct = in_correct_chamber_third(ax, correct_monitor, half_x)
+            if in_outer:
+                outer_count += 1
+                if in_correct:
+                    correct_count += 1
+        # If the agent never reached either outer third (e.g. all NaN or all
+        # centre steps) default to chance so downstream aggregation is stable.
+        pct = correct_count / outer_count if outer_count > 0 else 0.5
+        out.append((imprint, test_cond, env_id, outer_count, pct))
     return out
 
 
@@ -433,14 +515,30 @@ def _plot_test_preferences(plt, out_dir: Path, imprint: str, rows: list[tuple]) 
     means = [sum(by_cond[c]) / len(by_cond[c]) for c in labels]
     stds = [_stddev(by_cond[c]) for c in labels]
 
-    fig, ax = plt.subplots(figsize=(max(6, len(labels) * 1.2), 5))
-    ax.bar(labels, means, yerr=stds, capsize=4, color="#3a6ea5", alpha=0.85)
+    # Per-condition colors: "rest" -> neutral darkgrey (no-discrimination
+    # baseline), everything else cycles through the shared CUSTOM_PALETTE —
+    # matching the original Unity-era bar-chart convention.
+    color_iter = iter(CUSTOM_PALETTE)
+    colors = [
+        "darkgrey" if str(label).lower() == "rest" else next(color_iter, "grey")
+        for label in labels
+    ]
+
+    plt.style.use("default")
+    fig, ax = plt.subplots(figsize=(max(6, len(labels) * 1.2), 6))
+    ax.set_facecolor("white")
+    fig.patch.set_facecolor("white")
+    ax.spines[["right", "top"]].set_visible(False)
+
+    x_pos = range(len(labels))
+    ax.bar(x_pos, means, yerr=stds, color=colors, capsize=10, width=0.7, linewidth=0)
     ax.axhline(0.5, linestyle="--", color="grey", linewidth=1, label="chance")
+    ax.set_xticks(list(x_pos))
+    ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=9, fontweight="bold")
     ax.set_ylim(0, 1)
     ax.set_ylabel("Fraction of steps facing correct monitor")
     ax.set_title(f"Test preference — imprint {imprint}")
     ax.legend(loc="lower right")
-    ax.tick_params(axis="x", rotation=30)
     fig.tight_layout()
     fig.savefig(out_dir / f"test_preference_{imprint}.png", dpi=120)
     plt.close(fig)

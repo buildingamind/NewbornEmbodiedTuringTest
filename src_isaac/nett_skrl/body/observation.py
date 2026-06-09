@@ -68,10 +68,13 @@ def channel_stack_space(space: gym.Space, frames: int) -> gym.Space:
         spaces = dict(space.spaces)
         spaces["policy"] = channel_stack_space(spaces["policy"], frames)
         return gym.spaces.Dict(spaces)
-    if not isinstance(space, gym.spaces.Box) or len(space.shape) != 3:
+    if not isinstance(space, gym.spaces.Box) or len(space.shape) not in (3, 4):
         return space
     shape = list(space.shape)
-    axis = 2 if image_layout(space.shape) == "hwc" else 0
+    if len(shape) == 4:
+        axis = 3 if image_layout(space.shape[1:]) == "hwc" else 1
+    else:
+        axis = 2 if image_layout(space.shape) == "hwc" else 0
     shape[axis] *= int(frames)
     low = np.zeros(tuple(shape), dtype=space.dtype)
     high_value = 255 if np.issubdtype(space.dtype, np.integer) else 1.0
@@ -85,7 +88,10 @@ def channel_stack_frames(frames: Iterable, base_shape: tuple[int, ...] | None = 
     if not values:
         raise ValueError("channel_stack_frames requires at least one frame")
     shape = base_shape or values[0].shape
-    axis = 2 if image_layout(shape) == "hwc" else 0
+    if len(shape) == 4:
+        axis = 3 if image_layout(shape[1:]) == "hwc" else 1
+    else:
+        axis = 2 if image_layout(shape) == "hwc" else 0
     if isinstance(values[0], torch.Tensor):
         return torch.cat(values, dim=axis)
     return np.concatenate([np.asarray(frame) for frame in values], axis=axis)
@@ -97,16 +103,24 @@ def prepare_image_tensor(
     *,
     device: torch.device | None = None,
 ) -> torch.Tensor:
-    """Restore flattened CHW image observations and return float BCHW tensors ready for CNNs.
+    """Restore flattened image observations and return float BCHW tensors ready for CNNs.
 
-    ChannelsFirst (applied last in Body.wrap) guarantees observations arrive in
-    CHW order, so no permute is needed here.
+    When the Body pipeline includes ChannelsFirst (the normal production path),
+    observations already arrive in CHW order and no permute is needed. For
+    environments without that wrapper (unit tests, custom envs) the tensor may
+    still be HWC; this function detects that case via the observation_space
+    shape and permutes to CHW.
     """
     x = observations
     if device is not None and x.device != device:
         x = x.to(device, non_blocking=True)
     if x.ndim == 2 and isinstance(observation_space, gym.spaces.Box) and len(observation_space.shape) == 3:
         x = x.view(x.shape[0], *observation_space.shape)
+    # Permute BHWC → BCHW when the tensor itself is in HWC layout. Using the
+    # tensor's own spatial shape (not observation_space) makes this idempotent:
+    # a second call with already-CHW data detects "chw" and skips the permute.
+    if x.ndim == 4 and image_layout(x.shape[1:]) == "hwc":
+        x = x.permute(0, 3, 1, 2).contiguous()
     if x.dtype == torch.uint8:
         x = x.float() / 255.0
     else:

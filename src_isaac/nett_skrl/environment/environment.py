@@ -83,6 +83,7 @@ class Environment:
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
         camera_fov: float = 120.0,
+        train_phase: str = "train",
     ):
         self.design_sheet = Path(design_sheet)
         self.media_root = Path(media_root)
@@ -116,6 +117,7 @@ class Environment:
         self.render_mode = render_mode
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
         self.camera_fov = float(camera_fov)
+        self.train_phase: str = train_phase
         self.num_brains = 1  # overridden by adjust_to_agent()
         self.num_envs = 1  # total vectorized Isaac env rows
 
@@ -176,7 +178,10 @@ class Environment:
         cfg.__post_init__()
 
     def _apply_sim_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
-        cfg.phase = config.current_mode
+        if config.current_mode == "train":
+            cfg.phase = getattr(self, "train_phase", "train")
+        else:
+            cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
         self._copy_env_cfg_fields(cfg)
         if self.asset_root is not None:
