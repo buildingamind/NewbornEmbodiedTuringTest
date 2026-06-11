@@ -9,7 +9,7 @@ Architecture: Ji et al. (2013) 3D CNN adapted for compact RL
 Body wrappers: framestack (n_stack=2) stacks consecutive frames before
     ChannelsFirst conversion. The 3DCNN encoder reshapes (B,6,H,W)→(B,3,2,H,W).
 
-Target: ≥60% preference on 1color, 2color, 2shape&color test conditions
+Target: >=60% preference on 1color, 2color, 2shape&color test conditions
         after 4000 training episodes with PPO.
 
 Usage (PYTHONPATH=src_isaac):
@@ -25,11 +25,12 @@ from pathlib import Path
 
 from nett_skrl import NETT
 from nett_skrl.analysis import analyze, log_analysis_to_wandb
-from nett_skrl.body.wrappers.framestack import FrameStack
+
+from _train_common import assert_target_preferences
 
 OUTPUT = Path("~/nett_compact_3dcnn_out").expanduser()
 
-# FrameStack is configured as a body wrapper class (n_stack=2 is the default)
+# FrameStack is configured through the wrapper registry (n_stack=2 is the default).
 CONFIG: dict = {
     "name": f"compact_3dcnn_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
@@ -38,12 +39,12 @@ CONFIG: dict = {
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,
-        "input_resolution": 64,
-        "camera_fov": 60.0,
-        "reward_types": ["closeness"],
+        "input_resolution": 128,
+        "camera_fov": 150.0,
+        "reward_types": ["closeness", "completeness"],
     },
     "body": {
-        "wrappers": [FrameStack],   # stacks last 2 frames on channel axis (6-ch input)
+        "wrappers": ["framestack"],   # stacks last 2 frames on channel axis (6-ch input)
     },
     "brain": {
         "algorithm": "PPO",
@@ -54,11 +55,12 @@ CONFIG: dict = {
             "num_frames": 2,
         },
         "algorithm_cfg": {
-            "rollouts": 4000,
-            "mini_batches": 4,        # 50 per mini-batch (stable)
+            "rollouts": 1000,         # 5 envs (1000//200=5); 2-frame obs doubles buffer - keep safe
+            "mini_batches": 4,        # 4 mini-batches of 500 each; proven stable config
             "learning_rate": 1e-4,
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
+            "entropy_loss_scale": 0.3,  # raised from 0.1 — both prior 0.1 runs (CNN, ViT, 3DCNN) collapsed to exact 50% side-bias
         },
         "checkpoint_freq": 200000,
         "model": {
@@ -66,6 +68,7 @@ CONFIG: dict = {
             "shared_encoder": True,
             "hidden_sizes": [64, 64],
         },
+        
         "wandb": {
             "mode": "online",
             "project": "nett-compact-models",
@@ -73,28 +76,12 @@ CONFIG: dict = {
         },
     },
     "num_brains": 1,
-    "episodes": {"train": 4000, "test": 1},
+    "episodes": {"train": 5000, "test": 4},
     "steps_per_episode": 200,
     "eval_freq": 10_000_000,
     "task_memory": 0.1,
     "max_parallel_envs": 52,
 }
-
-
-def find_run_dirs(output_root: Path) -> list[Path]:
-    if not output_root.exists():
-        return []
-    runs = []
-    for child in sorted(output_root.iterdir()):
-        if not (child.is_dir() and (child / "config.yaml").exists()):
-            continue
-        if any(
-            (sub / "logs").exists() or (sub / "wandb_runs").exists()
-            for sub in child.iterdir()
-            if sub.is_dir()
-        ):
-            runs.append(child)
-    return runs
 
 
 if __name__ == "__main__":
@@ -105,8 +92,9 @@ if __name__ == "__main__":
     NETT(CONFIG).run(output_path=str(OUTPUT), devices=[0], verbose=True)
     log.info("training complete")
 
-    for run_dir in find_run_dirs(OUTPUT):
-        log.info("analyzing: %s", run_dir)
-        out = analyze(run_dir)
-        log.info("  → %s", out)
-        log_analysis_to_wandb(run_dir, out)
+    run_dir = OUTPUT / CONFIG["name"]
+    log.info("analyzing: %s", run_dir)
+    out = analyze(run_dir)
+    log_analysis_to_wandb(run_dir, out)
+    assert_target_preferences(out)
+    log.info("  -> %s", out)

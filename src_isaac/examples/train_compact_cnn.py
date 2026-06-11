@@ -3,7 +3,7 @@
 Model: CompactCNN (~187 K encoder params, ~212 K total with PPO heads)
 Architecture: 3-layer CNN with adaptive 4×4 spatial pool → Linear(1024→128)
 
-Target: ≥60% preference on 1color, 2color, 2shape&color test conditions
+Target: >=60% preference on 1color, 2color, 2shape&color test conditions
         after 4000 training episodes with PPO.
 
 Usage (PYTHONPATH=src_isaac):
@@ -20,6 +20,8 @@ from pathlib import Path
 from nett_skrl import NETT
 from nett_skrl.analysis import analyze, log_analysis_to_wandb
 
+from _train_common import assert_target_preferences
+
 OUTPUT = Path("~/nett_compact_cnn_out").expanduser()
 
 CONFIG: dict = {
@@ -30,30 +32,32 @@ CONFIG: dict = {
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,
-        "input_resolution": 64,
-        "camera_fov": 60.0,
-        "reward_types": ["closeness"],
+        "input_resolution": 128,
+        "camera_fov": 150.0,
+        "reward_types": ["closeness", "completeness"],
     },
     "brain": {
         "algorithm": "PPO",
         "encoder": "compact_cnn",
         "encoder_cfg": {
             "trainable": True,
-            "features_dim": 128,
+            "features_dim": 256,      # 2x larger than 128 — more representational capacity
         },
         "algorithm_cfg": {
-            "rollouts": 2000,         # memory recommendation: 10 envs, 2x more PPO updates
-            "mini_batches": 4,        # 200 scaled rollouts / 4 = 50 per mini-batch (stable)
-            "learning_rate": 2e-4,    # faster than 1e-4 but below diverging 3e-4
+            "rollouts": 2000,         # 10 envs (2000//200=10); buffer=2000×obs (manageable)
+            "mini_batches": 4,        # 4 mini-batches of 500 each; proven stable config
+            "learning_rate": 1e-4,    # proven stable — lr=2e-4 diverges at chunk 3 (step ~9600)
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
+            "entropy_loss_scale": 0.3,  # raised from 0.1 — both prior 0.1 runs (CNN, ViT, 3DCNN) collapsed to exact 50% side-bias
         },
-        "checkpoint_freq": 200000,    # save every 200K env-steps for recovery
+        "checkpoint_freq": 10_000_000,  # effectively disabled — single continuous training run
         "model": {
             "value_bound": None,
             "shared_encoder": True,
             "hidden_sizes": [64, 64],
         },
+        
         "wandb": {
             "mode": "online",
             "project": "nett-compact-models",
@@ -61,28 +65,12 @@ CONFIG: dict = {
         },
     },
     "num_brains": 1,
-    "episodes": {"train": 4000, "test": 1},
+    "episodes": {"train": 5000, "test": 4},
     "steps_per_episode": 200,
     "eval_freq": 10_000_000,
     "task_memory": 0.1,
     "max_parallel_envs": 52,
 }
-
-
-def find_run_dirs(output_root: Path) -> list[Path]:
-    if not output_root.exists():
-        return []
-    runs = []
-    for child in sorted(output_root.iterdir()):
-        if not (child.is_dir() and (child / "config.yaml").exists()):
-            continue
-        if any(
-            (sub / "logs").exists() or (sub / "wandb_runs").exists()
-            for sub in child.iterdir()
-            if sub.is_dir()
-        ):
-            runs.append(child)
-    return runs
 
 
 if __name__ == "__main__":
@@ -93,8 +81,9 @@ if __name__ == "__main__":
     NETT(CONFIG).run(output_path=str(OUTPUT), devices=[0], verbose=True)
     log.info("training complete")
 
-    for run_dir in find_run_dirs(OUTPUT):
-        log.info("analyzing: %s", run_dir)
-        out = analyze(run_dir)
-        log.info("  → %s", out)
-        log_analysis_to_wandb(run_dir, out)
+    run_dir = OUTPUT / CONFIG["name"]
+    log.info("analyzing: %s", run_dir)
+    out = analyze(run_dir)
+    log_analysis_to_wandb(run_dir, out)
+    assert_target_preferences(out)
+    log.info("  -> %s", out)

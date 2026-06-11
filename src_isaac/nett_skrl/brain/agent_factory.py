@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+import os
 import torch
 import torch.nn as nn
 from skrl.memories.torch import RandomMemory
@@ -66,6 +67,11 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
         if scope > 1 and hasattr(cfg, "rollouts"):
             cfg.rollouts = scaled_rollouts
 
+        # Value-target standardization is REQUIRED for learning here: turning it
+        # OFF (to match SB3, which doesn't standardize values) empirically broke
+        # learning — reward went flat and policy std rose instead of converging.
+        # The RunningStandardScaler keeps the critic/advantages well-scaled given
+        # the correctly-normalized [0,1] image input. Keep it ON.
         if hasattr(cfg, "value_preprocessor"):
             cfg.value_preprocessor = RunningStandardScaler
             cfg.value_preprocessor_kwargs = {"size": 1, "device": device}

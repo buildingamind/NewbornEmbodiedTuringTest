@@ -120,10 +120,13 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "small": encoders.SmallCNN,
     "medium": encoders.Resnet10CNN,
     "large": encoders.Resnet18CNN,
+    "nature_cnn": encoders.NatureCNN,
     "Resnet10CNN": encoders.Resnet10CNN,
     "Resnet18CNN": encoders.Resnet18CNN,
     # Compact model suite (< 600 K total parameters with PPO heads)
     "compact_cnn": encoders.CompactCNN,
+    "compact_cnn_pretrained": encoders.CompactCNNPretrained,
+    "compact_3dcnn_pretrained": encoders.Compact3DCNNPretrained,
     "compact_vit": encoders.CompactViT,
     "compact_3dcnn": encoders.Compact3DCNN,
     "compact_vivit": encoders.CompactViViT,

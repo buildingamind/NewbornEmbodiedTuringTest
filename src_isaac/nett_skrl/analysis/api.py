@@ -8,7 +8,9 @@ Each public function consumes a NETT run directory (the path produced by
 * :func:`test_viz` — loads the LogChannel test CSVs and computes the percent
   of steps each brain spent looking at the *correct* monitor (per imprint
   condition × test condition), writes ``test_preferences.csv`` + one bar
-  chart per imprint condition.
+  chart per imprint condition. Each chart overlays the newborn-chick
+  reference data (red band = avg ± avg_dev) from ``ChickData/`` for the
+  matching experiment (default ``"binding"``).
 * :func:`analyze` — runs both of the above and writes a summary JSON.
 * :func:`merge` — concatenates the analysis CSVs from multiple runs and
   regenerates the aggregated plots so per-cohort comparisons can be made.
@@ -45,6 +47,13 @@ CUSTOM_PALETTE = [
     "#8FBC8F", "#E6E6FA", "#FFD700", "#40E0D0", "#FF6347", "#90EE90",
 ]
 
+# Newborn-chick reference data (same red as the Unity-era ``test_viz``).
+# CSVs copied from ``src/nett/analysis/ChickData``; one file per experiment,
+# each row giving avg / avg_dev per test condition.
+CHICK_RED = "#AF264A"
+CHICK_DATA_DIR = Path(__file__).resolve().parent / "ChickData"
+DEFAULT_CHICK_EXPERIMENT = "binding"
+
 # ---------------------------------------------------------------------------
 # Chamber geometry defaults — match ``NETTEnvCfg`` so the gaze-direction
 # heuristic in ``test_viz`` matches the world the agents actually trained in.
@@ -67,19 +76,28 @@ def analyze(
     output_path: str | Path | None = None,
     *,
     chamber_half_x: float = DEFAULT_CHAMBER_HALF_X,
+    chick_experiment: str | None = DEFAULT_CHICK_EXPERIMENT,
 ) -> Path:
     """Run train + test analysis end-to-end on one NETT output dir.
 
     Produces an ``analysis/`` sibling tree with both viz subdirs and a
     ``summary.json`` capturing per-condition headline numbers (final-train
     mean reward and test correct-monitor preference percent).
+
+    ``chick_experiment`` selects which ``ChickData/<name>.csv`` reference is
+    overlaid on the test-preference charts; pass ``None`` to disable.
     """
     root = Path(run_path)
     out = Path(output_path) if output_path else root / "analysis"
     out.mkdir(parents=True, exist_ok=True)
 
     train_out = train_viz(root, out / "train")
-    test_out = test_viz(root, out / "test", chamber_half_x=chamber_half_x)
+    test_out = test_viz(
+        root,
+        out / "test",
+        chamber_half_x=chamber_half_x,
+        chick_experiment=chick_experiment,
+    )
 
     summary = _summary_from_outputs(train_out, test_out)
     (out / "summary.json").write_text(
@@ -138,8 +156,14 @@ def test_viz(
     output_path: str | Path | None = None,
     *,
     chamber_half_x: float = DEFAULT_CHAMBER_HALF_X,
+    chick_experiment: str | None = DEFAULT_CHICK_EXPERIMENT,
 ) -> Path:
-    """Compute the correct-monitor preference per brain × test condition."""
+    """Compute the correct-monitor preference per brain × test condition.
+
+    Bar charts overlay the chick reference band from
+    ``ChickData/<chick_experiment>.csv``; pass ``chick_experiment=None`` to
+    skip the overlay.
+    """
     root = Path(run_path)
     out = Path(output_path) if output_path else root / "analysis_test"
     out.mkdir(parents=True, exist_ok=True)
@@ -158,7 +182,11 @@ def test_viz(
         # Per-imprint bar chart aggregating across brains for each test cond.
         if plt is not None:
             _plot_test_preferences(
-                plt, out, imprint, [r for r in rows if r[0] == imprint]
+                plt,
+                out,
+                imprint,
+                [r for r in rows if r[0] == imprint],
+                chick_data=_load_chick_data(chick_experiment, imprint),
             )
 
     _write_csv(
@@ -294,7 +322,12 @@ def log_analysis_to_wandb(
                 pass
 
 
-def merge(paths: Iterable[str | Path], output_path: str | Path) -> Path:
+def merge(
+    paths: Iterable[str | Path],
+    output_path: str | Path,
+    *,
+    chick_experiment: str | None = DEFAULT_CHICK_EXPERIMENT,
+) -> Path:
     """Combine multiple analysis output trees + re-aggregate the CSVs.
 
     Each input path should be a directory produced by :func:`analyze` (or a
@@ -316,7 +349,7 @@ def merge(paths: Iterable[str | Path], output_path: str | Path) -> Path:
         _replot_train_from_csv(plt, train_csv)
     test_csv = _find_first(out, "test_preferences.csv")
     if test_csv and plt is not None:
-        _replot_test_from_csv(plt, test_csv)
+        _replot_test_from_csv(plt, test_csv, chick_experiment=chick_experiment)
     return out
 
 
@@ -339,8 +372,11 @@ test_viz.__test__ = False
 
 
 __all__ = [
+    "CHICK_DATA_DIR",
+    "CHICK_RED",
     "DEFAULT_CHAMBER_HALF_X",
     "DEFAULT_CHAMBER_HALF_Y",
+    "DEFAULT_CHICK_EXPERIMENT",
     "analyze",
     "in_correct_chamber_third",
     "log_analysis_to_wandb",
@@ -501,8 +537,54 @@ def _test_preference_rows(
     return out
 
 
-def _plot_test_preferences(plt, out_dir: Path, imprint: str, rows: list[tuple]) -> None:
-    """Bar chart of correct-monitor pct per test condition, error bars across brains."""
+def _load_chick_data(
+    experiment: str | None, imprint: str | None = None
+) -> dict[str, tuple[float, float]]:
+    """Return ``{test_cond_lower: (avg, avg_dev)}`` from ``ChickData/<experiment>.csv``.
+
+    Some experiment CSVs (e.g. slowness, smoothness) carry an ``imprint.cond``
+    column; when present, rows are kept only if the chart's ``imprint`` name
+    ends with that value — mirroring the Unity-era ``test_viz`` matching.
+    Rows with non-numeric ``avg``/``avg_dev`` (e.g. ``NA``) are skipped.
+    """
+    if not experiment:
+        return {}
+    path = CHICK_DATA_DIR / f"{experiment}.csv"
+    if not path.exists():
+        logger.warning("chick data not found: %s", path)
+        return {}
+    out: dict[str, tuple[float, float]] = {}
+    with path.open(newline="", encoding="utf-8-sig") as f:
+        for row in csv.DictReader(f):
+            chick_imprint = (row.get("imprint.cond") or "").strip()
+            if (
+                chick_imprint
+                and imprint is not None
+                and not str(imprint).lower().endswith(chick_imprint.lower())
+            ):
+                continue
+            try:
+                avg = float(row["avg"])
+                dev = float(row["avg_dev"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            out[str(row["test.cond"]).strip().lower()] = (avg, dev)
+    return out
+
+
+def _plot_test_preferences(
+    plt,
+    out_dir: Path,
+    imprint: str,
+    rows: list[tuple],
+    chick_data: dict[str, tuple[float, float]] | None = None,
+) -> None:
+    """Bar chart of correct-monitor pct per test condition, error bars across brains.
+
+    ``chick_data`` (as returned by :func:`_load_chick_data`) overlays a
+    translucent red band (avg ± avg_dev, mean as a solid line) on each test
+    condition that has a chick reference value.
+    """
     if not rows:
         return
     # rows: (imprint, test_cond, env_id, n_steps, correct_pct)
@@ -533,6 +615,32 @@ def _plot_test_preferences(plt, out_dir: Path, imprint: str, rows: list[tuple]) 
     x_pos = range(len(labels))
     ax.bar(x_pos, means, yerr=stds, color=colors, capsize=10, width=0.7, linewidth=0)
     ax.axhline(0.5, linestyle="--", color="grey", linewidth=1, label="chance")
+
+    # Chick reference overlay: translucent band spanning avg ± avg_dev with a
+    # solid line at the mean, same color/geometry as the Unity-era charts.
+    if chick_data:
+        from matplotlib.lines import Line2D
+
+        chick_labelled = False
+        for i, label in enumerate(labels):
+            entry = chick_data.get(str(label).strip().lower())
+            if entry is None:
+                continue
+            avg, dev = entry
+            ax.add_patch(
+                plt.Rectangle(
+                    (i - 0.35, avg - dev), 0.7, 2 * dev, color=CHICK_RED, alpha=0.2
+                )
+            )
+            ax.add_line(
+                Line2D(
+                    [i - 0.35, i + 0.35],
+                    [avg, avg],
+                    color=CHICK_RED,
+                    label=None if chick_labelled else "chick",
+                )
+            )
+            chick_labelled = True
     ax.set_xticks(list(x_pos))
     ax.set_xticklabels(labels, rotation=0, ha="center", fontsize=9, fontweight="bold")
     ax.set_ylim(0, 1)
@@ -606,7 +714,9 @@ def _replot_train_from_csv(plt, csv_path: Path) -> None:
         plt.close(fig)
 
 
-def _replot_test_from_csv(plt, csv_path: Path) -> None:
+def _replot_test_from_csv(
+    plt, csv_path: Path, chick_experiment: str | None = DEFAULT_CHICK_EXPERIMENT
+) -> None:
     """Re-generate per-imprint test preference bars from the merged CSV."""
     rows_by_imprint: dict[str, list[tuple]] = defaultdict(list)
     with csv_path.open() as f:
@@ -621,7 +731,13 @@ def _replot_test_from_csv(plt, csv_path: Path) -> None:
                 )
             )
     for imprint, rows in rows_by_imprint.items():
-        _plot_test_preferences(plt, csv_path.parent, f"merged_{imprint}", rows)
+        _plot_test_preferences(
+            plt,
+            csv_path.parent,
+            f"merged_{imprint}",
+            rows,
+            chick_data=_load_chick_data(chick_experiment, imprint),
+        )
 
 
 def _stddev(values: list[float]) -> float:

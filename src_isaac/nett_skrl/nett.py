@@ -255,6 +255,24 @@ class NETT:
         if task_memory != "auto":
             return float(task_memory) * (1024**3), int(num_envs)
 
+        # 2-point linear VRAM model to MAXIMIZE envs in one shot.
+        # consumed(n) ~= fixed + n*per_env (rollout buffer scales per-env so the
+        # buffer is ~constant => part of `fixed`; per_env is mainly Isaac
+        # rendering). Probe two small/safe env counts, fit the line, then solve
+        # for the largest env count that fits free*safety. Falls back to the
+        # legacy descending dry-run scan on any failure.
+        try:
+            est = self._estimate_envs_via_linear_model(
+                brain, body, env, output_dir, num_brains, num_envs, steps_per_episode
+            )
+            if est is not None:
+                return est
+        except Exception:
+            self.logger.warning(
+                "2-point env estimator failed; falling back to descending scan",
+                exc_info=True,
+            )
+
         failures: list[tuple[int, Exception]] = []
         for candidate in num_env_candidates(num_envs, num_brains):
             self._apply_parallel_env_plan(
@@ -284,6 +302,66 @@ class NETT:
             fallback_envs,
         )
         return _FALLBACK_TASK_MEMORY_GB * (1024**3), fallback_envs
+
+    def _estimate_envs_via_linear_model(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        output_dir: Path,
+        num_brains: int,
+        num_envs: int,
+        steps_per_episode: int,
+    ) -> tuple[float, int] | None:
+        """Fit consumed(n)=fixed+n*per_env from two small dry-runs and return
+        ``(budget_bytes, max_envs)`` that fits free*SAFETY. Returns ``None`` when
+        the env cap is too small to fit two distinct probe points (caller then
+        uses the legacy scan). Model-agnostic: both coefficients are MEASURED for
+        the actual model via the dry run."""
+        nb = max(1, int(num_brains))
+        cap = int(num_envs)
+        if cap >= 4 * nb:
+            n1, n2 = 2 * nb, 4 * nb
+        elif cap >= 2 * nb:
+            n1, n2 = nb, 2 * nb
+        else:
+            return None  # too small; let the descending scan handle it
+
+        # Clean free memory on the target device (captured before any dry-run;
+        # the dry-run subprocess releases its memory on exit).
+        _device, free_bytes = self.memory_manager.get_most_free_gpu(self.devices)
+
+        probes: dict[int, float] = {}
+        for n in (n1, n2):
+            self._apply_parallel_env_plan(brain, body, env, num_brains, n, steps_per_episode)
+            probes[n] = self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
+        c1, c2 = probes[n1], probes[n2]
+        per_env = (c2 - c1) / float(n2 - n1)
+
+        if per_env <= 0:
+            # Non-monotone (measurement noise): be conservative, use the larger
+            # probe's env count + its measured memory.
+            self.logger.warning(
+                "2-point VRAM model non-monotone (%.2fGB@%d, %.2fGB@%d); using num_envs=%d",
+                c1 / 1024**3, n1, c2 / 1024**3, n2, n2,
+            )
+            self._apply_parallel_env_plan(brain, body, env, num_brains, n2, steps_per_episode)
+            return c2, n2
+
+        fixed = c1 - n1 * per_env
+        SAFETY = 0.80  # headroom for the dry-run-peak vs sustained-training gap
+        budget = free_bytes * SAFETY
+        max_fit = int((budget - fixed) // per_env)
+        target = max(nb, min(cap, (max_fit // nb) * nb))
+        est_consumed = max(c2, fixed + target * per_env)
+        self.logger.info(
+            "2-point VRAM model: fixed=%.2fGB per_env=%.0fMB free=%.2fGB(@%.0f%%) "
+            "-> max_envs=%d (cap=%d, probes %d->%.2fGB, %d->%.2fGB)",
+            fixed / 1024**3, per_env / 1024**2, free_bytes / 1024**3, SAFETY * 100,
+            target, cap, n1, c1 / 1024**3, n2, c2 / 1024**3,
+        )
+        self._apply_parallel_env_plan(brain, body, env, num_brains, target, steps_per_episode)
+        return est_consumed, target
 
     def _estimate_task_memory_via_dry_run(
         self,

@@ -64,7 +64,7 @@ class AlgorithmCfg(FlexibleCfg):
 
     def __init__(
         self,
-        learning_rate=3e-4, #1e-5,
+        learning_rate=1e-5,
         **kwargs,
     ) -> None:
         super().__init__(
@@ -98,7 +98,7 @@ class OnPolicyAlgorithmCfg(AlgorithmCfg):
 
     def __init__(
         self,
-        learning_rate=3e-4, #1e-5,
+        learning_rate=1e-5,
         rollouts: int = 8000,
         mini_batches: int = 16,
         value_loss_scale: float | None = 0.25,

@@ -1,8 +1,11 @@
 """Public analysis entrypoints for Isaac/skrl NETT runs."""
 
 from .api import (
+    CHICK_DATA_DIR,
+    CHICK_RED,
     DEFAULT_CHAMBER_HALF_X,
     DEFAULT_CHAMBER_HALF_Y,
+    DEFAULT_CHICK_EXPERIMENT,
     analyze,
     in_correct_chamber_third,
     log_analysis_to_wandb,
@@ -15,8 +18,11 @@ from .api import (
 
 __all__ = [
     "analyze",
+    "CHICK_DATA_DIR",
+    "CHICK_RED",
     "DEFAULT_CHAMBER_HALF_X",
     "DEFAULT_CHAMBER_HALF_Y",
+    "DEFAULT_CHICK_EXPERIMENT",
     "in_correct_chamber_third",
     "log_analysis_to_wandb",
     "looking_at_monitor",

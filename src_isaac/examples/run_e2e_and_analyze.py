@@ -1,4 +1,4 @@
-"""Run the 1000-episode end-to-end training, then run analysis on it.
+"""Run the 100-episode end-to-end training, then run analysis on it.
 
 Usage (PYTHONPATH=src_isaac):
 
@@ -45,9 +45,6 @@ CONFIG: dict = {
         "headless": True,
         "binocular_vision": False,
         "input_resolution": 64,
-        # Unity monocular = 60° FOV (narrow: agent must face monitor directly).
-        # Isaac default is 120° (wide periphery lets agent earn reward without
-        # facing monitor → no visual discrimination signal).  Match Unity.
         "camera_fov": 60.0,
         "reward_types": ["closeness"],
     },
@@ -56,9 +53,6 @@ CONFIG: dict = {
         "encoder": "small",
         "encoder_cfg": {"trainable": True},
         "algorithm_cfg": {
-            # rollouts=2000 → envs_per_brain=2000/200=10 envs, 100 PPO updates
-            # per 1k episodes (vs 50 with rollouts=4000/20 envs).
-            # Same wall-clock time, 2× gradient updates.
             "rollouts": 2000,
             "mini_batches": 8,
             "learning_rate": 3e-4,
@@ -75,13 +69,11 @@ CONFIG: dict = {
         },
     },
     "num_brains": 1,
-    # 1 000 episodes = 50 per-env with 20 envs; 50 PPO updates.
-    # Reward shaping prevents the gradient explosion so the full budget runs.
     "episodes": {"train": 1200, "test": 1},
     "steps_per_episode": 200,
-    "eval_freq": 25000000,   # past total (200k) → no mid-train eval; avoids 2-sim OOM
-    "task_memory": 1,
-    "max_parallel_envs": 4,
+    "eval_freq": 10_000_000,
+    "task_memory": 0.1,
+    "max_parallel_envs": 52,
 }
 
 
