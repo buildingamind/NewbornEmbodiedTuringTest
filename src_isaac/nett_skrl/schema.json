@@ -152,10 +152,12 @@
     "environment": {
       "type": "object",
       "properties": {
+        "experiment":       { "type": "string",
+                              "description": "Self-contained experiment bundle: a directory (or .zip) with a design CSV + its videos. Overrides design_sheet/media_root — the drop-in way to swap experiments." },
         "design_sheet":     { "type": "string",
-                              "description": "Path to design CSV (replaces Unity AssetBundles)." },
+                              "description": "Path to design CSV (replaces Unity AssetBundles). Not needed when `experiment` is set." },
         "media_root":       { "type": "string",
-                              "description": "Directory containing video/PNG stimulus assets." },
+                              "description": "Directory containing video/PNG stimulus assets. Not needed when `experiment` is set." },
         "conditions":       { "type": ["array", "null"], "uniqueItems": true,
                               "items": { "type": "string" }, "default": null },
         "headless":         { "type": "boolean", "default": true },
@@ -197,7 +199,10 @@
           "default": 0
         }
       },
-      "required": ["design_sheet", "media_root"],
+      "anyOf": [
+        { "required": ["experiment"] },
+        { "required": ["design_sheet", "media_root"] }
+      ],
       "additionalProperties": false
     },
     "episodes": {

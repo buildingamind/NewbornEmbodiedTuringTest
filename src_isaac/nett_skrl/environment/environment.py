@@ -64,10 +64,11 @@ class Environment:
 
     def __init__(
         self,
-        design_sheet: str | Path,
-        media_root: str | Path,
+        design_sheet: str | Path | None = None,
+        media_root: str | Path | None = None,
         conditions: Optional[list[str]] = None,
         *,
+        experiment: str | Path | None = None,
         headless: bool = True,
         binocular_vision: bool = True,
         input_resolution: int = 64,
@@ -85,6 +86,19 @@ class Environment:
         camera_fov: float = 120.0,
         train_phase: str = "train",
     ):
+        # A self-contained experiment bundle (dir or .zip with a design CSV +
+        # videos) supplies both design_sheet and media_root. See
+        # nett_isaac.utils.experiment_bundle.
+        self.experiment = str(experiment) if experiment else None
+        if experiment is not None:
+            from nett_isaac.utils.experiment_bundle import resolve_experiment
+
+            design_sheet, media_root = resolve_experiment(experiment)
+        if design_sheet is None or media_root is None:
+            raise ValueError(
+                "Environment needs either `experiment` (a bundle dir/.zip) or "
+                "both `design_sheet` and `media_root`."
+            )
         self.design_sheet = Path(design_sheet)
         self.media_root = Path(media_root)
         if not self.media_root.exists():
