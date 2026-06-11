@@ -26,7 +26,8 @@ class ValueCritic(DeterministicMixin, Model, FeatureBackbone):
         last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.value_head = nn.Linear(last, 1)
         self.value_bound = cfg.value_bound
-        init_output(self.value_head, cfg)
+        # SB3 inits the value head with gain 1.0 (not the 0.01 policy-head gain).
+        init_output(self.value_head, cfg, gain=1.0)
 
     def compute(self, inputs, role=""):
         value = self.value_head(features_forward(self, inputs))

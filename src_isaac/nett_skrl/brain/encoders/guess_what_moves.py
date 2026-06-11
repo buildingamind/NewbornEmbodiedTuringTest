@@ -58,12 +58,16 @@ class GuessWhatMoves(HWCFeatureExtractor):
         self.base_channels = total_channels // self.num_frames   # 3 for RGB
 
         # --- What pathway: 2D CNN on the current frame ----------------------
+        # No spatial pooling: flatten directly to preserve left-right position signal.
+        # AdaptiveAvgPool destroyed the spatial position information needed to tell
+        # which monitor is correct — replaced with NatureCNN-style strided convs.
         self.what_cnn = nn.Sequential(
-            nn.Conv2d(self.base_channels, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(self.base_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
-            nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 4)),
+            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.ReLU(),
             nn.Flatten(),
         )
 

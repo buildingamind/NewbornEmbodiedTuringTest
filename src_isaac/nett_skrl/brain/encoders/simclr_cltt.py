@@ -83,10 +83,17 @@ class SimCLRCLTT(HWCFeatureExtractor):
         return self.fc(h)
 
     def project(self, observations: torch.Tensor) -> torch.Tensor:
-        """Return L2-normalised projection vectors for the CLTT contrastive loss."""
-        with torch.set_grad_enabled(True):
+        """Return L2-normalised projection vectors for the CLTT contrastive loss.
+
+        Backbone and fc are run WITHOUT gradients (detached) so CLTT only
+        trains the projector head — preventing CLTT gradients from interfering
+        with the PPO policy gradients in the shared backbone.
+        """
+        with torch.no_grad():
             x = self._prepare_image(observations)
             h = self.backbone(x)
             f = self.fc(h)
-            z = self.projector(f)
+        # Only the projector gets CLTT gradients
+        with torch.set_grad_enabled(True):
+            z = self.projector(f.detach())
         return F.normalize(z, dim=-1)
