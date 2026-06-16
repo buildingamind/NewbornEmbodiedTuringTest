@@ -19,7 +19,7 @@ requires-python = "==3.11.*"
 # If the checkout layout differs, override these path-deps in your own
 # constraints file or install the deps manually before `pip install -e .`.
 dependencies = [
-    "nett-isaac @ file:///${PROJECT_ROOT}/../NewbornEmbodiedTuringTest_Private/isaac_lab",
+    # "nett-isaac @ file:///${PROJECT_ROOT}/../NewbornEmbodiedTuringTest_Private/isaac_lab",
     "isaaclab",
     "skrl>=2.0.0",
     "nvidia-ml-py",
