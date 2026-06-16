@@ -5,7 +5,7 @@ Confirms: eval runs without error, bar-chart values appear in W&B, training
 resumes, memory is cleaned up between subprocesses.
 
 Run with:
-    /home/zach/nett_private/bin/python src_isaac/examples/verify_eval_freq.py
+    python src_isaac/examples/verify_eval_freq.py
 """
 
 from __future__ import annotations
@@ -24,8 +24,8 @@ OUTPUT = Path("~/nett_eval_verify").expanduser()
 CONFIG = {
     "name": "eval_freq_verify",
     "environment": {
-        "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
-        "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
+        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
+        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,

@@ -33,6 +33,13 @@ class NatureCNN(HWCFeatureExtractor):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
+            # Pool the final conv map to a fixed 4x4 grid before flattening so the
+            # linear head's input size (and thus param count) is independent of
+            # input_resolution. At res=64 the conv map is already 4x4, so this is
+            # a no-op (validated behaviour preserved exactly); at res=256 it caps
+            # the flatten at 4*4*64=1024 instead of 28*28*64, keeping params
+            # <700k. A 4x4 grid still preserves coarse left/right spatial layout.
+            nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),
         )
         with torch.no_grad():

@@ -1,7 +1,7 @@
 """Run the nett_skrl end-to-end smoke training.
 
 Usage (PYTHONPATH=src_isaac):
-    /home/zach/nett_private/bin/python src_isaac/examples/run_smoke.py \
+    python src_isaac/examples/run_smoke.py \
         --config src_isaac/examples/smoke.yaml \
         --output /tmp/smoke_run
 

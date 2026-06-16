@@ -31,6 +31,7 @@ class _Cfg:
         self.observation = _Nested()
         self.screens = _Nested()
         self.motor = _Nested()
+        self.sim = _Nested()
         self.asset_root = None
         self.scene.num_envs = 1
         self.observation.binocular = True
@@ -38,6 +39,7 @@ class _Cfg:
         self.screens.random_first_frame = False
         self.screens.switch_steps = 0
         self.screens.decision_period = 1
+        self.sim.device = "cuda:0"
         self.seed = 0
         self.post_init_calls = 0
 
@@ -54,6 +56,7 @@ class _TaskConfig:
     seed = 123
     dry_run = False
     eval_metrics_only = False
+    device = 0
     path: Path
 
 
@@ -128,13 +131,13 @@ def test_configure_cfg_can_disable_neck_action_dofs(tmp_path):
 def test_configure_cfg_infers_private_asset_root(tmp_path):
     assets = tmp_path / "assets"
     for rel in (
-        "chick/robot_chick2.usd",
-        "chamber/chamber2.usd",
-        "design_sheets/example_design.csv",
+        "chick/robot_chick.usdc",
+        "chamber/chamber.usdc",
     ):
         path = assets / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("")
+    (assets / "design_sheets").mkdir(parents=True, exist_ok=True)
     design_sheet = _design_sheet(assets / "design_sheets")
     media_root = assets / "videos"
     media_root.mkdir()
@@ -152,13 +155,13 @@ def test_configure_cfg_infers_private_asset_root(tmp_path):
 def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, monkeypatch):
     assets = tmp_path / "assets"
     for rel in (
-        "chick/robot_chick2.usd",
-        "chamber/chamber2.usd",
-        "design_sheets/example_design.csv",
+        "chick/robot_chick.usdc",
+        "chamber/chamber.usdc",
     ):
         path = assets / rel
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text("")
+    (assets / "design_sheets").mkdir(parents=True, exist_ok=True)
     design_sheet = _design_sheet(assets / "design_sheets")
     media_root = assets / "videos"
     media_root.mkdir()

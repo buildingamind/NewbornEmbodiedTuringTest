@@ -43,8 +43,12 @@ def install_wandb_init_capture() -> None:
     original_init = wandb.init
 
     def _patched_init(*args, **kwargs):
-        run = original_init(*args, **kwargs)
         run_id = kwargs.get("id")
+        # Unified mode: brains 2..N request the same id as brain 1. Reuse the
+        # already-created run object instead of opening a second run.
+        if run_id and run_id in _wandb_runs_by_id:
+            return _wandb_runs_by_id[run_id]
+        run = original_init(*args, **kwargs)
         if run is not None:
             run.define_metric("global_step")
             run.define_metric("*", step_metric="global_step")
@@ -288,6 +292,11 @@ def _attach_writer_forwarding_hook(agent, run) -> None:
     if original_write_tracking is None:
         return
 
+    import os as _os
+    _unified = _os.environ.get("NETT_UNIFIED_WANDB") == "1"
+    _bid = getattr(agent, "_nett_brain_id", None)
+    _prefix = f"brain_{_bid}/" if (_unified and _bid is not None) else ""
+
     def _write_tracking_with_wandb(*, timestep: int, timesteps: int) -> None:
         # Snapshot tracking_data before original_write_tracking clears it.
         payload: dict = {}
@@ -295,11 +304,11 @@ def _attach_writer_forwarding_hook(agent, run) -> None:
             if not v:
                 continue
             if k.endswith("(min)"):
-                payload[k] = float(np.min(v))
+                payload[_prefix + k] = float(np.min(v))
             elif k.endswith("(max)"):
-                payload[k] = float(np.max(v))
+                payload[_prefix + k] = float(np.max(v))
             else:
-                payload[k] = float(np.mean(v))
+                payload[_prefix + k] = float(np.mean(v))
         original_write_tracking(timestep=timestep, timesteps=timesteps)
         if payload:
             # Apply the per-chunk offset so global_step accumulates continuously

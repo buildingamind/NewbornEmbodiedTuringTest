@@ -22,8 +22,8 @@ OUTPUT = Path("~/nett_nature_cnn_replicate_out").expanduser()
 CONFIG: dict = {
     "name": f"nature_cnn_replicate_seed{OFFSET}_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
-        "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
+        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
+        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,

@@ -76,18 +76,32 @@ def _wandb_kwargs(*, brain, config, brain_id: int, experiment_name: str) -> dict
     condition = config.condition
     phase = config.current_mode
 
+    # Unified mode (NETT_UNIFIED_WANDB=1): all brains in one process share ONE
+    # wandb run id + name, so every agent's metrics land in a single run
+    # (namespaced per brain in the forwarding hook). Default = per-brain runs.
+    import os as _os
+    unified = _os.environ.get("NETT_UNIFIED_WANDB") == "1"
+    run_id = wandb_run_id(run_name, condition, 0 if unified else brain_id)
+    run_display = (f"{run_name}/{condition}" if unified
+                   else f"{run_name}/{condition}/{experiment_name}")
+
+    # Grouping: when many independent single-brain runs share NETT_WANDB_GROUP,
+    # wandb overlays them as labeled lines (one per run name) on shared metric
+    # charts. Falls back to the condition for the default single-run case.
+    wandb_group = _os.environ.get("NETT_WANDB_GROUP") or condition
+
     kwargs = dict(wandb_cfg.get("kwargs") or {})
     kwargs.update(
         {
             "project": wandb_cfg["project"],
             "mode": wandb_cfg["mode"],
-            "group": condition,
-            "name": f"{run_name}/{condition}/{experiment_name}",
+            "group": wandb_group,
+            "name": run_display,
             "job_type": phase,
             "tags": [run_name, condition, experiment_name, phase, *wandb_cfg["tags"]],
             "dir": str(config.path),
             "reinit": "create_new",
-            "id": wandb_run_id(run_name, condition, brain_id),
+            "id": run_id,
             "resume": "allow",
             "sync_tensorboard": False,
             "config": _wandb_config_payload(

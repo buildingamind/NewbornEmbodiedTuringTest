@@ -2,7 +2,7 @@
 
 Usage (PYTHONPATH=src_isaac):
 
-    /home/zach/nett_private/bin/python src_isaac/examples/run_e2e_and_analyze.py
+    python src_isaac/examples/run_e2e_and_analyze.py
 
 Edit ``CONFIG`` and ``OUTPUT`` below to tweak the run. The flow:
 
@@ -39,8 +39,8 @@ OUTPUT = Path("~/nett_e2e_out").expanduser()
 CONFIG: dict = {
     "name": f"e2e_1kep_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
-        "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
+        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
+        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,

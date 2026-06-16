@@ -8,7 +8,7 @@ Target: >=60% preference on 1color, 2color, 2shape&color test conditions
 
 Usage (PYTHONPATH=src_isaac):
 
-    /home/zach/nett_private/bin/python src_isaac/examples/train_compact_cnn.py
+    python src_isaac/examples/train_compact_cnn.py
 """
 
 from __future__ import annotations
@@ -27,8 +27,8 @@ OUTPUT = Path("~/nett_compact_cnn_out").expanduser()
 CONFIG: dict = {
     "name": f"compact_cnn_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
-        "media_root": "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos",
+        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
+        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
         "binocular_vision": False,

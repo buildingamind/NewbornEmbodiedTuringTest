@@ -16,6 +16,7 @@ Key differences from the legacy Unity path:
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -197,6 +198,14 @@ class Environment:
         else:
             cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
+        # PhysX (sim.device) MUST stay on CPU: GPU PhysX (GpuArticulationView /
+        # GpuRigidBodyView) core-dumps with an illegal memory access on the
+        # kinematic-only NETT scene at the first reset (documented in
+        # gpu_tiled_camera.py / nett_env_cfg.py / probe_device.py). Rendering and
+        # cameras still run on the GPU: the AppLauncher device is set to cuda:N
+        # above, and GpuTiledCamera pins its annotators/buffers to CUDA. Override
+        # with NETT_SIM_DEVICE only for the documented GPU-PhysX probe.
+        cfg.sim.device = os.environ.get("NETT_SIM_DEVICE", "cpu")
         self._copy_env_cfg_fields(cfg)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))
@@ -320,9 +329,8 @@ def _set_attr_path(obj, dotted_name: str, value) -> None:
 def _infer_asset_root_from_paths(*paths: str | Path) -> Path | None:
     """Infer a private Isaac asset root from user-provided asset paths."""
     required = (
-        Path("chick/robot_chick2.usd"),
-        Path("chamber/chamber2.usd"),
-        Path("design_sheets/example_design.csv"),
+        Path("chick/robot_chick.usdc"),
+        Path("chamber/chamber.usdc"),
     )
     for raw in paths:
         p = Path(raw).expanduser().resolve()

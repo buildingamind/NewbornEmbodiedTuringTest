@@ -58,9 +58,13 @@ class GuessWhatMoves(HWCFeatureExtractor):
         self.base_channels = total_channels // self.num_frames   # 3 for RGB
 
         # --- What pathway: 2D CNN on the current frame ----------------------
-        # No spatial pooling: flatten directly to preserve left-right position signal.
-        # AdaptiveAvgPool destroyed the spatial position information needed to tell
-        # which monitor is correct — replaced with NatureCNN-style strided convs.
+        # Pool the final conv map to a fixed 3x3 grid before flattening so the
+        # fusion linear's input (and param count) is independent of
+        # input_resolution. At res=256 the conv map is 28x28; a 3x3 grid keeps
+        # the flatten at 3*3*64=576 (vs 28*28*64=50176) so the encoder stays
+        # <700k even with features_dim=512. A 3x3 grid still preserves coarse
+        # left/center/right spatial layout (which monitor is correct). Global
+        # (1x1) pooling — which destroys that signal — is deliberately avoided.
         self.what_cnn = nn.Sequential(
             nn.Conv2d(self.base_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
@@ -68,6 +72,7 @@ class GuessWhatMoves(HWCFeatureExtractor):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1),
             nn.ReLU(),
+            nn.AdaptiveAvgPool2d((3, 3)),
             nn.Flatten(),
         )
 

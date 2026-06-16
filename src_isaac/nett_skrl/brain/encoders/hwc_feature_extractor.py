@@ -16,4 +16,8 @@ class HWCFeatureExtractor(NETTFeatureExtractor):
         super().__init__(observation_space, features_dim)
 
     def _prepare_image(self, observations: torch.Tensor) -> torch.Tensor:
+        if getattr(self, "_skip_prepare", False):
+            # Already a prepared (B, C*T, H, W) normalized float tensor; the
+            # auxiliary-loss path re-encodes augmented images verbatim.
+            return observations
         return prepare_image_tensor(observations, self.observation_space)

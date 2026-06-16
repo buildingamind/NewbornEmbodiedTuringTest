@@ -26,7 +26,9 @@ def get_experiment_design(design_sheet: str | Path) -> dict[str, int]:
     with path.open(newline="") as f:
         reader = csv.DictReader(f)
         for row in reader:
-            imprint = (row.get("ImprintCondition") or "").strip()
+            # binding sheets use "ImprintCondition"; parsing/viewinvariance sheets
+            # use the spaced "Imprinting Condition" header — accept either.
+            imprint = (row.get("ImprintCondition") or row.get("Imprinting Condition") or "").strip()
             phase = (row.get("Phase") or "").strip().lower()
             if not imprint:
                 continue

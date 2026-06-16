@@ -68,6 +68,10 @@ class CompactViT(HWCFeatureExtractor):
         depth: int = 2,
         num_heads: int = 4,
         mlp_ratio: float = 2.0,
+        pool: str = "cls",
+        spatial_grid: int = 4,
+        spatial_reduce_dim: int = 16,
+        stem: str = "linear",
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -76,10 +80,29 @@ class CompactViT(HWCFeatureExtractor):
         assert height % patch_size == 0 and width % patch_size == 0, (
             f"Image size ({height}×{width}) must be divisible by patch_size={patch_size}"
         )
-        num_patches = (height // patch_size) * (width // patch_size)
+        self._n_h = height // patch_size
+        self._n_w = width // patch_size
+        num_patches = self._n_h * self._n_w
+        self.pool = pool
 
-        # Patch embedding via a strided convolution (equivalent to linear projection of patches)
-        self.patch_embed = nn.Conv2d(channels, embed_dim, kernel_size=patch_size, stride=patch_size)
+        if stem == "conv":
+            # Conv-STEM patch embed (Xiao et al. 2021, "Early Convolutions Help
+            # Transformers See Better"): replace the single strided patch conv with
+            # log2(patch_size) stride-2 3x3 convs. Adds CNN locality/optimization
+            # stability so a PLAIN ViT (no contrastive aux) can train. Channel
+            # schedule ends at embed_dim, keeping params ~= the linear patch embed.
+            assert patch_size & (patch_size - 1) == 0, "conv stem needs power-of-2 patch_size"
+            nl = int(math.log2(patch_size))
+            chs = [channels] + [max(16, embed_dim // (2 ** (nl - 1 - i))) for i in range(nl)]
+            layers: list[nn.Module] = []
+            for i in range(nl):
+                layers.append(nn.Conv2d(chs[i], chs[i + 1], kernel_size=3, stride=2, padding=1))
+                if i < nl - 1:
+                    layers.append(nn.GELU())
+            self.patch_embed = nn.Sequential(*layers)
+        else:
+            # Patch embedding via a strided convolution (linear projection of patches)
+            self.patch_embed = nn.Conv2d(channels, embed_dim, kernel_size=patch_size, stride=patch_size)
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
@@ -88,8 +111,17 @@ class CompactViT(HWCFeatureExtractor):
             [_TransformerBlock(embed_dim, num_heads, mlp_ratio) for _ in range(depth)]
         )
         self.norm = nn.LayerNorm(embed_dim)
-        # Project from transformer dim to features_dim (identity if equal)
-        self.head = nn.Linear(embed_dim, features_dim) if embed_dim != features_dim else nn.Identity()
+        if pool == "spatial":
+            # Preserve object LOCATION (which CLS pooling destroys — the cause of
+            # the ViViT collapse): reduce each patch token, fold tokens back to the
+            # patch grid, adaptive-pool to a small HxW grid, flatten -> Linear. Keeps
+            # the spatial layout the policy needs to choose a turn direction.
+            self.token_reduce = nn.Linear(embed_dim, spatial_reduce_dim)
+            self._grid = int(spatial_grid)
+            self.head = nn.Linear(spatial_reduce_dim * self._grid * self._grid, features_dim)
+        else:
+            # Project from transformer dim to features_dim (identity if equal)
+            self.head = nn.Linear(embed_dim, features_dim) if embed_dim != features_dim else nn.Identity()
 
         # Weight init following ViT paper
         nn.init.trunc_normal_(self.cls_token, std=0.02)
@@ -121,5 +153,11 @@ class CompactViT(HWCFeatureExtractor):
         for block in self.blocks:
             x = block(x)
 
-        x = self.norm(x)[:, 0]  # CLS token
-        return self.head(x)
+        x = self.norm(x)
+        if self.pool == "spatial":
+            tok = self.token_reduce(x[:, 1:])                 # (B, N, rdim), drop CLS
+            r = tok.shape[-1]
+            grid = tok.transpose(1, 2).reshape(B, r, self._n_h, self._n_w)
+            grid = nn.functional.adaptive_avg_pool2d(grid, (self._grid, self._grid))
+            return self.head(grid.flatten(1))
+        return self.head(x[:, 0])  # CLS token
