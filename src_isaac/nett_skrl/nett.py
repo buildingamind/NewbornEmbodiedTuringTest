@@ -426,8 +426,15 @@ class NETT:
     # --- Scheduler ---------------------------------------------------------
 
     def _assign_task(self, task: Task) -> None:
-        most_free_gpu, capacity = self.memory_manager.get_most_free_gpu(self.devices)
-        # Refresh ledger from live NVML so other-process activity is reflected.
+        # Pick the GPU with the most LEDGER-free memory. The ledger (initialised
+        # from NVML, decremented on each assign, refreshed on completion) accounts
+        # for reservations whose Isaac process has not booted yet — raw NVML lags
+        # 1-2 min behind a just-assigned task and would pile many brains onto one
+        # GPU before any allocates. Cross-check live NVML on the chosen device so
+        # other-process usage still lowers the estimate.
+        most_free_gpu = max(self.devices, key=lambda d: self.free_device_memory[d])
+        live = self.memory_manager.get_free_memory(most_free_gpu)
+        capacity = min(self.free_device_memory[most_free_gpu], live)
         self.free_device_memory[most_free_gpu] = capacity
 
         task_memory = float(task.config.memory or 0)

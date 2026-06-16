@@ -44,11 +44,14 @@ class SimCLRCLTT(HWCFeatureExtractor):
     PPO without touching the projection head.
     """
 
-    def __init__(self, observation_space: gym.Space, features_dim: int = 128, **_) -> None:
+    def __init__(self, observation_space: gym.Space, features_dim: int = 128,
+                 conv_dim: int = 64, **_) -> None:
         super().__init__(observation_space, features_dim)
         channels, height, width = image_channels_hw(observation_space)
 
-        # SimCLR backbone: three conv blocks with batch normalisation
+        # ``conv_dim`` (final conv channels) scales the flatten size and thus the
+        # RL head Linear's params, tuning capacity WITHOUT changing features_dim.
+        # Default 64 preserves the original architecture.
         self.backbone = nn.Sequential(
             nn.Conv2d(channels, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
@@ -56,8 +59,8 @@ class SimCLRCLTT(HWCFeatureExtractor):
             nn.Conv2d(32, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
-            nn.BatchNorm2d(64),
+            nn.Conv2d(32, conv_dim, kernel_size=3, stride=2, padding=1),
+            nn.BatchNorm2d(conv_dim),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),

@@ -39,6 +39,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         observation_space: gym.Space,
         features_dim: int = 128,
         num_frames: int = 2,
+        conv_dim: int = 64,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -54,12 +55,14 @@ class Compact3DCNN(HWCFeatureExtractor):
             padding=(0, 1, 1),
         )
 
-        # 2-D spatial stages
+        # 2-D spatial stages. ``conv_dim`` (final conv channels) scales flatten
+        # size -> RL head Linear params, tuning capacity without touching
+        # features_dim. Default 64 preserves the original architecture.
         self.cnn2d = nn.Sequential(
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 4)),
             nn.Flatten(),

@@ -50,6 +50,7 @@ class GuessWhatMoves(HWCFeatureExtractor):
         observation_space: gym.Space,
         features_dim: int = 128,
         num_frames: int = 2,
+        conv_dim: int = 64,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -65,12 +66,15 @@ class GuessWhatMoves(HWCFeatureExtractor):
         # <700k even with features_dim=512. A 3x3 grid still preserves coarse
         # left/center/right spatial layout (which monitor is correct). Global
         # (1x1) pooling — which destroys that signal — is deliberately avoided.
+        # ``conv_dim`` (what-pathway final conv channels) scales the fusion
+        # Linear's params -> encoder capacity, without changing features_dim.
+        # Default 64 preserves the original architecture.
         self.what_cnn = nn.Sequential(
             nn.Conv2d(self.base_channels, 32, kernel_size=8, stride=4),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1),
+            nn.Conv2d(64, conv_dim, kernel_size=3, stride=1),
             nn.ReLU(),
             nn.AdaptiveAvgPool2d((3, 3)),
             nn.Flatten(),

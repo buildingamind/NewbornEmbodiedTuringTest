@@ -22,16 +22,21 @@ from .hwc_feature_extractor import HWCFeatureExtractor
 class NatureCNN(HWCFeatureExtractor):
     """Three-layer CNN, flatten-to-linear, no spatial pooling."""
 
-    def __init__(self, observation_space: gym.Space, features_dim: int = 512, **_):
+    def __init__(self, observation_space: gym.Space, features_dim: int = 512,
+                 conv_dim: int = 64, **_):
         super().__init__(observation_space, features_dim)
         channels, height, width = image_channels_hw(observation_space)
 
+        # ``conv_dim`` is the final conv layer's channel count; it sets the
+        # flatten size (conv_dim*4*4) and thus the dominant Linear's params, so
+        # it scales encoder capacity WITHOUT touching features_dim (the policy
+        # head input stays fixed). Default 64 preserves the original architecture.
         self.cnn = nn.Sequential(
             nn.Conv2d(channels, 32, kernel_size=8, stride=4, padding=0),
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),
-            nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=0),
+            nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
             # Pool the final conv map to a fixed 4x4 grid before flattening so the
             # linear head's input size (and thus param count) is independent of
