@@ -55,7 +55,6 @@ CONFIG: dict = {
         "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
-        "binocular_vision": False,
         "input_resolution": 64,            # NETT legacy default; fits 8 GB w/ 8000 buffer
         "camera_fov": 150.0,
         "reward_types": ["closeness"],

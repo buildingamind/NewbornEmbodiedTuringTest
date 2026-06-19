@@ -13,7 +13,7 @@ CONFIG = {
         "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
         "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
-        "headless": True, "binocular_vision": False, "input_resolution": 64,
+        "headless": True, "input_resolution": 64,
         "camera_fov": 150.0, "reward_types": ["closeness"],
         "enable_neck_flexion": False, "enable_lateral_bending": False,
     },

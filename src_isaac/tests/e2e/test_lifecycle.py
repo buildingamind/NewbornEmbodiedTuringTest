@@ -42,7 +42,6 @@ def _minimal_task(tmp_path: Path):
         media_root=str(MEDIA_ROOT),
         conditions=["Object1"],
         headless=True,
-        binocular_vision=True,
         input_resolution=64,
         reward_types=["closeness"],
     )

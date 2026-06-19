@@ -20,32 +20,25 @@ class Body:
     Args:
         wrappers: Observation wrappers to apply after the Isaac environment is
             loaded. Entries may be registry names or ``gym.Wrapper`` classes.
-        binocular_vision: Optional override for the environment's binocular
-            observation setting.
         input_resolution: Optional override for the per-eye input resolution.
     """
 
     wrappers: list[type[gym.Wrapper]]
-    binocular_vision: Optional[bool]
     input_resolution: Optional[int]
 
     def __init__(
         self,
         wrappers: Optional[list[str | type[gym.Wrapper]]] = None,
         *,
-        binocular_vision: Optional[bool] = None,
         input_resolution: Optional[int] = None,
     ) -> None:
         self.wrappers = validate_wrappers(wrappers)
-        self.binocular_vision = binocular_vision
         self.input_resolution = input_resolution
         self._channels_first: ChannelsFirst | None = None
 
     def adjust_to_agent(self, env, *, num_brains: int, **kwargs) -> None:
         """Apply body-side settings to an environment before loading it."""
         body_kwargs = dict(kwargs)
-        if self.binocular_vision is not None:
-            body_kwargs["binocular_vision"] = self.binocular_vision
         if self.input_resolution is not None:
             body_kwargs["input_resolution"] = self.input_resolution
         env.adjust_to_agent(num_brains=num_brains, **body_kwargs)

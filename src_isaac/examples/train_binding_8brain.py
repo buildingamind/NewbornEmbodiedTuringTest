@@ -60,7 +60,6 @@ CONFIG: dict = {
         "media_root": _MEDIA,
         "conditions": ["Object1"],
         "headless": True,
-        "binocular_vision": False,
         "input_resolution": 256,
         "camera_fov": 150.0,
         "reward_types": ["closeness"],

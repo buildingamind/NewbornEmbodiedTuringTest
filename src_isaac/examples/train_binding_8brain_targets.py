@@ -190,7 +190,6 @@ CONFIG: dict = {
         "media_root": MEDIA_ROOT,
         "conditions": [IMPRINT],
         "headless": True,
-        "binocular_vision": False,
         "input_resolution": RES,
         "camera_fov": 150.0,
         "reward_types": ["closeness"],

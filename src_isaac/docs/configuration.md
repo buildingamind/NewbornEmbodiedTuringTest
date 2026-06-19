@@ -39,13 +39,10 @@ Important fields:
 - `conditions`: optional subset of imprint conditions. `null` runs all train
   conditions in the design sheet.
 - `headless`: `true` for server runs; `false` to open the Isaac viewport.
-- `binocular_vision`: `true` returns concatenated left/right egocentric camera
-  observations.
 - `input_resolution`: square per-eye resolution.
 - `reward_types`: env-side rewards. Use `[]` for no extrinsic reward.
 - `decision_period`: Isaac env steps per motor/log/reward decision.
 - `random_first_frame`: randomize stimulus start frame.
-- `switch_steps`: video target/non-target switch cadence.
 - `record_mode`: `tSNE` or `spatial` for record-phase sampling.
 
 Top-level `eval_freq` is optional. When set, it is interpreted as a train-step
@@ -133,14 +130,12 @@ Supported wrappers:
 - `retina`: foveated retina transform.
 - `video`: frame-stack policy observations on the image channel axis.
 
-Use native Isaac env settings for camera layout. For example,
-`environment.binocular_vision: true` controls the binocular egocentric cameras.
+The chick has a single monocular fisheye eye; there is no camera-layout toggle.
 New configs can place wrapper and perception-side settings under `body`:
 
 ```yaml
 body:
   wrappers: [video]
-  binocular_vision: true
   input_resolution: 64
 ```
 

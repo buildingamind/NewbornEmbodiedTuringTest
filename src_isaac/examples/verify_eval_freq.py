@@ -28,7 +28,6 @@ CONFIG = {
         "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
-        "binocular_vision": False,
         "input_resolution": 64,
         "camera_fov": 60.0,
         "reward_types": ["closeness"],

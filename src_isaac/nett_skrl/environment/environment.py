@@ -32,7 +32,6 @@ _ENV_CFG_FIELDS = (
     ("design_sheet", "design_sheet", str),
     ("media_root", "media_root", str),
     ("episode_steps", "episode_steps", int),
-    ("observation.binocular", "binocular_vision", bool),
     ("observation.input_resolution", "input_resolution", int),
     ("observation.fov", "camera_fov", float),
     ("reward_types", "reward_types", tuple),
@@ -40,7 +39,6 @@ _ENV_CFG_FIELDS = (
     ("motor.enable_neck_flexion", "enable_neck_flexion", bool),
     ("motor.enable_lateral_bending", "enable_lateral_bending", bool),
     ("screens.random_first_frame", "random_first_frame", bool),
-    ("screens.switch_steps", "switch_steps", int),
     ("screens.decision_period", "decision_period", int),
     ("tracemalloc_interval", "tracemalloc_interval", int),
 )
@@ -56,7 +54,6 @@ class Environment:
         conditions: Subset of imprint conditions to run. ``None`` runs all
             conditions found in the sheet (Train-phase rows).
         headless: Run Isaac Sim without a GUI window. Defaults to ``True``.
-        binocular_vision: Two side-cameras (forwarded into ``NETTEnvCfg``).
         input_resolution: Per-eye square resolution.
         episode_steps: Steps per episode (matches Unity ``--episode-steps``).
         reward_types: Tuple of reward names accepted by ``NETTEnv``
@@ -71,14 +68,12 @@ class Environment:
         *,
         experiment: str | Path | None = None,
         headless: bool = True,
-        binocular_vision: bool = True,
         input_resolution: int = 64,
         episode_steps: int = 200,
         reward_types: tuple[str, ...] = (),
         record_mode: str = "tSNE",
         recording: dict | None = None,
         random_first_frame: bool = False,
-        switch_steps: int = 0,
         decision_period: int = 1,
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
@@ -118,14 +113,12 @@ class Environment:
         }
 
         self.headless = headless
-        self.binocular_vision = binocular_vision
         self.input_resolution = input_resolution
         self.episode_steps = episode_steps
         self.reward_types = reward_types
         self.record_mode = record_mode
         self.recording = recording or {}
         self.random_first_frame = bool(random_first_frame)
-        self.switch_steps = int(switch_steps or 0)
         self.decision_period = int(decision_period or 1)
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
@@ -143,8 +136,7 @@ class Environment:
 
         Stores num_brains and total num_envs so `load()` can set
         ``cfg.scene.num_envs``. Extra kwargs (``input_resolution``,
-        ``binocular_vision``, ``reward_types``, ``episode_steps``) override
-        constructor defaults.
+        ``reward_types``, ``episode_steps``) override constructor defaults.
         """
         self.num_brains = int(num_brains)
         self.num_envs = int(num_envs if num_envs is not None else num_brains)

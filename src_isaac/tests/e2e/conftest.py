@@ -35,7 +35,6 @@ MINIMAL_SMOKE_CFG: dict = {
         "media_root": str(MEDIA_ROOT),
         "conditions": ["Object1"],
         "headless": True,
-        "binocular_vision": True,
         "input_resolution": 64,
         "reward_types": ["closeness"],
     },

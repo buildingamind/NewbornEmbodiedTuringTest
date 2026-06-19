@@ -91,7 +91,6 @@ def test_schema_accepts_recording_and_record_mode():
         {
             "record_mode": "spatial",
             "random_first_frame": True,
-            "switch_steps": 50,
             "decision_period": 5,
             "enable_neck_flexion": True,
             "enable_lateral_bending": True,
@@ -124,7 +123,6 @@ def test_schema_accepts_body_block():
     cfg = _minimal_cfg()
     cfg["body"] = {
         "wrappers": ["video"],
-        "binocular_vision": False,
         "input_resolution": 32,
     }
     validate_config(cfg, _SCHEMA)
@@ -248,9 +246,8 @@ def test_public_wrapper_names_validate_lazily():
 
 
 def test_body_is_public_and_validates_wrappers():
-    body = Body(wrappers=["video"], binocular_vision=False, input_resolution=32)
+    body = Body(wrappers=["video"], input_resolution=32)
     assert [wrapper.__name__ for wrapper in body.wrappers] == ["Video"]
-    assert body.binocular_vision is False
     assert body.input_resolution == 32
 
 

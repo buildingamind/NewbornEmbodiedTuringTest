@@ -189,7 +189,6 @@ def main() -> int:
             "media_root": f"{VIDEOS}/{media_rel}",
             "conditions": [imprint],
             "headless": True,
-            "binocular_vision": False,
             "input_resolution": res,
             "camera_fov": 150.0,
             "reward_types": ["closeness"],

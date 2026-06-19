@@ -34,10 +34,8 @@ class _Cfg:
         self.sim = _Nested()
         self.asset_root = None
         self.scene.num_envs = 1
-        self.observation.binocular = True
         self.observation.input_resolution = 64
         self.screens.random_first_frame = False
-        self.screens.switch_steps = 0
         self.screens.decision_period = 1
         self.sim.device = "cuda:0"
         self.seed = 0
@@ -45,7 +43,7 @@ class _Cfg:
 
     def __post_init__(self):
         self.post_init_calls += 1
-        width = self.observation.input_resolution * (2 if self.observation.binocular else 1)
+        width = self.observation.input_resolution
         self.derived_shape = (self.observation.input_resolution, width, 3)
 
 
@@ -66,14 +64,17 @@ def test_configure_cfg_refreshes_derived_fields_and_seed(tmp_path):
     env = Environment(
         design_sheet=_design_sheet(tmp_path),
         media_root=media_root,
-        binocular_vision=False,
         input_resolution=32,
         episode_steps=77,
         reward_types=("closeness",),
         record_mode="spatial",
         random_first_frame=True,
-        switch_steps=9,
         decision_period=3,
+        # Pass the non-default (enabled) values so this propagation test exercises
+        # the True path; the neck DOFs default to False (see test_configure_cfg_
+        # can_disable_neck_action_dofs for the default/disable path).
+        enable_neck_flexion=True,
+        enable_lateral_bending=True,
         recording={
             "egocentric": {"train": [0, 2]},
             "chamber": {"train": "1:"},
@@ -91,14 +92,12 @@ def test_configure_cfg_refreshes_derived_fields_and_seed(tmp_path):
     assert cfg.phase == "train"
     assert cfg.imprint_condition == "Object1"
     assert cfg.episode_steps == 77
-    assert cfg.observation.binocular is False
     assert cfg.observation.input_resolution == 32
     assert cfg.reward_types == ("closeness",)
     assert cfg.record_mode == "spatial"
     assert cfg.motor.enable_neck_flexion is True
     assert cfg.motor.enable_lateral_bending is True
     assert cfg.screens.random_first_frame is True
-    assert cfg.screens.switch_steps == 9
     assert cfg.screens.decision_period == 3
     assert cfg.egocentric_record_path.endswith("recordings/egocentric/train")
     assert cfg.chamber_record_path.endswith("recordings/chamber/train")
@@ -124,6 +123,25 @@ def test_configure_cfg_can_disable_neck_action_dofs(tmp_path):
 
     env._configure_cfg(cfg, task)
 
+    assert cfg.motor.enable_neck_flexion is False
+    assert cfg.motor.enable_lateral_bending is False
+
+
+def test_neck_action_dofs_default_to_disabled(tmp_path):
+    """Neck flexion / lateral bending default to False when unspecified."""
+    media_root = tmp_path / "media"
+    media_root.mkdir()
+    env = Environment(
+        design_sheet=_design_sheet(tmp_path),
+        media_root=media_root,
+    )
+    assert env.enable_neck_flexion is False
+    assert env.enable_lateral_bending is False
+
+    task = _TaskConfig()
+    task.path = tmp_path / "run"
+    cfg = _Cfg()
+    env._configure_cfg(cfg, task)
     assert cfg.motor.enable_neck_flexion is False
     assert cfg.motor.enable_lateral_bending is False
 

@@ -48,7 +48,6 @@ CONFIG: dict = {
         "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
         "conditions": ["Object1"],
         "headless": True,
-        "binocular_vision": False,
         "input_resolution": 128,
         "camera_fov": 150.0,
         "reward_types": ["closeness", "completeness"],
