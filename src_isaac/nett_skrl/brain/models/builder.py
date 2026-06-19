@@ -7,6 +7,7 @@ import torch.nn as nn
 from .deterministic_actor import DeterministicActor
 from .gaussian_actor import GaussianActor
 from .model_cfg import ModelCfg
+from .multivariate_gaussian_actor import MultivariateGaussianActor
 from .q_critic import QCritic
 from .value_critic import ValueCritic
 from .utils.init import orthogonal_init
@@ -50,7 +51,19 @@ def build_models_for_algorithm(
     }
 
     def actor():
-        cls = GaussianActor if spec.actor_type == "gaussian" else DeterministicActor
+        if spec.actor_type == "gaussian":
+            # Opt-in distribution override (default keeps diagonal GaussianActor).
+            if cfg.actor_distribution == "multivariate_gaussian":
+                cls = MultivariateGaussianActor
+            elif cfg.actor_distribution in (None, "gaussian"):
+                cls = GaussianActor
+            else:
+                raise ValueError(
+                    f"Unknown actor_distribution {cfg.actor_distribution!r}; "
+                    "expected None, 'gaussian', or 'multivariate_gaussian'."
+                )
+        else:
+            cls = DeterministicActor
         return cls(**model_kwargs)
 
     def critic():

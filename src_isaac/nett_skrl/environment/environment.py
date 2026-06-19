@@ -38,6 +38,8 @@ _ENV_CFG_FIELDS = (
     ("record_mode", "record_mode", None),
     ("motor.enable_neck_flexion", "enable_neck_flexion", bool),
     ("motor.enable_lateral_bending", "enable_lateral_bending", bool),
+    ("motor.locomotion", "locomotion", str),
+    ("lighting_mode", "lighting_mode", str),
     ("screens.random_first_frame", "random_first_frame", bool),
     ("screens.decision_period", "decision_period", int),
     ("tracemalloc_interval", "tracemalloc_interval", int),
@@ -58,6 +60,11 @@ class Environment:
         episode_steps: Steps per episode (matches Unity ``--episode-steps``).
         reward_types: Tuple of reward names accepted by ``NETTEnv``
             (``"closeness"``, ``"completeness"``, or both).
+        lighting_mode: ``"emissive"`` (default) renders with ray-traced
+            sampled-emissive area lighting — no RectLights, the two monitors are
+            the sole light source (calibrated ~300 cd/m^2). ``"rectlight"`` runs
+            the original baked-lighting baseline: Isaac-default render with
+            analytic RectLights and monitors emissive at the original 1000 value.
     """
 
     def __init__(
@@ -77,6 +84,8 @@ class Environment:
         decision_period: int = 1,
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
+        locomotion: str = "kinematic",
+        lighting_mode: str = "emissive",
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
         camera_fov: float = 120.0,
@@ -122,6 +131,23 @@ class Environment:
         self.decision_period = int(decision_period or 1)
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
+        if locomotion not in ("kinematic", "wheeled"):
+            raise ValueError(
+                f"locomotion must be 'kinematic' or 'wheeled', got {locomotion!r}"
+            )
+        self.locomotion = locomotion
+        # Lighting model, forwarded to NETTEnvCfg.lighting_mode:
+        #   "emissive" (default): ray tracing ON, no RectLights, monitors emissive
+        #       at the calibrated ~300 cd/m^2 value (chamber.usdc).
+        #   "rectlight": original baked-lighting baseline — ray tracing "off"
+        #       (Isaac-default render), analytic RectLights + monitors emissive at
+        #       the original 1000 value (chamber_rectlight.usdc).
+        if lighting_mode not in ("emissive", "rectlight"):
+            raise ValueError(
+                f"lighting_mode must be 'emissive' or 'rectlight', got "
+                f"{lighting_mode!r}"
+            )
+        self.lighting_mode = lighting_mode
         self.render_mode = render_mode
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
         self.camera_fov = float(camera_fov)
@@ -190,14 +216,23 @@ class Environment:
         else:
             cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
-        # PhysX (sim.device) MUST stay on CPU: GPU PhysX (GpuArticulationView /
-        # GpuRigidBodyView) core-dumps with an illegal memory access on the
-        # kinematic-only NETT scene at the first reset (documented in
-        # gpu_tiled_camera.py / nett_env_cfg.py / probe_device.py). Rendering and
-        # cameras still run on the GPU: the AppLauncher device is set to cuda:N
-        # above, and GpuTiledCamera pins its annotators/buffers to CUDA. Override
-        # with NETT_SIM_DEVICE only for the documented GPU-PhysX probe.
-        cfg.sim.device = os.environ.get("NETT_SIM_DEVICE", "cpu")
+        # PhysX (sim.device) for the *kinematic* agent MUST stay on CPU: GPU PhysX
+        # (GpuArticulationView / GpuRigidBodyView) core-dumps with an illegal
+        # memory access on the kinematic-only NETT scene at the first reset
+        # (documented in gpu_tiled_camera.py / nett_env_cfg.py / probe_device.py).
+        # The *wheeled* agent is a proper replicated articulation driven through
+        # the solver — exactly the configuration GPU PhysX is built for — so it
+        # defaults to the render GPU (cuda:N) to keep locomotion on-device and
+        # batched across envs. Rendering and cameras already run on the GPU
+        # (AppLauncher device is cuda:N above; GpuTiledCamera pins to CUDA).
+        # NETT_SIM_DEVICE overrides either default (e.g. the GPU-PhysX probe, or
+        # forcing the wheeled agent back to CPU for an apples-to-apples compare).
+        default_physx_device = (
+            f"cuda:{getattr(config, 'device', 0)}"
+            if getattr(self, "locomotion", "kinematic") == "wheeled"
+            else "cpu"
+        )
+        cfg.sim.device = os.environ.get("NETT_SIM_DEVICE", default_physx_device)
         self._copy_env_cfg_fields(cfg)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))

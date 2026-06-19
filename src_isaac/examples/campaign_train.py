@@ -3,11 +3,11 @@
 Drives the 9-model x 3-condition sweep requested in the project goal:
   models : CNN, 3DCNN, SimCLR-CLTT, ViT, ViT-CLTT, ViT+VICReg, ViViT,
            ViViT+VICReg, GuessWhatMoves
-  conds  : binding/Object2, parsing/ship-1, viewinvariance/Ship_Front
+  conds  : binding/Object1, parsing/fork-1, viewinvariance/Fork_Front
 
 All training hyperparameters are held identical to the VALIDATED SB3/Unity
 replication protocol (train_binding_8brain_targets.py): PPO, ent=0.01, lr=3e-4,
-rollouts=8000, mini_batches=16, learning_epochs=10, steps=500, 2000 train / 5
+rollouts=8000, mini_batches=16, learning_epochs=10, steps=500, 2000 train / 10
 test episodes, closeness-only extrinsic reward, FOV=150, 2D action space
 (neck flexion + lateral bending OFF), input_resolution=256, hidden_sizes=[],
 shared_encoder, clip_actions=False, 8 brains. ONLY the encoder (+ its temporal
@@ -74,9 +74,9 @@ MODELS: dict[str, dict] = {
 
 # experiment -> (design sheet rel path, media rel path, default imprint per goal)
 EXPERIMENTS: dict[str, tuple[str, str, str]] = {
-    "binding":        ("binding/DesignSheet_Binding.csv",               "binding/videos",        "Object2"),
-    "parsing":        ("parsing/DesignSheet_Parsing.csv",               "parsing/videos",        "ship-1"),
-    "viewinvariance": ("viewinvariance/DesignSheet_ViewInvariance.csv", "viewinvariance/videos", "Ship_Front"),
+    "binding":        ("binding/DesignSheet_Binding.csv",               "binding/videos",        "Object1"),
+    "parsing":        ("parsing/DesignSheet_Parsing.csv",               "parsing/videos",        "fork-1"),
+    "viewinvariance": ("viewinvariance/DesignSheet_ViewInvariance.csv", "viewinvariance/videos", "Fork_Front"),
 }
 
 
@@ -198,7 +198,7 @@ def main() -> int:
         "brain": brain,
         "body": {"wrappers": (["framestack"] if spec["framestack"] else [])},
         "num_brains": brains,
-        "episodes": {"train": train_eps, "test": 5},
+        "episodes": {"train": train_eps, "test": int(os.environ.get("NETT_TEST_EPS", "10"))},
         "steps_per_episode": int(os.environ.get("NETT_STEPS", "256")),
         "eval_freq": 10_000_000,
         "task_memory": float(os.environ.get("NETT_TASK_MEMORY", "1")),

@@ -167,6 +167,7 @@
         "decision_period":  { "type": "integer", "minimum": 1, "default": 1 },
         "enable_neck_flexion": { "type": "boolean", "default": true },
         "enable_lateral_bending": { "type": "boolean", "default": true },
+        "locomotion": { "type": "string", "enum": ["kinematic", "wheeled"], "default": "kinematic" },
         "recording": {
           "type": "object",
           "properties": {

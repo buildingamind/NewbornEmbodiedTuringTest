@@ -168,7 +168,9 @@ _brain: dict = {
         "clip_actions": False,
     },
     "wandb": {
-        "mode": "online",
+        # Env-controllable so unattended runs can avoid the wandb-login prompt
+        # (set NETT_WANDB_MODE=offline when no API key is configured).
+        "mode": os.environ.get("NETT_WANDB_MODE", "online"),
         "project": f"nett-{EXP}-replication",
         "tags": [
             ENC, "ppo", "8brain", EXP, IMPRINT,

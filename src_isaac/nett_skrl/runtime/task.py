@@ -119,9 +119,47 @@ class Task:
 
 
 def set_seeds(seed: int) -> None:
-    """Reproducibility — same call site as legacy, minus cv2 (deferred until needed)."""
+    """Seed every RNG **and** force deterministic CUDA execution.
+
+    Same call site as legacy (parent ``run_task`` + child ``_run_single_mode``),
+    run before any Isaac/CUDA import so the env vars below take effect before the
+    CUDA context is created. Seeding alone is not enough for cross-run /
+    cross-machine reproducibility: cuDNN's autotuner and nondeterministic CUDA
+    kernels must also be pinned, otherwise same-seed runs diverge (especially on
+    different GPUs). See workspace/notes/09_reproducibility.md (G1, G3).
+    """
+    import os
+
+    seed = int(seed)
+    # Env vars first — must precede CUDA context creation.
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    # Deterministic cuBLAS GEMMs (see CUDA cuBLAS reproducibility docs).
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+
+    # Seed skrl's PRNG keys (config.torch.key etc.) from the same seed so the
+    # agent + the env-reset seed read in body/skrl_adapter.py are condition-derived
+    # and reproducible. Guarded so set_seeds stays usable without skrl installed.
+    # NOTE: skrl.set_seed(deterministic=True) calls torch.use_deterministic_
+    # algorithms(True) in *strict* mode; we re-assert warn_only below so it does
+    # not override our policy.
+    try:
+        from skrl.utils import set_seed as _skrl_set_seed
+
+        _skrl_set_seed(seed, deterministic=True)
+    except Exception:  # pragma: no cover - skrl optional / version drift
+        pass
+
+    # Assert our determinism policy LAST so it wins over skrl's strict toggle.
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    # warn_only: some ops (e.g. certain scatter/pool/index kernels Isaac's
+    # renderer/camera path may invoke on CUDA) lack a deterministic
+    # implementation. warn_only makes them WARN instead of raising and killing a
+    # long training run, while every op that *can* be deterministic still is.
+    torch.use_deterministic_algorithms(True, warn_only=True)
 

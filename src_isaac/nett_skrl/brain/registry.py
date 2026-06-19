@@ -51,6 +51,10 @@ from .rewards import (
 
 AlgorithmFamily = Literal["on_policy", "cross_entropy", "continuous_off_policy"]
 ActorType = Literal["gaussian", "deterministic"]
+# Optional opt-in distribution override applied to "gaussian" actors via
+# ModelCfg.actor_distribution (see models/builder.py); the per-algorithm
+# AlgorithmSpec.actor_type itself stays "gaussian".
+ActorDistribution = Literal["gaussian", "multivariate_gaussian"]
 CriticType = Literal["value", "q"]
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .task import Task
+from .task import Task, set_seeds
 
 
 def build_tasks(
@@ -41,6 +41,9 @@ def validate_tasklist(tasks: list[Task]) -> None:
     """Smoke-validate by loading each task's env once through its body."""
     for task in tasks:
         config = task.config
+        # Match the real run path (task_runner): seed before building the env so
+        # the smoke-validation load is deterministic too (Critic W2).
+        set_seeds(config.seed)
         run_config = config.for_mode("train")
         log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)

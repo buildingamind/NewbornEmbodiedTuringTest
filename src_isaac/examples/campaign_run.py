@@ -29,7 +29,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PY = "/home/zlaborde/code/isaac/.venv/nett_private/bin/python"
+PY = "/home/zlaborde/code/.venv/nett_private/bin/python"
 CAMPAIGN = Path("/home/zlaborde/code/isaac/campaign")
 LOGS = CAMPAIGN / "logs"
 DONE = CAMPAIGN / "done"
@@ -85,6 +85,26 @@ def job_oomed(job_id: str) -> bool:
     except OSError:
         return False
     return "out of memory" in txt or "OutOfMemoryError" in txt
+
+
+# A just-freed GPU's VRAM is not released instantly (Isaac/CUDA teardown lag).
+# Launching the next job onto it too soon makes NETT's pre-flight memory check
+# (JobTooBigError) see <1 GB free and abort. So: (1) let a freed GPU settle before
+# reusing it, and (2) treat JobTooBigError as a transient "GPU busy" condition and
+# requeue the job rather than marking it permanently failed.
+SETTLE_SECS = 90
+MAX_TOOBIG_RETRIES = 8
+
+
+def job_too_big(job_id: str) -> bool:
+    log = LOGS / f"{job_id}.log"
+    if not log.exists():
+        return False
+    try:
+        txt = log.read_text(errors="ignore")
+    except OSError:
+        return False
+    return "JobTooBigError" in txt or "Task size exceeds the free memory" in txt
 
 
 def launch(job: dict, gpu: int) -> subprocess.Popen:
@@ -148,14 +168,19 @@ def main() -> int:
 
     queue = [j for j in jobs if state[j["id"]]["status"] == "pending"]
     free_gpus = list(gpus)
+    gpu_ready_at: dict[int, float] = {g: 0.0 for g in gpus}  # earliest reuse time
+    toobig_retries: dict[str, int] = {}
     running: dict[int, tuple[str, subprocess.Popen]] = {}  # gpu -> (job_id, proc)
     print(f"[campaign] {len(jobs)} jobs, {len(queue)} pending, gpus={gpus} "
           f"(concurrent, one job per GPU)", flush=True)
     write_status(jobs, state, running)
 
     while queue or running:
-        while queue and free_gpus:
-            gpu = free_gpus.pop(0)
+        now = time.time()
+        ready_gpus = [g for g in free_gpus if now >= gpu_ready_at.get(g, 0.0)]
+        while queue and ready_gpus:
+            gpu = ready_gpus.pop(0)
+            free_gpus.remove(gpu)
             job = queue.pop(0)
             proc = launch(job, gpu)
             running[gpu] = (job["id"], proc)
@@ -185,10 +210,17 @@ def main() -> int:
                 queue.append(job)
                 print(f"[campaign] OOM   {jid} -> retry rung {job['rung']} "
                       f"(mini_batches={job['mini_batches']}, envs={job['max_envs']})", flush=True)
+            elif job_too_big(jid) and toobig_retries.get(jid, 0) < MAX_TOOBIG_RETRIES:
+                toobig_retries[jid] = toobig_retries.get(jid, 0) + 1
+                state[jid].update(status="pending", gpu=None)
+                queue.append(job)
+                print(f"[campaign] BUSY  {jid} (JobTooBig: GPU VRAM not yet free) -> "
+                      f"requeue (attempt {toobig_retries[jid]}/{MAX_TOOBIG_RETRIES})", flush=True)
             else:
                 state[jid]["status"] = "failed"
                 print(f"[campaign] FAIL  {jid} rc={rc} (gpu{gpu})", flush=True)
             del running[gpu]
+            gpu_ready_at[gpu] = time.time() + SETTLE_SECS
             free_gpus.append(gpu)
         write_status(jobs, state, running)
 
