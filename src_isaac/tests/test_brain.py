@@ -955,7 +955,7 @@ def test_target_side_oracle_actions_steer_toward_target_monitors():
 
     class _Motor:
         x = torch.zeros(2)
-        z_pos = torch.zeros(2)
+        y_pos = torch.zeros(2)
         yaw_deg = torch.zeros(2)
 
     class _ActionSpace:

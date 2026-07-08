@@ -220,10 +220,10 @@ class BrainTrainer:
         action_dim = int(getattr(action_space, "shape", (2,))[0])
         actions = torch.zeros((self.env.num_envs, action_dim), device=self.device)
         x = motor.x.to(self.device)
-        z = motor.z_pos.to(self.device)
+        y = motor.y_pos.to(self.device)
         yaw = motor.yaw_deg.to(self.device)
         target_x = torch.empty_like(x)
-        target_z = torch.zeros_like(z)
+        target_y = torch.zeros_like(y)
         half_x = float(getattr(cfg, "chamber_half_x", 33.15))
 
         for env_id in range(self.env.num_envs):
@@ -231,8 +231,8 @@ class BrainTrainer:
             target_x[env_id] = -half_x if side == "left" else half_x
 
         dx = target_x - x
-        dz = target_z - z
-        desired_yaw = torch.rad2deg(torch.atan2(-dx, dz)).remainder(360.0)
+        dy = target_y - y
+        desired_yaw = torch.rad2deg(torch.atan2(-dx, dy)).remainder(360.0)
         error = (desired_yaw - yaw + 180.0).remainder(360.0) - 180.0
         turn_limit = float(getattr(getattr(cfg, "motor", None), "body_turn_speed_limit", 20.0))
         actions[:, 0] = (error / max(turn_limit, 1e-6)).clamp(-1.0, 1.0)

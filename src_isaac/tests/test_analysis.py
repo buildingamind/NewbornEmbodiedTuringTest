@@ -148,7 +148,7 @@ class TestInCorrectChamberThird:
 # ---------------------------------------------------------------------------
 
 _HEADER = [
-    "env_id", "episode", "step", "agent.x", "agent.z", "agent.angle",
+    "env_id", "episode", "step", "agent.x", "agent.y", "agent.angle",
     "head.flexion", "head.lateral", "left.monitor", "right.monitor",
     "correct.monitor", "experiment.phase", "imprint.cond", "test.cond",
 ]
@@ -167,14 +167,14 @@ def _row(
     test_cond: str,
     agent_x: float,
     correct: str,
-    agent_z: float = 0.0,
+    agent_y: float = 0.0,
     yaw: float = 0.0,
 ) -> dict:
     """Build one test-CSV row with the given agent_x and correct monitor."""
     base = {h: "" for h in _HEADER}
     base.update({
         "env_id": str(env_id), "episode": "0", "step": "0",
-        "agent.x": str(agent_x), "agent.z": str(agent_z), "agent.angle": str(yaw),
+        "agent.x": str(agent_x), "agent.y": str(agent_y), "agent.angle": str(yaw),
         "head.flexion": "0.0", "head.lateral": "0.0",
         "left.monitor": "L.mov", "right.monitor": "R.mov",
         "correct.monitor": correct,
@@ -332,7 +332,7 @@ class TestTestVizPositionMetric:
 
 
 @pytest.mark.parametrize(
-    "agent_x,agent_z,yaw_deg,expected",
+    "agent_x,agent_y,yaw_deg,expected",
     [
         (0.0, 0.0, 90.0, "left"),
         (0.0, 0.0, 270.0, "right"),
@@ -340,8 +340,8 @@ class TestTestVizPositionMetric:
         (10.0, 0.0, 270.0, "right"),
     ],
 )
-def test_looking_at_monitor_cardinal_directions(agent_x, agent_z, yaw_deg, expected):
-    assert looking_at_monitor(agent_x, agent_z, yaw_deg, DEFAULT_CHAMBER_HALF_X) == expected
+def test_looking_at_monitor_cardinal_directions(agent_x, agent_y, yaw_deg, expected):
+    assert looking_at_monitor(agent_x, agent_y, yaw_deg, DEFAULT_CHAMBER_HALF_X) == expected
 
 
 # ---------------------------------------------------------------------------

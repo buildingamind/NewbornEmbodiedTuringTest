@@ -33,7 +33,7 @@ UNITY_CSV_HEADER = [
     "episode",
     "step",
     "agent.x",
-    "agent.z",
+    "agent.y",
     "agent.angle",
     "head.flexion",
     "head.lateral",

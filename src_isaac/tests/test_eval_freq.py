@@ -317,12 +317,12 @@ def test_preferences_from_csv_correct_monitor(tmp_path):
     from nett_skrl.recording.wandb import _preferences_from_csv
 
     # Build a CSV where agent is perfectly facing the correct (left) monitor.
-    # left monitor is at x = -33.15, agent at x=0, z=0.
+    # left monitor is at x = -33.15, agent at x=0, y=0.
     # Facing left: yaw such that gaze goes left → yaw=90 degrees
     # Forward = (-sin(90°), cos(90°)) = (-1, 0) → points toward negative x (left monitor).
     csv_path = tmp_path / "test_C1_0_2000.csv"
     rows = [
-        "test.cond,agent.x,agent.z,agent.angle,correct.monitor",
+        "test.cond,agent.x,agent.y,agent.angle,correct.monitor",
         # Facing left monitor = correct
         "testA,0,0,90.0,left",
         "testA,0,0,90.0,left",
@@ -340,7 +340,7 @@ def test_preferences_from_csv_wrong_monitor(tmp_path):
 
     csv_path = tmp_path / "test_C1_0_2000.csv"
     rows = [
-        "test.cond,agent.x,agent.z,agent.angle,correct.monitor",
+        "test.cond,agent.x,agent.y,agent.angle,correct.monitor",
         # Facing left monitor, but correct is right → wrong
         "testA,0,0,90.0,right",
         "testA,0,0,90.0,right",
@@ -361,7 +361,7 @@ def test_preferences_from_csv_bad_rows(tmp_path):
     csv_path = tmp_path / "test_C1_0.csv"
     # Rows with missing/invalid fields should be silently skipped.
     rows = [
-        "test.cond,agent.x,agent.z,agent.angle,correct.monitor",
+        "test.cond,agent.x,agent.y,agent.angle,correct.monitor",
         "testA,not_a_float,0,90.0,left",
         "testA,0,0,not_a_float,left",
         ",0,0,90.0,left",  # empty test.cond

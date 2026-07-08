@@ -422,7 +422,7 @@ def _reward_curve_from_tfevents(EA, tfevents_path: Path) -> list[tuple[int, floa
 
 
 def looking_at_monitor(
-    agent_x: float, agent_z: float, yaw_deg: float, half_x: float
+    agent_x: float, agent_y: float, yaw_deg: float, half_x: float
 ) -> str:
     """Return ``"left"`` or ``"right"`` for the monitor the agent's forward
     vector points more toward, given the NETT yaw convention
@@ -436,8 +436,8 @@ def looking_at_monitor(
     rad = math.radians(yaw_deg)
     fx, fy = -math.sin(rad), math.cos(rad)
     # Monitor centers sit on the X-walls at world y = 0.
-    left_dx, left_dy = -half_x - agent_x, -agent_z
-    right_dx, right_dy = half_x - agent_x, -agent_z
+    left_dx, left_dy = -half_x - agent_x, -agent_y
+    right_dx, right_dy = half_x - agent_x, -agent_y
     left_norm = math.hypot(left_dx, left_dy) or 1.0
     right_norm = math.hypot(right_dx, right_dy) or 1.0
     left_dot = (left_dx * fx + left_dy * fy) / left_norm

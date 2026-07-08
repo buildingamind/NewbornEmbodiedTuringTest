@@ -231,12 +231,12 @@ def _preferences_from_csv(csv_path: Path) -> dict[str, list[float]]:
         for row in rows:
             try:
                 ax = float(row["agent.x"])
-                az = float(row["agent.z"])
+                ay = float(row["agent.y"])
                 yaw = float(row["agent.angle"])
                 correct_monitor = row.get("correct.monitor", "")
             except (KeyError, ValueError):
                 continue
-            looking = _looking_at_monitor(ax, az, yaw)
+            looking = _looking_at_monitor(ax, ay, yaw)
             correct += int(looking == correct_monitor)
             total += 1
         if total > 0:
@@ -244,13 +244,13 @@ def _preferences_from_csv(csv_path: Path) -> dict[str, list[float]]:
     return result
 
 
-def _looking_at_monitor(ax: float, az: float, yaw_deg: float) -> str:
+def _looking_at_monitor(ax: float, ay: float, yaw_deg: float) -> str:
     """Return 'left' or 'right' for the monitor the agent's gaze vector points toward."""
     half_x = _DEFAULT_CHAMBER_HALF_X
     rad = math.radians(yaw_deg)
     fx, fy = -math.sin(rad), math.cos(rad)
-    left_dx, left_dy = -half_x - ax, -az
-    right_dx, right_dy = half_x - ax, -az
+    left_dx, left_dy = -half_x - ax, -ay
+    right_dx, right_dy = half_x - ax, -ay
     left_norm = math.hypot(left_dx, left_dy) or 1.0
     right_norm = math.hypot(right_dx, right_dy) or 1.0
     left_dot = (left_dx * fx + left_dy * fy) / left_norm
