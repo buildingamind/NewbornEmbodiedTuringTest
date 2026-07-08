@@ -14,7 +14,6 @@ environment:
   media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
   conditions: [Object1]            # one condition → one Isaac Sim process
   headless: true
-  binocular_vision: true
   input_resolution: 64
   enable_neck_flexion: true
   enable_lateral_bending: true

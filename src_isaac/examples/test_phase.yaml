@@ -13,7 +13,6 @@ environment:
   media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
   conditions: [Object1]
   headless: true
-  binocular_vision: true
   input_resolution: 64
   reward_types: [closeness]
 

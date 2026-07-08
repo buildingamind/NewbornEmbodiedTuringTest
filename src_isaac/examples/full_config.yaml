@@ -30,7 +30,6 @@ environment:
   headless: true
 
   # Two side cameras concatenated (H, 2W, 3) vs one center camera (H, W, 3).
-  binocular_vision: true
 
   # Per-eye square resolution. Lower = faster training, less visual detail.
   # The default native encoders support every schema-valid value >= 16.
@@ -127,7 +126,6 @@ brain:
 # ----------------------------------------------------------------------------
 # Body — observation transforms and perception-side overrides.
 # Supported wrappers: "dvs", "retina", "video".
-# Use environment.binocular_vision for binocular egocentric cameras.
 # ----------------------------------------------------------------------------
 body:
   wrappers: []
