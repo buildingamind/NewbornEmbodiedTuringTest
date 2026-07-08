@@ -169,6 +169,15 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
                     "NETT_AUX_LOSS set but algorithm is not PPO; aux loss ignored."
                 )
 
+        # Stock PPO -> MetricsPPO so the SB3/Unity-parity health metrics
+        # (KL divergence, clip fraction, explained variance, entropy, LR) are
+        # logged. Exact-class check leaves AuxLossPPO and non-PPO algorithms
+        # untouched; MetricsPPO is behaviourally identical to PPO.
+        from skrl.agents.torch.ppo import PPO as _SkrlPPO
+        if agent_cls is _SkrlPPO:
+            from .ppo_metrics import MetricsPPO
+            agent_cls = MetricsPPO
+
         agent = agent_cls(
             models=models,
             memory=memory,

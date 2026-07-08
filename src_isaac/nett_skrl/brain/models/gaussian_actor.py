@@ -25,6 +25,12 @@ class GaussianActor(GaussianMixin, Model, FeatureBackbone):
         GaussianMixin.__init__(
             self,
             clip_actions=cfg.clip_actions,
+            # Cap the exploration std when configured (default keeps skrl's max_log_std=2).
+            **(
+                {"clip_log_std": True, "max_log_std": float(cfg.max_log_std)}
+                if cfg.max_log_std is not None
+                else {}
+            ),
         )
         last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.mean_layer = nn.Linear(last, self.num_actions)

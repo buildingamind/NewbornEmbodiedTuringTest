@@ -209,3 +209,8 @@ class AuxLossPPO(PPO):
         self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
         if self.scheduler:
             self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])
+
+        # SB3/Unity-parity health metrics (KL divergence, clip fraction,
+        # explained variance, entropy) — same as the stock MetricsPPO path.
+        from ..ppo_metrics import track_ppo_health_metrics
+        track_ppo_health_metrics(self)

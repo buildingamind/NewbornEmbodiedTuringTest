@@ -20,8 +20,13 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from ..runtime.task import TaskConfig
+from ..runtime.task import TaskConfig, recording_phase_map
 from .design import get_experiment_design, validate_conditions
+from .physx_strategy import (
+    probe_free_vram_bytes,
+    select_physx_strategy,
+    usable_cpu_threads,
+)
 
 logger = logging.getLogger("nett.environment")
 
@@ -43,6 +48,7 @@ _ENV_CFG_FIELDS = (
     ("screens.random_first_frame", "random_first_frame", bool),
     ("screens.decision_period", "decision_period", int),
     ("tracemalloc_interval", "tracemalloc_interval", int),
+    ("train_step_logging", "train_step_logging", bool),
 )
 
 
@@ -90,6 +96,7 @@ class Environment:
         tracemalloc_interval: int = 0,
         camera_fov: float = 120.0,
         train_phase: str = "train",
+        train_step_logging: bool = False,
     ):
         # A self-contained experiment bundle (dir or .zip with a design CSV +
         # videos) supplies both design_sheet and media_root. See
@@ -152,6 +159,10 @@ class Environment:
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
         self.camera_fov = float(camera_fov)
         self.train_phase: str = train_phase
+        # Per-step train-phase CSV logging. Default OFF: it's a per-step GPU->CPU
+        # handover the rest analysis never reads (analyze uses test CSVs +
+        # tfevents). Set True to restore the diagnostic train trajectory CSV.
+        self.train_step_logging: bool = bool(train_step_logging)
         self.num_brains = 1  # overridden by adjust_to_agent()
         self.num_envs = 1  # total vectorized Isaac env rows
 
@@ -216,23 +227,39 @@ class Environment:
         else:
             cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
-        # PhysX (sim.device) for the *kinematic* agent MUST stay on CPU: GPU PhysX
-        # (GpuArticulationView / GpuRigidBodyView) core-dumps with an illegal
-        # memory access on the kinematic-only NETT scene at the first reset
-        # (documented in gpu_tiled_camera.py / nett_env_cfg.py / probe_device.py).
-        # The *wheeled* agent is a proper replicated articulation driven through
-        # the solver — exactly the configuration GPU PhysX is built for — so it
-        # defaults to the render GPU (cuda:N) to keep locomotion on-device and
-        # batched across envs. Rendering and cameras already run on the GPU
-        # (AppLauncher device is cuda:N above; GpuTiledCamera pins to CUDA).
-        # NETT_SIM_DEVICE overrides either default (e.g. the GPU-PhysX probe, or
-        # forcing the wheeled agent back to CPU for an apples-to-apples compare).
-        default_physx_device = (
-            f"cuda:{getattr(config, 'device', 0)}"
-            if getattr(self, "locomotion", "kinematic") == "wheeled"
-            else "cpu"
+        # PhysX (sim.device) placement is chosen at init by select_physx_strategy,
+        # which encodes the parallelization policy:
+        #   * kinematic locomotion MUST stay on CPU PhysX — GPU PhysX
+        #     (GpuArticulationView / GpuRigidBodyView) core-dumps with an illegal
+        #     memory access on the kinematic-only NETT scene at the first reset
+        #     (documented in gpu_tiled_camera.py / nett_env_cfg.py / probe_device.py);
+        #   * the *wheeled* agent is a replicated articulation stepped by the
+        #     solver — exactly what GPU PhysX is built for — so it defaults to the
+        #     render GPU (cuda:N) to keep locomotion on-device and batched across
+        #     envs (rendering/cameras already run there);
+        #   * BUT when free VRAM cannot hold the GPU-PhysX state for the requested
+        #     num_envs, the strategy offloads the wheeled solver to CPU PhysX —
+        #     only if the host has enough threads to absorb it — freeing VRAM so
+        #     more rendered envs fit (the goal's "offload to CPU iff it raises the
+        #     parallelism that fits").
+        # NETT_SIM_DEVICE remains an absolute override (GPU-PhysX probe, or forcing
+        # the wheeled agent back to CPU for an apples-to-apples compare).
+        render_device_index = int(getattr(config, "device", 0) or 0)
+        strategy = select_physx_strategy(
+            locomotion=getattr(self, "locomotion", "kinematic"),
+            render_device_index=render_device_index,
+            num_envs=int(getattr(self, "num_envs", 1) or 1),
+            free_vram_bytes=(
+                probe_free_vram_bytes(render_device_index)
+                if getattr(self, "locomotion", "kinematic") == "wheeled"
+                else None
+            ),
+            cpu_threads=usable_cpu_threads(),
+            override=os.environ.get("NETT_SIM_DEVICE"),
         )
-        cfg.sim.device = os.environ.get("NETT_SIM_DEVICE", default_physx_device)
+        cfg.sim.device = strategy.device
+        log = logger.warning if strategy.vram_warning else logger.info
+        log("PhysX placement: %s (%s)", strategy.device, strategy.rationale)
         self._copy_env_cfg_fields(cfg)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))
@@ -291,7 +318,7 @@ class Environment:
         """
         if getattr(config, "eval_metrics_only", False):
             return ()
-        section = (self.recording or {}).get(kind, {}) or {}
+        section = recording_phase_map(self.recording, kind)
         if config.current_mode not in section:
             return ()
         total_episodes = int(getattr(config, "episodes", {}).get(config.current_mode, 1))

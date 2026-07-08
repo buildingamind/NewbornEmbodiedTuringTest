@@ -96,30 +96,22 @@ class Brain:
                 "evaluation_policy must be 'agent' or 'target_side_oracle'; "
                 f"got {evaluation_policy!r}"
             )
-        self._assign_attrs({
-            "reward_spec": reward,
-            "encoder": validate_encoder(encoder),
-            "algorithm": validate_algorithm(algorithm),
-            "reward": validate_reward(reward),
-            "evaluation_policy": evaluation_policy,
-        })
+        self.reward_spec = reward
+        self.encoder = validate_encoder(encoder)
+        self.algorithm = validate_algorithm(algorithm)
+        self.reward = validate_reward(reward)
+        self.evaluation_policy = evaluation_policy
         self._raise_if_unsupported_intrinsic_reward(reward)
         spec = algorithm_spec(self.algorithm)
 
-        self._assign_attrs({
-            "checkpoint_freq": int(checkpoint_freq) if checkpoint_freq is not None else None,
-            "encoder_cfg": EncoderCfg.from_value(encoder_cfg),
-            "algorithm_cfg": algorithm_cfg_from(algorithm_cfg, spec),
-            "model_cfg": model if isinstance(model, ModelCfg) else model_cfg_from(model),
-            "reward_cfg": RewardCfg.from_value(reward_cfg),
-            "wandb_cfg": _normalize_wandb_cfg(wandb),
-        })
+        self.checkpoint_freq = int(checkpoint_freq) if checkpoint_freq is not None else None
+        self.encoder_cfg = EncoderCfg.from_value(encoder_cfg)
+        self.algorithm_cfg = algorithm_cfg_from(algorithm_cfg, spec)
+        self.model_cfg = model if isinstance(model, ModelCfg) else model_cfg_from(model)
+        self.reward_cfg = RewardCfg.from_value(reward_cfg)
+        self.wandb_cfg = _normalize_wandb_cfg(wandb)
 
         self._init_runtime_state()
-
-    def _assign_attrs(self, values: dict[str, Any]) -> None:
-        for name, value in values.items():
-            setattr(self, name, value)
 
     def _raise_if_unsupported_intrinsic_reward(self, reward: str | type | None) -> None:
         if (

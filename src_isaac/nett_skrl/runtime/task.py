@@ -163,3 +163,15 @@ def set_seeds(seed: int) -> None:
     # long training run, while every op that *can* be deterministic still is.
     torch.use_deterministic_algorithms(True, warn_only=True)
 
+
+def recording_phase_map(recording, kind: str) -> dict:
+    """Per-phase episode mapping for recording camera ``kind``.
+
+    The recording config has shape ``{<camera>: {<phase>: selector}}``; a camera
+    is "enabled" purely by having a non-empty per-phase mapping (there is no
+    separate boolean flag). Returns ``{}`` when the camera is absent. Shared by
+    ``environment`` (phase-membership check) and ``runtime.task_runner``
+    (non-empty / enabled check) so both read the same predicate.
+    """
+    return (recording or {}).get(kind, {}) or {}
+

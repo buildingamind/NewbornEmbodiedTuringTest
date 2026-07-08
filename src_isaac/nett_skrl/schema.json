@@ -81,12 +81,14 @@
             "hidden_sizes": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "default": [64, 64] },
             "activation": { "type": "string", "enum": ["elu", "relu", "tanh"], "default": "elu" },
             "initial_log_std": { "type": "number", "default": 0.0 },
+            "max_log_std": { "type": ["number", "null"], "default": null },
             "clip_actions": { "type": "boolean", "default": true },
             "value_bound": { "type": ["number", "null"], "default": 10.0 },
             "orthogonal_init": { "type": "boolean", "default": true },
             "hidden_gain": { "type": "number", "exclusiveMinimum": 0, "default": 1.4142135623730951 },
             "output_gain": { "type": "number", "exclusiveMinimum": 0, "default": 0.01 },
-            "shared_encoder": { "type": "boolean", "default": false }
+            "shared_encoder": { "type": "boolean", "default": false },
+            "actor_distribution": { "type": ["string", "null"], "enum": ["gaussian", "multivariate_gaussian", null], "default": null }
           },
           "additionalProperties": false,
           "default": {}
@@ -195,6 +197,11 @@
           "type": "integer",
           "minimum": 0,
           "default": 0
+        },
+        "train_step_logging": {
+          "description": "Per-step CSV logging during the train phase. Default false: the per-step _log_step_batch GPU->CPU sync + O(num_envs) host loop is the dominant per-step CPU handover, and analyze() reads only the TEST CSVs + tfevents (never the train CSV), so disabling it speeds up (esp. highly-parallel) training with no effect on learning or the rest score. Set true to restore the diagnostic per-step train trajectory CSV.",
+          "type": "boolean",
+          "default": false
         }
       },
       "anyOf": [

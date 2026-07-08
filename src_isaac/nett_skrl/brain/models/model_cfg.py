@@ -14,6 +14,12 @@ class ModelCfg:
     hidden_sizes: list[int] = field(default_factory=lambda: [64, 64])
     activation: str = "elu"
     initial_log_std: float = 0.0
+    # Upper bound on the policy log-std (caps exploration std at exp(max_log_std)).
+    # None keeps skrl's default of 2.0 (std up to e^2 ~ 7.39, effectively random).
+    # Lowering it (e.g. ~0.92 -> std cap 2.5) prevents the entropy bonus from
+    # inflating std without bound on hard/long runs (the num_envs=16 side-lock
+    # remediation). See workspace notes on entropy/sigma-runaway.
+    max_log_std: float | None = None
     clip_actions: bool = True
     value_bound: float | None = 10.0
     orthogonal_init: bool = True

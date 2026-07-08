@@ -280,11 +280,11 @@ def test_env_branches_locomotion_at_all_three_call_sites():
     src = _read(_NETT_ENV_PY)
     assert "_is_wheeled" in src
     # Pre-physics: wheeled drives actuators instead of writing root pose.
-    assert "drive_wheeled_actuators(self)" in src
+    assert "self.rig.drive_wheeled_actuators()" in src
     # Post-physics: wheeled reads the root pose back.
-    assert "sync_cameras_from_physics(self)" in src
+    assert "self.rig.sync_cameras_from_physics()" in src
     # Reset: wheeled teleports just the reset envs.
-    assert "reset_wheeled_pose(self, env_ids)" in src
+    assert "self.rig.reset_wheeled_pose(env_ids)" in src
 
 
 def test_wheeled_drives_joints_and_does_not_write_root_pose():
@@ -340,37 +340,43 @@ def test_diff_drive_geometry_on_motor_cfg_not_hardcoded():
     assert "def unicycle_from_wheels(" in src
 
 
-def test_wheeled_commands_body_twist_as_root_velocity():
-    """Critic B1: locomotion is driven by commanding the root link velocity (the
-    PhysX solver integrates the body motion), since the floating, gravity-free
-    chick has no wheel/floor traction. The wheel JOINTS still spin visually."""
+def test_wheeled_drives_real_traction_not_root_velocity_override():
+    """Real-traction contract: locomotion comes from the differential-drive
+    controller writing WHEEL joint velocity targets; gravity + tyre/floor friction
+    move the body through the PhysX solver. The old velocity-override path (writing
+    the root link's spatial velocity directly, with the wheels spun only for show)
+    is gone — the drive path must NOT command the root velocity/pose."""
     src = _read(_CAMERA_RIG_PY)
     start = src.index("def drive_wheeled_actuators(")
     end = src.index("def reset_wheeled_pose(")
     body = src[start:end]
-    assert "write_root_link_velocity_to_sim(" in body
-    assert "unicycle_from_wheels(" in body
-    assert "set_joint_velocity_target(" in body  # visual wheel spin retained
-    assert "write_root_link_pose_to_sim" not in body  # never writes pose each step
+    # Friction-driven wheels via the on-device diff-drive controller.
+    assert "_diffdrive" in body and "expand_to_wheels(" in body
+    assert "set_joint_velocity_target(" in body
+    # No root-state override and no per-step pose write — PhysX owns the body pose.
+    assert "write_root_link_velocity_to_sim" not in body
+    assert "write_root_link_pose_to_sim" not in body
+    assert "unicycle_from_wheels(" not in body
 
 
-def test_wheeled_enforces_chamber_bounds_without_host_sync():
-    """Critic B2 + perf goal: the read-back clamps the REPORTED x/z to the chamber
-    walls (pure tensor op), and containment of the physical body is the
-    velocity-wall-clamp in drive_wheeled_actuators — NO per-step host
-    sync / pose-correction round-trip."""
+def test_wheeled_reports_true_physics_pose_no_wall_clamp():
+    """Containment is now PURE COLLISION (the body physically bumps the chamber
+    walls), so the read-back reports the TRUE PhysX pose: no chamber x/z clamp, no
+    superimposed velocity-wall-clamp, no host-syncing pose correction. This keeps
+    the per-step path a pure on-device tensor read."""
     src = _read(_CAMERA_RIG_PY)
     start = src.index("def sync_cameras_from_physics(")
     end = src.index("def sync_chick_and_camera_poses(")
     body = src[start:end]
-    assert "motor.x_min" in body and "motor.x_max" in body
-    assert ".clamp(" in body
-    # The host-syncing pose-correction is gone.
+    # True pose mirrored into motor state for logging/rewards, unclamped.
+    assert "root_link_pose_w" in body
+    assert "motor.x_min" not in body and "motor.x_max" not in body
+    assert ".clamp(" not in body
     assert "oob" not in body
     assert "write_root_link_pose_to_sim" not in body
-    # Containment moved to the velocity clamp (pure tensor) in the drive path.
+    # The old superimposed velocity wall-clamp is gone from the drive path too.
     drive = src[src.index("def drive_wheeled_actuators("):src.index("def reset_wheeled_pose(")]
-    assert "clamp_planar_velocity_at_walls(" in drive
+    assert "clamp_planar_velocity_at_walls(" not in drive
 
 
 def test_wheeled_per_step_path_has_no_host_sync():
@@ -396,7 +402,7 @@ def test_wheeled_reads_pose_before_rewards_via_get_dones():
     dones_idx = src.index("def _get_dones(")
     # The sync + freshness flag are set inside _get_dones for the wheeled path.
     dones_body = src[dones_idx:dones_idx + 500]
-    assert "sync_cameras_from_physics(self)" in dones_body
+    assert "self.rig.sync_cameras_from_physics()" in dones_body
     assert "_wheeled_pose_fresh = True" in dones_body
     obs_idx = src.index("def _get_observations(")
     obs_body = src[obs_idx:obs_idx + 600]
@@ -408,7 +414,7 @@ def test_reset_clears_freshness_flag_so_first_obs_is_not_stale():
     clear the flag so _get_observations re-reads the just-teleported pose instead
     of rendering the pre-reset pose on the new episode's first frame."""
     src = _read(_NETT_ENV_PY)
-    reset_idx = src.index("reset_wheeled_pose(self, env_ids)")
+    reset_idx = src.index("self.rig.reset_wheeled_pose(env_ids)")
     after = src[reset_idx:reset_idx + 400]
     assert "self._wheeled_pose_fresh = False" in after
 
@@ -422,7 +428,7 @@ def test_wheeled_locomotion_gated_off_in_record_phase():
     prop_body = src[prop_idx:prop_idx + 1000]
     assert "not isinstance(self.phase, RecordPhase)" in prop_body
     # All four locomotion call sites use the record-aware gate, not raw _is_wheeled.
-    for anchor in ("drive_wheeled_actuators(self)", "reset_wheeled_pose(self, env_ids)"):
+    for anchor in ("self.rig.drive_wheeled_actuators()", "self.rig.reset_wheeled_pose(env_ids)"):
         a = src.index(anchor)
         # the nearest preceding `if self.<gate>` should be the record-aware one
         preceding = src.rfind("if self._", 0, a)

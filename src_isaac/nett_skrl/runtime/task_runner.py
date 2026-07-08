@@ -20,7 +20,7 @@ import torch
 
 from nett_skrl.recording import RecordingCfg
 
-from .task import Task, TaskConfig, set_seeds
+from .task import Task, TaskConfig, recording_phase_map, set_seeds
 
 
 def run_task(task: Task) -> None:
@@ -312,8 +312,8 @@ def _make_record_cfg(env, config: TaskConfig) -> RecordingCfg | None:
     if getattr(config, "eval_metrics_only", False):
         return None
     recording = getattr(env, "recording", {}) or {}
-    ego_enabled = bool(recording.get("egocentric") or {})
-    chamber_enabled = bool(recording.get("chamber") or {})
+    ego_enabled = bool(recording_phase_map(recording, "egocentric"))
+    chamber_enabled = bool(recording_phase_map(recording, "chamber"))
     if not ego_enabled and not chamber_enabled:
         return None
     return RecordingCfg(
