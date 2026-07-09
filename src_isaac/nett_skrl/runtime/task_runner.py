@@ -206,6 +206,20 @@ def _compute_eval_num_envs(task: Task) -> int:
     num_test_tasks = max(1, task.agent.env.iterations_per_test_episode.get(config.condition, 1))
     total_test_episodes = num_test_tasks * episodes_test
 
+    # Stage-4c runtime test (env-gated): force the TEST-phase num_envs independent
+    # of training's num_envs, to check that test-time parallelism does not change
+    # the result (test is deterministic: mean action + fixed start schedule +
+    # deterministic CUDA). Returns the largest VALID count <= requested that both
+    # divides total_test_episodes (no empty NETTEnv slots) and is a multiple of
+    # num_brains (BrainTrainer divisibility). NETT_TEST_ENVS=1 vs 16 -> A/B.
+    _forced = __import__("os").environ.get("NETT_TEST_ENVS")
+    if _forced:
+        want = min(max(1, int(_forced)), total_test_episodes)
+        for n in range(want, 0, -1):
+            if n % num_brains == 0 and total_test_episodes % n == 0:
+                return n
+        return num_brains
+
     max_envs = config.max_parallel_envs
     # Cap at total_test_episodes so NETTEnv never gets empty episode slots.
     cap = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
