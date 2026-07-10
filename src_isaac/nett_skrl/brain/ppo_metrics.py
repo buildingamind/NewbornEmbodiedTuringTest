@@ -26,6 +26,8 @@ import torch
 from skrl.agents.torch.ppo import PPO
 from skrl.agents.torch.ppo import ppo as _skrl_ppo_mod
 
+from .skrl_patches import NETTBootstrapMixin, strict_update
+
 # ---------------------------------------------------------------------------
 # Time-limit (partial-episode) bootstrapping — env-gated by NETT_DIAG_PEB.
 #
@@ -200,13 +202,14 @@ def track_ppo_health_metrics(agent: PPO) -> None:
         pass
 
 
-class MetricsPPO(PPO):
+class MetricsPPO(NETTBootstrapMixin, PPO):
     """skrl PPO that also logs the SB3/Unity-parity health metrics.
 
     Behaviourally identical to ``skrl.agents.torch.ppo.PPO`` — it only adds
     tensorboard/wandb scalars after each update.
     """
 
+    @strict_update
     def update(self, *, timestep: int, timesteps: int) -> None:
         # Optional entropy-coefficient annealing (env-gated; default = no change).
         # Constant high entropy inflates the policy std without bound on long runs

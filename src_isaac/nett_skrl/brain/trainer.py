@@ -167,9 +167,9 @@ class BrainTrainer:
                     observations, t, total_timesteps, policy=policy
                 )
                 next_observations, rewards, *_ = self.env.step(actions)
-                # Env runs on CPU (NETTEnvCfg.sim.device='cpu'); ``totals``
-                # is on the policy device. Move rewards
-                # to the totals device before accumulating.
+                # ``rewards`` may be on the env/sim device (cpu for kinematic
+                # PhysX, cuda for wheeled) while ``totals`` is on the policy
+                # device. Move rewards to the totals device before accumulating.
                 # Metric-only aggregation after the env step: this does not
                 # feed back into training transitions or reward shaping.
                 reward_rows = rewards.reshape(len(self.agents), self.scopes[0], -1).mean(dim=2)

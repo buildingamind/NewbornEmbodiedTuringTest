@@ -1,12 +1,17 @@
-"""NatureCNN-style image encoder (no spatial pooling).
+"""NatureCNN-style image encoder.
 
-Mirrors the architecture of the SB3-default ``NatureCNN`` (Mnih et al. 2015):
-three convolutions flattened directly into a linear projection, with no
-adaptive average pooling stage. Unlike ``CompactCNN``/``SmallCNN`` (which
-collapse the final feature map to a 4x4 grid via ``AdaptiveAvgPool2d`` before
-flattening), this encoder preserves the full spatial layout of the last
-feature map -- positional information (e.g. "is the bright thing on the left
-or right of frame") survives into the linear head untouched.
+Mirrors the three-convolution stack of the SB3-default ``NatureCNN`` (Mnih et
+al. 2015), then collapses the final feature map to a fixed 4x4 grid via
+``DeterministicAvgPool2d`` before flattening, so the linear head's input size
+(and param count) is independent of ``input_resolution``. At res=64 the conv
+map is already 4x4, so the pool is an identity (the original behaviour is
+preserved exactly); at higher resolutions it caps the flatten at 4x4xconv_dim.
+A 4x4 grid still preserves coarse left/right spatial layout (e.g. "is the
+bright thing on the left or right of frame").
+
+The pool is ``DeterministicAvgPool2d`` (not ``nn.AdaptiveAvgPool2d``) because
+adaptive_avg_pool2d's CUDA backward is nondeterministic; see
+``encoders/utils/pool.py``.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import torch.nn as nn
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .utils.pool import DeterministicAvgPool2d
 
 
 class NatureCNN(HWCFeatureExtractor):
@@ -44,7 +50,7 @@ class NatureCNN(HWCFeatureExtractor):
             # a no-op (validated behaviour preserved exactly); at res=256 it caps
             # the flatten at 4*4*64=1024 instead of 28*28*64, keeping params
             # <700k. A 4x4 grid still preserves coarse left/right spatial layout.
-            nn.AdaptiveAvgPool2d((4, 4)),
+            DeterministicAvgPool2d((4, 4)),
             nn.Flatten(),
         )
         with torch.no_grad():

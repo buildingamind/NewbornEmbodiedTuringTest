@@ -81,6 +81,11 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     # transitions instead of rollouts transitions.
     base_rollouts = memory_size_for(brain)
     scaled_rollouts = max(1, base_rollouts // scope)
+    # P5 (determinism): capture the base seed set at task start (set_seeds ->
+    # torch.manual_seed). Model weight init below is re-seeded per brain from this,
+    # so it is reproducible regardless of how much global torch RNG the Isaac env
+    # build happened to consume between set_seeds and here.
+    base_seed = torch.initial_seed()
     agents = []
     for brain_id in range(num_agents):
         cfg = default_algorithm_cfg(brain)
@@ -138,6 +143,11 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
                 num_envs=scope,
                 device=mem_device,
             )
+        # P5: deterministic, per-brain weight-init seed — decorrelated across
+        # brains (offset by brain_id) yet reproducible run-to-run.
+        torch.manual_seed(base_seed + brain_id)
+        if torch.cuda.is_available():
+            torch.cuda.manual_seed_all(base_seed + brain_id)
         models = build_models_for_algorithm(
             spec,
             encoder_cls=brain.encoder,

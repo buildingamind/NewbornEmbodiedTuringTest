@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .utils.pool import DeterministicAvgPool2d
 from .utils.residual_block import ResidualBlock
 
 
@@ -26,7 +27,7 @@ class Resnet10CNN(HWCFeatureExtractor):
             ResidualBlock(64),
             nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((1, 1)),
+            DeterministicAvgPool2d((1, 1)),
             nn.Flatten(),
             nn.Linear(128, features_dim),
             nn.ReLU(),

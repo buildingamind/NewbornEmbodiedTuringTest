@@ -8,6 +8,7 @@ import torch.nn as nn
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .utils.pool import DeterministicAvgPool2d
 
 
 class SmallCNN(HWCFeatureExtractor):
@@ -23,7 +24,7 @@ class SmallCNN(HWCFeatureExtractor):
             nn.ReLU(),
             nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 4)),
+            DeterministicAvgPool2d((4, 4)),
             nn.Flatten(),
         )
         with torch.no_grad():

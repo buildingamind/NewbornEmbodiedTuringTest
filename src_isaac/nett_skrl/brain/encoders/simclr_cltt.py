@@ -34,6 +34,7 @@ import torch.nn.functional as F
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .utils.pool import DeterministicAvgPool2d
 
 
 class SimCLRCLTT(HWCFeatureExtractor):
@@ -62,7 +63,7 @@ class SimCLRCLTT(HWCFeatureExtractor):
             nn.Conv2d(32, conv_dim, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(conv_dim),
             nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 4)),
+            DeterministicAvgPool2d((4, 4)),
             nn.Flatten(),
         )
         with torch.no_grad():

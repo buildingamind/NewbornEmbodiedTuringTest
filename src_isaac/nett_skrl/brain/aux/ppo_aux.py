@@ -25,10 +25,12 @@ from skrl.agents.torch.ppo import PPO
 from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl import config, logger
 
+from ..skrl_patches import NETTBootstrapMixin, strict_update
+
 from .simclr_aux import SimCLRAuxLoss
 
 
-class AuxLossPPO(PPO):
+class AuxLossPPO(NETTBootstrapMixin, PPO):
     """skrl PPO with an optional SimCLR auxiliary loss on the shared encoder.
 
     Extra config (read from the PPO_CFG-style cfg object or set post-construction):
@@ -69,6 +71,7 @@ class AuxLossPPO(PPO):
 
     # The body below mirrors stock skrl PPO.update; the only change is the added
     # aux-loss term folded into the backward() of the existing optimizer step.
+    @strict_update
     def update(self, *, timestep: int, timesteps: int) -> None:
         if self._aux is None:
             # Disabled path: identical to stock PPO (zero overhead, no risk).

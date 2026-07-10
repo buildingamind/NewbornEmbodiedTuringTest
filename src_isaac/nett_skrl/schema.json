@@ -187,10 +187,16 @@
           "default": []
         },
         "render_mode": {
-          "description": "Isaac Sim RTX render mode. RealTimeRenderer = rasterizer (no ray tracing, lowest GPU cost). RayTracingLighting = hardware RT (Isaac default). PathTracing = full path trace (slowest). Empty string leaves Isaac's built-in default in place.",
+          "description": "Isaac Sim /rtx/rendermode. Only RaytracedLighting (real-time hardware RT; Isaac default) and PathTracing (full path trace, slowest) actually take effect. NOTE: 'RealTimeRenderer' is NOT a rasterizer and is NOT a valid /rtx/rendermode value — Kit ignores it and keeps RaytracedLighting; it remains here only as a backward-compatible no-op default. Empty string leaves Isaac's built-in default in place. (Verified 2026-07-09: probing the live carb setting shows RaytracedLighting regardless of a RealTimeRenderer request.)",
           "type": "string",
-          "enum": ["RealTimeRenderer", "RayTracingLighting", "PathTracing", ""],
+          "enum": ["RealTimeRenderer", "RaytracedLighting", "PathTracing", ""],
           "default": "RealTimeRenderer"
+        },
+        "lighting_mode": {
+          "description": "Chamber lighting model. emissive = monitors are sampled emissive area lights (ray-traced, Monte-Carlo direct lighting). rectlight = analytic RectLights baked into chamber_rectlight.usdc (closed-form, no MC light sampling).",
+          "type": "string",
+          "enum": ["emissive", "rectlight"],
+          "default": "emissive"
         },
         "tracemalloc_interval": {
           "description": "Debug: take a Python heap snapshot every N simulation steps and log the top allocators to stdout. 0 = disabled. Useful for diagnosing per-step memory growth; negligible overhead when disabled.",
