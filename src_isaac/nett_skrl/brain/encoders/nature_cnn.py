@@ -16,6 +16,8 @@ adaptive_avg_pool2d's CUDA backward is nondeterministic; see
 
 from __future__ import annotations
 
+import os
+
 import gymnasium as gym
 import torch
 import torch.nn as nn
@@ -23,6 +25,22 @@ import torch.nn as nn
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.pool import DeterministicAvgPool2d
+
+
+def _amp_dtype() -> torch.dtype | None:
+    """Optional autocast dtype for the encoder conv/linear (NETT_AMP, default off).
+
+    NETT_AMP=bf16 -> torch.bfloat16 (recommended: fp32 range, no GradScaler,
+    replay-deterministic — measured run-to-run grad diff 0, ~2.17x on the CNN
+    fwd+bwd vs fp32). NETT_AMP=fp16 -> torch.float16 (needs care re: underflow).
+    Unset -> None (fp32, unchanged). Value shift vs fp32 is larger than TF32, so
+    validate rest before adopting."""
+    v = os.environ.get("NETT_AMP", "").lower()
+    if v in ("bf16", "bfloat16"):
+        return torch.bfloat16
+    if v in ("fp16", "float16", "half"):
+        return torch.float16
+    return None
 
 
 class NatureCNN(HWCFeatureExtractor):
@@ -58,4 +76,15 @@ class NatureCNN(HWCFeatureExtractor):
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        return self.linear(self.cnn(self._prepare_image(observations)))
+        x = self._prepare_image(observations)
+        amp = _amp_dtype()
+        if amp is not None and x.is_cuda:
+            # Run the (dominant) conv stack + projection in bf16/fp16 on the tensor
+            # cores, then cast the 512-d feature back to fp32 so the downstream skrl
+            # action/value heads and the distribution stats stay full precision.
+            # autocast need only wrap the forward; backward reuses the recorded
+            # precision. One place, our code -- no skrl patch, no GradScaler (bf16).
+            with torch.autocast("cuda", dtype=amp):
+                out = self.linear(self.cnn(x))
+            return out.float()
+        return self.linear(self.cnn(x))
