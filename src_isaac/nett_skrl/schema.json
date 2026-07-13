@@ -162,14 +162,14 @@
         "conditions":       { "type": ["array", "null"], "uniqueItems": true,
                               "items": { "type": "string" }, "default": null },
         "headless":         { "type": "boolean", "default": true },
-        "input_resolution": { "type": "integer", "minimum": 16, "default": 64 },
-        "camera_fov":       { "type": "number", "minimum": 10, "maximum": 200, "default": 120.0 },
+        "input_resolution": { "type": "integer", "minimum": 16, "default": 128 },
+        "camera_fov":       { "type": "number", "minimum": 10, "maximum": 200, "default": 150.0 },
         "record_mode":      { "type": "string", "enum": ["tSNE", "spatial"], "default": "tSNE" },
         "random_first_frame": { "type": "boolean", "default": false },
         "decision_period":  { "type": "integer", "minimum": 1, "default": 1 },
         "enable_neck_flexion": { "type": "boolean", "default": true },
         "enable_lateral_bending": { "type": "boolean", "default": true },
-        "locomotion": { "type": "string", "enum": ["kinematic", "wheeled"], "default": "kinematic" },
+        "locomotion": { "type": "string", "enum": ["kinematic", "wheeled"], "default": "wheeled" },
         "recording": {
           "type": "object",
           "properties": {
@@ -184,7 +184,7 @@
           "description": "NETTEnv reward names; validated against the registry.",
           "type": "array",
           "items": { "type": "string" },
-          "default": []
+          "default": ["closeness", "completeness"]
         },
         "render_mode": {
           "description": "Isaac Sim /rtx/rendermode. Only RaytracedLighting (real-time hardware RT; Isaac default) and PathTracing (full path trace, slowest) actually take effect. NOTE: 'RealTimeRenderer' is NOT a rasterizer and is NOT a valid /rtx/rendermode value — Kit ignores it and keeps RaytracedLighting; it remains here only as a backward-compatible no-op default. Empty string leaves Isaac's built-in default in place. (Verified 2026-07-09: probing the live carb setting shows RaytracedLighting regardless of a RealTimeRenderer request.)",
