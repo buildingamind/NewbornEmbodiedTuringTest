@@ -28,19 +28,22 @@ from .utils.pool import DeterministicAvgPool2d
 
 
 def _amp_dtype() -> torch.dtype | None:
-    """Optional autocast dtype for the encoder conv/linear (NETT_AMP, default off).
+    """Autocast dtype for the encoder conv/linear (NETT_AMP). DEFAULT = bf16.
 
-    NETT_AMP=bf16 -> torch.bfloat16 (recommended: fp32 range, no GradScaler,
-    replay-deterministic — measured run-to-run grad diff 0, ~2.17x on the CNN
-    fwd+bwd vs fp32). NETT_AMP=fp16 -> torch.float16 (needs care re: underflow).
-    Unset -> None (fp32, unchanged). Value shift vs fp32 is larger than TF32, so
-    validate rest before adopting."""
-    v = os.environ.get("NETT_AMP", "").lower()
-    if v in ("bf16", "bfloat16"):
-        return torch.bfloat16
+    bf16 is the validated speedup default: ~2.17x on the CNN fwd+bwd vs fp32,
+    replay-deterministic (measured run-to-run grad diff 0), and rest-preserving
+    (1000ep 4-seed = 1.0,1.0,1.0,0.997 = 4/4, matching fp32). It has fp32 range
+    (no GradScaler needed). It shifts values ~1e-2 vs fp32 -> runs are NOT
+    bit-identical to fp32 (a one-time change, like the Fabric adoption); replay
+    determinism holds. Opt OUT to full fp32 with NETT_AMP in
+    {off,0,none,fp32,float32,""}. NETT_AMP=fp16 selects float16 (needs care re:
+    underflow). Only wraps the NatureCNN encoder (the recipe encoder)."""
+    v = os.environ.get("NETT_AMP", "bf16").lower()
+    if v in ("off", "0", "none", "fp32", "float32", ""):
+        return None
     if v in ("fp16", "float16", "half"):
         return torch.float16
-    return None
+    return torch.bfloat16
 
 
 class NatureCNN(HWCFeatureExtractor):

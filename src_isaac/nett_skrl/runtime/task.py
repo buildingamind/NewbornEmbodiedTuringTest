@@ -163,14 +163,15 @@ def set_seeds(seed: int) -> None:
     # long training run, while every op that *can* be deterministic still is.
     torch.use_deterministic_algorithms(True, warn_only=True)
 
-    # Optional TF32 (NETT_TF32=1, default OFF). TF32 tensor-core matmul/conv is
-    # ~1.44x faster on the PPO update + policy forward (measured A10, 500x3x128x128
-    # fwd+bwd 13.5 -> 9.3 ms) and is REPLAY-DETERMINISTIC (measured run-to-run grad
-    # diff = 0), so reproducible replay is preserved. OFF by default because TF32
-    # shifts values vs fp32 (~1e-3 relative) -> a one-time change (like the Fabric
-    # adoption) that makes runs NOT bit-identical to the fp32 baseline. Enable only
-    # after a rest-validation confirms equivalence. Explicit so it never surprises.
-    if os.environ.get("NETT_TF32") == "1":
+    # TF32 tensor-core matmul/conv (NETT_TF32). DEFAULT ON. ~1.44x on any fp32
+    # matmul/conv, REPLAY-DETERMINISTIC (measured run-to-run grad diff = 0). Under
+    # the bf16 encoder default it is largely redundant (bf16 already runs the
+    # encoder in tensor-core precision; TF32 then only covers the tiny fp32 heads +
+    # any fp32 matmul in the value/GAE path -- measured +/-0.2% on top of bf16), but
+    # it is harmless and covers the fp32 path when NETT_AMP=off. Shifts values
+    # ~1e-3 vs strict fp32 (one-time change, replay preserved). Opt OUT with
+    # NETT_TF32=0.
+    if os.environ.get("NETT_TF32", "1") != "0":
         torch.backends.cuda.matmul.allow_tf32 = True
         torch.backends.cudnn.allow_tf32 = True
 
