@@ -163,6 +163,17 @@ def set_seeds(seed: int) -> None:
     # long training run, while every op that *can* be deterministic still is.
     torch.use_deterministic_algorithms(True, warn_only=True)
 
+    # Optional TF32 (NETT_TF32=1, default OFF). TF32 tensor-core matmul/conv is
+    # ~1.44x faster on the PPO update + policy forward (measured A10, 500x3x128x128
+    # fwd+bwd 13.5 -> 9.3 ms) and is REPLAY-DETERMINISTIC (measured run-to-run grad
+    # diff = 0), so reproducible replay is preserved. OFF by default because TF32
+    # shifts values vs fp32 (~1e-3 relative) -> a one-time change (like the Fabric
+    # adoption) that makes runs NOT bit-identical to the fp32 baseline. Enable only
+    # after a rest-validation confirms equivalence. Explicit so it never surprises.
+    if os.environ.get("NETT_TF32") == "1":
+        torch.backends.cuda.matmul.allow_tf32 = True
+        torch.backends.cudnn.allow_tf32 = True
+
 
 def recording_phase_map(recording, kind: str) -> dict:
     """Per-phase episode mapping for recording camera ``kind``.
