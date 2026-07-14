@@ -30,9 +30,11 @@ TEARDOWN/CRASH window and never to total runtime:
 
 * ``NETT_REAP_CRASH_GRACE`` starts ONLY once positive crash evidence appears --
   the net for a child so wedged it cannot run its own handler AND whose kernel
-  backstop never armed (e.g. crash_guard disabled). It is INERT BY DEFAULT: it
-  needs a ``crash_evidence`` predicate, and no marker producer exists today (see
-  :func:`make_marker_predicate`).
+  backstop never armed (e.g. crash_guard disabled). It is INERT BY DEFAULT:
+  ``join_with_reap`` is wired with ``crash_evidence=None`` because crash_guard
+  signals DEVICE_LOST by EXIT CODE (75 / -14), not by a marker file, so the
+  parent reaps off the exit code (see :func:`is_device_lost_exit`) rather than
+  polling for evidence mid-run.
 * ``NETT_REAP_TIMEOUT`` (absolute cap) DEFAULTS TO 0 = DISABLED. See BUDGETS.
 
 OWNERSHIP — the hard safety requirement
