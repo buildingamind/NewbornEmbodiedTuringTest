@@ -217,8 +217,9 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     )
     loaded = agent.body.embed(agent.env, run_config)
     # Kit is up now (embed builds AppLauncher/SimulationApp). Its startup resets
-    # carb logging, so the device-lost guard MUST arm after this line.
-    crash_guard.arm(config.path)
+    # carb logging, so the device-lost guard MUST arm after this line. Pass the
+    # scheduled GPU so crash forensics can label the telemetry snapshot.
+    crash_guard.arm(config.path, device=config.device)
     if mode == "train":
         agent.brain.train(
             loaded,

@@ -16,6 +16,38 @@ import pytest
 from fault_injection import ProcessOrchard, crashed_run_artifacts
 
 
+@pytest.fixture(autouse=True)
+def _reset_crash_guard_state():
+    """Snapshot + restore crash_guard's module-level state around every test.
+
+    crash_guard keeps process-wide mutable state (armed flag, trigger latch, and
+    the crash-forensics accumulators populated from the render-thread callback).
+    A leak between tests would let one test's injected crash lines bleed into the
+    next. Restoring afterwards keeps the suite order-independent.
+    """
+    from nett_skrl.runtime import crash_guard as cg
+
+    saved = (
+        cg._armed,
+        cg._logger_handle,
+        list(cg._artifact_dirs),
+        cg._trigger_reason,
+        cg._device,
+        list(cg._crash_artifact_paths),
+        cg._pagefault_detail,
+        cg._triggered.is_set(),
+    )
+    try:
+        yield
+    finally:
+        cg._armed, cg._logger_handle = saved[0], saved[1]
+        cg._artifact_dirs[:] = saved[2]
+        cg._trigger_reason, cg._device = saved[3], saved[4]
+        cg._crash_artifact_paths[:] = saved[5]
+        cg._pagefault_detail = saved[6]
+        (cg._triggered.set if saved[7] else cg._triggered.clear)()
+
+
 @pytest.fixture
 def orchard() -> ProcessOrchard:
     """Owns every process a test spawns; kills them all on teardown.

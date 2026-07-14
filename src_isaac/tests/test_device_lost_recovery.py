@@ -254,6 +254,93 @@ def test_child_artifacts_are_fsynced_before_a_hard_exit(orchard, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# Crash forensics — collect what Kit wrote, attributed to THIS run
+# ---------------------------------------------------------------------------
+
+
+def test_scrape_captures_dump_paths_and_pagefault_from_pre_crash_lines():
+    """The render-thread scraper pulls the Aftermath paths + fault address out of
+    the lines Kit logs just before ERROR_DEVICE_LOST."""
+    crash_guard._crash_artifact_paths.clear()
+    crash_guard._pagefault_detail = ""
+    for msg in (
+        "GPU crash is detected. Trying to write shader debug info into: /inst/kit_20260714_080048-ab-cd.nvdbg",
+        "GPU pagefault occured on virtual address(0x000000db5f7d0000)",
+        "GPU crash is detected. Trying to write crash dump into: /inst/kit_20260714_080048-0.nv-gpudmp",
+    ):
+        crash_guard._scrape_crash_artifacts(msg)
+
+    assert crash_guard._crash_artifact_paths == [
+        "/inst/kit_20260714_080048-ab-cd.nvdbg",
+        "/inst/kit_20260714_080048-0.nv-gpudmp",
+    ]
+    assert "0x000000db5f7d0000" in crash_guard._pagefault_detail
+
+
+def test_scrape_is_a_noop_when_forensics_disabled(monkeypatch):
+    monkeypatch.setenv("NETT_DEVICE_LOST_FORENSICS", "0")
+    crash_guard._crash_artifact_paths.clear()
+    crash_guard._scrape_crash_artifacts(
+        "GPU crash is detected. Trying to write crash dump into: /inst/x.nv-gpudmp"
+    )
+    assert crash_guard._crash_artifact_paths == []
+
+
+def test_kit_session_log_is_derived_from_a_dump_path():
+    """The .log beside the dump holds the full crash context; map back to it."""
+    assert crash_guard._derive_kit_logs(
+        ["/inst/kit_20260714_080048-0.nv-gpudmp"]
+    ) == ["/inst/kit_20260714_080048.log"]
+    # A non-kit path yields nothing rather than a bogus guess.
+    assert crash_guard._derive_kit_logs(["/inst/random.bin"]) == []
+
+
+def test_collect_forensics_writes_summary_and_copies_dumps(tmp_path, monkeypatch):
+    """End to end (no Kit): a summary with the fault detail, plus the dump and its
+    Kit log copied into <run>/logs/crash_forensics/."""
+    monkeypatch.setenv("NETT_DEVICE_LOST_FORENSICS", "1")
+    # A real dump + kit log Kit "wrote" into its shared install dir.
+    inst = tmp_path / "inst"
+    inst.mkdir()
+    dump = inst / "kit_20260714_080048-0.nv-gpudmp"
+    dump.write_bytes(b"AFTERMATH")
+    klog = inst / "kit_20260714_080048.log"
+    klog.write_text("session log\n")
+
+    run = tmp_path / "run"
+    (run / "logs").mkdir(parents=True)
+    monkeypatch.setattr(crash_guard, "_artifact_dirs", [str(run)])
+    monkeypatch.setattr(crash_guard, "_crash_artifact_paths", [str(dump)])
+    monkeypatch.setattr(crash_guard, "_device", 5)
+    monkeypatch.setattr(
+        crash_guard, "_pagefault_detail", "pagefault ... address(0xdeadbeef)"
+    )
+    monkeypatch.setattr(crash_guard, "_trigger_reason", "[carb...] ERROR_DEVICE_LOST")
+    # Don't shell out to nvidia-smi in a unit test.
+    monkeypatch.setattr(crash_guard, "_snapshot_nvidia_smi", lambda *a, **k: None)
+
+    crash_guard._collect_forensics()
+
+    fx = run / "logs" / "crash_forensics"
+    summary = json.loads((fx / "crash_summary.json").read_text())
+    assert summary["device"] == 5
+    assert "0xdeadbeef" in summary["pagefault_detail"]
+    assert summary["aftermath_dumps"] == [str(dump)]
+    # dump + derived kit log both copied out of the shared install dir
+    assert (fx / "kit_20260714_080048-0.nv-gpudmp").read_bytes() == b"AFTERMATH"
+    assert (fx / "kit_20260714_080048.log").read_text() == "session log\n"
+
+
+def test_collect_forensics_is_skipped_when_disabled(tmp_path, monkeypatch):
+    monkeypatch.setenv("NETT_DEVICE_LOST_FORENSICS", "0")
+    run = tmp_path / "run"
+    (run / "logs").mkdir(parents=True)
+    monkeypatch.setattr(crash_guard, "_artifact_dirs", [str(run)])
+    crash_guard._collect_forensics()
+    assert not (run / "logs" / "crash_forensics").exists()
+
+
+# ---------------------------------------------------------------------------
 # Ownership — the safety half. These must hold for ANY reap implementation.
 # ---------------------------------------------------------------------------
 

@@ -72,8 +72,19 @@ ENV VARS
 --------
 ``NETT_DEVICE_LOST_GUARD``        "1" (default) | "0" to disable entirely
 ``NETT_DEVICE_LOST_EXIT_CODE``    "75"
-``NETT_DEVICE_LOST_FLUSH_S``      "20"  -- durability work budget
+``NETT_DEVICE_LOST_FLUSH_S``      "20"  -- durability + forensics work budget
 ``NETT_DEVICE_LOST_EXIT_BUDGET_S`` "60" -- absolute detection->dead deadline
+``NETT_DEVICE_LOST_FORENSICS``    "1" (default) | "0" to skip crash collection
+
+CRASH FORENSICS
+---------------
+On trigger, within the bounded flush window, we copy the evidence Kit already
+wrote -- the NVIDIA Aftermath ``.nv-gpudmp`` / ``.nvdbg`` dumps and the Kit
+session log (found by scraping their paths out of the pre-crash log lines) --
+plus the pagefault address and an ``nvidia-smi`` telemetry snapshot into
+``<run>/logs/crash_forensics/``.  This does NOT explain the crash; it makes a
+recurrence debuggable and attributable to a specific brain/condition/GPU instead
+of an unlabeled dump in Kit's shared install directory.
 """
 
 from __future__ import annotations
@@ -104,6 +115,27 @@ _logger_handle = None  # carb.logging.LoggerHandle
 _watchdog: threading.Thread | None = None
 _artifact_dirs: list[str] = []
 _trigger_reason: str = ""
+
+# --- crash forensics -------------------------------------------------------
+# We do NOT know what CAUSES the DEVICE_LOST; this state lets us COLLECT what
+# Kit already wrote (Aftermath .nv-gpudmp + .nvdbg + the pagefault address) and
+# a device telemetry snapshot into the run's own logs/ so a recurrence is
+# debuggable and attributable to a specific brain/condition/GPU.
+_device: int | None = None
+# Paths Kit announces it is writing, scraped from the log lines that PRECEDE the
+# ERROR_DEVICE_LOST trigger (bounded: at most a handful per crash).
+_crash_artifact_paths: list[str] = []
+_pagefault_detail: str = ""
+
+# Substrings Kit logs while writing its crash artifacts. Cheap to test on the
+# render thread; the path is whatever follows "into: ".
+_ARTIFACT_ANNOUNCE = "Trying to write"
+_ARTIFACT_PATH_SEP = "into:"
+_PAGEFAULT_MARK = "pagefault"
+
+
+def _forensics_enabled() -> bool:
+    return os.environ.get("NETT_DEVICE_LOST_FORENSICS", "1") != "0"
 
 
 def _env_int(name: str, default: int) -> int:
@@ -140,17 +172,23 @@ def register_artifact_dir(path) -> None:
             _artifact_dirs.append(p)
 
 
-def arm(artifact_dir=None) -> bool:
+def arm(artifact_dir=None, device: int | None = None) -> bool:
     """Install the carb log consumer + start the watchdog. Idempotent.
 
     Returns True if the guard is active. Safe to call before/without Kit: if
     carb is unavailable it simply returns False and the caller is unaffected.
     Call AFTER SimulationApp construction -- Kit's startup resets carb logging.
+
+    ``device`` is the physical GPU index this run was scheduled onto; it is only
+    used to label the crash-forensics telemetry snapshot (nvidia-smi ignores
+    CUDA_VISIBLE_DEVICES, so a physical index is what it wants).
     """
-    global _armed, _logger_handle, _watchdog
+    global _armed, _logger_handle, _watchdog, _device
 
     if artifact_dir is not None:
         register_artifact_dir(artifact_dir)
+    if device is not None:
+        _device = int(device)
     if not _enabled():
         return False
 
@@ -235,6 +273,10 @@ def _on_carb_log(**kwargs) -> None:
         source = kwargs.get("source") or ""
         message = kwargs.get("message") or ""
         level = kwargs.get("level", -1)
+        # Opportunistically capture crash-artifact paths + the pagefault address
+        # from the lines Kit emits just BEFORE ERROR_DEVICE_LOST. Cheap string
+        # work only; the collector (bounded, off-thread) uses these later.
+        _scrape_crash_artifacts(str(message))
         if not is_device_lost_message(source, int(level), str(message)):
             return
         _trigger_reason = f"[{source}] {str(message).strip()[:200]}"
@@ -243,6 +285,24 @@ def _on_carb_log(**kwargs) -> None:
     except Exception:
         # A raising log consumer must never destabilise Kit.
         pass
+
+
+def _scrape_crash_artifacts(message: str) -> None:
+    """Record Aftermath dump paths + the pagefault detail as they stream by.
+
+    Runs on the render thread, so it stays to substring tests and a split.
+    Kit logs e.g. ``GPU crash is detected. Trying to write crash dump into:
+    <path>.nv-gpudmp`` and ``GPU pagefault occured on virtual address(0x...)``.
+    """
+    global _pagefault_detail
+    if not _forensics_enabled():
+        return
+    if _ARTIFACT_ANNOUNCE in message and _ARTIFACT_PATH_SEP in message:
+        path = message.split(_ARTIFACT_PATH_SEP, 1)[1].strip()
+        if path and path not in _crash_artifact_paths:
+            _crash_artifact_paths.append(path)
+    elif _PAGEFAULT_MARK in message and "address" in message and not _pagefault_detail:
+        _pagefault_detail = message.strip()[:300]
 
 
 def _watchdog_main() -> None:
@@ -315,11 +375,134 @@ def _emit(msg: str) -> None:
 
 
 def _flush_artifacts() -> None:
-    for step in (_flush_std, _flush_tensorboard, _flush_logging, _fsync_artifact_dirs):
+    # Order matters: the durability flushes (tfevents is the load-bearing one)
+    # run FIRST, so if forensics collection is slow and the flush budget expires,
+    # the critical training data is already saved. Forensics is written before
+    # the final fsync pass so it, too, becomes durable.
+    for step in (
+        _flush_std,
+        _flush_tensorboard,
+        _flush_logging,
+        _collect_forensics,
+        _fsync_artifact_dirs,
+    ):
         try:
             step()
         except Exception:
             _emit("device-lost: %s failed (continuing)" % step.__name__)
+
+
+# ---------------------------------------------------------------------------
+# Crash forensics
+#
+# We cannot say what CAUSED the DEVICE_LOST, but Kit + the driver already wrote
+# rich evidence: NVIDIA Aftermath dumps (.nv-gpudmp / .nvdbg) and the pagefault
+# virtual address. The problem is that evidence lands in Kit's SHARED install-dir
+# log folder, wall-clock-timestamped and unattributed -- after an 8-way wave you
+# cannot tell which run produced which dump. This step copies that evidence into
+# THIS run's own logs/ (so it is attributable to a brain/condition/GPU) and adds
+# a device telemetry snapshot (ECC/temperature/throttle) so a recurrence can be
+# told apart as hardware-transient vs application bug. Best-effort, bounded,
+# crash-path only; NEVER runs on a successful shutdown.
+# ---------------------------------------------------------------------------
+
+
+def _collect_forensics() -> None:
+    if not _forensics_enabled():
+        return
+    with _state_lock:
+        dirs = list(_artifact_dirs)
+    if not dirs:
+        return
+    import json as _json
+    import shutil
+    import sys
+
+    out = os.path.join(dirs[0], "logs", "crash_forensics")
+    try:
+        os.makedirs(out, exist_ok=True)
+    except OSError:
+        _emit("device-lost: could not create %s (skipping forensics)" % out)
+        return
+
+    # 1. Structured summary -- always written, even if the copies below fail.
+    summary = {
+        "timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "pid": os.getpid(),
+        "device": _device,
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "reason": _trigger_reason,
+        "pagefault_detail": _pagefault_detail,
+        "aftermath_dumps": list(_crash_artifact_paths),
+    }
+    try:
+        with open(os.path.join(out, "crash_summary.json"), "w") as fh:
+            _json.dump(summary, fh, indent=2, sort_keys=True)
+            fh.write("\n")
+    except OSError:
+        _emit("device-lost: failed to write crash_summary.json")
+
+    # 2. Copy the Aftermath dumps Kit announced, plus the Kit log they belong to,
+    #    out of the shared install dir and into this run.
+    for src in list(_crash_artifact_paths) + _derive_kit_logs(_crash_artifact_paths):
+        try:
+            if src and os.path.isfile(src):
+                shutil.copy2(src, os.path.join(out, os.path.basename(src)))
+        except OSError:
+            _emit("device-lost: failed to copy %s" % src)
+
+    # 3. Device telemetry snapshot (ECC errors, temperature, throttle reasons).
+    #    nvidia-smi ignores CUDA_VISIBLE_DEVICES; the full -q always includes the
+    #    crashing GPU and crash_summary.json records which index to read.
+    _snapshot_nvidia_smi(out, sys)
+
+
+def _derive_kit_logs(dump_paths: list[str]) -> list[str]:
+    """Map ``.../kit_<ts>-<...>.nv-gpudmp`` back to ``.../kit_<ts>.log``.
+
+    The dump filenames embed the Kit session's ``kit_<timestamp>`` prefix, so the
+    session log that holds the full crash context sits right beside them.
+    """
+    logs: list[str] = []
+    for p in dump_paths:
+        base = os.path.basename(p)
+        if not base.startswith("kit_"):
+            continue
+        # kit_20260714_080048-0.nv-gpudmp -> kit_20260714_080048
+        prefix = base.split("-", 1)[0] if "-" in base else os.path.splitext(base)[0]
+        candidate = os.path.join(os.path.dirname(p), prefix + ".log")
+        if candidate not in logs:
+            logs.append(candidate)
+    return logs
+
+
+def _snapshot_nvidia_smi(out: str, sys) -> None:
+    import subprocess
+
+    jobs = (
+        ("nvidia-smi_full.txt", ["nvidia-smi", "-q"]),
+        (
+            "nvidia-smi_query.csv",
+            [
+                "nvidia-smi",
+                "--query-gpu=index,uuid,name,temperature.gpu,utilization.gpu,"
+                "memory.used,memory.total,ecc.errors.uncorrected.volatile.total,"
+                "clocks_throttle_reasons.active,power.draw",
+                "--format=csv",
+            ],
+        ),
+    )
+    for name, argv in jobs:
+        try:
+            res = subprocess.run(
+                argv, capture_output=True, text=True, timeout=8, check=False
+            )
+            with open(os.path.join(out, name), "w") as fh:
+                fh.write(res.stdout or "")
+                if res.stderr:
+                    fh.write("\n--- stderr ---\n" + res.stderr)
+        except (OSError, subprocess.SubprocessError):
+            _emit("device-lost: nvidia-smi snapshot (%s) unavailable" % name)
 
 
 def _flush_std() -> None:

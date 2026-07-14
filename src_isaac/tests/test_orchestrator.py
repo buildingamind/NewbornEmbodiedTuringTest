@@ -462,6 +462,7 @@ def test_single_mode_passes_record_cfg_into_brain_record_and_test(monkeypatch, t
         dry_run = False
         seed = 123
         path = tmp_path
+        device = None  # real TaskConfig always carries this; crash_guard.arm reads it
         num_brains = 1
         num_envs = 1
         eval_step = None
