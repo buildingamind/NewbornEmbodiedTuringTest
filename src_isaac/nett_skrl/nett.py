@@ -34,6 +34,7 @@ from .runtime import (
     run_task,
 )
 from .runtime.memory import MemoryManager
+from .runtime.reap import DeviceLostRunError, ReapedTaskError
 from .runtime.parallel_envs import capped_num_envs, num_env_candidates
 from .validate import validate_config
 from .runtime.tasklist import validate_tasklist
@@ -91,6 +92,9 @@ class NETT:
         self.output_path = Path(output_path).resolve()
         self.task_sheet: dict[Future, TaskConfig] = {}
         self.waitlist: list[Task] = []
+        # Device-lost/timeout casualties. Recorded here so the wave can continue,
+        # then re-raised in aggregate by _task_waiter -> the run ends nonzero.
+        self.failed_tasks: list[tuple[str, BaseException]] = []
 
         with MemoryManager() as self.memory_manager:
             self.devices = self.memory_manager.validate_devices(devices)
@@ -458,14 +462,29 @@ class NETT:
             for done in as_completed(list(self.task_sheet)):
                 cfg = self.task_sheet.pop(done)
                 # Refresh ledger from live NVML (the in-flight task may have
-                # released its allocation when the subprocess exited).
+                # released its allocation when the subprocess exited). The reap
+                # has already freed the dead task's VRAM by this point, so this
+                # reads the true post-crash free memory.
                 if cfg.device is not None:
                     self.free_device_memory[cfg.device] = (
                         self.memory_manager.get_free_memory(cfg.device)
                     )
                 try:
                     done.result()
+                except ReapedTaskError as exc:
+                    # DEVICE_LOST / reap-timeout ONLY. Its processes are already
+                    # reaped and its GPU released, so a transient renderer crash
+                    # in one task must not cost the other N-1 tasks their hours
+                    # of work. Recorded, not swallowed: re-raised in aggregate
+                    # below once the wave has drained.
+                    self.failed_tasks.append((f"{cfg.name}/{cfg.condition}", exc))
+                    self.logger.error(
+                        "Task ended by DEVICE_LOST/timeout: %s condition=%s: %s; "
+                        "continuing remaining tasks",
+                        cfg.name, cfg.condition, exc,
+                    )
                 except Exception:
+                    # Every other failure keeps today's fail-fast re-raise.
                     self.logger.exception(
                         "Task failed: %s condition=%s", cfg.name, cfg.condition,
                     )
@@ -473,6 +492,11 @@ class NETT:
                 # Promote one waitlisted task if it fits anywhere.
                 self._promote_waitlisted()
                 break
+        if self.failed_tasks:
+            # The wave completed; the run must still fail loudly. Raised from
+            # _task_waiter (not run()) so it propagates out of run() through the
+            # Executor/MemoryManager __exit__ and the process ends nonzero.
+            raise DeviceLostRunError(self.failed_tasks)
 
     def _promote_waitlisted(self) -> None:
         for i, task in enumerate(self.waitlist):
