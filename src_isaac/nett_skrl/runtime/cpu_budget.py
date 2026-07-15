@@ -25,25 +25,25 @@ So: pick ONE number (cores this cell may use) and drive every pool from it.
 Wave launchers should set NETT_KIT_THREADS = cores / concurrent_cells.
 
 MEASURED LADDER (64 cores, 8x A10, ne16 wheeled res128, 60 ep x 200 steps,
-aggregate train it/s over all cells; "stock" = none of these pools pinned):
+aggregate train it/s with ALL cells concurrently active; "stock" = nothing pinned):
 
-    rung                              cells   it/s/cell   aggregate   vs stock
-    8-way stock                        8/8       3.96        31.6       1.00x
-    8-way  NETT_KIT_THREADS=8          8/8      14.79       116.3       3.68x
-    16-way NETT_KIT_THREADS=4 (2/GPU) 16/16     12.08       200.6       6.35x
-    24-way NETT_KIT_THREADS=2 (3/GPU) 21/24     12.02       254.4       8.05x
+    rung                                active   it/s/cell   aggregate   vs stock
+    8-way stock                          8/8        3.96        31.6       1.00x
+    8-way  NETT_KIT_THREADS=8            8/8       14.79       116.3       3.68x
+    16-way NETT_KIT_THREADS=4 (2/GPU)   16/16      12.08       200.6       6.35x  <- knee
+    20-way NETT_KIT_THREADS=3           20/20       9.94       200.3       6.34x
+    24-way NETT_KIT_THREADS=2 (3/GPU)   24/24       8.71       209.0       6.61x
 
-Once the pools are pinned a cell draws ~3 cores instead of ~11.6, so the box has
-room for MORE cells than GPUs: packing 2 cells/GPU buys +72% aggregate for only
--18% per-cell. 16-way is the recommended production point -- it completed 16/16.
+Once the pools are pinned a cell draws ~3 cores instead of ~11.6, so the box fits
+more cells than it has GPUs: 2 cells/GPU buys +72% aggregate for -18% per-cell.
+**Past 16 the box is saturated** -- 20 and 24 cells buy nothing (aggregate flat at
+~200-209 while per-cell falls), so 16-way is the production point.
 
-24-way is faster still but only completed 21/24: the other 3 HUNG in Kit init,
-all at the same line ("[omni.kvdb.plugin] Disabling key-value database because
-another kit instance is running"). That is a shared-Kit-cache race between
-simultaneously starting instances, not CPU or VRAM exhaustion (VRAM peaked at
-~11 GB of 24, and the host had 1007 GB RAM free). Staggering the launches ~5s
-apart cut it from 13/24 hung to 3/24 but did not cure it. Fixing it properly
-(per-cell Kit cache/kvdb dir) is what unlocks 3+ cells/GPU.
+Do not be fooled by a staggered launch: a 24-way run with a 5s stagger reported
+12.02 it/s/cell / 254.4 aggregate, but that is an ARTIFACT -- the stagger spread
+the launches over 115s so the cells never fully overlapped, and 3 of the 24 hung
+and never competed at all. Measure with every cell concurrently active or the
+number is fiction.
 """
 
 from __future__ import annotations
