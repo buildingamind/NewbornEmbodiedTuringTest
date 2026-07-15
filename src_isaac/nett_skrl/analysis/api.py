@@ -170,7 +170,7 @@ def test_viz(
 
     matplotlib.use("Agg", force=False)
     rows: list[tuple[str, str, str, int, float]] = []
-    # (imprint, test_cond, brain_env_id, n_steps, correct_pct)
+    # (imprint, test_cond, brain_id, n_steps, correct_pct)
 
     for cond_dir in _condition_dirs(root):
         imprint = cond_dir.name
@@ -191,7 +191,7 @@ def test_viz(
 
     _write_csv(
         out / "test_preferences.csv",
-        ["imprint", "test_condition", "brain_env_id", "n_steps", "correct_pct"],
+        ["imprint", "test_condition", "brain_id", "n_steps", "correct_pct"],
         rows,
     )
     return out
@@ -498,7 +498,18 @@ def _test_preference_rows(
     imprint: str,
     half_x: float,
 ) -> list[tuple[str, str, str, int, float]]:
-    """Aggregate per (env_id, test_cond) preference percentages from one CSV.
+    """Aggregate per (brain_id, test_cond) preference percentages from one CSV.
+
+    THE UNIT IS THE BRAIN (one model instance), not the env. A brain may own
+    several envs -- that split is a THROUGHPUT knob (see _compute_eval_num_envs),
+    so bucketing by env made the reported statistic depend on it: n_brains came out
+    as num_envs, "between-brain" stddev was really between-env spread of ONE model,
+    and the mean was a mean-of-ratios over an arbitrary partition. Pooling every
+    row a brain produced makes correct_pct a ratio-of-sums, which is invariant to
+    how many envs that brain ran in.
+
+    Falls back to env_id for CSVs written before brain_id existed (single-brain
+    runs, where the two coincide).
 
     Preference is computed as the fraction of steps spent in the outer third of
     the chamber on the correct-monitor side out of all steps spent in either
@@ -511,10 +522,11 @@ def _test_preference_rows(
     buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
     with csv_path.open() as f:
         for row in csv.DictReader(f):
-            buckets[(row["env_id"], row["test.cond"])].append(row)
+            brain = row.get("brain_id", row["env_id"])
+            buckets[(brain, row["test.cond"])].append(row)
 
     out: list[tuple[str, str, str, int, float]] = []
-    for (env_id, test_cond), rows in buckets.items():
+    for (brain_id, test_cond), rows in buckets.items():
         if not rows:
             continue
         outer_count = 0
@@ -533,7 +545,7 @@ def _test_preference_rows(
         # If the agent never reached either outer third (e.g. all NaN or all
         # centre steps) default to chance so downstream aggregation is stable.
         pct = correct_count / outer_count if outer_count > 0 else 0.5
-        out.append((imprint, test_cond, env_id, outer_count, pct))
+        out.append((imprint, test_cond, brain_id, outer_count, pct))
     return out
 
 
@@ -725,7 +737,7 @@ def _replot_test_from_csv(
                 (
                     row["imprint"],
                     row["test_condition"],
-                    row["brain_env_id"],
+                    row["brain_id"],
                     int(row["n_steps"]),
                     float(row["correct_pct"]),
                 )

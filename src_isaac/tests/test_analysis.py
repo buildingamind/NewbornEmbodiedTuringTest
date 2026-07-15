@@ -284,13 +284,18 @@ class TestTestVizPositionMetric:
 
         out = test_viz(run, tmp_path / "out")
         with (out / "test_preferences.csv").open() as f:
-            records = sorted(csv.DictReader(f), key=lambda r: r["brain_env_id"])
+            records = sorted(csv.DictReader(f), key=lambda r: r["brain_id"])
         assert len(records) == 2
         assert pytest.approx(float(records[0]["correct_pct"]), abs=1e-6) == 1.0
         assert pytest.approx(float(records[1]["correct_pct"]), abs=1e-6) == 0.0
 
     def test_separates_brains_and_conditions(self, tmp_path):
-        """Multiple envs × multiple test conditions → one row each."""
+        """Multiple envs × multiple test conditions → one row each.
+
+        These fixtures pre-date the brain_id column, so the reader falls back to
+        env_id — i.e. one brain per env, which is what this fixture means. Rows for
+        a REAL multi-env brain are pooled instead; see test_brain_aggregation.py.
+        """
         run = tmp_path / "run"
         cond_dir = run / "Object1"
         rows = [
@@ -305,11 +310,11 @@ class TestTestVizPositionMetric:
         with (out / "test_preferences.csv").open() as f:
             records = sorted(
                 csv.DictReader(f),
-                key=lambda r: (r["test_condition"], r["brain_env_id"]),
+                key=lambda r: (r["test_condition"], r["brain_id"]),
             )
         assert len(records) == 4
         by_key = {
-            (r["test_condition"], r["brain_env_id"]): float(r["correct_pct"])
+            (r["test_condition"], r["brain_id"]): float(r["correct_pct"])
             for r in records
         }
         assert by_key[("rest", "0")] == 1.0
@@ -322,7 +327,7 @@ class TestTestVizPositionMetric:
         out = test_viz(tmp_path / "empty_run", tmp_path / "out")
         with (out / "test_preferences.csv").open() as f:
             rows = list(csv.reader(f))
-        assert rows[0] == ["imprint", "test_condition", "brain_env_id", "n_steps", "correct_pct"]
+        assert rows[0] == ["imprint", "test_condition", "brain_id", "n_steps", "correct_pct"]
         assert len(rows) == 1  # header only
 
 

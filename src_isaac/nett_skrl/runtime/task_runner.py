@@ -299,42 +299,50 @@ def _compute_eval_num_envs(task: Task) -> int:
     num_test_tasks = max(1, task.agent.env.iterations_per_test_episode.get(config.condition, 1))
     total_test_episodes = num_test_tasks * episodes_test
 
-    def _valid(n: int) -> bool:
-        return (
-            n >= 1
-            and n % num_brains == 0
-            and total_test_episodes % n == 0
-            and _is_square_tile_grid(n)
-        )
-
     # NETT_TEST_ENVS: request a test-phase parallelism independent of training's
-    # num_envs. We take the largest VALID count <= the request (never above it, so
-    # it stays a VRAM ceiling the caller controls).
+    # num_envs. Treated as a CEILING the caller controls (VRAM), never a target.
     forced = os.environ.get("NETT_TEST_ENVS")
     if forced:
         want = min(max(1, int(forced)), total_test_episodes)
     else:
-        # Default: cap at training's max_parallel_envs. Test could go far wider (see
-        # docstring) but that is a VRAM decision, so it stays opt-in via
-        # NETT_TEST_ENVS rather than silently inflating every run's footprint.
+        # Default: cap at training's max_parallel_envs. Test could go wider (it only
+        # replays a fixed schedule) but that is a VRAM call, so it stays opt-in.
         max_envs = config.max_parallel_envs
         want = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
         want = max(1, want)
 
+    def _square_multiple(n: int) -> bool:
+        # HARD constraints, both of which BREAK something if violated:
+        #   n % num_brains == 0  -> else BrainTrainer raises (each brain owns one
+        #                           contiguous env scope; see brain_scope_sizes)
+        #   square tile grid     -> else the fisheye render is distorted (#488)
+        return n >= 1 and n % num_brains == 0 and _is_square_tile_grid(n)
+
+    # Pass 1: also divide the episode total, so no env sits idle in the last batch.
     for n in range(want, 0, -1):
-        if _valid(n):
+        if _square_multiple(n) and total_test_episodes % n == 0:
             return n
 
-    # No square-grid divisor at all (e.g. a prime episode count). Fall back to the
-    # smallest safe thing rather than silently rendering distorted: 1 env is always
-    # a 1x1 grid and always divides.
-    logger = config.logger
-    logger.warning(
-        "no square-grid num_envs divides %d test episodes at num_brains=%d "
-        "(want<=%d); falling back to 1. Test will be slow but undistorted.",
-        total_test_episodes, num_brains, want,
+    # Pass 2: relax ONLY the divides-the-total preference (the original code did the
+    # same). A partial final batch leaves some envs idle; that is survivable, a
+    # crash or a distorted lens is not.
+    for n in range(want, 0, -1):
+        if _square_multiple(n):
+            return n
+
+    # Pass 3: nothing at or below the request qualifies (e.g. want < num_brains).
+    # Go UP to the smallest square-grid multiple of num_brains rather than return
+    # something that breaks BrainTrainer.
+    n = num_brains
+    while not _is_square_tile_grid(n):
+        n += num_brains
+    config.logger.warning(
+        "no square-grid num_envs <= %d is a multiple of num_brains=%d for %d test "
+        "episodes; using %d (above the request) so the tile grid stays square and "
+        "each brain keeps a whole env scope.",
+        want, num_brains, total_test_episodes, n,
     )
-    return 1
+    return n
 
 
 def _training_boundaries(

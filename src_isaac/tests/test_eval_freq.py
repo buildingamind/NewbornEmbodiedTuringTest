@@ -61,10 +61,14 @@ class TestComputeEvalNumEnvs:
         return _compute_eval_num_envs(_make_mock_task(**kwargs))
 
     def test_simple_divisor(self):
-        # total_test_episodes = 6, num_brains = 1 → largest divisor ≤ 6 is 6
+        # total_test_episodes = 6, num_brains = 1. The largest divisor is 6, but 6
+        # tiles 3x2 -> non-square -> distorted fisheye (#488), so it is rejected.
+        # 3 is the largest divisor whose grid is square (2x2, one empty tile).
+        from nett_skrl.runtime.task_runner import _is_square_tile_grid
         result = self._call(num_test_tasks=6, episodes_test=1, num_brains=1)
         assert 6 % result == 0
-        assert result == 6
+        assert _is_square_tile_grid(result)
+        assert result == 3
 
     def test_capped_by_max_parallel_envs(self):
         # total = 12, cap = 4 → should return 4 (4 divides 12)
@@ -73,10 +77,16 @@ class TestComputeEvalNumEnvs:
         assert 12 % result == 0
 
     def test_multiple_of_num_brains(self):
-        # num_brains=2, total=6 → must be a multiple of 2 AND divide 6 → 6, 2
+        # num_brains=2, total=6. The multiples of 2 that divide 6 are 2 (2x1) and
+        # 6 (3x2) -- BOTH non-square, so all three constraints cannot hold at once.
+        # Priority: being a multiple of num_brains (else BrainTrainer raises) and a
+        # square grid (else the render is distorted) are HARD; dividing the total is
+        # a preference (its cost is only an idle env in the last batch). -> 4 (2x2).
+        from nett_skrl.runtime.task_runner import _is_square_tile_grid
         result = self._call(num_test_tasks=6, episodes_test=1, num_brains=2)
         assert result % 2 == 0
-        assert 6 % result == 0
+        assert _is_square_tile_grid(result)
+        assert result == 4
 
     def test_always_multiple_of_num_brains_even_when_no_divisor(self):
         # total=7 (prime), num_brains=2 → no multiple of 2 divides 7
@@ -554,7 +564,10 @@ def test_orchestration_final_test_uses_parallel_test_envs(tmp_path):
     with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", fake_spawn):
         run_task(task)
 
-    assert spawned == [("test", {"num_envs": 52})]
+    # 52 tiles 8x7 -> non-square -> distorted fisheye (#488). This is the exact
+    # value NETT_TEST_ENVS=64 used to resolve to. 13 is the largest divisor of 52
+    # whose grid is square (4x4).
+    assert spawned == [("test", {"num_envs": 13})]
 
 
 def test_orchestration_eval_is_metrics_only_no_recording_contamination(tmp_path):

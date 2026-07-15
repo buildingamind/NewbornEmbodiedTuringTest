@@ -278,6 +278,17 @@ class Environment:
             if transform is not None:
                 value = transform(value)
             _set_attr_path(cfg, cfg_path, value)
+        # Declare which model owns which env, so every logged row carries its
+        # brain_id. Derived from the SAME rule the trainer slices with
+        # (brain_scope_sizes), not re-guessed downstream: the analysis used to
+        # bucket test rows by env_id and report num_envs as "n_brains", which both
+        # mislabels the model count and makes the statistic depend on the
+        # test-time env count.
+        from ..brain.trainer import brain_id_per_env
+
+        _set_if_present(
+            cfg, "brain_ids", tuple(brain_id_per_env(self.num_envs, self.num_brains))
+        )
 
     def _configure_artifacts(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         log_path = config.path / "logs"

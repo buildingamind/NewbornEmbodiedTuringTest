@@ -2,7 +2,7 @@
 and compare to the Unity Object1 baseline + ideal ChickData targets.
 
 Reads each run's analysis/test/test_preferences.csv (cols: imprint,
-test_condition, brain_env_id, n_steps, correct_pct) and averages correct_pct
+test_condition, brain_id, n_steps, correct_pct) and averages correct_pct
 per test condition across all seeds (each run = 1 independent brain).
 
 Usage:

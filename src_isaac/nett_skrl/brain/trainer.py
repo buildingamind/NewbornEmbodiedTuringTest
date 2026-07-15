@@ -47,6 +47,38 @@ class TrainCfg:
     run_name: str | None = None
 
 
+def brain_scope_sizes(num_envs: int, num_brains: int) -> list[int]:
+    """Env-scope size per brain. THE definition of brain<->env ownership.
+
+    Each brain (one model instance) owns ONE CONTIGUOUS scope of the vectorized
+    env; skrl's SequentialTrainer slices `agents`/`scopes` in order, so brain b
+    owns envs [b*s, (b+1)*s). Brains never share an env -- that isolation is the
+    whole point of running N brains in parallel (they differ only by seed, and
+    must not exchange information).
+    """
+    if num_brains < 1:
+        raise ValueError("num_brains must be >= 1")
+    if num_envs % num_brains != 0:
+        raise ValueError(
+            f"env.num_envs ({num_envs}) must be divisible by num_brains "
+            f"({num_brains}); each brain owns one contiguous env scope."
+        )
+    return [num_envs // num_brains] * num_brains
+
+
+def brain_id_per_env(num_envs: int, num_brains: int) -> list[int]:
+    """``[env_id] -> owning brain id``, derived from the same scopes as training.
+
+    Single-sourced here so the per-step CSV can record WHICH MODEL produced each
+    row instead of downstream analysis guessing from env_id (it used to guess, and
+    reported num_envs as "n_brains").
+    """
+    out: list[int] = []
+    for brain, size in enumerate(brain_scope_sizes(num_envs, num_brains)):
+        out.extend([brain] * size)
+    return out
+
+
 class BrainTrainer:
     """Thin NETT wrapper over skrl ``SequentialTrainer``.
 
@@ -58,14 +90,9 @@ class BrainTrainer:
     def __init__(self, env, agents: list, device: str | torch.device = "cuda"):
         if len(agents) < 1:
             raise ValueError("BrainTrainer requires at least one agent.")
-        if env.num_envs % len(agents) != 0:
-            raise ValueError(
-                f"env.num_envs ({env.num_envs}) must be divisible by num_brains "
-                f"({len(agents)}); each brain owns one contiguous env scope."
-            )
         self.env = env
         self.agents = agents
-        self.scopes = [env.num_envs // len(agents)] * len(agents)
+        self.scopes = brain_scope_sizes(env.num_envs, len(agents))
         self.device = torch.device(device)
 
     @staticmethod
