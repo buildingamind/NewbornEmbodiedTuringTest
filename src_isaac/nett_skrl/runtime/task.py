@@ -38,6 +38,9 @@ class TaskConfig:
     brain_id_offset: int = 0
     eval_freq: int | None = None
     max_parallel_envs: int | None = None
+    # Test-phase env ceiling, resolved separately from train's: test replays a
+    # fixed schedule and learns nothing, so it can run far wider than training.
+    max_test_envs: int | None = None
     train_timesteps: int | None = None
     train_global_step: int | None = None
     train_start_step: int | None = None
@@ -101,6 +104,7 @@ class Task:
         brain_id_offset: int = 0,
         eval_freq: int | None = None,
         max_parallel_envs: int | None = None,
+        max_test_envs: int | None = None,
     ) -> None:
         self.config = TaskConfig(
             condition, output_dir, modes, episodes, memory,
@@ -108,6 +112,7 @@ class Task:
             brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
             max_parallel_envs=max_parallel_envs,
+            max_test_envs=max_test_envs,
         )
         self.agent = Agent(brain, body, env)
 

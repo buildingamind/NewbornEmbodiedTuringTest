@@ -21,6 +21,7 @@ def build_tasks(
     brain_id_offset: int = 0,
     eval_freq: int | None = None,
     max_parallel_envs: int | None = None,
+    max_test_envs: int | None = None,
 ) -> list[Task]:
     return [
         Task(
@@ -32,6 +33,7 @@ def build_tasks(
             brain_id_offset=brain_id_offset,
             eval_freq=eval_freq,
             max_parallel_envs=max_parallel_envs,
+            max_test_envs=max_test_envs,
         )
         for condition in conditions
     ]

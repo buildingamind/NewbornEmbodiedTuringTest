@@ -12,7 +12,6 @@ import atexit
 import csv
 import json
 import logging
-import math
 import os
 import shutil
 from pathlib import Path
@@ -22,6 +21,10 @@ import torch
 from nett_skrl.recording import RecordingCfg
 
 from . import crash_guard
+from .parallel_envs import (
+    is_square_tile_grid as _is_square_tile_grid,  # re-exported: used by tests
+    select_test_num_envs,
+)
 from .reap import (
     DeviceLostError,
     TaskReaper,
@@ -260,24 +263,6 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     _exit_worker_cleanly(run_config.logger)
 
 
-def _is_square_tile_grid(num_envs: int) -> bool:
-    """Does ``num_envs`` tile into a SQUARE camera grid?
-
-    Isaac Lab tiles N cameras into ``ceil(sqrt(N)) x ceil(N / cols)``. The chick eye
-    is a fisheye, and at a NON-square tile grid the lens distortion is applied over
-    the full non-square canvas aspect, so the rendered eye image is distorted --
-    Isaac Sim #488. See isaac_lab/docs/known_issues.md.
-
-    Perfect squares qualify; so do a few others whose grid still comes out square
-    (8 -> 3x3, 13 -> 4x4, 80 -> 9x9). 52 -> 8x7 does NOT.
-    """
-    if num_envs < 1:
-        return False
-    cols = math.ceil(math.sqrt(num_envs))
-    rows = math.ceil(num_envs / cols)
-    return cols == rows
-
-
 def _compute_eval_num_envs(task: Task) -> int:
     """Largest test-phase num_envs that tiles into a SQUARE camera grid and is a
     multiple of num_brains. Does NOT require dividing the episode total.
@@ -313,41 +298,25 @@ def _compute_eval_num_envs(task: Task) -> int:
     if forced:
         want = min(max(1, int(forced)), total_test_episodes)
     else:
-        # Default: cap at training's max_parallel_envs. Test could go wider (it only
-        # replays a fixed schedule) but that is a VRAM call, so it stays opt-in.
-        max_envs = config.max_parallel_envs
+        # Prefer the test-phase ceiling the orchestrator measured for THIS phase
+        # (max_parallel_envs is training's, and training is deliberately pinned to the
+        # recipe's count, which is usually far below what test can run). Falls back to
+        # training's ceiling when no test search ran.
+        max_envs = getattr(config, "max_test_envs", None) or config.max_parallel_envs
         want = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
         want = max(1, want)
 
-    def _valid(n: int) -> bool:
-        return n >= 1 and n % num_brains == 0 and _is_square_tile_grid(n)
-
-    candidates = [n for n in range(want, 0, -1) if _valid(n)]
-    if candidates:
-        best = candidates[0]  # largest -> maximum parallelism
-        # Prefer a divisor of the total WITHIN best's tile-grid band [k^2-k+1, k^2]:
-        # every count in that band tiles k x k (same parallelism / VRAM), so if one
-        # divides the total we take it and avoid the overflow-discard entirely.
-        k = math.ceil(math.sqrt(best))
-        band_lo = k * k - k + 1
-        clean = next(
-            (n for n in candidates if n >= band_lo and total_test_episodes % n == 0),
-            None,
+    best, went_up = select_test_num_envs(want, num_brains, total_test_episodes)
+    if went_up:
+        # Nothing at or below the request qualifies (e.g. want < num_brains). Going UP
+        # beats breaking BrainTrainer or rendering distorted.
+        config.logger.warning(
+            "no square-grid num_envs <= %d is a multiple of num_brains=%d for %d test "
+            "episodes; using %d (above the request) so the tile grid stays square and "
+            "each brain keeps a whole env scope.",
+            want, num_brains, total_test_episodes, best,
         )
-        return clean or best
-
-    # Nothing at or below the request qualifies (e.g. want < num_brains). Go UP to the
-    # smallest square-grid multiple of num_brains rather than break BrainTrainer.
-    n = num_brains
-    while not _is_square_tile_grid(n):
-        n += num_brains
-    config.logger.warning(
-        "no square-grid num_envs <= %d is a multiple of num_brains=%d for %d test "
-        "episodes; using %d (above the request) so the tile grid stays square and "
-        "each brain keeps a whole env scope.",
-        want, num_brains, total_test_episodes, n,
-    )
-    return n
+    return best
 
 
 def _training_boundaries(

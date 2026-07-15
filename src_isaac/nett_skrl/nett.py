@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import json
 import logging
+import math
+import os
 import time
 from concurrent.futures import Future, as_completed, wait as future_wait
 from pathlib import Path
@@ -36,7 +38,16 @@ from .runtime import (
 )
 from .runtime.memory import MemoryManager
 from .runtime.reap import DeviceLostRunError, ReapedTaskError
-from .runtime.parallel_envs import capped_num_envs, num_env_candidates
+from .runtime.parallel_envs import (
+    AUTO,
+    capped_num_envs,
+    grow_num_envs,
+    is_valid_num_envs,
+    num_env_candidates,
+    select_test_num_envs,
+    smallest_valid_num_envs,
+    snap_num_envs,
+)
 from .validate import validate_config
 from .runtime.tasklist import validate_tasklist
 
@@ -152,7 +163,7 @@ class NETT:
         brain_id_offset: int = 0,
         eval_freq: int | None = None,
         task_memory: str | float = "auto",
-        max_parallel_envs: int | None = None,
+        max_parallel_envs: int | str | None = None,
         **kwargs,
     ) -> None:
         if "wrappers" in kwargs:
@@ -160,8 +171,20 @@ class NETT:
         episodes = episodes or {"train": 5000, "test": 100}
         if not set(episodes).issubset({"train", "test", "record"}) or not episodes:
             raise ValueError("Episodes must use only 'train', 'test', and/or 'record' keys.")
+        auto_envs = max_parallel_envs == AUTO
+        if auto_envs and task_memory != AUTO:
+            # "auto" envs means "as many as measured VRAM allows", and the dry run is
+            # what measures. A declared task_memory skips it entirely, so there would
+            # be nothing to derive the ceiling from.
+            raise ValueError(
+                'max_parallel_envs: "auto" requires task_memory: "auto" — the env '
+                "ceiling is derived from the dry-run VRAM measurement. Either set "
+                'task_memory: "auto" or give max_parallel_envs an integer.'
+            )
 
-        # Snapshot input for reproducibility.
+        # Snapshot input for reproducibility. Written now so a crash during
+        # resolution still leaves a record, then REWRITTEN below with the resolved
+        # values once "auto" has an answer.
         input_params = {
             "name": name,
             "environment": environment,
@@ -177,8 +200,7 @@ class NETT:
         }
         output_dir = self.output_path / name
         output_dir.mkdir(parents=True, exist_ok=True)
-        with open(output_dir / "config.yaml", "w") as f:
-            f.write(yaml.dump(input_params))
+        self._write_config_snapshot(output_dir, input_params)
 
         base_brain = Brain(**(brain or {}))
         base_body = _make_body(body)
@@ -202,6 +224,8 @@ class NETT:
             preferred_envs_per_brain=base_brain.envs_per_brain,
             max_parallel_envs=max_parallel_envs,
         )
+        if not auto_envs:
+            self._warn_if_invalid_num_envs(num_envs, num_brains)
         self._apply_parallel_env_plan(
             base_brain, base_body, base_env, num_brains, num_envs, steps_per_episode
         )
@@ -216,11 +240,52 @@ class NETT:
             num_brains,
             num_envs,
             steps_per_episode,
+            env_cap=None if auto_envs else max_parallel_envs,
         )
+        # Test is the phase worth widening (it replays a fixed schedule and learns
+        # nothing), while training stays pinned to the recipe -- so measure the test
+        # ceiling separately. Opt-in with max_parallel_envs: "auto": it costs a handful
+        # of dry runs, so the default path keeps today's behaviour.
+        test_ceiling = int(num_envs)
+        if auto_envs:
+            found = self._resolve_test_env_ceiling(
+                base_brain, base_body, base_env, output_dir, num_brains, num_envs,
+                steps_per_episode, episodes,
+                # ONE task per condition, not per brain x condition: the brains share a
+                # single vectorized env inside the task (see build_tasks/BrainTrainer).
+                num_tasks=max(1, len(base_env.conditions)),
+                # The train search just measured this exact count; skip the re-probe.
+                train_consumed=memory,
+            )
+            if found is not None:
+                test_ceiling, test_memory = found
+                # The task reserves whatever its WIDEST phase needs. Reserving only
+                # train's footprint would let the scheduler pack a GPU that then OOMs
+                # when those tasks reach test.
+                memory = max(memory, test_memory)
+            # The search left brain/body/env planned at the test count; training must
+            # start from its own plan.
+            self._apply_parallel_env_plan(
+                base_brain, base_body, base_env, num_brains, num_envs, steps_per_episode
+            )
+
+        # RESOLVED, not requested: "auto" is replaced by the integer actually used, so
+        # the emitted config.yaml re-runs identically on another machine. That matters
+        # because env0's render depends on num_envs (#4431 brightness, #488 distortion)
+        # -- a machine-derived count that was never recorded would make the benchmark
+        # machine-dependent.
+        input_params["max_parallel_envs"] = int(num_envs)
+        input_params["task_memory"] = round(memory / (1024**3), 3)
+        input_params["resolved_test_num_envs"] = self._resolved_test_num_envs(
+            base_env, num_brains, test_ceiling, episodes
+        )
+        self._write_config_snapshot(output_dir, input_params)
+
         tasklist = build_tasks(
             base_brain, base_body, base_env, num_brains, num_envs, base_env.conditions,
             output_dir, modes, episodes, memory, brain_id_offset, eval_freq,
-            max_parallel_envs=max_parallel_envs,
+            max_parallel_envs=int(num_envs),
+            max_test_envs=int(test_ceiling),
         )
 
         # Per-task validation runs against the local Isaac Lab build — skip if
@@ -251,7 +316,212 @@ class NETT:
                 Open: https://wandb.ai/{entity}/{project}"""
         )
 
+    # --- Resolution bookkeeping -------------------------------------------
+
+    @staticmethod
+    def _write_config_snapshot(output_dir: Path, params: dict) -> None:
+        with open(output_dir / "config.yaml", "w") as f:
+            f.write(yaml.dump(params))
+
+    def _warn_if_invalid_num_envs(self, num_envs: int, num_brains: int) -> None:
+        """An EXPLICIT env count is never overridden -- the recipe's num_envs is
+        load-bearing for learning, and silently changing it would change results. But
+        an invalid one renders through a distorted fisheye (#488) or breaks brain
+        scoping, so it does not pass quietly."""
+        if is_valid_num_envs(num_envs, num_brains):
+            return
+        suggestion, _ = snap_num_envs(num_envs, num_brains)
+        self.logger.warning(
+            "num_envs=%d is not a valid count (needs a SQUARE tile grid and a multiple "
+            "of num_brains=%d). The fisheye render will be distorted (Isaac Sim #488) "
+            "and/or brain scoping will fail. Nearest valid: %d. Not overriding, since "
+            "you asked for %d explicitly.",
+            num_envs, num_brains, suggestion, num_envs,
+        )
+
+    def _resolve_test_env_ceiling(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        output_dir: Path,
+        num_brains: int,
+        train_envs: int,
+        steps_per_episode: int,
+        episodes: dict[str, int],
+        num_tasks: int,
+        train_consumed: float | None = None,
+    ) -> tuple[int, float] | None:
+        """Measure how wide the TEST phase can run. Returns ``(ceiling, bytes)``.
+
+        Test is the phase worth maximizing: it replays a fixed schedule, so unlike
+        training its num_envs changes nothing but wall-clock. Training is pinned to the
+        recipe (~16 envs, ~2.6GB of a 24GB card), which leaves most of the GPU idle
+        during the test phase -- this finds what actually fits there.
+
+        THE BUDGET IS A SHARE, NOT THE WHOLE GPU. Tasks are packed per device by their
+        declared memory, so a ceiling measured against all of free VRAM would be a lie
+        the moment two tasks land on one GPU and both enter test: each would try to
+        allocate the whole card. Dividing by tasks-per-device keeps the reservation
+        honest and preserves the wave's 2-cells-per-GPU packing.
+
+        Uses the train-mode dry run as the probe, which is conservative in the right
+        direction: it carries the optimizer and rollout buffer that test does not.
+        """
+        if int((episodes or {}).get("test", 0)) <= 0:
+            return None
+        per_device_tasks = max(1, math.ceil(num_tasks / max(1, len(self.devices))))
+        budget = self._vram_budget() / per_device_tasks
+        self.logger.info(
+            "Measuring test-phase env ceiling (%d task(s) over %d GPU(s) -> %d/GPU, "
+            "%.2fGB budget each)",
+            num_tasks, len(self.devices), per_device_tasks, budget / 1024**3,
+        )
+        found = self._search_max_envs_verified(
+            brain, body, env, output_dir, num_brains, train_envs, steps_per_episode,
+            max_envs=None, budget=budget, seed_consumed=train_consumed,
+        )
+        if found is None:
+            return None
+        memory, ceiling = found
+        return ceiling, memory
+
+    def _resolved_test_num_envs(
+        self, env: Environment, num_brains: int, ceiling: int, episodes: dict[str, int]
+    ) -> dict[str, int] | None:
+        """What the TEST phase will pick, per condition, recorded for reproducibility.
+
+        Per-condition because the episode total is (design rows for that condition) x
+        episodes_test, and conditions own different row counts. Computed with the same
+        pure selector the worker uses, so this is a record, not a second opinion.
+        """
+        episodes_test = int((episodes or {}).get("test", 0))
+        if episodes_test <= 0:
+            return None
+        forced = os.environ.get("NETT_TEST_ENVS")
+        resolved: dict[str, int] = {}
+        for condition in env.conditions:
+            total = max(1, env.iterations_per_test_episode.get(condition, 1)) * episodes_test
+            want = min(int(forced), total) if forced else min(int(ceiling), total)
+            resolved[condition] = select_test_num_envs(max(1, want), num_brains, total)[0]
+        return resolved
+
     # --- Memory estimation -------------------------------------------------
+
+    # Headroom for the dry-run-peak vs sustained-training gap.
+    _VRAM_SAFETY = 0.80
+
+    def _vram_budget(self) -> float:
+        """Usable bytes on the target GPU, read BEFORE any dry run (each dry-run
+        subprocess releases its memory on exit, so this stays a clean baseline)."""
+        _device, free_bytes = self.memory_manager.get_most_free_gpu(self.devices)
+        return free_bytes * self._VRAM_SAFETY
+
+    def _search_max_envs_verified(
+        self,
+        brain: Brain,
+        body: Body,
+        env: Environment,
+        output_dir: Path,
+        num_brains: int,
+        seed_envs: int,
+        steps_per_episode: int,
+        max_envs: int | None = None,
+        budget: float | None = None,
+        seed_consumed: float | None = None,
+    ) -> tuple[float, int] | None:
+        """Largest VALID num_envs whose REAL dry run fits the VRAM budget.
+
+        ``seed_consumed`` is a measurement of ``seed_envs`` the caller already has, which
+        skips re-probing it (a dry run costs ~1-3 min). It must come from the same plan.
+
+        ``max_envs`` caps growth. TRAIN passes the recipe's own count: num_envs there is
+        load-bearing for learning (``envs_per_brain = rollouts // steps_per_episode``, so
+        raising it rewrites the PPO batch composition), and auto's job is to VERIFY that
+        count and back off on a smaller GPU -- never to redefine the experiment. TEST
+        passes None: it replays a fixed schedule and learns nothing, so there the only
+        limit is VRAM.
+
+        ``budget`` overrides the default whole-GPU budget, for callers that must leave
+        room for tasks co-scheduled on the same device.
+
+        Every step is MEASURED at the count it reports -- nothing is extrapolated.
+        That is not conservatism, it is the measured shape of the curve: Isaac's VRAM
+        is badly superlinear in num_envs, so a line fitted at small counts predicts
+        capacity that does not exist. Measured here (res128, 1 brain, 23.5GB free)::
+
+            envs      2      4     16     36     64    144     256     400
+            GB     2.48   2.49   2.62   2.85   3.47   6.23   13.48    OOM
+
+        Marginal cost per env grows ~6MB -> ~65MB across that range. The old 2-point
+        linear fit probed 2 and 4, measured a 6MB/env slope, and concluded ~2900 envs
+        fit in 23.5GB; the resulting run died in vkAllocateMemory building the tiled
+        camera canvas. Any slope from this data extrapolates to >1400 -- the model was
+        not mis-tuned, it was the wrong shape.
+
+        Bidirectional: probe the seed, then double up while each probe still fits, or
+        halve down until one does. Returns ``(consumed_bytes, num_envs)``, or None if
+        even the smallest valid count fails (caller falls back to the descending scan).
+        Doubling stops at the first miss, so the answer is within 2x of the true
+        ceiling -- traded deliberately against dry runs that cost ~1-3 min each.
+        """
+        nb = max(1, int(num_brains))
+        budget = self._vram_budget() if budget is None else budget
+        floor = smallest_valid_num_envs(nb)
+        n, _ = snap_num_envs(max(int(seed_envs), floor), nb)
+
+        def _probe(count: int) -> float | None:
+            """Measured bytes at ``count``, or None if it does not fit (a failed dry
+            run and an over-budget one mean the same thing here: too many envs)."""
+            self._apply_parallel_env_plan(brain, body, env, nb, count, steps_per_episode)
+            try:
+                consumed = self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
+            except Exception:
+                self.logger.info("VRAM search: num_envs=%d failed to run; too big", count)
+                return None
+            if consumed > budget:
+                self.logger.info(
+                    "VRAM search: num_envs=%d needs %.2fGB > %.2fGB budget",
+                    count, consumed / 1024**3, budget / 1024**3,
+                )
+                return None
+            return consumed
+
+        best: tuple[int, float] | None = None
+        if seed_consumed is not None and n == max(int(seed_envs), floor):
+            # Already measured at this exact count; only the budget test still applies.
+            consumed = seed_consumed if seed_consumed <= budget else None
+        else:
+            consumed = _probe(n)
+        if consumed is None:
+            # Seed does not fit -- halve down to the largest count that does.
+            while consumed is None and n > floor:
+                nxt, _ = snap_num_envs(max(n // 2, floor), nb)
+                if nxt >= n:
+                    break
+                n = nxt
+                consumed = _probe(n)
+        else:
+            # Seed fits -- double up until one does not (or growth is capped).
+            while consumed is not None:
+                best = (n, consumed)
+                nxt = grow_num_envs(n, nb)
+                if nxt <= n or (max_envs is not None and nxt > max_envs):
+                    break
+                n = nxt
+                consumed = _probe(n)
+        if consumed is not None:
+            best = (n, consumed)
+        if best is None:
+            return None
+
+        num_envs, memory = best
+        self.logger.info(
+            "VRAM search: num_envs=%d verified at %.2fGB (budget %.2fGB @%.0f%%)",
+            num_envs, memory / 1024**3, budget / 1024**3, self._VRAM_SAFETY * 100,
+        )
+        self._apply_parallel_env_plan(brain, body, env, nb, num_envs, steps_per_episode)
+        return memory, num_envs
 
     def _apply_parallel_env_plan(
         self,
@@ -280,26 +550,39 @@ class NETT:
         num_brains: int,
         num_envs: int,
         steps_per_episode: int,
+        env_cap: int | None = None,
     ) -> tuple[float, int]:
-        """Return task VRAM budget in bytes; dry-run estimate when ``"auto"``."""
+        """Return ``(task VRAM budget in bytes, resolved num_envs)``; dry-run estimate
+        when ``task_memory="auto"``. ``env_cap=None`` means the env ceiling is "auto"
+        (measured VRAM decides)."""
         if task_memory != "auto":
             return float(task_memory) * (1024**3), int(num_envs)
 
-        # 2-point linear VRAM model to MAXIMIZE envs in one shot.
-        # consumed(n) ~= fixed + n*per_env (rollout buffer scales per-env so the
-        # buffer is ~constant => part of `fixed`; per_env is mainly Isaac
-        # rendering). Probe two small/safe env counts, fit the line, then solve
-        # for the largest env count that fits free*safety. Falls back to the
-        # legacy descending dry-run scan on any failure.
         try:
-            est = self._estimate_envs_via_linear_model(
-                brain, body, env, output_dir, num_brains, num_envs, steps_per_episode
-            )
+            if env_cap is None:
+                # max_parallel_envs: "auto" -- the ceiling is measured, so it must be
+                # VERIFIED at the count it names. Extrapolating here picks thousands of
+                # envs and dies in vkAllocateMemory; see _search_max_envs_verified.
+                # Bounded by the recipe's own count: auto is a safety net for train, not
+                # a licence to change the experiment.
+                est = self._search_max_envs_verified(
+                    brain, body, env, output_dir, num_brains, num_envs, steps_per_episode,
+                    max_envs=num_envs,
+                )
+            else:
+                # An explicit integer cap already bounds the answer, so the cheap
+                # 2-point fit stays: it only has to decide whether the CAP fits, and
+                # `target = min(cap, max_fit)` means the optimistic slope is harmless
+                # in the usual case where the cap binds.
+                est = self._estimate_envs_via_linear_model(
+                    brain, body, env, output_dir, num_brains, num_envs, steps_per_episode,
+                    env_cap=env_cap,
+                )
             if est is not None:
                 return est
         except Exception:
             self.logger.warning(
-                "2-point env estimator failed; falling back to descending scan",
+                "env estimator failed; falling back to descending scan",
                 exc_info=True,
             )
 
@@ -321,7 +604,8 @@ class NETT:
                     exc_info=True,
                 )
 
-        fallback_envs = int(num_brains)
+        # num_brains itself need not be a legal env count (6 tiles 3x2), so snap.
+        fallback_envs = smallest_valid_num_envs(num_brains)
         self._apply_parallel_env_plan(
             brain, body, env, num_brains, fallback_envs, steps_per_episode
         )
@@ -342,17 +626,33 @@ class NETT:
         num_brains: int,
         num_envs: int,
         steps_per_episode: int,
+        env_cap: int | None = None,
     ) -> tuple[float, int] | None:
         """Fit consumed(n)=fixed+n*per_env from two small dry-runs and return
         ``(budget_bytes, max_envs)`` that fits free*SAFETY. Returns ``None`` when
         the env cap is too small to fit two distinct probe points (caller then
-        uses the legacy scan). Model-agnostic: both coefficients are MEASURED for
-        the actual model via the dry run."""
+        uses the legacy scan). Both coefficients are MEASURED for the actual model
+        via the dry run, so video-size and model-size variation land in ``fixed``
+        for free; the envs are only one slice of VRAM.
+
+        ONLY VALID UNDER AN EXPLICIT CAP. ``max_fit`` is not trustworthy on its own:
+        real VRAM is superlinear in num_envs, so this line -- fitted at 2 and 4 envs --
+        overestimates capacity by ~100x (see _search_max_envs_verified for the measured
+        curve). It survives here only because ``target = min(cap, max_fit)``, i.e. the
+        cap normally binds and max_fit just has to notice a GPU too small for it.
+        ``max_parallel_envs: "auto"`` routes to the verified search instead.
+
+        The result is snapped to a valid num_envs (square tile grid AND a multiple of
+        num_brains); an unsnapped count silently distorts every frame (#488)."""
         nb = max(1, int(num_brains))
-        cap = int(num_envs)
-        if cap >= 4 * nb:
+        # Probe points must not exceed an explicit ceiling. "auto" has none, so it
+        # always gets the wider (more accurate) pair -- and must, since its whole job
+        # is to find a count the recipe never named.
+        if env_cap is None:
             n1, n2 = 2 * nb, 4 * nb
-        elif cap >= 2 * nb:
+        elif env_cap >= 4 * nb:
+            n1, n2 = 2 * nb, 4 * nb
+        elif env_cap >= 2 * nb:
             n1, n2 = nb, 2 * nb
         else:
             return None  # too small; let the descending scan handle it
@@ -379,16 +679,30 @@ class NETT:
             return c2, n2
 
         fixed = c1 - n1 * per_env
-        SAFETY = 0.80  # headroom for the dry-run-peak vs sustained-training gap
+        SAFETY = self._VRAM_SAFETY
         budget = free_bytes * SAFETY
         max_fit = int((budget - fixed) // per_env)
-        target = max(nb, min(cap, (max_fit // nb) * nb))
+        want = max_fit if env_cap is None else min(int(env_cap), max_fit)
+        # Snap to a VALID count -- square tile grid AND a multiple of num_brains. The
+        # old code snapped only to a num_brains multiple, so a fit of e.g. 20 (nb=1)
+        # was accepted and trained through a distorted 5x4 fisheye (#488).
+        target, went_up = snap_num_envs(want, nb)
+        if went_up:
+            self.logger.warning(
+                "measured VRAM fits only %d envs, but no square-grid multiple of "
+                "num_brains=%d is that small; using %d. This may OOM -- a distorted "
+                "render or a broken brain scope would be worse. Free VRAM or lower "
+                "num_brains.",
+                want, nb, target,
+            )
         est_consumed = max(c2, fixed + target * per_env)
         self.logger.info(
             "2-point VRAM model: fixed=%.2fGB per_env=%.0fMB free=%.2fGB(@%.0f%%) "
-            "-> max_envs=%d (cap=%d, probes %d->%.2fGB, %d->%.2fGB)",
+            "-> fits %d -> num_envs=%d (%s, probes %d->%.2fGB, %d->%.2fGB)",
             fixed / 1024**3, per_env / 1024**2, free_bytes / 1024**3, SAFETY * 100,
-            target, cap, n1, c1 / 1024**3, n2, c2 / 1024**3,
+            max_fit, target,
+            "cap=auto" if env_cap is None else f"cap={env_cap}",
+            n1, c1 / 1024**3, n2, c2 / 1024**3,
         )
         self._apply_parallel_env_plan(brain, body, env, num_brains, target, steps_per_episode)
         return est_consumed, target

@@ -30,6 +30,7 @@ def _make_mock_task(
     episodes_test: int = 1,
     num_test_tasks: int = 1,
     max_parallel_envs: int | None = None,
+    max_test_envs: int | None = None,
     num_envs: int = 10,
     condition: str = "C1",
 ):
@@ -40,6 +41,9 @@ def _make_mock_task(
     config.num_brains = num_brains
     config.episodes = {"test": episodes_test}
     config.max_parallel_envs = max_parallel_envs
+    # Explicit, because MagicMock would otherwise auto-create a truthy Mock here
+    # and the selector would compare an int against it.
+    config.max_test_envs = max_test_envs
     config.num_envs = num_envs
     config.condition = condition
 

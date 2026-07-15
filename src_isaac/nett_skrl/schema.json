@@ -227,8 +227,13 @@
     },
     "steps_per_episode": { "type": "integer", "minimum": 1, "default": 200 },
     "num_brains":        { "type": "integer", "minimum": 1, "default": 1 },
-    "max_parallel_envs": { "description": "Optional per-condition-task cap for total vectorized env rows. task_memory: auto may search downward from this cap.",
-                           "type": ["integer", "null"], "minimum": 1, "default": null },
+    "max_parallel_envs": { "description": "Cap for total vectorized env rows per condition-task. An integer is an upper bound (task_memory: auto may search downward from it); null uses the recipe's preferred count. \"auto\" (requires task_memory: auto) VERIFIES the recipe's count against measured VRAM and backs off on a smaller GPU -- it never raises training's num_envs, which is load-bearing for learning -- and additionally measures how wide the TEST phase can run, since test only replays a fixed schedule. Resolved integers are written back to the output config.yaml.",
+                           "oneOf": [
+                             { "type": "integer", "minimum": 1 },
+                             { "type": "string", "enum": ["auto"] },
+                             { "type": "null" }
+                           ],
+                           "default": null },
     "brain_id_offset":   { "type": "integer", "minimum": 0, "default": 0 },
     "eval_freq":         { "type": ["integer", "null"], "minimum": 1, "default": null },
     "task_memory":       { "description": "GB per task; \"auto\" runs dry-run profiling to estimate.",

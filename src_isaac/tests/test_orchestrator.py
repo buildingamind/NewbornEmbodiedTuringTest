@@ -515,7 +515,10 @@ def test_parallel_env_planning_caps_to_brain_multiple():
         preferred_envs_per_brain=4,
         max_parallel_envs=10,
     ) == 9
-    assert num_env_candidates(9, 3) == [9, 6, 3]
+    # 6 is EXCLUDED though it is a multiple of 3: it tiles 3x2, and a non-square tile
+    # grid distorts the fisheye (#488). The scan adopts the first candidate whose dry
+    # run fits, so offering 6 here would silently train on distorted frames.
+    assert num_env_candidates(9, 3) == [9, 3]
 
 
 def test_single_run_logs_wandb_instructions_without_argument_mismatch(monkeypatch, tmp_path):
@@ -613,7 +616,11 @@ def test_auto_memory_resolution_searches_down_to_safe_env_count(tmp_path):
     assert memory == 123.0
     assert num_envs == 4
     assert brain.envs_per_brain == 2
-    assert body.plans == [6, 4]
+    # The 6-env plan is never even ATTEMPTED now: 6 tiles 3x2, so num_env_candidates
+    # drops it and the scan starts at 4 (2x2). It used to be tried first and rejected
+    # only because this fake dry run raises at 6 -- a real one that happened to fit
+    # would have adopted a distorted 3x2 render.
+    assert body.plans == [4]
 
 
 def test_auto_memory_resolution_falls_back_when_no_env_count_succeeds(tmp_path):
@@ -644,8 +651,11 @@ def test_auto_memory_resolution_falls_back_when_no_env_count_succeeds(tmp_path):
     )
 
     assert memory == 6.0 * (1024**3)
-    assert num_envs == 2
-    assert brain.envs_per_brain == 1
+    # The last-resort fallback is the smallest VALID count, not num_brains itself:
+    # num_brains=2 would mean 2 envs, which tiles 2x1 and is the single worst case
+    # for the #488 distortion. 4 (2x2) is the smallest legal multiple of 2.
+    assert num_envs == 4
+    assert brain.envs_per_brain == 2
 
 
 class _Intrinsic:
