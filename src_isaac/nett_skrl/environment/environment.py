@@ -23,6 +23,7 @@ from typing import Optional
 from ..runtime.task import TaskConfig, recording_phase_map
 from .design import get_experiment_design, validate_conditions
 from .physx_strategy import (
+    _env_int,
     probe_free_vram_bytes,
     select_physx_strategy,
     usable_cpu_threads,
@@ -31,6 +32,56 @@ from .physx_strategy import (
 logger = logging.getLogger("nett.environment")
 
 _RECORDING_TARGETS = ("egocentric", "chamber")
+
+# --- Kit CPU thread-pool sizing ---------------------------------------------
+# Isaac's SimulationApp._start_app sizes the carb.tasking + omni.tbb.globalcontrol
+# thread pools (and the PXR_WORK_THREAD_LIMIT / OPENBLAS_NUM_THREADS env vars)
+# from a `limit_cpu_threads` config value that defaults to 32 -- independent of
+# how many Isaac processes share the host. Every parallel cell in an N-way wave
+# therefore spins up 32 carb.tasking + ~32 tbb.worker OS threads regardless of N,
+# oversubscribing the CPU (8 cells x 32 threads = 256 threads competing for 64
+# cores). `limit_cpu_threads` itself can't be forwarded as an AppLauncher kwarg
+# (it's absent from `AppLauncher._SIM_APP_CFG_TYPES`, so it is silently dropped);
+# the only working override is a `kit_args` CLI flag, which SimulationApp
+# re-parses *after* appending its own default args, so the later value wins.
+#
+# Measured A/B (ne16, wheeled, video on, res128, solo -- no wave contention):
+#   threadCount=32 (Isaac default): 343.1 env-steps/s, ~544% CPU, 32 carb threads
+#   threadCount=8:                  360.0 env-steps/s, ~318% CPU,  8 carb threads
+# 8 is *faster* solo and uses 41% less CPU, so there's no solo-throughput cost to
+# lowering it -- it's the default here, not opt-in. Override with NETT_KIT_THREADS
+# for a differently-provisioned host or workload.
+#
+# 8-way wave (8 isolated cells, ne16 each, 64-core host), 2 samples per arm with
+# the arm order alternated -- aggregate env-steps/s:
+#   threadCount=32: 2617.2, 2592.3  (load ~55, ~2870% CPU, GPU 18-29%)
+#   threadCount=8:  2781.7, 2840.1  (load ~22, ~1900% CPU, GPU 21-44%)
+#   => +7.9% aggregate throughput; the win is removing CPU oversubscription, so
+#      the cells stall less on the run queue and the GPUs get fed more.
+#
+# MEASURED LIMITATION: only the carb.tasking pool actually shrinks (32 -> 8,
+# verified per-cell via /proc). The omni.tbb.globalcontrol flag is accepted but
+# does NOT shrink the tbb.worker pool on Isaac Sim 5.1 (it stays ~31) -- that
+# plugin reads its setting before our kit_args CLI arg lands. It is kept because
+# it is the documented pairing and is harmless, but do not count on it: the
+# measured win above comes entirely from carb.tasking. The tbb.worker threads
+# sampled at ~0% CPU, which is why this does not cost us anything.
+_DEFAULT_KIT_THREADS = 8
+
+
+def _kit_thread_args(num_threads: int, existing: str = "") -> str:
+    """Build the `kit_args` string that pins Kit's CPU thread pools.
+
+    Composes with any ``existing`` kit_args (space-separated, Kit CLI syntax)
+    by appending after -- later flags win when Kit re-parses argv, so this
+    still overrides an equivalent flag placed earlier in ``existing``.
+    """
+    threads = max(1, int(num_threads))
+    parts = [existing] if existing else []
+    parts.append(f"--/plugins/carb.tasking.plugin/threadCount={threads}")
+    parts.append(f"--/plugins/omni.tbb.globalcontrol/maxThreadCount={threads}")
+    return " ".join(parts)
+
 
 _ENV_CFG_FIELDS = (
     ("scene.num_envs", "num_envs", int),
@@ -198,10 +249,12 @@ class Environment:
                 flag = f"--/rtx/rendermode={self.render_mode}"
                 if flag not in sys.argv:
                     sys.argv.append(flag)
+            kit_threads = _env_int("NETT_KIT_THREADS", _DEFAULT_KIT_THREADS)
             self._sim_app = AppLauncher(
                 headless=self.headless,
                 enable_cameras=True,
                 device=f"cuda:{getattr(config, 'device', 0)}",
+                kit_args=_kit_thread_args(kit_threads),
             ).app
 
         from nett_isaac.nett_env import NETTEnv

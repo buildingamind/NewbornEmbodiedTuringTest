@@ -6,8 +6,12 @@ import sys
 import types
 from pathlib import Path
 
-from nett_skrl.environment.environment import Environment
-from nett_skrl.environment.environment import parse_episode_selector
+from nett_skrl.environment.environment import (
+    Environment,
+    _DEFAULT_KIT_THREADS,
+    _kit_thread_args,
+    parse_episode_selector,
+)
 from nett_skrl.runtime.task import TaskConfig
 
 
@@ -307,3 +311,183 @@ def test_task_config_mode_view_does_not_mutate_base(tmp_path):
     assert train.current_mode == "train"
     assert test.current_mode == "test"
     assert train.condition == test.condition == "Object1"
+
+
+# === Kit CPU thread-pool sizing (NETT_KIT_THREADS) ==========================
+# See environment.py's "Kit CPU thread-pool sizing" block: Isaac's
+# SimulationApp sizes carb.tasking/tbb thread pools from a `limit_cpu_threads`
+# config value (default 32, not forwardable as an AppLauncher kwarg) that is
+# independent of how many Isaac cells share the host. `_kit_thread_args`
+# builds the only working override -- a `kit_args` CLI string SimulationApp
+# re-parses last-wins.
+
+
+def test_kit_thread_args_sets_both_carb_and_tbb_to_the_same_count():
+    args = _kit_thread_args(8)
+    assert "--/plugins/carb.tasking.plugin/threadCount=8" in args.split(" ")
+    assert "--/plugins/omni.tbb.globalcontrol/maxThreadCount=8" in args.split(" ")
+
+
+def test_kit_thread_args_clamps_to_at_least_one():
+    args = _kit_thread_args(0)
+    assert "threadCount=1" in args
+    args = _kit_thread_args(-5)
+    assert "threadCount=1" in args
+
+
+def test_kit_thread_args_composes_after_existing_kit_args():
+    """Existing kit_args are kept and our flags are appended after them, so
+    Kit's last-wins re-parse still lets our value win over a stale duplicate
+    placed earlier in `existing`."""
+    args = _kit_thread_args(4, existing="--/some/other/flag=1")
+    parts = args.split(" ")
+    assert parts[0] == "--/some/other/flag=1"
+    assert parts.index("--/plugins/carb.tasking.plugin/threadCount=4") > 0
+
+
+def test_default_kit_threads_is_eight_not_isaac_default_32():
+    # Isaac's own SimulationApp default (`limit_cpu_threads`) is 32; the
+    # Lead-measured A/B showed 8 is faster *and* uses less CPU solo, with no
+    # wave-width knowledge required, so it is the default here.
+    assert _DEFAULT_KIT_THREADS == 8
+
+
+def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
+    tmp_path, monkeypatch
+):
+    assets = tmp_path / "assets"
+    for rel in ("chick/robot_chick.usdc", "chamber/chamber.usdc"):
+        path = assets / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    (assets / "design_sheets").mkdir(parents=True, exist_ok=True)
+    design_sheet = _design_sheet(assets / "design_sheets")
+    media_root = assets / "videos"
+    media_root.mkdir()
+
+    captured = {}
+
+    class FakeAppLauncher:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.app = object()
+
+    class FakeNETTEnvCfg(_Cfg):
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.asset_root = kwargs.get("asset_root")
+            self.phase = "train"
+            self.imprint_condition = None
+            self.design_sheet = ""
+            self.media_root = ""
+            self.episode_steps = 0
+            self.reward_types = ()
+            self.record_mode = ""
+            self.validation_mode = False
+            self.log_path = None
+            self.profile_path = None
+            self.record_path = None
+            self.egocentric_record_path = None
+            self.record_episodes = None
+            self.egocentric_record_episodes = None
+            self.chamber_record_path = None
+            self.chamber_record_episodes = None
+            self.__post_init__()
+
+        def __post_init__(self):
+            if not self.asset_root:
+                raise FileNotFoundError("asset_root required before post_init")
+            super().__post_init__()
+
+    monkeypatch.setitem(
+        sys.modules, "isaaclab.app", types.SimpleNamespace(AppLauncher=FakeAppLauncher)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env",
+        types.SimpleNamespace(NETTEnv=lambda cfg: cfg),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env_cfg",
+        types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
+    )
+    monkeypatch.delenv("NETT_KIT_THREADS", raising=False)
+
+    env = Environment(design_sheet=design_sheet, media_root=media_root)
+    task = _TaskConfig()
+    task.path = tmp_path / "run"
+
+    env.load(task)
+
+    assert captured["kit_args"] == _kit_thread_args(_DEFAULT_KIT_THREADS)
+
+
+def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
+    assets = tmp_path / "assets"
+    for rel in ("chick/robot_chick.usdc", "chamber/chamber.usdc"):
+        path = assets / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("")
+    (assets / "design_sheets").mkdir(parents=True, exist_ok=True)
+    design_sheet = _design_sheet(assets / "design_sheets")
+    media_root = assets / "videos"
+    media_root.mkdir()
+
+    captured = {}
+
+    class FakeAppLauncher:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+            self.app = object()
+
+    class FakeNETTEnvCfg(_Cfg):
+        def __init__(self, **kwargs):
+            super().__init__()
+            self.asset_root = kwargs.get("asset_root")
+            self.phase = "train"
+            self.imprint_condition = None
+            self.design_sheet = ""
+            self.media_root = ""
+            self.episode_steps = 0
+            self.reward_types = ()
+            self.record_mode = ""
+            self.validation_mode = False
+            self.log_path = None
+            self.profile_path = None
+            self.record_path = None
+            self.egocentric_record_path = None
+            self.record_episodes = None
+            self.egocentric_record_episodes = None
+            self.chamber_record_path = None
+            self.chamber_record_episodes = None
+            self.__post_init__()
+
+        def __post_init__(self):
+            if not self.asset_root:
+                raise FileNotFoundError("asset_root required before post_init")
+            super().__post_init__()
+
+    monkeypatch.setitem(
+        sys.modules, "isaaclab.app", types.SimpleNamespace(AppLauncher=FakeAppLauncher)
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env",
+        types.SimpleNamespace(NETTEnv=lambda cfg: cfg),
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "nett_isaac.nett_env_cfg",
+        types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
+    )
+    monkeypatch.setenv("NETT_KIT_THREADS", "3")
+
+    env = Environment(design_sheet=design_sheet, media_root=media_root)
+    task = _TaskConfig()
+    task.path = tmp_path / "run"
+
+    env.load(task)
+
+    assert captured["kit_args"] == _kit_thread_args(3)
+    assert "threadCount=3" in captured["kit_args"]
