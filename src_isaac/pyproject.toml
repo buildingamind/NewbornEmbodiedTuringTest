@@ -24,6 +24,17 @@ dependencies = [
     "skrl>=2.0.0",
     "nvidia-ml-py",
     "opencv-python-headless",
+    # LOAD-BEARING PIN — without it EVERY GPU conv2d dies and no CNN trains at all:
+    #   RuntimeError: CUDNN_BACKEND_TENSOR_DESCRIPTOR cudnnFinalize failed ...
+    #   cudnn_status: CUDNN_STATUS_SUBLIBRARY_VERSION_MISMATCH   (bare conv2d, no Isaac)
+    # torch 2.12+cu130 pulls nvidia-cudnn-cu13 9.20.0.48, which ships only 8 libs and NO
+    # libcudnn_engines_tensor_ir.so.9 -- yet its libcudnn.so.9 dlopens that sublib at
+    # runtime, so the loader falls through to the SYSTEM cudnn (9.23.1 here) and the
+    # versions mismatch. 9.23.x ships tensor_ir, so every lib resolves from one wheel.
+    # Verified 2026-07-15: conv2d OK with LD_LIBRARY_PATH unset, torch reports cudnn 92302.
+    # Do NOT let nvidia-cudnn-cu12 back in alongside it: both wheels claim the SAME 8 .so
+    # paths, so uninstalling either deletes them out from under the other (reinstall after).
+    "nvidia-cudnn-cu13>=9.23; platform_system=='Linux'",
     # `reinit="create_new"` (used in brain.py to keep multiple per-brain
     # wandb runs alive in the same worker process) was added in wandb 0.17.
     "wandb>=0.17",
