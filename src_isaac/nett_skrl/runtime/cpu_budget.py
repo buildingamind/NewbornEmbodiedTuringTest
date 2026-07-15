@@ -32,12 +32,17 @@ aggregate train it/s with ALL cells concurrently active; "stock" = nothing pinne
     8-way  NETT_KIT_THREADS=8            8/8       14.79       116.3       3.68x
     16-way NETT_KIT_THREADS=4 (2/GPU)   16/16      12.08       200.6       6.35x  <- knee
     20-way NETT_KIT_THREADS=3           20/20       9.94       200.3       6.34x
-    24-way NETT_KIT_THREADS=2 (3/GPU)   24/24       8.71       209.0       6.61x
+    24-way NETT_KIT_THREADS=2 (3/GPU)   24/24       8.71       209.0       6.61x  *
 
 Once the pools are pinned a cell draws ~3 cores instead of ~11.6, so the box fits
 more cells than it has GPUs: 2 cells/GPU buys +72% aggregate for -18% per-cell.
 **Past 16 the box is saturated** -- 20 and 24 cells buy nothing (aggregate flat at
 ~200-209 while per-cell falls), so 16-way is the production point.
+
+* 24-way only reached 24/24 with a per-cell Kit cache dir (NETT_KIT_CACHE_ID); with the
+shared cache 3/24 hung in Kit init on a shared-cache race. That knob was REMOVED as
+dead weight -- aggregate is flat past 16, so there is no reason to run 24 and pay for
+it. If you ever need >16 cells/host, see git log "per-cell Kit cache dirs" (B@c43fd46).
 
 Do not be fooled by a staggered launch: a 24-way run with a 5s stagger reported
 12.02 it/s/cell / 254.4 aggregate, but that is an ARTIFACT -- the stagger spread

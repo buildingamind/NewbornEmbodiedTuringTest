@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Optional
 
 from ..runtime.cpu_budget import cell_cpu_threads, kit_thread_args
-from ..runtime.kit_cache import kit_cache_args
 from ..runtime.task import TaskConfig, recording_phase_map
 from .design import get_experiment_design, validate_conditions
 from .physx_strategy import (
@@ -207,7 +206,7 @@ class Environment:
                 headless=self.headless,
                 enable_cameras=True,
                 device=f"cuda:{getattr(config, 'device', 0)}",
-                kit_args=kit_cache_args(kit_thread_args(cell_cpu_threads())),
+                kit_args=kit_thread_args(cell_cpu_threads()),
             ).app
 
         from nett_isaac.nett_env import NETTEnv
