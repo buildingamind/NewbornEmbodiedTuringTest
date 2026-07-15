@@ -43,7 +43,9 @@ def run_task(task: Task) -> None:
         config.logger.info(
             "Spawning dry-run subprocess for condition %s", config.condition
         )
-        _spawn_mode_subprocess(task, "train")
+        # The probe's mode is the caller's: a TRAIN probe measures the optimizer and
+        # rollout buffer, a TEST probe measures neither (and is far cheaper).
+        _spawn_mode_subprocess(task, config.modes[0] if config.modes else "train")
         config.logger.info("Dry-run subprocess complete")
         return
 
@@ -154,9 +156,21 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
 
     # crash_evidence=None deliberately: crash_guard signals DEVICE_LOST by EXIT
     # CODE (75 / -14), not by a marker file, and its SIGALRM kernel backstop
-    # already guarantees this join returns. A healthy run of any duration joins
-    # normally; NETT_REAP_TIMEOUT defaults to 0 (disabled).
-    outcome = join_with_reap(p, reaper, crash_evidence=None, logger=task.config.logger)
+    # already guarantees this join returns.
+    #
+    # absolute_timeout is set for DRY RUNS ONLY (TaskConfig.dry_run_timeout). None --
+    # every real run -- keeps the unbounded join, since a healthy run of any duration
+    # must join normally and NETT_REAP_TIMEOUT defaults to 0 (disabled). A probe is the
+    # one caller that genuinely knows its own budget, which is exactly the opt-in case
+    # the reap module documents; without it, a probe that OOMs outside the DEVICE_LOST
+    # path wedges forever.
+    outcome = join_with_reap(
+        p,
+        reaper,
+        crash_evidence=None,
+        absolute_timeout=getattr(task.config, "dry_run_timeout", None),
+        logger=task.config.logger,
+    )
 
     # ORDER IS LOAD-BEARING: the reap outcome is checked BEFORE any exitcode
     # logic. A reaped child was SIGKILLed, so p.exitcode is -9 -- which IS in

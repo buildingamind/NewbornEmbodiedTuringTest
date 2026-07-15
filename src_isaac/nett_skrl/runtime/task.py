@@ -49,6 +49,13 @@ class TaskConfig:
     device: int | None = None
     current_mode: str | None = None
     dry_run: bool = False
+    # Absolute cap on a DRY-RUN subprocess, in seconds. Only dry runs set it: a
+    # probe knows its own budget (boot + one rollout, or a few eval steps), whereas
+    # a real run's duration is unbounded by design. Without it an over-size probe
+    # can wedge forever -- a 484-env probe hit a Vulkan OOM and then hung, holding
+    # 24GB, because crash_guard's bounded exit keys on DEVICE_LOST and an
+    # allocation OOM is not one.
+    dry_run_timeout: float | None = None
     seed: int = field(init=False)
     name: str = field(init=False)
     path: Path = field(init=False)
@@ -119,8 +126,8 @@ class Task:
     def set_device(self, device: int) -> None:
         self.config = replace(self.config, device=device)
 
-    def set_dry_run(self, dry_run: bool = True) -> None:
-        self.config = replace(self.config, dry_run=dry_run)
+    def set_dry_run(self, dry_run: bool = True, timeout: float | None = None) -> None:
+        self.config = replace(self.config, dry_run=dry_run, dry_run_timeout=timeout)
 
 
 def set_seeds(seed: int) -> None:

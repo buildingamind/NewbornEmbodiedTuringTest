@@ -55,6 +55,13 @@ from .runtime.tasklist import validate_tasklist
 # Reserved fallback when dry-run estimation fails for any reason.
 _FALLBACK_TASK_MEMORY_GB = 6.0
 
+# Absolute cap on a single dry-run probe (seconds). A probe is bounded work -- Isaac
+# boot plus either one rollout or a few eval steps -- so a cap is safe here in a way it
+# is not for a real run. Generous by ~5x so a legitimately slow probe (big rollouts, or
+# hundreds of envs booting) is never mistaken for "does not fit"; it exists only to stop
+# a wedged probe from hanging the wave forever.
+_DRY_RUN_TIMEOUT_S = float(os.environ.get("NETT_DRY_RUN_TIMEOUT", "900"))
+
 
 def _load_schema() -> dict:
     with open(Path(__file__).resolve().parent / "schema.json") as f:
@@ -254,8 +261,6 @@ class NETT:
                 # ONE task per condition, not per brain x condition: the brains share a
                 # single vectorized env inside the task (see build_tasks/BrainTrainer).
                 num_tasks=max(1, len(base_env.conditions)),
-                # The train search just measured this exact count; skip the re-probe.
-                train_consumed=memory,
             )
             if found is not None:
                 test_ceiling, test_memory = found
@@ -350,7 +355,6 @@ class NETT:
         steps_per_episode: int,
         episodes: dict[str, int],
         num_tasks: int,
-        train_consumed: float | None = None,
     ) -> tuple[int, float] | None:
         """Measure how wide the TEST phase can run. Returns ``(ceiling, bytes)``.
 
@@ -365,8 +369,9 @@ class NETT:
         allocate the whole card. Dividing by tasks-per-device keeps the reservation
         honest and preserves the wave's 2-cells-per-GPU packing.
 
-        Uses the train-mode dry run as the probe, which is conservative in the right
-        direction: it carries the optimizer and rollout buffer that test does not.
+        Probes in TEST mode: test allocates no optimizer and no rollout buffer, so a
+        train probe would measure the wrong (higher) number -- and would cost a whole
+        rollout per rung instead of a few steps.
         """
         if int((episodes or {}).get("test", 0)) <= 0:
             return None
@@ -379,7 +384,7 @@ class NETT:
         )
         found = self._search_max_envs_verified(
             brain, body, env, output_dir, num_brains, train_envs, steps_per_episode,
-            max_envs=None, budget=budget, seed_consumed=train_consumed,
+            max_envs=None, budget=budget, mode="test",
         )
         if found is None:
             return None
@@ -428,12 +433,12 @@ class NETT:
         steps_per_episode: int,
         max_envs: int | None = None,
         budget: float | None = None,
-        seed_consumed: float | None = None,
+        mode: str = "train",
     ) -> tuple[float, int] | None:
         """Largest VALID num_envs whose REAL dry run fits the VRAM budget.
 
-        ``seed_consumed`` is a measurement of ``seed_envs`` the caller already has, which
-        skips re-probing it (a dry run costs ~1-3 min). It must come from the same plan.
+        ``mode`` is the phase to probe in -- train and test have different footprints,
+        so each search measures its own.
 
         ``max_envs`` caps growth. TRAIN passes the recipe's own count: num_envs there is
         load-bearing for learning (``envs_per_brain = rollouts // steps_per_episode``, so
@@ -474,18 +479,19 @@ class NETT:
             """Measured bytes at ``count``, or None if it does not fit (a failed dry
             run and an over-budget one mean the same thing here: too many envs).
 
-            KNOWN GAP: there is no timeout here, and an over-size probe does not always
-            die cleanly. Measured 2026-07-15: a 484-env probe hit
+            An over-size probe does not always die cleanly: a 484-env probe hit
             `vkAllocateMemory ERROR_OUT_OF_DEVICE_MEMORY` and then HUNG, pinning 24GB
-            for 6+ min with no reap, because crash_guard's bounded exit keys on
-            DEVICE_LOST and a Vulkan allocation OOM is not that. A 400-env probe on the
-            same GPU exited cleanly in ~20s, so it depends where the OOM lands. Until
-            this is bounded, `max_parallel_envs: "auto"` is not campaign-safe -- which is
-            why it stays opt-in and nothing reaches this path by default.
+            indefinitely, because crash_guard's bounded exit keys on DEVICE_LOST and an
+            allocation OOM is not that (a 400-env probe on the same GPU exited cleanly in
+            ~20s, so it depends where the OOM lands). That is why the probe carries an
+            absolute cap -- see TaskConfig.dry_run_timeout -- and why a reaped probe
+            arrives here as an exception, i.e. as "too big", which is exactly right.
             """
             self._apply_parallel_env_plan(brain, body, env, nb, count, steps_per_episode)
             try:
-                consumed = self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
+                consumed = self._estimate_task_memory_via_dry_run(
+                    brain, body, env, output_dir, mode=mode
+                )
             except Exception:
                 self.logger.info("VRAM search: num_envs=%d failed to run; too big", count)
                 return None
@@ -498,11 +504,7 @@ class NETT:
             return consumed
 
         best: tuple[int, float] | None = None
-        if seed_consumed is not None and n == max(int(seed_envs), floor):
-            # Already measured at this exact count; only the budget test still applies.
-            consumed = seed_consumed if seed_consumed <= budget else None
-        else:
-            consumed = _probe(n)
+        consumed = _probe(n)
         if consumed is None:
             # Seed does not fit -- halve down to the largest count that does.
             while consumed is None and n > floor:
@@ -527,8 +529,8 @@ class NETT:
 
         num_envs, memory = best
         self.logger.info(
-            "VRAM search: num_envs=%d verified at %.2fGB (budget %.2fGB @%.0f%%)",
-            num_envs, memory / 1024**3, budget / 1024**3, self._VRAM_SAFETY * 100,
+            "VRAM search (%s): num_envs=%d verified at %.2fGB (budget %.2fGB @%.0f%%)",
+            mode, num_envs, memory / 1024**3, budget / 1024**3, self._VRAM_SAFETY * 100,
         )
         self._apply_parallel_env_plan(brain, body, env, nb, num_envs, steps_per_episode)
         return memory, num_envs
@@ -723,9 +725,17 @@ class NETT:
         body: Body,
         env: Environment,
         output_dir: Path,
+        mode: str = "train",
     ) -> float:
-        """Spawn one task on the least-loaded GPU, train past a single update,
-        and return ``baseline_free - post_train_free`` for the device."""
+        """Spawn one task on the least-loaded GPU and return
+        ``baseline_free - post_free`` for the device.
+
+        ``mode`` decides what is measured, and the phases differ enough to matter:
+        a ``train`` probe runs one rollout so the optimizer state and the update's
+        peak are committed, while a ``test`` probe runs a handful of steps because
+        test allocates neither -- only env, models and render targets. Measuring test
+        with a train probe would be both slower and wrong (high).
+        """
         device, baseline_free = self.memory_manager.get_most_free_gpu(self.devices)
         condition = env.conditions[0]
 
@@ -735,14 +745,17 @@ class NETT:
             env,
             condition,
             output_dir,
-            modes=["train"],
-            episodes={"train": 1},
+            modes=[mode],
+            episodes={mode: 1},
             memory=None,
             num_brains=env.num_brains,
             num_envs=env.num_envs,
         )
         task.set_device(device)
-        task.set_dry_run(True)
+        # BOUNDED: a probe deliberately reaches for counts that do not fit, and an
+        # over-size one does not reliably die (a 484-env probe hit a Vulkan OOM and
+        # then hung, holding 24GB, since crash_guard keys on DEVICE_LOST).
+        task.set_dry_run(True, timeout=_DRY_RUN_TIMEOUT_S)
         # mem.txt lands at the canonical ``config.path / "mem.txt"`` since
         # ``for_mode()`` rewrites ``path`` from ``__post_init__``; validation
         # mode suppresses every other output, so this file is the only

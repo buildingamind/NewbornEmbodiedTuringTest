@@ -28,6 +28,7 @@ from .config import AlgorithmCfg, EncoderCfg, RewardCfg, algorithm_cfg_from
 from .trainer import BrainTrainer, TrainCfg
 from .models import ModelCfg, model_cfg_from
 from .run_config import (
+    dry_run_eval_timesteps,
     dry_run_timesteps,
     eval_timesteps,
     policy_device,
@@ -242,9 +243,17 @@ class Brain:
         if self.evaluation_policy != "agent":
             eval_kwargs["policy"] = self.evaluation_policy
 
+        # A dry run only has to commit peak VRAM, and test's peak is env + models +
+        # render targets -- all allocated in the first few steps. Running the real
+        # eval budget here would cost the whole test phase per probe.
+        total_timesteps = (
+            dry_run_eval_timesteps()
+            if getattr(config, "dry_run", False)
+            else eval_timesteps(self, config)
+        )
         try:
             metrics = self._trainer(wrapped, agents, device).eval(
-                total_timesteps=eval_timesteps(self, config),
+                total_timesteps=total_timesteps,
                 **eval_kwargs,
             )
         except Exception:

@@ -15,8 +15,28 @@ def policy_device(config: TaskConfig) -> torch.device:
     return torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
 
 
+#: Steps a TEST-mode dry run takes. Test has no rollout to fill and runs no update,
+#: so unlike a train dry run there is nothing to wait for: a handful of steps builds
+#: the env, the models and the render targets, which is all of test's VRAM. Kept above
+#: 1 only so the first few frames' lazy render allocations (history/aux buffers) are
+#: committed before the measurement.
+DRY_RUN_EVAL_TIMESTEPS = 8
+
+
 def dry_run_timesteps(brain) -> int:
+    """Steps a TRAIN-mode dry run takes: exactly one rollout.
+
+    On-policy, ``agent_memory_size() == rollouts`` and skrl updates at
+    ``timestep % rollouts == 0``, so this is one rollout and exactly one update --
+    the minimum that allocates the optimizer state and commits the update's peak.
+    It cannot be cut further: the rollout buffer is preallocated at agent build, but
+    Adam's moments and the backward-pass peak only appear on that first update.
+    """
     return brain.algorithm_cfg.dry_run_timesteps()
+
+
+def dry_run_eval_timesteps() -> int:
+    return DRY_RUN_EVAL_TIMESTEPS
 
 
 def train_timesteps(brain, config: TaskConfig) -> int:

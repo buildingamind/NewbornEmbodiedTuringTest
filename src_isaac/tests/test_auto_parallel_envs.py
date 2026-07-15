@@ -88,6 +88,7 @@ def _planner(free_gb: float, per_env_gb: float, fixed_gb: float):
         get_free_memory=lambda d: free_gb * 1024**3,
     )
     plans = []
+    probed_modes = []
 
     class _Body:
         def adjust_to_agent(self, env, **kwargs):
@@ -95,10 +96,12 @@ def _planner(free_gb: float, per_env_gb: float, fixed_gb: float):
             env.num_brains = kwargs["num_brains"]
             env.num_envs = kwargs["num_envs"]
 
-    def _estimate(self, brain, body, env, output_dir):
+    def _estimate(self, brain, body, env, output_dir, mode="train"):
+        probed_modes.append(mode)
         return (fixed_gb + env.num_envs * per_env_gb) * 1024**3
 
     nett._estimate_task_memory_via_dry_run = _estimate.__get__(nett, NETT)
+    nett.probed_modes = probed_modes
     return nett, _Body(), plans
 
 
@@ -229,7 +232,7 @@ def test_auto_does_not_extrapolate_into_a_superlinear_wall(tmp_path):
     budget = free_gb * NETT._VRAM_SAFETY
     nett, body, plans = _planner(free_gb=free_gb, per_env_gb=0, fixed_gb=0)
 
-    def _estimate(self, brain, body_, env, output_dir):
+    def _estimate(self, brain, body_, env, output_dir, mode="train"):
         return consumed_gb(env.num_envs) * 1024**3
 
     nett._estimate_task_memory_via_dry_run = _estimate.__get__(nett, NETT)
@@ -284,25 +287,25 @@ def test_test_ceiling_divides_the_budget_across_co_scheduled_tasks(tmp_path):
     assert shared == 8
 
 
-def test_test_search_reuses_the_train_measurement(tmp_path):
-    """A dry run costs 1-3 min, and the train search just measured this exact count at
-    this exact plan -- so the test search must not probe it again."""
-    nett, body, plans = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
-    _memory, num_envs = _search(
-        nett, body, num_brains=1, seed=4, max_envs=None, tmp_path=tmp_path,
-    )
-    assert plans[0] == 4  # without reuse, the seed is probed
+def test_each_phase_is_probed_in_its_own_mode(tmp_path):
+    """Train and test have different footprints -- test allocates no optimizer and no
+    rollout buffer -- so each search must measure its own phase. Probing test with a
+    train dry run would be both wrong (high) and slow (a whole rollout per rung)."""
+    nett, body, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
+    _resolve(nett, body, num_brains=1, num_envs=4, env_cap=None, tmp_path=tmp_path)
+    assert set(nett.probed_modes) == {"train"}
 
-    nett2, body2, plans2 = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
+    nett2, body2, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
     brain = SimpleNamespace(envs_per_brain=4)
-    env = SimpleNamespace(conditions=["a"], num_brains=1, num_envs=4)
-    memory2, num_envs2 = NETT._search_max_envs_verified(
-        nett2, brain, body2, env, tmp_path, num_brains=1, seed_envs=4,
-        steps_per_episode=200, max_envs=None,
-        seed_consumed=5.0 * 1024**3,  # what a probe of 4 envs would have returned
+    env = SimpleNamespace(
+        conditions=["a"], num_brains=1, num_envs=4,
+        iterations_per_test_episode={"a": 52},
     )
-    assert plans2[0] == 8  # went straight to the next rung
-    assert (num_envs2, memory2) == (num_envs, _memory)  # same answer, one fewer probe
+    NETT._resolve_test_env_ceiling(
+        nett2, brain, body2, env, tmp_path, num_brains=1, train_envs=4,
+        steps_per_episode=200, episodes={"test": 20}, num_tasks=1,
+    )
+    assert set(nett2.probed_modes) == {"test"}
 
 
 def test_no_test_phase_means_no_test_search(tmp_path):
@@ -316,6 +319,66 @@ def test_no_test_phase_means_no_test_search(tmp_path):
         steps_per_episode=200, episodes={"train": 100}, num_tasks=1,
     ) is None
     assert plans == []
+
+
+# --- the probe is bounded -------------------------------------------------
+
+
+def test_dry_run_probe_is_bounded_and_real_runs_are_not(tmp_path, monkeypatch):
+    """Regression: a 484-env probe hit a Vulkan OOM and then HUNG, pinning 24GB with
+    no reap, because crash_guard's bounded exit keys on DEVICE_LOST and an allocation
+    OOM is not one. A probe knows its own budget, so it gets an absolute cap; a real
+    run's duration is unbounded by design and must NOT."""
+    import nett_skrl.nett as nett_module
+    from nett_skrl.runtime.task import Task, TaskConfig
+
+    nett = object.__new__(NETT)
+    nett.logger = logging.getLogger("test")
+    nett.devices = [0]
+    nett.free_device_memory = {0: 1}
+    nett.memory_manager = SimpleNamespace(
+        get_most_free_gpu=lambda d: (0, 1), get_free_memory=lambda d: 1
+    )
+    seen = {}
+
+    class _Fut:
+        def result(self):
+            return None
+
+    def _submit(fn, task):
+        seen["timeout"] = task.config.dry_run_timeout
+        seen["modes"] = list(task.config.modes)
+        (task.config.path).mkdir(parents=True, exist_ok=True)
+        (task.config.path / "mem.txt").write_text("0")
+        return _Fut()
+
+    nett.executor = SimpleNamespace(submit=_submit)
+    monkeypatch.setattr(nett_module, "future_wait", lambda *a, **k: None)
+
+    brain = SimpleNamespace(envs_per_brain=1)
+    body = SimpleNamespace(adjust_to_agent=lambda env, **kw: None)
+    env = SimpleNamespace(conditions=["Object1"], num_brains=1, num_envs=4)
+
+    NETT._estimate_task_memory_via_dry_run(nett, brain, body, env, tmp_path, mode="test")
+    assert seen["timeout"] == nett_module._DRY_RUN_TIMEOUT_S
+    assert seen["timeout"] > 0
+    assert seen["modes"] == ["test"]  # the probe's mode is the caller's
+
+    # A task that is not a dry run carries no cap.
+    real = TaskConfig("c", tmp_path, ["train"])
+    assert real.dry_run_timeout is None
+
+
+def test_set_dry_run_carries_the_timeout(tmp_path):
+    from nett_skrl.runtime.task import Task
+
+    task = Task(
+        SimpleNamespace(), SimpleNamespace(), SimpleNamespace(),
+        "c", tmp_path, ["train"],
+    )
+    assert task.config.dry_run_timeout is None
+    task.set_dry_run(True, timeout=42.0)
+    assert task.config.dry_run is True and task.config.dry_run_timeout == 42.0
 
 
 # --- config.yaml records the RESOLVED value -------------------------------
@@ -462,3 +525,59 @@ def test_no_test_episodes_records_nothing(tmp_path):
     assert NETT._resolved_test_num_envs(
         nett, env, num_brains=1, ceiling=16, episodes={"train": 100}
     ) is None
+
+
+def test_spawn_passes_the_cap_to_join_with_reap(monkeypatch, tmp_path):
+    """The bound is only real if it reaches join_with_reap. This is the wiring that
+    was missing: the reap module has supported an absolute cap all along, but nothing
+    passed one, and NETT_REAP_TIMEOUT defaults to 0 (disabled) -- so a wedged probe
+    joined forever."""
+    import nett_skrl.runtime.task_runner as tr
+    from nett_skrl.runtime.task import Task
+
+    seen = {}
+
+    class _Proc:
+        exitcode = 0
+        pid = 1234
+
+        def __init__(self, *a, **k):
+            pass
+
+        def start(self):
+            pass
+
+    class _Reaper:
+        logger = logging.getLogger("test")
+
+        def __init__(self, **kw):
+            pass
+
+        def launch_scope(self):
+            from contextlib import nullcontext
+
+            return nullcontext()
+
+        def adopt(self, pid):
+            pass
+
+    monkeypatch.setattr(tr, "TaskReaper", _Reaper)
+    monkeypatch.setattr(
+        tr, "join_with_reap",
+        lambda p, r, **kw: seen.update(kw) or "exited",
+    )
+    monkeypatch.setattr(
+        "multiprocessing.get_context",
+        lambda m: SimpleNamespace(Process=lambda **kw: _Proc()),
+    )
+
+    task = Task(SimpleNamespace(), SimpleNamespace(), SimpleNamespace(),
+                "c", tmp_path, ["train"])
+    task.set_device(0)
+
+    tr._spawn_mode_subprocess(task, "train")
+    assert seen["absolute_timeout"] is None  # real run: unbounded, as before
+
+    task.set_dry_run(True, timeout=123.0)
+    tr._spawn_mode_subprocess(task, "train")
+    assert seen["absolute_timeout"] == 123.0
