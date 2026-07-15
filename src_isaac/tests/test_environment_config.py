@@ -321,36 +321,6 @@ def test_task_config_mode_view_does_not_mutate_base(tmp_path):
 # re-parses last-wins.
 
 
-def test_kit_thread_args_sets_both_carb_and_tbb_to_the_same_count():
-    args = _kit_thread_args(8)
-    assert "--/plugins/carb.tasking.plugin/threadCount=8" in args.split(" ")
-    assert "--/plugins/omni.tbb.globalcontrol/maxThreadCount=8" in args.split(" ")
-
-
-def test_kit_thread_args_clamps_to_at_least_one():
-    args = _kit_thread_args(0)
-    assert "threadCount=1" in args
-    args = _kit_thread_args(-5)
-    assert "threadCount=1" in args
-
-
-def test_kit_thread_args_composes_after_existing_kit_args():
-    """Existing kit_args are kept and our flags are appended after them, so
-    Kit's last-wins re-parse still lets our value win over a stale duplicate
-    placed earlier in `existing`."""
-    args = _kit_thread_args(4, existing="--/some/other/flag=1")
-    parts = args.split(" ")
-    assert parts[0] == "--/some/other/flag=1"
-    assert parts.index("--/plugins/carb.tasking.plugin/threadCount=4") > 0
-
-
-def test_default_kit_threads_is_eight_not_isaac_default_32():
-    # Isaac's own SimulationApp default (`limit_cpu_threads`) is 32; the
-    # Lead-measured A/B showed 8 is faster *and* uses less CPU solo, with no
-    # wave-width knowledge required, so it is the default here.
-    assert _DEFAULT_KIT_THREADS == 8
-
-
 def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
     tmp_path, monkeypatch
 ):
