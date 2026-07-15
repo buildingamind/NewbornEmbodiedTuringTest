@@ -472,7 +472,17 @@ class NETT:
 
         def _probe(count: int) -> float | None:
             """Measured bytes at ``count``, or None if it does not fit (a failed dry
-            run and an over-budget one mean the same thing here: too many envs)."""
+            run and an over-budget one mean the same thing here: too many envs).
+
+            KNOWN GAP: there is no timeout here, and an over-size probe does not always
+            die cleanly. Measured 2026-07-15: a 484-env probe hit
+            `vkAllocateMemory ERROR_OUT_OF_DEVICE_MEMORY` and then HUNG, pinning 24GB
+            for 6+ min with no reap, because crash_guard's bounded exit keys on
+            DEVICE_LOST and a Vulkan allocation OOM is not that. A 400-env probe on the
+            same GPU exited cleanly in ~20s, so it depends where the OOM lands. Until
+            this is bounded, `max_parallel_envs: "auto"` is not campaign-safe -- which is
+            why it stays opt-in and nothing reaches this path by default.
+            """
             self._apply_parallel_env_plan(brain, body, env, nb, count, steps_per_episode)
             try:
                 consumed = self._estimate_task_memory_via_dry_run(brain, body, env, output_dir)
