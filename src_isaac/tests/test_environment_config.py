@@ -6,11 +6,10 @@ import sys
 import types
 from pathlib import Path
 
-from nett_skrl.environment.environment import (
-    Environment,
-    _DEFAULT_KIT_THREADS,
-    _kit_thread_args,
-    parse_episode_selector,
+from nett_skrl.environment.environment import Environment, parse_episode_selector
+from nett_skrl.runtime.cpu_budget import (
+    DEFAULT_CELL_THREADS as _DEFAULT_KIT_THREADS,
+    kit_thread_args as _kit_thread_args,
 )
 from nett_skrl.runtime.task import TaskConfig
 

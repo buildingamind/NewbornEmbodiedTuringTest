@@ -201,6 +201,14 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
 
     sys.argv = sys.argv[:1] or ["nett-skrl"]
 
+    # Pin torch/OpenMP to this cell's CPU budget BEFORE any torch work. torch
+    # otherwise sizes its intra-op pool from os.cpu_count(), so every cell in a
+    # wave claims all 64 cores during the PPO update. Must happen in the child:
+    # spawn does not inherit the parent's torch thread settings.
+    from .cpu_budget import apply_torch_thread_limits
+
+    apply_torch_thread_limits()
+
     config = task.config
     agent = task.agent
     set_seeds(config.seed)

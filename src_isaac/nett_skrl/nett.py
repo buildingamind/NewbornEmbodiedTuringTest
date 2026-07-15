@@ -26,6 +26,7 @@ import yaml
 from .body import Body
 from .brain import Brain
 from .environment import Environment
+from .environment.design import get_experiment_design
 from .runtime import (
     Executor,
     Task,
@@ -102,12 +103,37 @@ class NETT:
             self.free_device_memory = {
                 d: self.memory_manager.get_free_memory(d) for d in self.devices
             }
-            with Executor(verbose) as self.executor:
+            with Executor(verbose, max_tasks=self._max_concurrent_tasks()) as self.executor:
                 self.logger.info("Launching…")
                 for config in self.configs:
                     self.single_run(**config)
                 self._task_waiter()
         return list(self.task_sheet.keys())
+
+    def _max_concurrent_tasks(self) -> Optional[int]:
+        """Most tasks that can be in flight at once, or None if not provable here.
+
+        One task per brain per condition (see ``build_tasks``), so the count is
+        known up front whenever the conditions are -- either stated in the config
+        or readable from the design sheet. Returning None (e.g. an ``experiment``
+        bundle, or an unreadable sheet) makes Executor keep its historical size:
+        a bound we cannot prove must never shrink the pool below the real task
+        count, or concurrency would silently drop.
+        """
+        total = 0
+        for config in self.configs:
+            env_cfg = config.get("environment") or {}
+            conditions = env_cfg.get("conditions")
+            if not conditions:
+                sheet = env_cfg.get("design_sheet")
+                if not sheet:
+                    return None
+                try:
+                    conditions = list(get_experiment_design(sheet))
+                except Exception:
+                    return None
+            total += int(config.get("num_brains", 1) or 1) * len(conditions)
+        return total or None
 
     def status(self) -> dict[Future, TaskConfig]:
         return self.task_sheet
