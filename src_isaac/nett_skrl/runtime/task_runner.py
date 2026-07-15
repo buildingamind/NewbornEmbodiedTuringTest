@@ -279,19 +279,27 @@ def _is_square_tile_grid(num_envs: int) -> bool:
 
 
 def _compute_eval_num_envs(task: Task) -> int:
-    """Largest VALID test-phase num_envs: divides the test episodes, is a multiple of
-    num_brains, and tiles into a SQUARE camera grid.
+    """Largest test-phase num_envs that tiles into a SQUARE camera grid and is a
+    multiple of num_brains. Does NOT require dividing the episode total.
 
     Test is embarrassingly parallel in a way training is not: training's num_envs is
     load-bearing for learning (rollout composition), but test just replays a fixed
-    schedule, so the only real caps are (a) not leaving empty NETTEnv episode slots
-    and (b) VRAM. Every extra env removes a whole sequential batch.
+    schedule, so the cap is VRAM. Every extra env removes a whole sequential batch.
 
-    THE SQUARE-GRID FILTER IS A CORRECTNESS CONSTRAINT, NOT A PREFERENCE. Without it
-    this function happily returns e.g. 52 (8x7) for 1040 test episodes -- which is
-    exactly what ``NETT_TEST_ENVS=64`` used to resolve to -- and every test frame is
-    then rendered through a distorted fisheye (#488). Silent, and it corrupts the
-    measurement rather than crashing.
+    TWO HARD CONSTRAINTS (each breaks something if violated):
+      * multiple of num_brains -- else BrainTrainer raises (each brain owns one
+        contiguous env scope; see brain_scope_sizes);
+      * SQUARE tile grid (N in [k^2-k+1, k^2]) -- else the fisheye render is distorted
+        (#488, measured). NETT_TEST_ENVS=64 used to resolve to 52 (8x7) and silently
+        distorted every test frame.
+
+    DIVISIBILITY IS NO LONGER REQUIRED. When num_envs does not divide the episode
+    total the eval runs ceil(total/num_envs)*num_envs episodes; the surplus (index
+    >= total) are OVERFLOW episodes that run to fill the fixed eval budget but are not
+    logged (nett_env_cfg.test_total_episodes / LogChannel mute), so every design row
+    still contributes exactly episodes_test episodes -- no skips, no over-sampling.
+    A divisor is still preferred WITHIN the chosen tile-grid band (same parallelism)
+    so we avoid overflow for free when we can.
     """
     config = task.config
     num_brains = max(1, int(config.num_brains))
@@ -311,28 +319,25 @@ def _compute_eval_num_envs(task: Task) -> int:
         want = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
         want = max(1, want)
 
-    def _square_multiple(n: int) -> bool:
-        # HARD constraints, both of which BREAK something if violated:
-        #   n % num_brains == 0  -> else BrainTrainer raises (each brain owns one
-        #                           contiguous env scope; see brain_scope_sizes)
-        #   square tile grid     -> else the fisheye render is distorted (#488)
+    def _valid(n: int) -> bool:
         return n >= 1 and n % num_brains == 0 and _is_square_tile_grid(n)
 
-    # Pass 1: also divide the episode total, so no env sits idle in the last batch.
-    for n in range(want, 0, -1):
-        if _square_multiple(n) and total_test_episodes % n == 0:
-            return n
+    candidates = [n for n in range(want, 0, -1) if _valid(n)]
+    if candidates:
+        best = candidates[0]  # largest -> maximum parallelism
+        # Prefer a divisor of the total WITHIN best's tile-grid band [k^2-k+1, k^2]:
+        # every count in that band tiles k x k (same parallelism / VRAM), so if one
+        # divides the total we take it and avoid the overflow-discard entirely.
+        k = math.ceil(math.sqrt(best))
+        band_lo = k * k - k + 1
+        clean = next(
+            (n for n in candidates if n >= band_lo and total_test_episodes % n == 0),
+            None,
+        )
+        return clean or best
 
-    # Pass 2: relax ONLY the divides-the-total preference (the original code did the
-    # same). A partial final batch leaves some envs idle; that is survivable, a
-    # crash or a distorted lens is not.
-    for n in range(want, 0, -1):
-        if _square_multiple(n):
-            return n
-
-    # Pass 3: nothing at or below the request qualifies (e.g. want < num_brains).
-    # Go UP to the smallest square-grid multiple of num_brains rather than return
-    # something that breaks BrainTrainer.
+    # Nothing at or below the request qualifies (e.g. want < num_brains). Go UP to the
+    # smallest square-grid multiple of num_brains rather than break BrainTrainer.
     n = num_brains
     while not _is_square_tile_grid(n):
         n += num_brains

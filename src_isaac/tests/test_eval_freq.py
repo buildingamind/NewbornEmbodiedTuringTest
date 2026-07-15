@@ -497,12 +497,18 @@ def test_orchestration_train_resumes_after_each_eval(tmp_path):
     assert train_overrides[2]["train_global_step"] == 6000
 
 
-def test_orchestration_eval_num_envs_cleanly_divides_test_episodes(tmp_path):
-    """Eval subprocess receives num_envs that cleanly divides total_test_episodes."""
+def test_orchestration_eval_num_envs_is_square_and_bounded(tmp_path):
+    """Eval subprocess receives a SQUARE-grid num_envs within the cap.
+
+    It no longer has to divide total_test_episodes: overflow episodes are discarded
+    (nett_env_cfg.test_total_episodes), so 8 (3x3, 4 overflow) beats 6 (3x2 ->
+    distorted fisheye #488) even though only 6 divides 12.
+    """
     from nett_skrl.runtime.task_runner import _run_train_with_eval_milestones
 
-    # total_test_episodes = 4 test tasks × 3 episodes = 12; max_parallel_envs = 8
-    # Largest multiple of 1 (num_brains) that divides 12 and is ≤ 8 → 6
+    # total_test_episodes = 4 test tasks × 3 episodes = 12; max_parallel_envs = 8.
+    # Largest square-grid count ≤ 8 → 8 (3x3, one empty tile; 4 overflow episodes
+    # are discarded). 6 would be 3x2 = non-square = distorted.
     task = _make_orchestration_task(
         tmp_path,
         eval_freq=2000,
@@ -525,12 +531,14 @@ def test_orchestration_eval_num_envs_cleanly_divides_test_episodes(tmp_path):
     with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", fake_spawn):
         _run_train_with_eval_milestones(task)
 
+    from nett_skrl.runtime.task_runner import _is_square_tile_grid
+
     assert len(eval_overrides) == 1
     eval_num_envs = eval_overrides[0]["num_envs"]
-    total_test_episodes = 4 * 3  # 12
     assert eval_num_envs <= 8, f"eval_num_envs {eval_num_envs} exceeds max_parallel_envs=8"
-    assert total_test_episodes % eval_num_envs == 0, \
-        f"eval_num_envs {eval_num_envs} does not cleanly divide total_test_episodes={total_test_episodes}"
+    assert _is_square_tile_grid(eval_num_envs), \
+        f"eval_num_envs {eval_num_envs} does not tile into a square grid (#488)"
+    assert eval_num_envs == 8
 
 
 def test_orchestration_final_test_uses_parallel_test_envs(tmp_path):
@@ -564,10 +572,11 @@ def test_orchestration_final_test_uses_parallel_test_envs(tmp_path):
     with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", fake_spawn):
         run_task(task)
 
-    # 52 tiles 8x7 -> non-square -> distorted fisheye (#488). This is the exact
-    # value NETT_TEST_ENVS=64 used to resolve to. 13 is the largest divisor of 52
-    # whose grid is square (4x4).
-    assert spawned == [("test", {"num_envs": 13})]
+    # 52 tiles 8x7 -> non-square -> distorted fisheye (#488), so it is rejected.
+    # 49 (7x7) is the largest SQUARE-grid count <= the cap; it does not divide 52,
+    # which is now allowed (the 46 overflow episodes are discarded), and it beats
+    # the old divisor-only answer of 13 (4x4) on parallelism.
+    assert spawned == [("test", {"num_envs": 49})]
 
 
 def test_orchestration_eval_is_metrics_only_no_recording_contamination(tmp_path):

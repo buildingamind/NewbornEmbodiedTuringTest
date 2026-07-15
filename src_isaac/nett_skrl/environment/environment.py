@@ -232,6 +232,16 @@ class Environment:
         else:
             cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
+        # Tell the env how many REAL test episodes exist for this condition, so a
+        # test num_envs that does not divide that total drops the surplus overflow
+        # episodes instead of over-sampling the first design rows (see
+        # nett_env_cfg.test_total_episodes + _compute_eval_num_envs). Only the test
+        # phase has this fixed episode budget; train/record leave it None.
+        if config.current_mode == "test":
+            num_test_rows = int(self.iterations_per_test_episode.get(config.condition, 0))
+            episodes_test = int((config.episodes or {}).get("test", 0))
+            total = num_test_rows * episodes_test
+            _set_if_present(cfg, "test_total_episodes", total if total > 0 else None)
         # PhysX (sim.device) placement is chosen at init by select_physx_strategy,
         # which encodes the parallelization policy:
         #   * kinematic locomotion MUST stay on CPU PhysX — GPU PhysX
