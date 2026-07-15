@@ -12,6 +12,7 @@ import atexit
 import csv
 import json
 import logging
+import math
 import os
 import shutil
 from pathlib import Path
@@ -259,12 +260,38 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     _exit_worker_cleanly(run_config.logger)
 
 
-def _compute_eval_num_envs(task: Task) -> int:
-    """Largest num_envs ≤ max_parallel_envs that cleanly divides total test episodes.
+def _is_square_tile_grid(num_envs: int) -> bool:
+    """Does ``num_envs`` tile into a SQUARE camera grid?
 
-    Total test episodes = num_test_tasks × episodes["test"].  Prefers a value
-    that is also a multiple of num_brains (so BrainTrainer's divisibility check
-    passes); falls back to any divisor of total_test_episodes if needed.
+    Isaac Lab tiles N cameras into ``ceil(sqrt(N)) x ceil(N / cols)``. The chick eye
+    is a fisheye, and at a NON-square tile grid the lens distortion is applied over
+    the full non-square canvas aspect, so the rendered eye image is distorted --
+    Isaac Sim #488. See isaac_lab/docs/known_issues.md.
+
+    Perfect squares qualify; so do a few others whose grid still comes out square
+    (8 -> 3x3, 13 -> 4x4, 80 -> 9x9). 52 -> 8x7 does NOT.
+    """
+    if num_envs < 1:
+        return False
+    cols = math.ceil(math.sqrt(num_envs))
+    rows = math.ceil(num_envs / cols)
+    return cols == rows
+
+
+def _compute_eval_num_envs(task: Task) -> int:
+    """Largest VALID test-phase num_envs: divides the test episodes, is a multiple of
+    num_brains, and tiles into a SQUARE camera grid.
+
+    Test is embarrassingly parallel in a way training is not: training's num_envs is
+    load-bearing for learning (rollout composition), but test just replays a fixed
+    schedule, so the only real caps are (a) not leaving empty NETTEnv episode slots
+    and (b) VRAM. Every extra env removes a whole sequential batch.
+
+    THE SQUARE-GRID FILTER IS A CORRECTNESS CONSTRAINT, NOT A PREFERENCE. Without it
+    this function happily returns e.g. 52 (8x7) for 1040 test episodes -- which is
+    exactly what ``NETT_TEST_ENVS=64`` used to resolve to -- and every test frame is
+    then rendered through a distorted fisheye (#488). Silent, and it corrupts the
+    measurement rather than crashing.
     """
     config = task.config
     num_brains = max(1, int(config.num_brains))
@@ -272,35 +299,42 @@ def _compute_eval_num_envs(task: Task) -> int:
     num_test_tasks = max(1, task.agent.env.iterations_per_test_episode.get(config.condition, 1))
     total_test_episodes = num_test_tasks * episodes_test
 
-    # Stage-4c runtime test (env-gated): force the TEST-phase num_envs independent
-    # of training's num_envs, to check that test-time parallelism does not change
-    # the result (test is deterministic: mean action + fixed start schedule +
-    # deterministic CUDA). Returns the largest VALID count <= requested that both
-    # divides total_test_episodes (no empty NETTEnv slots) and is a multiple of
-    # num_brains (BrainTrainer divisibility). NETT_TEST_ENVS=1 vs 16 -> A/B.
-    _forced = __import__("os").environ.get("NETT_TEST_ENVS")
-    if _forced:
-        want = min(max(1, int(_forced)), total_test_episodes)
-        for n in range(want, 0, -1):
-            if n % num_brains == 0 and total_test_episodes % n == 0:
-                return n
-        return num_brains
+    def _valid(n: int) -> bool:
+        return (
+            n >= 1
+            and n % num_brains == 0
+            and total_test_episodes % n == 0
+            and _is_square_tile_grid(n)
+        )
 
-    max_envs = config.max_parallel_envs
-    # Cap at total_test_episodes so NETTEnv never gets empty episode slots.
-    cap = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
-    cap = max(1, cap)
+    # NETT_TEST_ENVS: request a test-phase parallelism independent of training's
+    # num_envs. We take the largest VALID count <= the request (never above it, so
+    # it stays a VRAM ceiling the caller controls).
+    forced = os.environ.get("NETT_TEST_ENVS")
+    if forced:
+        want = min(max(1, int(forced)), total_test_episodes)
+    else:
+        # Default: cap at training's max_parallel_envs. Test could go far wider (see
+        # docstring) but that is a VRAM decision, so it stays opt-in via
+        # NETT_TEST_ENVS rather than silently inflating every run's footprint.
+        max_envs = config.max_parallel_envs
+        want = min(max_envs, total_test_episodes) if max_envs is not None else total_test_episodes
+        want = max(1, want)
 
-    # First pass: prefer largest multiple of num_brains ≤ cap that divides total.
-    start = max(num_brains, (cap // num_brains) * num_brains)
-    for n in range(start, 0, -num_brains):
-        if total_test_episodes % n == 0:
+    for n in range(want, 0, -1):
+        if _valid(n):
             return n
 
-    # Second pass (rare — e.g. total_test_episodes not divisible by num_brains):
-    # relax the divisibility-of-total constraint but KEEP the num_brains-multiple
-    # constraint so BrainTrainer's (num_envs % num_brains == 0) check never fails.
-    return start if start > 0 else num_brains
+    # No square-grid divisor at all (e.g. a prime episode count). Fall back to the
+    # smallest safe thing rather than silently rendering distorted: 1 env is always
+    # a 1x1 grid and always divides.
+    logger = config.logger
+    logger.warning(
+        "no square-grid num_envs divides %d test episodes at num_brains=%d "
+        "(want<=%d); falling back to 1. Test will be slow but undistorted.",
+        total_test_episodes, num_brains, want,
+    )
+    return 1
 
 
 def _training_boundaries(
