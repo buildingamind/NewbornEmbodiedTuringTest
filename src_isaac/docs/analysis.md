@@ -30,7 +30,7 @@ available.
 ```python
 from nett_skrl.analysis import normalize_isaac_output
 
-legacy_view = normalize_isaac_output("/tmp/nett_skrl_run/smoke")
+legacy_view = normalize_isaac_output("/path/to/output/smoke")
 ```
 
 This mirrors:

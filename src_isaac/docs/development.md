@@ -5,7 +5,7 @@
 Run the fast `src_isaac` unit suite:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   pytest src_isaac/tests
 ```
 
@@ -18,10 +18,10 @@ Current expected result:
 Run a smoke training job:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   python src_isaac/examples/run_smoke.py \
   --config src_isaac/examples/smoke.yaml \
-  --output /tmp/nett_skrl_smoke
+  --output /path/to/output
 ```
 
 ## Design Rules

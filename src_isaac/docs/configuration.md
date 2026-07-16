@@ -24,9 +24,12 @@ max_parallel_envs: null
 Run it with:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
-  nett-skrl --config path/to/config.yaml --output /tmp/nett_skrl_run
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
+  nett-skrl --config /path/to/config.yaml --output /path/to/output
 ```
+
+`VIRTUAL_ENV` must point at the virtualenv that has Isaac Sim and Isaac Lab
+installed; `--active` tells `uv` to use it rather than resolving its own.
 
 ## Environment
 

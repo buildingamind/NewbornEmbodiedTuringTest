@@ -28,11 +28,15 @@ This backend assumes:
 - the private `nett_isaac` Isaac Lab package available as configured in
   `pyproject.toml`
 
-The local lab setup currently uses:
+Activate that virtualenv before running anything:
 
 ```bash
-source /home/zach/nett_private/bin/activate
+source /path/to/venv/bin/activate
 ```
+
+Every `/path/to/...` below is a placeholder — substitute your own. Paths are
+deliberately not hardcoded here: this repo is checked out on more than one
+machine, and a stale absolute path is worse than no path at all.
 
 `omni` is not imported directly by `nett_skrl`; Isaac Lab owns Isaac Sim app
 startup.
@@ -42,14 +46,14 @@ startup.
 From the repository root, use the Isaac Sim environment:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   python -m pip install -e src_isaac
 ```
 
 For local development without installing:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   pytest src_isaac/tests
 ```
 
@@ -58,17 +62,17 @@ VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
 Run the smoke example:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   python src_isaac/examples/run_smoke.py \
   --config src_isaac/examples/smoke.yaml \
-  --output /tmp/nett_skrl_smoke
+  --output /path/to/output
 ```
 
 Or use the installed CLI:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
-  nett-skrl --config src_isaac/examples/smoke.yaml --output /tmp/nett_skrl_smoke
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
+  nett-skrl --config src_isaac/examples/smoke.yaml --output /path/to/output
 ```
 
 The config file controls the run. See:
@@ -98,7 +102,7 @@ Analysis adapters can mirror selected artifacts into the legacy-shaped layout:
 ```python
 from nett_skrl.analysis import normalize_isaac_output
 
-legacy_view = normalize_isaac_output("/tmp/nett_skrl_smoke/smoke")
+legacy_view = normalize_isaac_output("/path/to/output/smoke")
 ```
 
 ## Supported Feature Names
@@ -141,7 +145,7 @@ if you need one.
 Fast unit suite:
 
 ```bash
-VIRTUAL_ENV=/home/zach/nett_private uv run --active --project src_isaac \
+VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   pytest src_isaac/tests
 ```
 
