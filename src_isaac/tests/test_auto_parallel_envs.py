@@ -105,13 +105,12 @@ def _planner(free_gb: float, per_env_gb: float, fixed_gb: float):
     return nett, _Body(), plans
 
 
-def _resolve(nett, body, *, num_brains, num_envs, env_cap, tmp_path):
+def _resolve(nett, body, *, num_brains, num_envs, tmp_path):
     brain = SimpleNamespace(envs_per_brain=max(1, num_envs // num_brains))
     env = SimpleNamespace(conditions=["Object1"], num_brains=num_brains, num_envs=num_envs)
     return NETT._resolve_task_memory_and_envs(
         nett, "auto", brain, body, env, tmp_path,
         num_brains=num_brains, num_envs=num_envs, steps_per_episode=200,
-        env_cap=env_cap,
     )
 
 
@@ -122,7 +121,7 @@ def test_auto_snaps_a_distorted_fit_down_to_square(tmp_path):
     # fixed=1GB, per_env=1GB, free=26.25GB -> budget 21GB -> max_fit 20.
     nett, body, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
     _memory, num_envs = _resolve(
-        nett, body, num_brains=1, num_envs=64, env_cap=None, tmp_path=tmp_path
+        nett, body, num_brains=1, num_envs=64, tmp_path=tmp_path
     )
     assert num_envs == 16
     assert is_valid_num_envs(num_envs, 1)
@@ -133,25 +132,35 @@ def test_auto_is_bounded_by_measured_vram_not_the_recipe(tmp_path):
     even though the recipe asked for 64."""
     nett, body, _ = _planner(free_gb=6.25, per_env_gb=1.0, fixed_gb=1.0)
     _memory, num_envs = _resolve(
-        nett, body, num_brains=1, num_envs=64, env_cap=None, tmp_path=tmp_path
+        nett, body, num_brains=1, num_envs=64, tmp_path=tmp_path
     )
     assert num_envs == 4  # fits 4, and 4 is 2x2
 
 
-def test_explicit_cap_still_binds_under_auto_memory(tmp_path):
-    """An integer max_parallel_envs is an upper bound the VRAM model may not exceed,
-    even when far more would fit."""
+def test_resolution_never_exceeds_the_requested_count(tmp_path):
+    """The request (recipe count, already clamped to any explicit max_parallel_envs by
+    capped_num_envs) is a ceiling the train path may not exceed, even on a GPU where
+    far more would fit. This is what makes an integer max_parallel_envs bind."""
     nett, body, _ = _planner(free_gb=1000.0, per_env_gb=1.0, fixed_gb=1.0)
     _memory, num_envs = _resolve(
-        nett, body, num_brains=1, num_envs=16, env_cap=16, tmp_path=tmp_path
+        nett, body, num_brains=1, num_envs=16, tmp_path=tmp_path
     )
     assert num_envs == 16
+
+
+def test_explicit_cap_reaches_resolution_through_capped_num_envs(tmp_path):
+    """The cap is applied BEFORE resolution, so an explicit max_parallel_envs and the
+    recipe's own count are the same thing by the time the VRAM search sees them --
+    which is why there is one code path, not two."""
+    assert capped_num_envs(
+        num_brains=1, preferred_envs_per_brain=64, max_parallel_envs=16
+    ) == 16
 
 
 def test_auto_respects_num_brains(tmp_path):
     nett, body, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
     _memory, num_envs = _resolve(
-        nett, body, num_brains=4, num_envs=64, env_cap=None, tmp_path=tmp_path
+        nett, body, num_brains=4, num_envs=64, tmp_path=tmp_path
     )
     assert num_envs == 16  # 20 fits but is 5x4; 16 is 4x4 and divisible by 4
     assert is_valid_num_envs(num_envs, 4)
@@ -176,7 +185,7 @@ def test_train_auto_never_grows_above_the_recipe(tmp_path):
     experiment -- even though 16 more envs would fit here."""
     nett, body, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
     _memory, num_envs = _resolve(
-        nett, body, num_brains=1, num_envs=4, env_cap=None, tmp_path=tmp_path
+        nett, body, num_brains=1, num_envs=4, tmp_path=tmp_path
     )
     assert num_envs == 4  # budget fits 16, but the recipe asked for 4
 
@@ -297,7 +306,7 @@ def test_each_phase_is_probed_in_its_own_mode(tmp_path):
     rollout buffer -- so each search must measure its own phase. Probing test with a
     train dry run would be both wrong (high) and slow (a whole rollout per rung)."""
     nett, body, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
-    _resolve(nett, body, num_brains=1, num_envs=4, env_cap=None, tmp_path=tmp_path)
+    _resolve(nett, body, num_brains=1, num_envs=4, tmp_path=tmp_path)
     assert set(nett.probed_modes) == {"train"}
 
     nett2, body2, _ = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)

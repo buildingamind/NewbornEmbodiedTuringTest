@@ -12,7 +12,8 @@ import types
 
 import pytest
 
-from nett_skrl.runtime.task_runner import _compute_eval_num_envs, _is_square_tile_grid
+from nett_skrl.runtime.parallel_envs import is_square_tile_grid
+from nett_skrl.runtime.task_runner import _compute_eval_num_envs
 
 
 def _task(total_test_rows: int, episodes_test: int, num_brains: int = 1,
@@ -41,13 +42,13 @@ def test_square_grids(n):
     documents (grid = ceil(sqrt(N)) x ceil(N/cols)) 3 tiles 2x2 -- square -- for the
     same reason 8 tiles 3x3 and is called out there as empirically fine. The grid
     shape is the thing that matters; treat that list as informal."""
-    assert _is_square_tile_grid(n)
+    assert is_square_tile_grid(n)
 
 
 @pytest.mark.parametrize("n", [2, 5, 6, 12, 20, 26, 40, 52, 104])
 def test_non_square_grids(n):
     """52 -> 8x7 is the one that bit us: NETT_TEST_ENVS=64 used to resolve to it."""
-    assert not _is_square_tile_grid(n)
+    assert not is_square_tile_grid(n)
 
 
 # --- selection ------------------------------------------------------------
@@ -65,7 +66,7 @@ def test_forced_value_never_returns_a_non_square_grid(monkeypatch):
     monkeypatch.setenv("NETT_TEST_ENVS", "64")
     n = _compute_eval_num_envs(_task(52, 20))
     assert n == 64, f"expected the largest square-grid count <=64, got {n}"
-    assert _is_square_tile_grid(n)
+    assert is_square_tile_grid(n)
 
 
 def test_forced_value_unlocks_the_wide_grid(monkeypatch):
@@ -88,7 +89,7 @@ def test_pick_respects_num_brains_and_square_grid(monkeypatch):
     total is now only a preference -- see the tile-band test.)"""
     monkeypatch.setenv("NETT_TEST_ENVS", "64")
     n = _compute_eval_num_envs(_task(52, 20, num_brains=4))
-    assert n % 4 == 0 and _is_square_tile_grid(n)
+    assert n % 4 == 0 and is_square_tile_grid(n)
 
 
 def test_falls_back_to_one_rather_than_render_distorted():
@@ -155,7 +156,7 @@ def test_non_divisor_is_now_allowed_and_maximizes_parallelism(monkeypatch):
     65 sequential batches -> 17."""
     monkeypatch.setenv("NETT_TEST_ENVS", "64")
     n = _compute_eval_num_envs(_task(52, 20))
-    assert n == 64 and _is_square_tile_grid(n)
+    assert n == 64 and is_square_tile_grid(n)
 
 
 def test_prefers_a_clean_divisor_within_the_same_tile_band(monkeypatch):
@@ -169,4 +170,4 @@ def test_still_never_returns_a_non_square_grid(monkeypatch):
     """Relaxing divisibility must NOT relax the square-grid (#488) constraint."""
     for want in ("52", "72", "104"):
         monkeypatch.setenv("NETT_TEST_ENVS", want)
-        assert _is_square_tile_grid(_compute_eval_num_envs(_task(52, 20)))
+        assert is_square_tile_grid(_compute_eval_num_envs(_task(52, 20)))

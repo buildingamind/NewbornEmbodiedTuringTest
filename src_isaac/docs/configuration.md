@@ -50,10 +50,35 @@ interval and runs metrics-only test rollouts in separate Isaac subprocesses at
 each milestone. Final test-mode recording is still controlled by
 `episodes.test` and `environment.recording`.
 
-Top-level `max_parallel_envs` is optional. When set, NETT caps each condition
-task's total vectorized env count to a multiple of `num_brains`. With
-`task_memory: auto`, the dry-run profiler can search downward from that cap
-until it finds a safe env count.
+Top-level `max_parallel_envs` is optional and caps each condition task's total
+vectorized env count. Accepted values:
+
+| value | meaning |
+| --- | --- |
+| `null` (default) | use the recipe's own count (`rollouts // steps_per_episode` per brain) |
+| an integer | an upper bound on that count |
+| `"auto"` | derive the ceiling from measured VRAM; requires `task_memory: "auto"` |
+
+**num_envs is never chosen freely.** A valid count must (a) tile into a SQUARE
+camera grid — `N` in `[k²-k+1, k²]` — because at a non-square grid the fisheye eye
+render is distorted (Isaac Sim #488), and (b) be a multiple of `num_brains`, since
+each brain owns one contiguous env scope. With `task_memory: auto` the VRAM search
+snaps to a valid count and logs when it does; with a declared numeric `task_memory`
+nothing snaps it, and an invalid count is only warned about. `52`, for example, tiles
+8x7 and renders distorted — use `49`.
+
+With `task_memory: auto`, NETT verifies the requested count with a real dry run and
+backs off to a smaller valid one if it does not fit. It never RAISES the training
+count: `envs_per_brain` is derived from `rollouts // steps_per_episode`, so a larger
+count would change the PPO batch composition and therefore the experiment.
+
+`max_parallel_envs: "auto"` additionally measures how wide the TEST phase can run
+(test replays a fixed schedule and learns nothing, so its count only affects
+wall-clock). The resolved integers — `max_parallel_envs`, `task_memory`, and
+`resolved_test_num_envs` per condition — are written back to the output
+`config.yaml`, which is what makes the run reproducible on another machine: the
+render depends on `num_envs` (Isaac Lab #4431), so a machine-derived count that was
+never recorded would make results machine-dependent.
 
 ## Brain
 

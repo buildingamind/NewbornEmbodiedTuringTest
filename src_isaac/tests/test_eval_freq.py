@@ -68,10 +68,10 @@ class TestComputeEvalNumEnvs:
         # total_test_episodes = 6, num_brains = 1. The largest divisor is 6, but 6
         # tiles 3x2 -> non-square -> distorted fisheye (#488), so it is rejected.
         # 3 is the largest divisor whose grid is square (2x2, one empty tile).
-        from nett_skrl.runtime.task_runner import _is_square_tile_grid
+        from nett_skrl.runtime.parallel_envs import is_square_tile_grid
         result = self._call(num_test_tasks=6, episodes_test=1, num_brains=1)
         assert 6 % result == 0
-        assert _is_square_tile_grid(result)
+        assert is_square_tile_grid(result)
         assert result == 3
 
     def test_capped_by_max_parallel_envs(self):
@@ -86,10 +86,10 @@ class TestComputeEvalNumEnvs:
         # Priority: being a multiple of num_brains (else BrainTrainer raises) and a
         # square grid (else the render is distorted) are HARD; dividing the total is
         # a preference (its cost is only an idle env in the last batch). -> 4 (2x2).
-        from nett_skrl.runtime.task_runner import _is_square_tile_grid
+        from nett_skrl.runtime.parallel_envs import is_square_tile_grid
         result = self._call(num_test_tasks=6, episodes_test=1, num_brains=2)
         assert result % 2 == 0
-        assert _is_square_tile_grid(result)
+        assert is_square_tile_grid(result)
         assert result == 4
 
     def test_always_multiple_of_num_brains_even_when_no_divisor(self):
@@ -535,12 +535,12 @@ def test_orchestration_eval_num_envs_is_square_and_bounded(tmp_path):
     with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", fake_spawn):
         _run_train_with_eval_milestones(task)
 
-    from nett_skrl.runtime.task_runner import _is_square_tile_grid
+    from nett_skrl.runtime.parallel_envs import is_square_tile_grid
 
     assert len(eval_overrides) == 1
     eval_num_envs = eval_overrides[0]["num_envs"]
     assert eval_num_envs <= 8, f"eval_num_envs {eval_num_envs} exceeds max_parallel_envs=8"
-    assert _is_square_tile_grid(eval_num_envs), \
+    assert is_square_tile_grid(eval_num_envs), \
         f"eval_num_envs {eval_num_envs} does not tile into a square grid (#488)"
     assert eval_num_envs == 8
 

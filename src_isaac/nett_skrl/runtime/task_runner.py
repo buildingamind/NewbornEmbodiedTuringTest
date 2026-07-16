@@ -21,10 +21,7 @@ import torch
 from nett_skrl.recording import RecordingCfg
 
 from . import crash_guard
-from .parallel_envs import (
-    is_square_tile_grid as _is_square_tile_grid,  # re-exported: used by tests
-    select_test_num_envs,
-)
+from .parallel_envs import select_test_num_envs
 from .reap import (
     DeviceLostError,
     TaskReaper,
