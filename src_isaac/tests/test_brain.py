@@ -1,8 +1,10 @@
 """Tests for the Brain model factories' handling of NETTEnv obs quirks.
 
 NETTEnv emits ``(B, H, W, 3) uint8`` natively, but skrl's torch memory expects
-flat samples. ``_features_forward`` must paper over flat→4D reshape,
-HWC→CHW permute, uint8→float scale, and cross-device moves.
+``features_forward`` selects the observations/states key and moves obs to the
+encoder device; each encoder's ``_prepare_image`` (``prepare_image_tensor``)
+owns the flat→4D reshape, HWC→CHW permute, and uint8→float scale. The stub
+encoder below mirrors that preprocessing so the delegation is exercised.
 """
 
 from __future__ import annotations
@@ -17,6 +19,7 @@ from skrl.agents.torch import ExperimentCfg
 from nett_skrl.brain.agent_factory import build_agents as _build_agents
 from nett_skrl.brain.brain import Brain, IntrinsicRewardAdapter
 from nett_skrl.brain.models import features_forward as _features_forward
+from nett_skrl.body.observation import prepare_image_tensor
 from nett_skrl.body.observation import to_chw_space as _hwc_to_chw_space
 from nett_skrl.brain.models import ValueCritic, model_cfg_from
 from nett_skrl.brain.trainer import BrainTrainer, TrainCfg
@@ -93,11 +96,22 @@ class _Stub:
 
 
 def _make_stub_for(obs_shape: tuple[int, int, int]):
-    # obs_shape is CHW — ChannelsFirst guarantees CHW before encoders see data.
-    encoder = nn.Conv2d(obs_shape[0], 4, kernel_size=1)
-    trunk = nn.Identity()
+    # obs_shape is CHW. Real encoders own the flat->4D reshape + uint8->float
+    # normalization via _prepare_image()/prepare_image_tensor; the stub encoder
+    # mirrors that so features_forward's delegation is exercised end to end.
     obs_space = gym.spaces.Box(low=0, high=255, shape=obs_shape, dtype=np.uint8)
-    return _Stub(obs_space, encoder, trunk)
+    conv = nn.Conv2d(obs_shape[0], 4, kernel_size=1)
+
+    class _Encoder(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv = conv
+            self.observation_space = obs_space
+
+        def forward(self, x):
+            return self.conv(prepare_image_tensor(x, obs_space))
+
+    return _Stub(obs_space, _Encoder(), nn.Identity())
 
 
 def test_features_forward_reshapes_flat_obs():

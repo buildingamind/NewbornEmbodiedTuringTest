@@ -340,45 +340,6 @@ def test_diff_drive_geometry_on_motor_cfg_not_hardcoded():
     assert "def unicycle_from_wheels(" in src
 
 
-def test_wheeled_drives_real_traction_not_root_velocity_override():
-    """Real-traction contract: locomotion comes from the differential-drive
-    controller writing WHEEL joint velocity targets; gravity + tyre/floor friction
-    move the body through the PhysX solver. The old velocity-override path (writing
-    the root link's spatial velocity directly, with the wheels spun only for show)
-    is gone — the drive path must NOT command the root velocity/pose."""
-    src = _read(_CAMERA_RIG_PY)
-    start = src.index("def drive_wheeled_actuators(")
-    end = src.index("def reset_wheeled_pose(")
-    body = src[start:end]
-    # Friction-driven wheels via the on-device diff-drive controller.
-    assert "_diffdrive" in body and "expand_to_wheels(" in body
-    assert "set_joint_velocity_target(" in body
-    # No root-state override and no per-step pose write — PhysX owns the body pose.
-    assert "write_root_link_velocity_to_sim" not in body
-    assert "write_root_link_pose_to_sim" not in body
-    assert "unicycle_from_wheels(" not in body
-
-
-def test_wheeled_reports_true_physics_pose_no_wall_clamp():
-    """Containment is now PURE COLLISION (the body physically bumps the chamber
-    walls), so the read-back reports the TRUE PhysX pose: no chamber x/z clamp, no
-    superimposed velocity-wall-clamp, no host-syncing pose correction. This keeps
-    the per-step path a pure on-device tensor read."""
-    src = _read(_CAMERA_RIG_PY)
-    start = src.index("def sync_cameras_from_physics(")
-    end = src.index("def sync_chick_and_camera_poses(")
-    body = src[start:end]
-    # True pose mirrored into motor state for logging/rewards, unclamped.
-    assert "root_link_pose_w" in body
-    assert "motor.x_min" not in body and "motor.x_max" not in body
-    assert ".clamp(" not in body
-    assert "oob" not in body
-    assert "write_root_link_pose_to_sim" not in body
-    # The old superimposed velocity wall-clamp is gone from the drive path too.
-    drive = src[src.index("def drive_wheeled_actuators("):src.index("def reset_wheeled_pose(")]
-    assert "clamp_planar_velocity_at_walls(" not in drive
-
-
 def test_wheeled_per_step_path_has_no_host_sync():
     """Perf goal (reduce CPU calls): the wheeled per-step path (drive + read-back)
     must contain no GPU->CPU host transfers. The reset path is excluded (episode

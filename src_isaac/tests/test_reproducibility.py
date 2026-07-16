@@ -201,7 +201,7 @@ def test_nett_env_constructs_and_seeds_reset_generator():
     assert "torch.Generator(device=self.device)" in src
     assert "self._reset_generator = torch.Generator(device=self.device)" in src
     # Seeded from cfg.seed.
-    assert "self._reset_generator.manual_seed(int(self.cfg.seed)" in src
+    assert "self._reset_generator.manual_seed(self._resolved_seed)" in src
 
 
 def test_nett_env_passes_generator_into_reset_pose():
