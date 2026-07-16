@@ -20,7 +20,7 @@ OUTPUT = Path("~/nett_eval_verify").expanduser()
 # 4 episodes × 200 steps = 800 total env interactions.
 # eval_freq = 400 → 1 eval after the first 2 episodes, then training finishes.
 # rollouts = 200 → envs_per_brain = 200/200 = 1 → very light on memory.
-# max_parallel_envs = 4 → eval uses 4 envs (52 test tasks / 4 = 13 tasks/env).
+# max_parallel_envs = 49 → eval uses 49 envs (7x7; see the note on CONFIG below).
 CONFIG = {
     "name": "eval_freq_verify",
     "environment": {
@@ -57,13 +57,16 @@ CONFIG = {
     # 4 training episodes × 200 steps = 800 total env interactions.
     # eval_freq = 400 → eval fires at step 400, then training finishes at 800.
     # episodes_test = 1: 52 test tasks × 1 ep each = 52 total test episodes.
-    # max_parallel_envs = 52 → eval_num_envs = 52 (52 divides 52, ≤ 52).
-    # With eval_timesteps fix: ceil(52/52) × 200 = 200 eval steps total (very fast).
+    # max_parallel_envs = 49 → eval_num_envs = 49. NOT 52: 52 tiles into an 8x7 camera
+    # grid, and a non-square grid distorts the fisheye (Isaac Sim #488); 49 is 7x7.
+    # 49 does not divide 52, which is fine — the eval runs ceil(52/49) × 200 = 400 eval
+    # steps and the 46 surplus episodes are OVERFLOW: they run to fill the fixed budget
+    # but log nothing, so each of the 52 design rows still contributes exactly 1 episode.
     "episodes": {"train": 4, "test": 1},
     "steps_per_episode": 200,
     "eval_freq": 400,
     "task_memory": 0.1,
-    "max_parallel_envs": 52,
+    "max_parallel_envs": 49,  # 7x7: a square tile grid. 52 tiles 8x7 -> distorted fisheye (#488)
 }
 
 if __name__ == "__main__":
@@ -75,8 +78,8 @@ if __name__ == "__main__":
     log.info("Starting eval_freq verification run")
     log.info("Output: %s", OUTPUT)
     log.info(
-        "Expected: 2 training chunks (400 steps each) + 1 mid-training eval (200 steps "
-        "with 52 parallel envs) + 1 final test phase"
+        "Expected: 2 training chunks (400 steps each) + 1 mid-training eval (400 steps "
+        "with 49 parallel envs) + 1 final test phase"
     )
 
     NETT(CONFIG).run(output_path=str(OUTPUT), devices=[0], verbose=True)

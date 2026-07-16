@@ -84,7 +84,7 @@ CONFIG: dict = {
     "steps_per_episode": 200,
     "eval_freq": 10_000_000,
     "task_memory": 0.1,
-    "max_parallel_envs": 52,
+    "max_parallel_envs": 49,  # 7x7: a square tile grid. 52 tiles 8x7 -> distorted fisheye (#488)
 }
 
 
