@@ -79,6 +79,44 @@ def _dry_run_timeout_for(mode: str) -> float:
     return _DRY_RUN_TIMEOUT_S.get(mode, 900.0)
 
 
+def _min_consumed(
+    lo: tuple[int, float], hi: tuple[int, float], target: int
+) -> float:
+    """A LOWER bound on consumed(target), from two measured points below it.
+
+    consumed(n) is CONVEX in num_envs -- measured, res128/1 brain: the marginal cost
+    per env climbs 2.48->2.62->3.47->6.23->13.48GB across 2..256 envs, i.e. ~6MB/env
+    to ~65MB/env. For a convex function the chord's slope over ``[lo, hi]`` is a lower
+    bound on every marginal cost beyond ``hi``, so extending that line past ``hi``
+    under-estimates. Hence this is a floor, never an over-estimate.
+
+    NOTE THE DIRECTION. The same arithmetic as a LOWER bound on COST is sound; as an
+    UPPER bound on CAPACITY it is exactly the refuted 2-point model that "fitted" 2916
+    envs into 23.5GB and died in vkAllocateMemory. Convexity is what makes one valid
+    and the other nonsense: a line under a convex curve stays under it.
+    """
+    (n_lo, c_lo), (n_hi, c_hi) = lo, hi
+    if n_hi <= n_lo:
+        return c_hi
+    slope = (c_hi - c_lo) / float(n_hi - n_lo)
+    return c_hi + slope * (int(target) - n_hi)
+
+
+def _cannot_fit(
+    lo: tuple[int, float], hi: tuple[int, float], target: int, budget: float
+) -> bool:
+    """Is ``target`` PROVABLY over budget, without running it?
+
+    Lets the search stop before the rung that would OOM. That rung is the only one
+    that ever does, and it is expensive in a way nothing else here is: the OOM lands
+    inside Kit's scene build, where it can WEDGE (no Python exception, and the carb
+    hook cannot be armed that early) -- so it costs the probe's whole timeout and
+    leaves the GPU held until the reap. Skipping it changes no answer: the search
+    stops at the first miss either way.
+    """
+    return _min_consumed(lo, hi, target) > budget
+
+
 def _load_schema() -> dict:
     with open(Path(__file__).resolve().parent / "schema.json") as f:
         return json.load(f)
@@ -531,11 +569,22 @@ class NETT:
                 consumed = _probe(n)
         else:
             # Seed fits -- double up until one does not (or growth is capped).
+            previous: tuple[int, float] | None = None
             while consumed is not None:
                 best = (n, consumed)
                 nxt = grow_num_envs(n, nb)
                 if nxt <= n or (max_envs is not None and nxt > max_envs):
                     break
+                if previous is not None and _cannot_fit(previous, (n, consumed), nxt, budget):
+                    self.logger.info(
+                        "VRAM search (%s): num_envs=%d needs at least %.2fGB > %.2fGB "
+                        "budget; not probing it",
+                        mode, nxt,
+                        _min_consumed(previous, (n, consumed), nxt) / 1024**3,
+                        budget / 1024**3,
+                    )
+                    break
+                previous = (n, consumed)
                 n = nxt
                 consumed = _probe(n)
         if consumed is not None:

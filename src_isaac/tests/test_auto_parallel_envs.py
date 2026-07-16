@@ -182,14 +182,19 @@ def test_train_auto_never_grows_above_the_recipe(tmp_path):
 
 
 def test_test_search_grows_upward_when_the_seed_fits(tmp_path):
-    """The TEST-phase path: no recipe to honour, so the search doubles up until a
-    probe misses. 4 -> 8 -> 16 fit; 32 (33GB) does not."""
+    """The TEST-phase path: no recipe to honour, so the search doubles up. 4 -> 8 -> 16
+    fit (5/9/17GB of a 21GB budget); 32 would need 33GB.
+
+    32 is never PROBED: after 8 and 16 the measured slope proves it cannot fit, and the
+    reported count is still the largest that was actually measured. Every plan here is a
+    real measurement -- nothing is derived except the decision to stop."""
     nett, body, plans = _planner(free_gb=26.25, per_env_gb=1.0, fixed_gb=1.0)
     memory, num_envs = _search(
         nett, body, num_brains=1, seed=4, max_envs=None, tmp_path=tmp_path
     )
     assert num_envs == 16
-    assert plans[:4] == [4, 8, 16, 32]  # every step actually measured, not derived
+    assert plans[:3] == [4, 8, 16]
+    assert 32 not in plans
     assert memory / 1024**3 == pytest.approx(17.0)
 
 
@@ -599,3 +604,65 @@ def test_dry_run_timeout_env_override_applies_to_both_modes(monkeypatch):
     monkeypatch.setenv("NETT_DRY_RUN_TIMEOUT", "42")
     assert nett_module._dry_run_timeout_for("test") == 42.0
     assert nett_module._dry_run_timeout_for("train") == 42.0
+
+
+# --- do not probe the rung that would OOM ---------------------------------
+
+
+def test_min_consumed_is_a_lower_bound_on_a_convex_curve():
+    """The direction is the whole point: a line through two points of a CONVEX curve
+    stays UNDER it, so extending it under-estimates cost. (The same arithmetic used as
+    an upper bound on CAPACITY is the refuted model that claimed 2916 envs fit.)"""
+    from nett_skrl.nett import _min_consumed
+
+    # The measured curve (GB at n envs), convex throughout.
+    curve = {16: 2.62, 36: 2.85, 64: 3.47, 144: 6.23, 256: 13.48}
+    lo, hi = (64, curve[64]), (144, curve[144])
+    bound = _min_consumed(lo, hi, 256)
+    assert bound <= curve[256], "must never over-estimate a convex curve"
+    # And it is informative, not a trivial floor.
+    assert bound > curve[144]
+
+
+def test_min_consumed_is_exact_on_a_straight_line():
+    from nett_skrl.nett import _min_consumed
+
+    assert _min_consumed((10, 10.0), (20, 20.0), 40) == pytest.approx(40.0)
+
+
+def test_cannot_fit_only_claims_what_it_can_prove():
+    from nett_skrl.nett import _cannot_fit
+
+    lo, hi = (121, 5.53), (242, 13.03)  # measured, run 8
+    # 484 needs >= 13.03 + 0.062*242 = ~28GB: provably over an 18.58GB budget.
+    assert _cannot_fit(lo, hi, 484, 18.58) is True
+    # With a huge budget the same rung is not provably too big, so it must be probed.
+    assert _cannot_fit(lo, hi, 484, 100.0) is False
+
+
+def test_search_skips_the_rung_it_can_prove_will_not_fit(tmp_path):
+    """Regression: the search overshoots to find the ceiling, and that last rung is
+    the one that OOMs -- costing the whole probe timeout and pinning the GPU until the
+    reap, because a scene-build OOM wedges rather than raising."""
+    fixed = 2.0
+
+    def consumed_gb(n):  # convex, like the real thing
+        return fixed + 0.002 * (n ** 1.5)
+
+    nett, body, plans = _planner(free_gb=23.5, per_env_gb=0, fixed_gb=0)
+
+    def _estimate(self, brain, body_, env, output_dir, mode="train"):
+        return consumed_gb(env.num_envs) * 1024**3
+
+    nett._estimate_task_memory_via_dry_run = _estimate.__get__(nett, NETT)
+
+    _memory, num_envs = _search(
+        nett, body, num_brains=1, seed=16, max_envs=None, tmp_path=tmp_path
+    )
+    budget = 23.5 * NETT._VRAM_SAFETY
+
+    # Every count it actually ran must have fit: it never paid for an OOM.
+    for n in plans:
+        assert consumed_gb(n) <= budget, f"probed {n}, which does not fit"
+    # And the answer is unchanged -- the next rung up genuinely does not fit.
+    assert consumed_gb(snap_num_envs(2 * num_envs, 1)[0]) > budget
