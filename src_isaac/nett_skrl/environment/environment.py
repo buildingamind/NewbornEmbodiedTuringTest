@@ -209,6 +209,16 @@ class Environment:
                 kit_args=kit_thread_args(cell_cpu_threads()),
             ).app
 
+        # DO NOT arm crash_guard here. It is tempting: NETTEnv(cfg) below builds the
+        # scene and the tiled-camera canvas, which is exactly where an over-size
+        # num_envs runs out of VRAM and then wedges, and arming after load() returns
+        # (as task_runner does) installs the hook after that crash. MEASURED 2026-07-15:
+        # arming here made a KNOWN-GOOD 16-env probe -- 4.66GB on a 24GB card -- hang
+        # for 30min and get reported "too big", because crash_guard's consumer is a
+        # synchronous PYTHON callback on EVERY carb message, and the scene build emits
+        # them in bulk from many threads: one GIL acquisition each wedges Kit. The
+        # scene-build OOM is covered by the probe's absolute timeout instead
+        # (TaskConfig.dry_run_timeout).
         from nett_isaac.nett_env import NETTEnv
         from nett_isaac.nett_env_cfg import NETTEnvCfg
 

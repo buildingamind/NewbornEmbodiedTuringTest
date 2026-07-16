@@ -992,3 +992,122 @@ def test_every_device_lost_task_in_a_wave_is_reported():
 
     assert len(excinfo.value.failures) == 3
     assert "3 task(s)" in str(excinfo.value)
+
+
+# --- out-of-VRAM: same hook, different meaning ----------------------------
+#
+# A sizing probe (nett.py::_search_max_envs_verified) deliberately reaches for env
+# counts that cannot fit. At 484 envs the child logged
+# `vkAllocateMemory ERROR_OUT_OF_DEVICE_MEMORY` and then WEDGED holding 24GB -- the
+# DEVICE_LOST guard did not fire, because an allocation OOM is not a device loss.
+
+OOM_RECORDS = {
+    "vulkan_oom": ("carb.graphics-vulkan.plugin", CARB_ERROR, "VkResult: ERROR_OUT_OF_DEVICE_MEMORY"),
+}
+
+NOT_OOM_RECORDS = {
+    "device_lost": ("carb.graphics-vulkan.plugin", CARB_ERROR, "VkResult: ERROR_DEVICE_LOST"),
+    "host_oom": ("carb.graphics-vulkan.plugin", CARB_ERROR, "VkResult: ERROR_OUT_OF_HOST_MEMORY"),
+    "other_plugin": ("some.other.plugin", CARB_ERROR, "VkResult: ERROR_OUT_OF_DEVICE_MEMORY"),
+    "texture_consequence": ("gpu.foundation.plugin", CARB_ERROR, "Texture creation failed for the device: 0."),
+}
+
+
+@pytest.mark.parametrize("name", sorted(OOM_RECORDS))
+def test_confirmed_vram_oom_records_are_detected(name):
+    source, level, message = OOM_RECORDS[name]
+    assert crash_guard.is_vram_oom_message(source, level, message) is True
+
+
+@pytest.mark.parametrize("name", sorted(NOT_OOM_RECORDS))
+def test_near_miss_records_are_not_reported_as_vram_oom(name):
+    source, level, message = NOT_OOM_RECORDS[name]
+    assert crash_guard.is_vram_oom_message(source, level, message) is False, name
+
+
+def test_vram_oom_requires_error_level():
+    source, _level, message = OOM_RECORDS["vulkan_oom"]
+    assert crash_guard.is_vram_oom_message(source, CARB_ERROR, message) is True
+    assert crash_guard.is_vram_oom_message(source, CARB_ERROR - 1, message) is False
+
+
+def test_the_two_predicates_never_both_fire():
+    """They select different exit codes, so an overlap would make the child's
+    reported cause depend on evaluation order."""
+    for records in (OOM_RECORDS, NOT_OOM_RECORDS):
+        for source, level, message in records.values():
+            both = crash_guard.is_device_lost_message(source, level, message) and \
+                   crash_guard.is_vram_oom_message(source, level, message)
+            assert not both, message
+
+
+def test_vram_oom_exit_code_is_distinct_and_not_swallowed(monkeypatch):
+    """It must differ from DEVICE_LOST's (they mean different things: transient
+    casualty vs "too many envs") and must not land in the tolerated teardown set,
+    which would make an OOM look like a successful mode."""
+    monkeypatch.delenv("NETT_VRAM_OOM_EXIT_CODE", raising=False)
+    monkeypatch.delenv("NETT_DEVICE_LOST_EXIT_CODE", raising=False)
+    from nett_skrl.runtime.reap import is_vram_oom_exit, vram_oom_exit_code
+
+    code = vram_oom_exit_code()
+    assert code == crash_guard.vram_oom_exit_code() == 76  # parent/child agree
+    assert code != 0
+    assert code != crash_guard._env_int("NETT_DEVICE_LOST_EXIT_CODE", 75)
+    assert not _is_tolerated_isaac_teardown_exit(code)
+    assert is_vram_oom_exit(code)
+    assert not is_vram_oom_exit(None)
+    # The SIGALRM backstop is shared with DEVICE_LOST and cannot be attributed,
+    # so it must NOT be read as an OOM.
+    for backstop in SIGALRM_BACKSTOP_EXITS:
+        assert not is_vram_oom_exit(backstop)
+
+
+def test_vram_oom_error_is_not_a_tolerated_casualty():
+    """ReapedTaskError is what _task_waiter continues the wave for. An OOM is
+    deterministic -- the same config will do it again -- so it must fail fast."""
+    from nett_skrl.runtime.reap import ReapedTaskError, VramOomError
+
+    assert issubclass(VramOomError, RuntimeError)
+    assert not issubclass(VramOomError, ReapedTaskError)
+
+
+def test_oom_trigger_is_opt_in(monkeypatch):
+    """Only dry-run probes arm it: a steady-state OOM is not confirmed
+    unrecoverable, and killing a long training on one would be worse than the hang.
+
+    _arm_kernel_backstop is stubbed: it arms a REAL SIGALRM whose default
+    disposition terminates the process, and this test process is pytest.
+    """
+    import threading
+
+    alarms = []
+    monkeypatch.setattr(crash_guard, "_arm_kernel_backstop", lambda: alarms.append(1))
+    monkeypatch.setattr(crash_guard, "_triggered", threading.Event())
+    monkeypatch.setattr(crash_guard, "_triggered_by_oom", False)
+    monkeypatch.setattr(crash_guard, "_oom_fatal", False)
+
+    source, level, message = OOM_RECORDS["vulkan_oom"]
+    crash_guard._on_carb_log(source=source, level=level, message=message)
+    assert not crash_guard._triggered.is_set(), "OOM must not trigger unless armed for it"
+    assert alarms == []
+
+    monkeypatch.setattr(crash_guard, "_oom_fatal", True)
+    crash_guard._on_carb_log(source=source, level=level, message=message)
+    assert crash_guard._triggered.is_set()
+    assert crash_guard._triggered_by_oom is True
+    assert alarms == [1], "the bounded-exit backstop must be armed for an OOM too"
+
+
+def test_device_lost_still_triggers_when_oom_is_armed(monkeypatch):
+    """Arming the OOM predicate must not shadow the original one."""
+    import threading
+
+    monkeypatch.setattr(crash_guard, "_arm_kernel_backstop", lambda: None)
+    monkeypatch.setattr(crash_guard, "_triggered", threading.Event())
+    monkeypatch.setattr(crash_guard, "_triggered_by_oom", False)
+    monkeypatch.setattr(crash_guard, "_oom_fatal", True)
+
+    source, level, message = NOT_OOM_RECORDS["device_lost"]
+    crash_guard._on_carb_log(source=source, level=level, message=message)
+    assert crash_guard._triggered.is_set()
+    assert crash_guard._triggered_by_oom is False  # -> exits 75, not 76

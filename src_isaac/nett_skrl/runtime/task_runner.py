@@ -29,7 +29,9 @@ from .reap import (
     DeviceLostError,
     TaskReaper,
     TaskTimeoutError,
+    VramOomError,
     is_device_lost_exit,
+    is_vram_oom_exit,
     join_with_reap,
 )
 from .task import Task, TaskConfig, recording_phase_map, set_seeds
@@ -187,6 +189,15 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
         )
 
     if p.exitcode != 0:
+        if is_vram_oom_exit(p.exitcode):
+            # Same os._exit story as DEVICE_LOST below: no atexit hooks ran, so the
+            # child's spawn workers and its RTX context still hold VRAM. ONLY this
+            # reap frees the device for the search's next probe.
+            reaper.reap("vram-oom-exit")
+            raise VramOomError(
+                f"Mode {mode} subprocess ran out of VRAM (exit {p.exitcode}); "
+                f"num_envs is too large for this GPU"
+            )
         if is_device_lost_exit(p.exitcode):
             # The child self-exited via crash_guard's os._exit(75) (or its
             # SIGALRM backstop, -14/142). os._exit runs no atexit hooks, so its
@@ -242,10 +253,20 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
         num_envs=run_config.num_envs,
     )
     loaded = agent.body.embed(agent.env, run_config)
-    # Kit is up now (embed builds AppLauncher/SimulationApp). Its startup resets
-    # carb logging, so the device-lost guard MUST arm after this line. Pass the
-    # scheduled GPU so crash forensics can label the telemetry snapshot.
-    crash_guard.arm(config.path, device=config.device)
+    # Kit is up now (embed builds AppLauncher/SimulationApp). Its startup resets carb
+    # logging, so the guard MUST arm after this line -- and must not arm EARLIER, inside
+    # embed: the consumer is a synchronous Python callback on every carb message, and
+    # arming it before the scene build wedges Kit outright (measured: a known-good
+    # 16-env probe hung 30min). Pass the scheduled GPU so crash forensics can label the
+    # telemetry snapshot.
+    #
+    # oom_fatal for DRY RUNS ONLY: a probe deliberately reaches for env counts that
+    # cannot fit, so an out-of-VRAM there is its ANSWER, not a crash. It catches an OOM
+    # raised from HERE on (e.g. the first optimizer allocation); a scene-build OOM
+    # happens before this line and is caught by the probe timeout instead. A real run
+    # leaves it off -- a steady-state OOM is not confirmed unrecoverable, and killing a
+    # long training on a transient allocation failure would be worse than the hang.
+    crash_guard.arm(config.path, device=config.device, oom_fatal=bool(config.dry_run))
     if mode == "train":
         agent.brain.train(
             loaded,

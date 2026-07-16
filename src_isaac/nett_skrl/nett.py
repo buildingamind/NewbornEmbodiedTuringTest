@@ -55,12 +55,28 @@ from .runtime.tasklist import validate_tasklist
 # Reserved fallback when dry-run estimation fails for any reason.
 _FALLBACK_TASK_MEMORY_GB = 6.0
 
-# Absolute cap on a single dry-run probe (seconds). A probe is bounded work -- Isaac
-# boot plus either one rollout or a few eval steps -- so a cap is safe here in a way it
-# is not for a real run. Generous by ~5x so a legitimately slow probe (big rollouts, or
-# hundreds of envs booting) is never mistaken for "does not fit"; it exists only to stop
-# a wedged probe from hanging the wave forever.
-_DRY_RUN_TIMEOUT_S = float(os.environ.get("NETT_DRY_RUN_TIMEOUT", "900"))
+# Absolute cap on a single dry-run probe (seconds), per MODE. A probe is bounded work,
+# so a cap is safe here in a way it is not for a real run -- and it is the ONLY thing
+# that ends an over-size probe, because the OOM that kills it happens during the scene
+# build, before crash_guard can be armed (see task_runner._run_single_mode).
+#
+# The cap is a tax, not just a safety net: the search FINDS the ceiling by overshooting,
+# so every search pays it once. Hence per-mode, sized off measurement rather than one
+# conservative number for both:
+#   test  = Isaac boot + a few eval steps. Measured ~55s/probe (16..242 envs, res128).
+#   train = Isaac boot + ONE ROLLOUT, so it scales with `rollouts`. Measured ~135s at
+#           rollouts=800; a rollouts=3200 recipe is ~4x that.
+# Both are ~5x their measured cost, so a legitimately slow probe is never mistaken for
+# "does not fit" -- a false "too big" silently costs parallelism, which is worse than
+# waiting. NETT_DRY_RUN_TIMEOUT overrides both.
+_DRY_RUN_TIMEOUT_S = {"test": 300.0, "train": 900.0}
+
+
+def _dry_run_timeout_for(mode: str) -> float:
+    override = os.environ.get("NETT_DRY_RUN_TIMEOUT")
+    if override:
+        return float(override)
+    return _DRY_RUN_TIMEOUT_S.get(mode, 900.0)
 
 
 def _load_schema() -> dict:
@@ -754,8 +770,9 @@ class NETT:
         task.set_device(device)
         # BOUNDED: a probe deliberately reaches for counts that do not fit, and an
         # over-size one does not reliably die (a 484-env probe hit a Vulkan OOM and
-        # then hung, holding 24GB, since crash_guard keys on DEVICE_LOST).
-        task.set_dry_run(True, timeout=_DRY_RUN_TIMEOUT_S)
+        # then hung, holding 24GB, since crash_guard keys on DEVICE_LOST -- and cannot
+        # be armed early enough to see a scene-build OOM without wedging Kit).
+        task.set_dry_run(True, timeout=_dry_run_timeout_for(mode))
         # mem.txt lands at the canonical ``config.path / "mem.txt"`` since
         # ``for_mode()`` rewrites ``path`` from ``__post_init__``; validation
         # mode suppresses every other output, so this file is the only

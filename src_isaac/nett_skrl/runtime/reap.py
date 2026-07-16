@@ -623,6 +623,17 @@ class TaskTimeoutError(ReapedTaskError):
     """Child exceeded an explicitly-configured ``NETT_REAP_TIMEOUT`` and was reaped."""
 
 
+class VramOomError(RuntimeError):
+    """Child ran out of VRAM and self-exited via crash_guard's bounded OOM path.
+
+    Deliberately NOT a ``ReapedTaskError``: that base means "a casualty to tolerate so
+    the wave can continue", and an OOM is not transient -- the same config on the same
+    GPU will do it again. Only a dry-run probe arms the OOM trigger, and the probe
+    catches this and reads it as "too big"; if it ever escapes to ``_task_waiter`` it
+    should fail fast like any other real error, which this base gives for free.
+    """
+
+
 class DeviceLostRunError(ReapedTaskError):
     """Aggregate: the run finished, but N tasks died on the DEVICE_LOST/timeout path.
 
@@ -672,6 +683,32 @@ def is_device_lost_exit(exitcode: Optional[int]) -> bool:
     if exitcode is None:
         return False
     return exitcode == device_lost_exit_code() or exitcode in SIGALRM_EXIT_CODES
+
+
+def vram_oom_exit_code() -> int:
+    """The child's out-of-VRAM exit code (76 by default).
+
+    Same parent/child env contract as :func:`device_lost_exit_code`, and read at call
+    time for the same reason. Deliberately distinct from DEVICE_LOST's: an OOM is not
+    a transient renderer casualty, it is "this many envs do not fit" -- which for a
+    sizing probe is the answer it went looking for.
+    """
+    try:
+        return int(os.environ.get("NETT_VRAM_OOM_EXIT_CODE", "76"))
+    except ValueError:
+        return 76
+
+
+def is_vram_oom_exit(exitcode: Optional[int]) -> bool:
+    """True if *exitcode* is crash_guard's out-of-VRAM signature.
+
+    Note the SIGALRM backstop codes are NOT included: they are shared with
+    DEVICE_LOST and cannot be attributed to either cause, so they stay with the
+    conservative (casualty) reading.
+    """
+    if exitcode is None:
+        return False
+    return exitcode == vram_oom_exit_code()
 
 
 def join_with_reap(

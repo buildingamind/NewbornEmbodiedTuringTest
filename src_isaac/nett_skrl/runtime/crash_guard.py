@@ -1,4 +1,5 @@
-"""Bounded hard-exit guard for renderer GPU crashes (VkResult ERROR_DEVICE_LOST).
+"""Bounded hard-exit guard for renderer GPU crashes (VkResult ERROR_DEVICE_LOST),
+and -- opt-in, for dry-run probes only -- for out-of-VRAM (ERROR_OUT_OF_DEVICE_MEMORY).
 
 WHY THIS EXISTS
 ---------------
@@ -75,6 +76,10 @@ ENV VARS
 ``NETT_DEVICE_LOST_FLUSH_S``      "20"  -- durability + forensics work budget
 ``NETT_DEVICE_LOST_EXIT_BUDGET_S`` "60" -- absolute detection->dead deadline
 ``NETT_DEVICE_LOST_FORENSICS``    "1" (default) | "0" to skip crash collection
+``NETT_VRAM_OOM_EXIT_CODE``       "76"  -- distinct from 75: an OOM is "too many envs",
+                                  not a transient device crash. Only fires when the run
+                                  armed ``oom_fatal`` (dry-run probes; see
+                                  ``_VRAM_OOM_SIGNATURES``).
 
 CRASH FORENSICS
 ---------------
@@ -104,6 +109,23 @@ _DEVICE_LOST_SIGNATURES: tuple[tuple[str, str], ...] = (
     ("gpu.foundation.plugin", "A GPU crash occurred"),
 )
 
+# Out-of-VRAM. Same hook, same bounded exit, DIFFERENT exit code -- an OOM is not a
+# transient device crash, it is "this many envs do not fit", which for a sizing probe
+# is an ANSWER rather than a failure.
+#
+# OPT-IN PER RUN (arm(oom_fatal=...)), unlike DEVICE_LOST which is always fatal. The
+# evidence is narrower: a Vulkan allocation OOM is confirmed fatal HERE, during scene /
+# tiled-camera build, where it cascades ("vkAllocateMemory failed" -> "Texture creation
+# failed" -> "Unable to create resource from camera projection texture desc") and then
+# either exits nonzero or WEDGES -- observed both, on the same GPU, depending on where
+# the allocation lands. Whether a steady-state OOM mid-training is equally unrecoverable
+# is NOT established, and killing a 12-hour run on a transient allocation failure would
+# be far worse than the hang this avoids. So only dry-run probes arm it: a probe is
+# short, disposable, and deliberately reaches for counts that cannot fit.
+_VRAM_OOM_SIGNATURES: tuple[tuple[str, str], ...] = (
+    ("carb.graphics-vulkan.plugin", "ERROR_OUT_OF_DEVICE_MEMORY"),
+)
+
 # carb.logging.LEVEL_ERROR == 1 (verified: LEVEL_WARN=0, LEVEL_ERROR=1,
 # LEVEL_FATAL=2). Hard-coded so the predicate does not need carb imported.
 _LEVEL_ERROR = 1
@@ -111,6 +133,10 @@ _LEVEL_ERROR = 1
 _state_lock = threading.Lock()
 _triggered = threading.Event()
 _armed = False
+#: Whether an out-of-VRAM message is a fatal trigger for THIS run (see
+#: _VRAM_OOM_SIGNATURES) and whether the trigger that fired was one.
+_oom_fatal = False
+_triggered_by_oom = False
 _logger_handle = None  # carb.logging.LoggerHandle
 _watchdog: threading.Thread | None = None
 _artifact_dirs: list[str] = []
@@ -149,6 +175,15 @@ def _enabled() -> bool:
     return os.environ.get("NETT_DEVICE_LOST_GUARD", "1") != "0"
 
 
+def _matches(signatures, source: str, level: int, message: str) -> bool:
+    if level < _LEVEL_ERROR:
+        return False
+    for expected_source, needle in signatures:
+        if source == expected_source and needle in message:
+            return True
+    return False
+
+
 def is_device_lost_message(source: str, level: int, message: str) -> bool:
     """The trigger predicate. Pure, side-effect free, unit-testable.
 
@@ -156,12 +191,23 @@ def is_device_lost_message(source: str, level: int, message: str) -> bool:
     source, and that plugin's confirmed-fatal substring. An ordinary Python
     exception, a normal shutdown, or any other plugin's error can never match.
     """
-    if level < _LEVEL_ERROR:
-        return False
-    for expected_source, needle in _DEVICE_LOST_SIGNATURES:
-        if source == expected_source and needle in message:
-            return True
-    return False
+    return _matches(_DEVICE_LOST_SIGNATURES, source, level, message)
+
+
+def is_vram_oom_message(source: str, level: int, message: str) -> bool:
+    """Same shape as :func:`is_device_lost_message`, for out-of-VRAM.
+
+    Only a trigger when the run armed ``oom_fatal`` -- see _VRAM_OOM_SIGNATURES for
+    why that is opt-in rather than always-on.
+    """
+    return _matches(_VRAM_OOM_SIGNATURES, source, level, message)
+
+
+def vram_oom_exit_code() -> int:
+    """The child's out-of-VRAM exit code. Distinct from DEVICE_LOST's so the parent
+    can tell "too many envs" from "the renderer crashed" -- they mean different things
+    and only one of them is a casualty."""
+    return _env_int("NETT_VRAM_OOM_EXIT_CODE", 76)
 
 
 def register_artifact_dir(path) -> None:
@@ -172,7 +218,7 @@ def register_artifact_dir(path) -> None:
             _artifact_dirs.append(p)
 
 
-def arm(artifact_dir=None, device: int | None = None) -> bool:
+def arm(artifact_dir=None, device: int | None = None, oom_fatal: bool = False) -> bool:
     """Install the carb log consumer + start the watchdog. Idempotent.
 
     Returns True if the guard is active. Safe to call before/without Kit: if
@@ -182,13 +228,22 @@ def arm(artifact_dir=None, device: int | None = None) -> bool:
     ``device`` is the physical GPU index this run was scheduled onto; it is only
     used to label the crash-forensics telemetry snapshot (nvidia-smi ignores
     CUDA_VISIBLE_DEVICES, so a physical index is what it wants).
+
+    ``oom_fatal`` additionally treats an out-of-VRAM message as a bounded-exit
+    trigger (exit ``vram_oom_exit_code()``). For DRY-RUN PROBES only: they exist to
+    find the count that does not fit, so an OOM is their answer, and without this
+    they can wedge holding the whole GPU. A real run leaves it off -- see
+    _VRAM_OOM_SIGNATURES.
     """
-    global _armed, _logger_handle, _watchdog, _device
+    global _armed, _logger_handle, _watchdog, _device, _oom_fatal
 
     if artifact_dir is not None:
         register_artifact_dir(artifact_dir)
     if device is not None:
         _device = int(device)
+    # Set before the early return and outside the idempotence check: the predicate
+    # must be live the instant the consumer is installed.
+    _oom_fatal = bool(oom_fatal)
     if not _enabled():
         return False
 
@@ -222,12 +277,14 @@ def arm(artifact_dir=None, device: int | None = None) -> bool:
 def disarm() -> None:
     """Remove the log consumer. Call on the CLEAN shutdown path so a healthy
     run's teardown is bit-for-bit what it was before this module existed."""
-    global _armed, _logger_handle
+    global _armed, _logger_handle, _oom_fatal
 
     with _state_lock:
         if not _armed:
+            _oom_fatal = False
             return
         handle, _logger_handle, _armed = _logger_handle, None, False
+        _oom_fatal = False
 
     try:
         import carb.logging as carb_logging
@@ -266,7 +323,7 @@ def _arm_kernel_backstop() -> None:
 def _on_carb_log(**kwargs) -> None:
     """carb log consumer. Runs on the EMITTING thread (often the render
     thread) inside carb's log call -- so it must do essentially nothing."""
-    global _trigger_reason
+    global _trigger_reason, _triggered_by_oom
     try:
         if _triggered.is_set():
             return
@@ -277,7 +334,11 @@ def _on_carb_log(**kwargs) -> None:
         # from the lines Kit emits just BEFORE ERROR_DEVICE_LOST. Cheap string
         # work only; the collector (bounded, off-thread) uses these later.
         _scrape_crash_artifacts(str(message))
-        if not is_device_lost_message(source, int(level), str(message)):
+        if is_device_lost_message(source, int(level), str(message)):
+            pass
+        elif _oom_fatal and is_vram_oom_message(source, int(level), str(message)):
+            _triggered_by_oom = True
+        else:
             return
         _trigger_reason = f"[{source}] {str(message).strip()[:200]}"
         _arm_kernel_backstop()
@@ -309,13 +370,18 @@ def _watchdog_main() -> None:
     if not _triggered.wait():
         return
     t0 = time.monotonic()
-    exit_code = _env_int("NETT_DEVICE_LOST_EXIT_CODE", 75)
+    exit_code = (
+        vram_oom_exit_code()
+        if _triggered_by_oom
+        else _env_int("NETT_DEVICE_LOST_EXIT_CODE", 75)
+    )
     flush_budget = _env_int("NETT_DEVICE_LOST_FLUSH_S", 20)
     # (the SIGALRM backstop was already armed by the log callback, which is the
     # earliest point at which the GIL is guaranteed to be held.)
 
     _emit(
-        "DEVICE_LOST confirmed -> forcing bounded exit. reason=%s" % _trigger_reason
+        "%s confirmed -> forcing bounded exit. reason=%s"
+        % ("VRAM_OOM" if _triggered_by_oom else "DEVICE_LOST", _trigger_reason)
     )
 
     flusher = threading.Thread(

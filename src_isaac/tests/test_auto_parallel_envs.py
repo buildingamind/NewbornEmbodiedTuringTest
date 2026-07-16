@@ -360,9 +360,15 @@ def test_dry_run_probe_is_bounded_and_real_runs_are_not(tmp_path, monkeypatch):
     env = SimpleNamespace(conditions=["Object1"], num_brains=1, num_envs=4)
 
     NETT._estimate_task_memory_via_dry_run(nett, brain, body, env, tmp_path, mode="test")
-    assert seen["timeout"] == nett_module._DRY_RUN_TIMEOUT_S
+    assert seen["timeout"] == nett_module._dry_run_timeout_for("test")
     assert seen["timeout"] > 0
     assert seen["modes"] == ["test"]  # the probe's mode is the caller's
+
+    NETT._estimate_task_memory_via_dry_run(nett, brain, body, env, tmp_path, mode="train")
+    assert seen["timeout"] == nett_module._dry_run_timeout_for("train")
+    # A train probe runs a whole rollout; a test probe runs a few steps. One cap
+    # for both would either tax the search or false-fail the slow one.
+    assert nett_module._dry_run_timeout_for("train") > nett_module._dry_run_timeout_for("test")
 
     # A task that is not a dry run carries no cap.
     real = TaskConfig("c", tmp_path, ["train"])
@@ -581,3 +587,15 @@ def test_spawn_passes_the_cap_to_join_with_reap(monkeypatch, tmp_path):
     task.set_dry_run(True, timeout=123.0)
     tr._spawn_mode_subprocess(task, "train")
     assert seen["absolute_timeout"] == 123.0
+
+
+def test_dry_run_timeout_env_override_applies_to_both_modes(monkeypatch):
+    import nett_skrl.nett as nett_module
+
+    monkeypatch.delenv("NETT_DRY_RUN_TIMEOUT", raising=False)
+    assert nett_module._dry_run_timeout_for("test") == 300.0
+    assert nett_module._dry_run_timeout_for("train") == 900.0
+    # Read at call time, so an operator override works without reimporting.
+    monkeypatch.setenv("NETT_DRY_RUN_TIMEOUT", "42")
+    assert nett_module._dry_run_timeout_for("test") == 42.0
+    assert nett_module._dry_run_timeout_for("train") == 42.0
