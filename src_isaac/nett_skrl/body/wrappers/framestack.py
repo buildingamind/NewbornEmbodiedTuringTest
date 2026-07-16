@@ -52,7 +52,6 @@ class FrameStack(gym.Wrapper):
         # For vectorised envs: reset per-env frame buffers when episodes end.
         done = _done_mask(terminated, truncated)
         if done is not None and obs_np.ndim == 4 and done.any():
-            prev = _obs_to_numpy(self._frames[-1])
             for env_id in np.where(done)[0]:
                 # Replace every stacked frame for this env with the new episode's
                 # first observation so stale frames from the previous episode
