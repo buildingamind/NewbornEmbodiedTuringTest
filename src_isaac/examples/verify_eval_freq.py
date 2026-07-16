@@ -9,6 +9,7 @@ Run with:
 """
 
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 from pathlib import Path
@@ -24,8 +25,8 @@ OUTPUT = Path("~/nett_eval_verify").expanduser()
 CONFIG = {
     "name": "eval_freq_verify",
     "environment": {
-        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+        "design_sheet": BINDING_DESIGN_SHEET,
+        "media_root": BINDING_MEDIA_ROOT,
         "conditions": ["Object1"],
         "headless": True,
         "input_resolution": 64,

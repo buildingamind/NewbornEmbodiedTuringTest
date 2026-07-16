@@ -19,6 +19,7 @@ Env vars:
   NETT_OUTPUT      : output dir (default ~/nett_replicate_out)
 """
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 import os
@@ -66,8 +67,8 @@ _ENC_SPECS = {
 spec = _ENC_SPECS[ENC]
 
 env_cfg = {
-    "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-    "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+    "design_sheet": BINDING_DESIGN_SHEET,
+    "media_root": BINDING_MEDIA_ROOT,
     "conditions": ["Object1"],
     "headless": True,
     "input_resolution": 256,

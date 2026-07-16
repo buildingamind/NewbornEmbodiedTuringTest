@@ -36,6 +36,7 @@ Architecture fixes retained (they align WITH the SB3 reference, not against it):
 """
 
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 from datetime import datetime
@@ -51,8 +52,8 @@ OUTPUT = Path("~/nett_nature_cnn_replicate_out").expanduser()
 CONFIG: dict = {
     "name": f"nature_cnn_replicate_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+        "design_sheet": BINDING_DESIGN_SHEET,
+        "media_root": BINDING_MEDIA_ROOT,
         "conditions": ["Object1"],
         "headless": True,
         "input_resolution": 64,            # NETT legacy default; fits 8 GB w/ 8000 buffer

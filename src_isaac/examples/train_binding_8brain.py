@@ -8,6 +8,7 @@ Select encoder via NETT_ENCODER env var: nature_cnn | compact_vit | guess_what_m
 Select GPU via NETT_DEVICE env var (default: 0).
 """
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 import os
@@ -49,8 +50,8 @@ if ENC not in _ENC_SPECS:
 
 spec = _ENC_SPECS[ENC]
 _DOCKER = Path("/data/DesignSheet_Binding.csv").exists()
-_DESIGN = "/data/DesignSheet_Binding.csv" if _DOCKER else "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv"
-_MEDIA = "/data/videos" if _DOCKER else "/home/zlaborde/code/isaac/videos/binding/videos"
+_DESIGN = "/data/DesignSheet_Binding.csv" if _DOCKER else BINDING_DESIGN_SHEET
+_MEDIA = "/data/videos" if _DOCKER else BINDING_MEDIA_ROOT
 OUTPUT = Path("/output") if _DOCKER else Path(f"~/nett_binding_8brain_{ENC}").expanduser()
 
 CONFIG: dict = {

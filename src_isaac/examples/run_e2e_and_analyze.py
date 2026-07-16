@@ -19,6 +19,7 @@ commented out to refresh plots without retraining.
 """
 
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 from datetime import datetime
@@ -39,8 +40,8 @@ OUTPUT = Path("~/nett_e2e_out").expanduser()
 CONFIG: dict = {
     "name": f"e2e_1kep_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+        "design_sheet": BINDING_DESIGN_SHEET,
+        "media_root": BINDING_MEDIA_ROOT,
         "conditions": ["Object1"],
         "headless": True,
         "input_resolution": 64,

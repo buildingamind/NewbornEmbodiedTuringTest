@@ -3,6 +3,7 @@ wandb run with per-brain namespaced metrics (brain_1/..., brain_2/...).
 Expect exactly ONE 'View run at' line in the log (brains 2..N reuse brain 1's run).
 """
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 from datetime import datetime
 from pathlib import Path
 from nett_skrl import NETT
@@ -10,8 +11,8 @@ from nett_skrl import NETT
 CONFIG = {
     "name": f"unified_smoke_{datetime.now():%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+        "design_sheet": BINDING_DESIGN_SHEET,
+        "media_root": BINDING_MEDIA_ROOT,
         "conditions": ["Object1"],
         "headless": True, "input_resolution": 64,
         "camera_fov": 150.0, "reward_types": ["closeness"],

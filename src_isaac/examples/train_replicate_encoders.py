@@ -11,6 +11,7 @@ Select via NETT_ENCODER in {compact_vit, compact_vivit, compact_3dcnn}.
 ViViT / 3D-CNN are 2-frame: body framestack (n_stack=2) + encoder num_frames=2.
 """
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import logging
 import os
@@ -48,8 +49,8 @@ OUTPUT = Path("~/nett_nature_cnn_replicate_out").expanduser()
 CONFIG: dict = {
     "name": f"replicate_{ENC}_{datetime.now():%Y%m%d_%H%M%S}",
     "environment": {
-        "design_sheet": "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv",
-        "media_root": "/home/zlaborde/code/isaac/videos/binding/videos",
+        "design_sheet": BINDING_DESIGN_SHEET,
+        "media_root": BINDING_MEDIA_ROOT,
         "conditions": ["Object1"],
         "headless": True,
         "input_resolution": 64,

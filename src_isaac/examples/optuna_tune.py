@@ -18,6 +18,7 @@ without Isaac so they can be unit-tested directly. ``run_training`` and
 """
 
 from __future__ import annotations
+from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import argparse
 import json
@@ -44,8 +45,8 @@ logger = logging.getLogger("optuna_tune")
 # --------------------------------------------------------------------------- #
 
 OPTUNA_DIR = Path("/home/zlaborde/code/isaac/optuna_tune")
-DESIGN_SHEET = "/home/zlaborde/code/isaac/videos/binding/DesignSheet_Binding.csv"
-MEDIA_ROOT = "/home/zlaborde/code/isaac/videos/binding/videos"
+DESIGN_SHEET = BINDING_DESIGN_SHEET
+MEDIA_ROOT = BINDING_MEDIA_ROOT
 CONDITION = "Object1"
 
 # Trial seed (fixed for reproducible stability measurement, per SPEC).
