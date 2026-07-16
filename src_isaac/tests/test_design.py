@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 import pytest
@@ -13,8 +15,10 @@ from nett_skrl.environment.design import (
 
 
 _BINDING_CSV = Path(
-    "/home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/"
-    "assets/design_sheets/binding.csv"
+    os.environ.get(
+        "NETT_BINDING_CSV",
+        "/path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
+    )
 )
 
 

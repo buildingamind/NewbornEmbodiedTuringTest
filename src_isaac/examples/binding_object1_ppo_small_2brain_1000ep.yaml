@@ -1,8 +1,8 @@
 name: binding_object1_ppo_small_2brain_1000ep
 
 environment:
-  design_sheet: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
-  media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
+  design_sheet: /path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
+  media_root: /path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
   conditions: [Object1]
   headless: true
   input_resolution: 64

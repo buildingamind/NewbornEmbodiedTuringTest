@@ -10,8 +10,8 @@
 name: smoke
 
 environment:
-  design_sheet: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
-  media_root: /home/zach/Code/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
+  design_sheet: /path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv
+  media_root: /path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/videos
   conditions: [Object1]            # one condition → one Isaac Sim process
   headless: true
   input_resolution: 64
