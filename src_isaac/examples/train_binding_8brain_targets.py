@@ -19,6 +19,7 @@ Select encoder via NETT_ENCODER: compact_3dcnn | compact_vivit | simclr_cltt
 Select GPU via NETT_DEVICE (default: 0).
 """
 from __future__ import annotations
+from _paths import VIDEOS_ROOT
 
 import logging
 import os
@@ -138,7 +139,7 @@ _EXP_MAP = {
 }
 if EXP not in _EXP_MAP:
     print(f"Unknown NETT_EXPERIMENT: {EXP}. Choose from: {list(_EXP_MAP)}"); sys.exit(1)
-_VIDEOS = "/home/zlaborde/code/isaac/videos"
+_VIDEOS = VIDEOS_ROOT
 DESIGN_SHEET = f"{_VIDEOS}/{_EXP_MAP[EXP][0]}"
 MEDIA_ROOT = f"{_VIDEOS}/{_EXP_MAP[EXP][1]}"
 IMPRINT = os.environ.get("NETT_IMPRINT", _EXP_MAP[EXP][2])

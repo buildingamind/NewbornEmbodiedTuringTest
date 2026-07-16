@@ -32,6 +32,7 @@ Select via env:
   NETT_AUX_WEIGHT  unused for VICReg (driver forces 1.0 per user directive)
 """
 from __future__ import annotations
+from _paths import VIDEOS_ROOT
 
 import logging
 import os
@@ -39,7 +40,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-VIDEOS = "/home/zlaborde/code/isaac/videos"
+VIDEOS = VIDEOS_ROOT
 CLTT_REWARD_CFG = {"weight": 0.05, "temperature": 0.1, "proj_lr": 1e-3, "beta": 0.1}
 
 # Encoder capacity tuned so each model is ~700K total params AT res=128 (measured

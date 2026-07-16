@@ -1,6 +1,6 @@
 """Optuna HP-tuning engine for the Isaac/skrl NETT stack.
 
-See ``/home/zlaborde/code/isaac/optuna_tune/SPEC.md`` for the full spec. The
+See ``optuna_tune/SPEC.md`` for the full spec. The
 engine searches RL + encoder/policy hyperparameters for the **best AND most
 stable** learning trajectories on the binding/Object1/closeness task.
 
@@ -18,7 +18,10 @@ without Isaac so they can be unit-tested directly. ``run_training`` and
 """
 
 from __future__ import annotations
-from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
+try:  # run as a script: examples/ is on sys.path
+    from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
+except ImportError:  # imported as examples.optuna_tune (e.g. by tests)
+    from examples._paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 
 import argparse
 import json
@@ -44,7 +47,7 @@ logger = logging.getLogger("optuna_tune")
 # Constants / fixed task definition (SPEC §TRIAL design)
 # --------------------------------------------------------------------------- #
 
-OPTUNA_DIR = Path("/home/zlaborde/code/isaac/optuna_tune")
+OPTUNA_DIR = Path(os.environ.get("NETT_OPTUNA_DIR", "/home/zlaborde/code/isaac/optuna_tune"))
 DESIGN_SHEET = BINDING_DESIGN_SHEET
 MEDIA_ROOT = BINDING_MEDIA_ROOT
 CONDITION = "Object1"

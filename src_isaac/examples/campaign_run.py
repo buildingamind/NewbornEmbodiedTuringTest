@@ -29,8 +29,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PY = "/home/zlaborde/code/.venv/nett_private/bin/python"
-CAMPAIGN = Path("/home/zlaborde/code/isaac/campaign")
+PY = os.environ.get("NETT_PYTHON", "/home/zlaborde/code/.venv/nett_private/bin/python")
+CAMPAIGN = Path(os.environ.get("NETT_CAMPAIGN_DIR", "/home/zlaborde/code/isaac/campaign"))
 LOGS = CAMPAIGN / "logs"
 DONE = CAMPAIGN / "done"
 STATUS = CAMPAIGN / "status.json"

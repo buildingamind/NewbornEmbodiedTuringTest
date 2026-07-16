@@ -15,6 +15,8 @@ Scoring contract: SPEC.md §OBJECTIVE.
 
 from __future__ import annotations
 
+import os
+
 import math
 from pathlib import Path
 
@@ -212,7 +214,7 @@ def test_read_trajectory_flags_nan(tmp_path):
 
 
 def test_read_trajectory_on_existing_smoke_runs():
-    runs = Path("/home/zlaborde/code/isaac/optuna_tune/runs")
+    runs = Path(os.environ.get("NETT_OPTUNA_DIR", "/home/zlaborde/code/isaac/optuna_tune")) / "runs"
     if not runs.exists():
         pytest.skip("no smoke runs present")
     files = sorted(runs.glob("**/events.out.tfevents.*"))
