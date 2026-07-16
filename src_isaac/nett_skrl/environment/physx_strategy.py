@@ -1,7 +1,9 @@
 """Init-time PhysX placement strategy for parallelized NETT runs.
 
-The wheeled chick is a replicated articulation (body + 4 driven wheels + head +
-camera harness) stepped by the PhysX solver. To maximize throughput on highly
+The wheeled chick is a replicated single-body articulation (one rigid Body with
+an invisible capsule collider, plus the Head/neck joint + camera harness; no
+wheels — it is velocity-driven) stepped by the PhysX solver. To maximize
+throughput on highly
 parallelized runs we want that solver on the **GPU** (``sim.device = cuda:N``)
 so every env steps in one batched kernel instead of round-tripping per-env state
 to the CPU. That is the default and the fast path.
