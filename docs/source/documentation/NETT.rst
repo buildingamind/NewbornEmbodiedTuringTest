@@ -1,5 +1,0 @@
-nett
-====
-
-.. automodule:: nett
-  :members:
