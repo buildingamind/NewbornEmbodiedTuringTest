@@ -25,18 +25,24 @@ Select via env:
   NETT_EXPERIMENT  binding | parsing | viewinvariance (default binding)
   NETT_IMPRINT     imprint condition override (default = goal condition per exp)
   NETT_DEVICE      GPU index (default 0)
-  NETT_BRAINS      brains/seeds (default 8)
+  NETT_BRAINS      brains_per_process (default 8); 1 = single-brain topology
+  NETT_BRAIN_OFFSET brain/seed index offset (default 0); a single-brain fleet packs
+                   offsets 0..N-1 as N processes (folds the former orch_run_single.py)
   NETT_TRAIN_EPS   training episodes (default 2000)
   NETT_MAX_ENVS    max parallel envs (default 32)
   NETT_RES         input resolution (default 256)
+  NETT_REWARD_TYPES comma-sep (default closeness); e.g. closeness,completeness
+  NETT_DESIGN_SHEET / NETT_MEDIA_ROOT  override the per-experiment sheet/media defaults
   NETT_AUX_WEIGHT  unused for VICReg (driver forces 1.0 per user directive)
 """
 from __future__ import annotations
 from _paths import VIDEOS_ROOT
 
+import json
 import logging
 import os
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -101,16 +107,24 @@ def main() -> int:
     spec = MODELS[model]
     sheet_rel, media_rel, default_imprint = EXPERIMENTS[exp]
     imprint = os.environ.get("NETT_IMPRINT", default_imprint)
-    # NETT runs all `num_brains` brains as skrl agents inside ONE process on ONE
-    # GPU (build_tasks makes one task per condition; _run_single_mode runs every
-    # brain together). So a job is pinned to a single GPU, and the campaign runs
-    # one job per GPU concurrently (campaign_run.py). At res=128 a job is only a
-    # few GB, so 8 concurrent jobs (one per GPU) fit comfortably.
+    # `brains_per_process` (NETT_BRAINS) brains run as skrl agents inside ONE process on
+    # ONE GPU, sharing one env (disjoint slices — no crossover). NETT_BRAIN_OFFSET shifts
+    # the brain/seed index, so a SINGLE-BRAIN topology (NETT_BRAINS=1 with offsets 0..N-1
+    # across N processes) reproduces the N-brain run, and campaign_run.py can PACK several
+    # such processes per GPU. This folds the former orch_run_single.py.
+    # NOTE brain_id_offset hash-mixes the whole task seed (runtime/task.py), so a
+    # single-brain-offset-b run is NOT yet bit-identical to brain b of a multi-brain run;
+    # the unified global-brain-id seeding is the determinism-plan's job (do it there).
     device = int(os.environ.get("NETT_DEVICE", "0"))
     brains = int(os.environ.get("NETT_BRAINS", "8"))
+    offset = int(os.environ.get("NETT_BRAIN_OFFSET", "0"))
     train_eps = int(os.environ.get("NETT_TRAIN_EPS", "2000"))
     max_envs = int(os.environ.get("NETT_MAX_ENVS", "32"))
     res = int(os.environ.get("NETT_RES", "256"))
+    # Overridable (defaults preserve the existing campaign behavior; single-brain runs
+    # that reproduce orch_run_single set these). reward_types default = closeness only.
+    reward_types = [r.strip() for r in
+                    os.environ.get("NETT_REWARD_TYPES", "closeness").split(",") if r.strip()]
 
     # VICReg aux is read from the environment by agent_factory; set it here so the
     # whole process tree (incl. brain subprocesses) inherits it. CLTT is a reward
@@ -135,15 +149,23 @@ def main() -> int:
         if spec["framestack"]:
             os.environ["NETT_MEMORY_DEVICE"] = "cpu"
             os.environ.pop("NETT_UINT8_BUFFER", None)
-        else:
-            os.environ["NETT_MEMORY_DEVICE"] = "cuda"
-            os.environ["NETT_UINT8_BUFFER"] = "1"
+        # Single-frame: leave NETT_MEMORY_DEVICE UNSET so the buffer follows the
+        # compute device (resolve_memory_device), which is already the default.
+        #
+        # BUG FIXED 2026-07-21: this used to set the literal "cuda". agent_factory
+        # compares torch.device(mem_device) != torch.device(device), and
+        # torch.device("cuda") != torch.device("cuda:0") is TRUE -- so setting a bare
+        # "cuda" selected the CPU hybrid path, the exact opposite of the intent, and
+        # silently disabled the uint8 on-GPU buffer this branch was written to enable.
+        # Never name a CUDA device without its index in a value that gets compared.
 
     # Import AFTER setting aux/buffer env so any import-time reads see it.
     from nett_skrl import NETT
     from nett_skrl.analysis import analyze, log_analysis_to_wandb
 
-    name = f"{_slug(model)}_{exp}_{imprint}_{datetime.now():%m%d_%H%M%S}"[:63]
+    # off{offset} keeps single-brain-packed runs (same model/exp, different offsets on the
+    # same GPU/out dir) from colliding; off0 for the multi-brain case is harmless.
+    name = f"{_slug(model)}_{exp}_{imprint}_off{offset}_{datetime.now():%m%d_%H%M%S}"[:63]
     out = Path(f"~/nett_campaign/{exp}_{_slug(model)}").expanduser()
 
     brain: dict = {
@@ -186,19 +208,20 @@ def main() -> int:
     config: dict = {
         "name": name,
         "environment": {
-            "design_sheet": f"{VIDEOS}/{sheet_rel}",
-            "media_root": f"{VIDEOS}/{media_rel}",
+            "design_sheet": os.environ.get("NETT_DESIGN_SHEET", f"{VIDEOS}/{sheet_rel}"),
+            "media_root": os.environ.get("NETT_MEDIA_ROOT", f"{VIDEOS}/{media_rel}"),
             "conditions": [imprint],
             "headless": True,
             "input_resolution": res,
             "camera_fov": 150.0,
-            "reward_types": ["closeness"],
+            "reward_types": reward_types,
             "enable_neck_flexion": False,
             "enable_lateral_bending": False,
         },
         "brain": brain,
         "body": {"wrappers": (["framestack"] if spec["framestack"] else [])},
         "num_brains": brains,
+        "brain_id_offset": offset,
         "episodes": {"train": train_eps, "test": int(os.environ.get("NETT_TEST_EPS", "10"))},
         "steps_per_episode": int(os.environ.get("NETT_STEPS", "256")),
         "eval_freq": 10_000_000,
@@ -206,13 +229,24 @@ def main() -> int:
         "max_parallel_envs": max_envs,
     }
 
-    log.info("MODEL=%s EXP=%s IMPRINT=%s device=%d brains=%d res=%d envs=%d mb=%s aux=%s reward=%s -> %s",
-             model, exp, imprint, device, brains, res, max_envs,
-             os.environ.get("NETT_MINIBATCHES", "16"), spec.get("aux"), spec.get("reward"), out)
+    log.info("MODEL=%s EXP=%s IMPRINT=%s device=%d brains=%d off=%d res=%d envs=%d mb=%s "
+             "rewards=%s aux=%s ssl=%s -> %s",
+             model, exp, imprint, device, brains, offset, res, max_envs,
+             os.environ.get("NETT_MINIBATCHES", "16"), reward_types, spec.get("aux"),
+             spec.get("reward"), out)
+    t0 = time.time()
     NETT(config).run(output_path=str(out), devices=[device], verbose=True)
-    log.info("training complete")
+    train_secs = time.time() - t0
+    log.info("training complete in %.1fs", train_secs)
 
     run_dir = out / name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # Per-run timing for campaign_score.py's wall-time aggregation.
+    (run_dir / "campaign_timing.json").write_text(json.dumps(
+        {"name": name, "model": model, "experiment": exp, "imprint": imprint,
+         "brain_offset": offset, "num_brains": brains, "device": device,
+         "num_envs": max_envs, "res": res, "train_eps": train_eps,
+         "train_secs": round(train_secs, 1), "finished": datetime.now().isoformat()}, indent=2))
     log.info("analyzing: %s", run_dir)
     result = analyze(run_dir)
     log_analysis_to_wandb(run_dir, result)

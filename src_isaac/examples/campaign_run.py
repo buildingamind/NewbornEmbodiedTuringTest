@@ -1,36 +1,41 @@
-"""Scheduler for the 9-model x 3-condition campaign across the 8 local GPUs.
+"""Scheduler for the 9-model x 3-condition campaign across the local GPUs.
 
-NETT runs all `num_brains` brains of a (model, condition) as skrl agents inside
-ONE process on ONE GPU. So each job is pinned to a single GPU, and the campaign
-runs ONE job per GPU concurrently (up to 8 jobs at once). At res=128 a job is a
-few GB, so 8 concurrent jobs fit comfortably on the 23 GB cards.
+Each JOB is one Isaac process pinned to a single GPU that runs a (model, condition)
+via campaign_train.py (its `brains_per_process` brains as skrl agents share that one
+env/GPU). The scheduler PACKS up to NETT_JOBS_PER_GPU such processes onto each GPU
+(VRAM permitting; the OOM ladder below is the co-tenancy safety net) and STAGGERS
+launches by NETT_STAGGER_SECS to avoid the concurrent Kit-init contention that
+triggers DEVICE_LOST. Packing multiple procs/GPU is supported and safe — the old
+"one job per GPU" rule was retired (see the speedup memory / the packing retraction).
 
-Honors "one Isaac Sim process per GPU during BOTH train and test": each GPU runs
-at most one job at a time. Jobs are pulled from a queue as GPUs free up.
-
-Resumable: a job whose done-marker exists (campaign/done/<job>.done, written only
-on clean exit-0) is skipped. Status -> campaign/status.json; per-job logs ->
-campaign/logs/<job>.log.
+Resumable: a job whose done-marker exists (<dir>/done/<job>.done, written only on
+clean exit-0) is skipped. Status -> <dir>/status.json; per-job logs -> <dir>/logs/<job>.log.
 
 OOM safety net: on OOM a job is retried one rung down a (mini_batches, max_envs)
-ladder that shrinks the update batch then the env count.
+ladder that shrinks the update batch then the env count. This is REACTIVE and does
+NOT replace the measured VRAM estimator in runtime/parallel_envs.py (test sizing +
+train verify/back-off) — the two are complementary and both kept.
 
-Scope knobs: NETT_ONLY_MODELS / NETT_ONLY_EXPERIMENTS (comma-sep) restrict jobs;
-NETT_GPUS (default 0-7) sets the device pool; NETT_BRAINS / NETT_TRAIN_EPS /
-NETT_RES forwarded to campaign_train.py.
+Knobs: NETT_JOBS_PER_GPU (default 1) packing; NETT_STAGGER_SECS (default 12) launch
+spacing; NETT_GPUS (default 0-7) device pool; NETT_ONLY_MODELS / NETT_ONLY_EXPERIMENTS
+restrict jobs; NETT_BRAINS / NETT_TRAIN_EPS / NETT_RES forwarded to campaign_train.py;
+NETT_PYTHON / NETT_CAMPAIGN_DIR override the interpreter / output dir.
 """
 from __future__ import annotations
 
 import json
 import os
 import subprocess
+import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-PY = os.environ.get("NETT_PYTHON", "/home/zlaborde/code/.venv/nett_private/bin/python")
-CAMPAIGN = Path(os.environ.get("NETT_CAMPAIGN_DIR", "/home/zlaborde/code/isaac/campaign"))
+# Portable: default to the interpreter running this scheduler (the venv python).
+PY = os.environ.get("NETT_PYTHON") or sys.executable
+CAMPAIGN = Path(os.environ.get("NETT_CAMPAIGN_DIR",
+                               str(Path.home() / "nett_campaign"))).expanduser()
 LOGS = CAMPAIGN / "logs"
 DONE = CAMPAIGN / "done"
 STATUS = CAMPAIGN / "status.json"
@@ -121,7 +126,8 @@ def launch(job: dict, gpu: int) -> subprocess.Popen:
     env["NETT_DEVICE"] = "0"
     env["NETT_MAX_ENVS"] = str(job["max_envs"])
     env["NETT_MINIBATCHES"] = str(job["mini_batches"])
-    for k in ("NETT_ONLY_MODELS", "NETT_ONLY_EXPERIMENTS", "NETT_GPUS", "NETT_DEVICES"):
+    for k in ("NETT_ONLY_MODELS", "NETT_ONLY_EXPERIMENTS", "NETT_GPUS", "NETT_DEVICES",
+              "NETT_JOBS_PER_GPU", "NETT_STAGGER_SECS"):
         env.pop(k, None)
     log = (LOGS / f"{job['id']}.log").open("w")
     log.write(f"# launch {_now()} gpu={gpu} model={job['model']} exp={job['experiment']} "
@@ -136,6 +142,10 @@ def launch(job: dict, gpu: int) -> subprocess.Popen:
 
 
 def write_status(jobs, state, running):
+    # running: job_id -> (gpu, proc). Multiple jobs may share a GPU (packing).
+    on_gpu: dict[str, list[str]] = {}
+    for jid, (g, _) in running.items():
+        on_gpu.setdefault(str(g), []).append(jid)
     snap = {
         "updated": _now(),
         "totals": {
@@ -145,7 +155,7 @@ def write_status(jobs, state, running):
             "running": sum(1 for j in jobs if state[j["id"]]["status"] == "running"),
             "pending": sum(1 for j in jobs if state[j["id"]]["status"] == "pending"),
         },
-        "running_on_gpu": {str(g): jid for g, (jid, _) in running.items()},
+        "running_on_gpu": on_gpu,
         "jobs": {j["id"]: state[j["id"]] for j in jobs},
     }
     STATUS.write_text(json.dumps(snap, indent=2))
@@ -155,6 +165,8 @@ def main() -> int:
     for d in (LOGS, DONE):
         d.mkdir(parents=True, exist_ok=True)
     gpus = [int(g) for g in os.environ.get("NETT_GPUS", "0,1,2,3,4,5,6,7").split(",")]
+    jobs_per_gpu = max(1, int(os.environ.get("NETT_JOBS_PER_GPU", "1")))
+    stagger = float(os.environ.get("NETT_STAGGER_SECS", "12"))
     jobs = build_jobs()
     state = {}
     for j in jobs:
@@ -167,31 +179,39 @@ def main() -> int:
         }
 
     queue = [j for j in jobs if state[j["id"]]["status"] == "pending"]
-    free_gpus = list(gpus)
-    gpu_ready_at: dict[int, float] = {g: 0.0 for g in gpus}  # earliest reuse time
+    gpu_load: dict[int, int] = {g: 0 for g in gpus}       # running jobs per GPU
+    gpu_ready_at: dict[int, float] = {g: 0.0 for g in gpus}  # earliest next-launch time
     toobig_retries: dict[str, int] = {}
-    running: dict[int, tuple[str, subprocess.Popen]] = {}  # gpu -> (job_id, proc)
-    print(f"[campaign] {len(jobs)} jobs, {len(queue)} pending, gpus={gpus} "
-          f"(concurrent, one job per GPU)", flush=True)
+    running: dict[str, tuple[int, subprocess.Popen]] = {}  # job_id -> (gpu, proc)
+    last_launch = 0.0
+    print(f"[campaign] {len(jobs)} jobs, {len(queue)} pending, gpus={gpus}, "
+          f"{jobs_per_gpu} job(s)/GPU, stagger={stagger:g}s", flush=True)
     write_status(jobs, state, running)
 
     while queue or running:
         now = time.time()
-        ready_gpus = [g for g in free_gpus if now >= gpu_ready_at.get(g, 0.0)]
-        while queue and ready_gpus:
-            gpu = ready_gpus.pop(0)
-            free_gpus.remove(gpu)
-            job = queue.pop(0)
-            proc = launch(job, gpu)
-            running[gpu] = (job["id"], proc)
-            state[job["id"]].update(status="running", gpu=gpu, started=_now(),
-                                    mini_batches=job["mini_batches"], max_envs=job["max_envs"])
-            print(f"[campaign] start {job['id']} on gpu{gpu} (pid {proc.pid}) "
-                  f"mb={job['mini_batches']} envs={job['max_envs']}", flush=True)
-        write_status(jobs, state, running)
+        # Admit at most ONE job per iteration (stagger-gated) onto the least-loaded
+        # eligible GPU — a GPU is eligible if it has a free slot AND has settled since
+        # its last job ended (freed VRAM lags CUDA teardown).
+        if queue and now >= last_launch + stagger:
+            eligible = [g for g in gpus
+                        if gpu_load[g] < jobs_per_gpu and now >= gpu_ready_at[g]]
+            if eligible:
+                gpu = min(eligible, key=lambda g: gpu_load[g])
+                job = queue.pop(0)
+                proc = launch(job, gpu)
+                running[job["id"]] = (gpu, proc)
+                gpu_load[gpu] += 1
+                last_launch = now
+                state[job["id"]].update(status="running", gpu=gpu, started=_now(),
+                                        mini_batches=job["mini_batches"], max_envs=job["max_envs"])
+                print(f"[campaign] start {job['id']} on gpu{gpu} (pid {proc.pid}) "
+                      f"load={gpu_load[gpu]}/{jobs_per_gpu} "
+                      f"mb={job['mini_batches']} envs={job['max_envs']}", flush=True)
+                write_status(jobs, state, running)
 
-        time.sleep(15)
-        for gpu, (jid, proc) in list(running.items()):
+        time.sleep(5)
+        for jid, (gpu, proc) in list(running.items()):
             rc = proc.poll()
             if rc is None:
                 continue
@@ -219,9 +239,9 @@ def main() -> int:
             else:
                 state[jid]["status"] = "failed"
                 print(f"[campaign] FAIL  {jid} rc={rc} (gpu{gpu})", flush=True)
-            del running[gpu]
+            del running[jid]
+            gpu_load[gpu] -= 1
             gpu_ready_at[gpu] = time.time() + SETTLE_SECS
-            free_gpus.append(gpu)
         write_status(jobs, state, running)
 
     t = sum(1 for j in jobs if state[j["id"]]["status"] == "done")
