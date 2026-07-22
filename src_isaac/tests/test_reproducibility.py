@@ -209,14 +209,21 @@ def test_nett_env_constructs_and_seeds_reset_generator():
     assert "self._reset_generator.manual_seed(self._resolved_seed)" in src
 
 
-def test_nett_env_passes_generator_into_reset_pose():
+def test_nett_env_draws_pose_from_per_episode_substream():
+    # Determinism upgrade: the start pose is no longer drawn from the shared
+    # _reset_generator. Each env's pose comes from an INDEPENDENT per-episode substream
+    # (nett_isaac.episode_seed), keyed by (global brain id, brain-local episode index),
+    # and passed to reset_pose as precomputed values `u=...`. This is strictly more
+    # isolated than the old dedicated generator: invariant to draw order AND to num_envs
+    # (parallel==sequential). See _reset_idx.
     src = _read(_NETT_ENV_PY)
     assert "self.phase.reset_pose(" in src
-    assert "generator=self._reset_generator" in src
-    # The generator is passed into the reset_pose call.
     rp_idx = src.index("self.phase.reset_pose(")
     call_segment = src[rp_idx:rp_idx + 200]
-    assert "generator=self._reset_generator" in call_segment
+    assert "u=" in call_segment                                # per-env precomputed pose
+    assert "generator=self._reset_generator" not in call_segment
+    # The pose values come from the episode-keyed substream on the POSE channel.
+    assert "episode_rng(" in src and "CH_POSE" in src and "brain_episode_key(" in src
 
 
 def test_task_set_seeds_source_references_determinism_knobs():
