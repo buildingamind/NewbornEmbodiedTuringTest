@@ -47,6 +47,7 @@ from datetime import datetime
 from pathlib import Path
 
 VIDEOS = VIDEOS_ROOT
+_HERE = Path(__file__).resolve().parent
 CLTT_REWARD_CFG = {"weight": 0.05, "temperature": 0.1, "proj_lr": 1e-3, "beta": 0.1}
 
 # Encoder capacity tuned so each model is ~700K total params AT res=128 (measured
@@ -79,11 +80,17 @@ MODELS: dict[str, dict] = {
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": 2}, framestack=True),  # ~698K
 }
 
-# experiment -> (design sheet rel path, media rel path, default imprint per goal)
+# experiment -> (design sheet, media dir, default imprint per goal). parsing and
+# viewinvariance use the .mov sheet variants: the base .webm sheets reference clips
+# that DO NOT EXIST on disk, so the env disables video (blank monitors) and the
+# imprinting stimulus is destroyed (root cause of the June campaign's ~chance
+# parsing/viewinvariance scores). viewinvariance's .mov sheet lives under
+# examples/orch_sheets/ (generated to reference the on-disk .mov clips), not the media root.
 EXPERIMENTS: dict[str, tuple[str, str, str]] = {
-    "binding":        ("binding/DesignSheet_Binding.csv",               "binding/videos",        "Object1"),
-    "parsing":        ("parsing/DesignSheet_Parsing.csv",               "parsing/videos",        "fork-1"),
-    "viewinvariance": ("viewinvariance/DesignSheet_ViewInvariance.csv", "viewinvariance/videos", "Fork_Front"),
+    "binding":        (f"{VIDEOS}/binding/DesignSheet_Binding.csv",     f"{VIDEOS}/binding/videos",        "Object1"),
+    "parsing":        (f"{VIDEOS}/parsing/DesignSheet_Parsing_mov.csv", f"{VIDEOS}/parsing/videos",        "fork-1"),
+    "viewinvariance": (f"{_HERE}/orch_sheets/DesignSheet_ViewInvariance_mov.csv",
+                       f"{VIDEOS}/viewinvariance/videos", "Fork_Front"),
 }
 
 
@@ -105,7 +112,7 @@ def main() -> int:
         return 2
 
     spec = MODELS[model]
-    sheet_rel, media_rel, default_imprint = EXPERIMENTS[exp]
+    sheet, media, default_imprint = EXPERIMENTS[exp]
     imprint = os.environ.get("NETT_IMPRINT", default_imprint)
     # `brains_per_process` (NETT_BRAINS) brains run as skrl agents inside ONE process on
     # ONE GPU, sharing one env (disjoint slices — no crossover). NETT_BRAIN_OFFSET shifts
@@ -208,8 +215,8 @@ def main() -> int:
     config: dict = {
         "name": name,
         "environment": {
-            "design_sheet": os.environ.get("NETT_DESIGN_SHEET", f"{VIDEOS}/{sheet_rel}"),
-            "media_root": os.environ.get("NETT_MEDIA_ROOT", f"{VIDEOS}/{media_rel}"),
+            "design_sheet": os.environ.get("NETT_DESIGN_SHEET", sheet),
+            "media_root": os.environ.get("NETT_MEDIA_ROOT", media),
             "conditions": [imprint],
             "headless": True,
             "input_resolution": res,
