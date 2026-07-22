@@ -67,15 +67,19 @@ class TaskConfig:
         object.__setattr__(self, "modes", list(self.modes))
         object.__setattr__(self, "episodes", dict(self.episodes or {}))
         object.__setattr__(self, "num_envs", int(self.num_envs or self.num_brains))
-        # Seed is derived from the condition name so a condition is reproducible.
-        # brain_id_offset perturbs it so repeat runs of the same condition can
-        # sample different seeds (offset=0 preserves the original seed).
+        # Seed is derived from the condition name ONLY (a base seed), so a condition is
+        # reproducible and, crucially, IDENTICAL across topologies. brain_id_offset is NO
+        # LONGER mixed in here: it is applied downstream via the GLOBAL brain id
+        # (brain_id_offset + local brain id) for BOTH the weight init (agent_factory) and
+        # the per-episode env draws (nett_isaac.episode_seed). That makes single-brain
+        # offset-b and multi-brain brain-b bit-identical (env AND weights); mixing the
+        # offset into the base seed here would break that (and, since single-brain has one
+        # local brain, would otherwise leave all offsets on the same weight seed).
         digest = hashlib.sha256(self.condition.encode("utf-8")).digest()
         object.__setattr__(
             self,
             "seed",
-            (int.from_bytes(digest[:8], "big") * 7919 + int(self.brain_id_offset) * 2_654_435_761)
-            % (2**31 - 1),
+            (int.from_bytes(digest[:8], "big") * 7919) % (2**31 - 1),
         )
         object.__setattr__(self, "name", output_dir.stem)
         object.__setattr__(self, "path", output_dir / self.condition)

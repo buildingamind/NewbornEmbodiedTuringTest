@@ -312,6 +312,9 @@ class Environment:
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))
         _set_if_present(cfg, "seed", config.seed if seed is None else seed)
+        # Global-brain-id offset for this process -> combined with brain_ids (local) for
+        # topology-invariant per-episode env seeding (nett_isaac.episode_seed).
+        _set_if_present(cfg, "brain_id_offset", int(getattr(config, "brain_id_offset", 0) or 0))
         if config.dry_run:
             _set_if_present(cfg, "validation_mode", True)
 

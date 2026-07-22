@@ -142,10 +142,15 @@ def test_taskconfig_different_condition_different_seed(tmp_path):
     assert a.seed != c.seed
 
 
-def test_taskconfig_brain_id_offset_perturbs_seed(tmp_path):
+def test_taskconfig_seed_is_condition_only_not_perturbed_by_offset(tmp_path):
+    # The task seed is now the CONDITION base seed only; brain_id_offset no longer
+    # perturbs it. The offset differentiates runs downstream via the GLOBAL brain id
+    # (brain_id_offset + local id) applied to BOTH weight init (agent_factory) and the
+    # per-episode env draws (nett_isaac.episode_seed) -- which is what makes single-brain
+    # offset-b bit-identical to brain b of a multi-brain run. See runtime/task.py.
     base = _make_cfg("conditionA", tmp_path, brain_id_offset=0)
     shifted = _make_cfg("conditionA", tmp_path, brain_id_offset=1)
-    assert base.seed != shifted.seed
+    assert base.seed == shifted.seed
 
 
 # === Criterion 5: generator-isolation baseline (heart of G2/S3) =============
