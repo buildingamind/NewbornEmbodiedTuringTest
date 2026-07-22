@@ -19,6 +19,8 @@ anyway — so there is no extra copy beyond what training already requires.
 
 from __future__ import annotations
 
+import os
+
 import torch
 from skrl.memories.torch import RandomMemory
 
@@ -91,3 +93,39 @@ class Uint8StatesMemory(RandomMemory):
         return super().create_tensor(
             name, size=size, dtype=dtype, keep_dimensions=keep_dimensions
         )
+
+
+def resolve_memory_device(device) -> str:
+    """Where the PPO rollout buffer lives. Rule: **follow the compute device.**
+
+    The buffer belongs wherever the compute is. On a GPU run it stays on that GPU, so
+    there is no host<->device copy per minibatch. On a CPU run it stays on the CPU --
+    a CPU run must never push its buffer onto a GPU it is not otherwise using.
+    Returning ``str(device)`` gives both behaviours from one rule.
+
+    Why not the literal "cuda": ``torch.device("cuda") != torch.device("cuda:0")``, so
+    a bare "cuda" fails the equality check in the caller and silently selects the CPU
+    hybrid path -- the exact opposite of asking for an on-GPU buffer. Always resolve to
+    the concrete device string.
+
+    History: the buffer used to default to CPU unconditionally. That was a workaround
+    for res256 (~12.6 GiB/brain at 2-frame, rollouts=8000, which will not fit beside
+    Isaac on a 23 GB card), but at the res128 design point it paid a transfer stall for
+    nothing and put ~25 GB/proc of host RAM on a 16-job run (408 GB total).
+
+    MEASURED VRAM BUDGET (res128, 2-frame, 500 steps x 16 envs, states+next_states):
+
+        float32 buffer = 5.86 GB/job -> 2 jobs/GPU = 22.7 GB of 23.0   OOM RISK
+        uint8   buffer = 1.46 GB/job -> 2 jobs/GPU = 13.9 GB of 23.0   fits
+
+    So an on-GPU buffer REQUIRES the uint8 image states (NETT_UINT8_BUFFER, default on)
+    -- the two are coupled and must be changed together. At higher resolutions re-check
+    that arithmetic and set NETT_MEMORY_DEVICE=cpu if it no longer fits.
+
+    NETT_MEMORY_DEVICE overrides explicitly (e.g. "cpu" to spill a large buffer off a
+    small card).
+    """
+    override = os.environ.get("NETT_MEMORY_DEVICE")
+    if override:
+        return override.strip()
+    return str(device)

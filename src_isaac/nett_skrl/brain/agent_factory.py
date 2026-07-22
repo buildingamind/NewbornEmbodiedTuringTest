@@ -10,7 +10,7 @@ import torch.nn as nn
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 
-from .hybrid_memory import HybridDeviceMemory, Uint8StatesMemory
+from .hybrid_memory import HybridDeviceMemory, Uint8StatesMemory, resolve_memory_device
 
 from .aux import AuxLossPPO
 from .experiment import apply_experiment_cfg
@@ -110,16 +110,11 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
                 brain_id=brain_id + 1,
             )
 
-        # Rollout buffer placement. At high input_resolution (e.g. 256) the
-        # per-brain state buffer is ~scaled_rollouts*scope*C*H*W*4 bytes
-        # (~12.6 GiB/brain at res256, 2-frame, rollouts=8000) — far too large to
-        # sit on a 23GB GPU alongside Isaac. Storing it in CPU RAM (985 GB free)
-        # is transparent: NETT's features_forward already moves image minibatches
-        # to the encoder device (non_blocking) during update, and the value
-        # preprocessor handles its own device. Default to CPU; override with
-        # NETT_MEMORY_DEVICE=cuda for small-res runs that fit on-GPU.
-        mem_device = os.environ.get("NETT_MEMORY_DEVICE", "cpu")
-        if torch.device(mem_device) != torch.device(device):
+        # Rollout buffer placement: FOLLOWS THE COMPUTE DEVICE (changed 2026-07-21).
+        # See resolve_memory_device() for the rule and its rationale.
+        mem_device = resolve_memory_device(device)
+        on_compute_device = torch.device(mem_device) == torch.device(device)
+        if not on_compute_device:
             # Storage off the compute device (CPU buffer for high-res runs):
             # use the hybrid memory so PPO's GAE/minibatch math stays on-device.
             memory = HybridDeviceMemory(
@@ -129,14 +124,15 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
                 compute_device=device,
             )
         else:
-            # On-GPU buffer. With NETT_UINT8_BUFFER=1 store image states as uint8
-            # (1/4 the VRAM, numerically transparent — see Uint8StatesMemory) so
-            # even the 2-frame res256 buffer fits in VRAM and avoids the CPU<->GPU
-            # transfer stall that bottlenecks the CPU-buffer path.
+            # On-GPU buffer, uint8 image states BY DEFAULT (changed 2026-07-21).
+            # 1/4 the VRAM, numerically transparent (see Uint8StatesMemory), and it
+            # is what makes the on-GPU default fit: float32 would need 22.7 GB of a
+            # 23 GB card at 2 jobs/GPU, uint8 needs 13.9. Set NETT_UINT8_BUFFER=0 to
+            # store float32 — only viable at 1 job/GPU or low rollout counts.
             mem_cls = (
-                Uint8StatesMemory
-                if os.environ.get("NETT_UINT8_BUFFER", "0") == "1"
-                else RandomMemory
+                RandomMemory
+                if os.environ.get("NETT_UINT8_BUFFER", "1") == "0"
+                else Uint8StatesMemory
             )
             memory = mem_cls(
                 memory_size=scaled_rollouts,

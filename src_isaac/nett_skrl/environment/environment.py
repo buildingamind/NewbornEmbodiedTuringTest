@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..runtime.cpu_budget import cell_cpu_threads, kit_thread_args
+from ..runtime.texture_defaults import kit_texture_args
 from ..runtime.task import TaskConfig, recording_phase_map
 from .design import get_experiment_design, validate_conditions
 from .physx_strategy import (
@@ -206,7 +207,21 @@ class Environment:
                 headless=self.headless,
                 enable_cameras=True,
                 device=f"cuda:{getattr(config, 'device', 0)}",
-                kit_args=kit_thread_args(cell_cpu_threads()),
+                kit_args=kit_thread_args(
+                    cell_cpu_threads(),
+                    # Texture-residency defaults (loader threads + on-disk texture
+                    # cache): +2.8% throughput vs an unmodified control, flicker-free,
+                    # stimulus unchanged. NOT a memory win -- see
+                    # runtime/texture_defaults.py for the measurements, the retracted
+                    # memory claim, and the NETT_TEXTURE_DEFAULTS=0 escape hatch.
+                    #
+                    # NETT_EXTRA_KIT_ARGS is appended AFTER them, so it wins on any
+                    # flag it repeats. Used to pin experiment-specific values, e.g.
+                    # "--/rtx-transient/resourcemanager/maxMipCount=8" (removes the
+                    # monitor-texture flicker AND the frame-0 startup blank while
+                    # leaving streaming enabled).
+                    existing=kit_texture_args(os.environ.get("NETT_EXTRA_KIT_ARGS", "")),
+                ),
             ).app
 
         # DO NOT arm crash_guard here. It is tempting: NETTEnv(cfg) below builds the
@@ -242,6 +257,14 @@ class Environment:
         else:
             cfg.phase = config.current_mode
         cfg.imprint_condition = config.condition
+        # Speedup lever (env-gated, default unchanged): with Fabric-autoparent ON,
+        # the eye-camera pose propagates from physics during the sim step, so the
+        # extra per-step cam.update(force_recompute=True) is a redundant re-render.
+        # NETT_FORCE_RECOMPUTE=0 disables it -> +~4.6% throughput with BIT-IDENTICAL
+        # observations (verified: campaign E2). Unset -> the cfg default (True).
+        _frc = os.environ.get("NETT_FORCE_RECOMPUTE")
+        if _frc is not None:
+            cfg.force_camera_recompute = _frc != "0"
         # Tell the env how many REAL test episodes exist for this condition, so a
         # test num_envs that does not divide that total drops the surplus overflow
         # episodes instead of over-sampling the first design rows (see

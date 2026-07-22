@@ -11,6 +11,7 @@ from nett_skrl.runtime.cpu_budget import (
     DEFAULT_CELL_THREADS as _DEFAULT_KIT_THREADS,
     kit_thread_args as _kit_thread_args,
 )
+from nett_skrl.runtime.texture_defaults import kit_texture_args as _kit_texture_args
 from nett_skrl.runtime.task import TaskConfig
 
 
@@ -382,6 +383,7 @@ def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
         types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
     )
     monkeypatch.delenv("NETT_KIT_THREADS", raising=False)
+    monkeypatch.delenv("NETT_EXTRA_KIT_ARGS", raising=False)
 
     env = Environment(design_sheet=design_sheet, media_root=media_root)
     task = _TaskConfig()
@@ -389,7 +391,11 @@ def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
 
     env.load(task)
 
-    assert captured["kit_args"] == _kit_thread_args(_DEFAULT_KIT_THREADS)
+    # kit_args = thread args composed onto the measured texture-residency defaults
+    # (environment.py: kit_thread_args(N, existing=kit_texture_args(NETT_EXTRA_KIT_ARGS))).
+    assert captured["kit_args"] == _kit_thread_args(
+        _DEFAULT_KIT_THREADS, existing=_kit_texture_args("")
+    )
 
 
 def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
@@ -451,6 +457,7 @@ def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
         types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
     )
     monkeypatch.setenv("NETT_KIT_THREADS", "3")
+    monkeypatch.delenv("NETT_EXTRA_KIT_ARGS", raising=False)
 
     env = Environment(design_sheet=design_sheet, media_root=media_root)
     task = _TaskConfig()
@@ -458,5 +465,5 @@ def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
 
     env.load(task)
 
-    assert captured["kit_args"] == _kit_thread_args(3)
+    assert captured["kit_args"] == _kit_thread_args(3, existing=_kit_texture_args(""))
     assert "threadCount=3" in captured["kit_args"]

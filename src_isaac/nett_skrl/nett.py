@@ -292,6 +292,12 @@ class NETT:
         )
 
         modes = _modes_from_episodes(episodes)
+        # SAFEGUARD: training only. Each parallel env must collect COMPLETE episodes
+        # per PPO update; guard the requested count before it is used or searched.
+        if "train" in modes:
+            self._assert_whole_episode_rollouts(
+                base_brain, num_envs, num_brains, steps_per_episode
+            )
         memory, num_envs = self._resolve_task_memory_and_envs(
             task_memory,
             base_brain,
@@ -615,6 +621,48 @@ class NETT:
         )
         self._apply_parallel_env_plan(brain, body, env, nb, num_envs, steps_per_episode)
         return memory, num_envs
+
+    def _assert_whole_episode_rollouts(
+        self, brain, num_envs: int, num_brains: int, steps_per_episode: int
+    ) -> None:
+        """Guard: every parallel env must collect at least one COMPLETE episode per
+        PPO update.
+
+        The rollout buffer holds ``rollouts`` transitions divided across envs, so the
+        per-env rollout length is ``scaled_rollouts = rollouts // (num_envs //
+        num_brains)`` (see brain/agent_factory.build_agents). At the design point
+        (rollouts=8000, steps_per_episode=500, 16 envs/brain) that is exactly 500 =
+        one full episode/env — i.e. N parallel envs == N sequential episodes. If it
+        drops below ``steps_per_episode`` each env contributes only an episode
+        FRAGMENT, which silently rewrites the PPO batch (GAE / credit assignment)
+        instead of adding episodes. So ``envs_per_brain`` must not exceed
+        ``rollouts // steps_per_episode``; to parallelize further, raise ``rollouts``
+        or lower ``steps_per_episode``.
+        """
+        if steps_per_episode <= 0 or not hasattr(brain, "algorithm_cfg"):
+            return
+        rollouts = int(brain.algorithm_cfg.agent_memory_size())
+        scope = max(1, int(num_envs) // max(1, int(num_brains)))
+        scaled = rollouts // scope
+        if scaled < steps_per_episode:
+            max_per_brain = max(1, rollouts // steps_per_episode)
+            raise ValueError(
+                f"num_envs={num_envs} ({scope}/brain) gives only {scaled} rollout "
+                f"steps/env < steps_per_episode={steps_per_episode}: each env would "
+                f"collect an episode FRAGMENT, not complete episodes, silently changing "
+                f"the PPO batch composition. The maximum with rollouts={rollouts} and "
+                f"steps_per_episode={steps_per_episode} is {max_per_brain * num_brains} "
+                f"env(s) ({max_per_brain}/brain). To run more parallel envs, raise "
+                f"rollouts (to >= {scope * steps_per_episode}) or lower steps_per_episode."
+            )
+        if scaled % steps_per_episode != 0:
+            self.logger.warning(
+                "num_envs=%d (%d/brain): rollouts//envs_per_brain=%d is not a whole "
+                "multiple of steps_per_episode=%d, so each env's rollout ends "
+                "mid-episode (%.2f episodes/env). Set rollouts to a multiple of "
+                "envs_per_brain*steps_per_episode for clean complete-episode rollouts.",
+                num_envs, scope, scaled, steps_per_episode, scaled / steps_per_episode,
+            )
 
     def _apply_parallel_env_plan(
         self,
