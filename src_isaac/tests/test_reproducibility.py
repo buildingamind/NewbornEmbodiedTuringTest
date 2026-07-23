@@ -201,14 +201,6 @@ def test_nett_env_seed_override_calls_configure_seed_deterministic():
     assert cfg_call_idx > seed_def_idx
 
 
-def test_nett_env_constructs_and_seeds_reset_generator():
-    src = _read(_NETT_ENV_PY)
-    assert "torch.Generator(device=self.device)" in src
-    assert "self._reset_generator = torch.Generator(device=self.device)" in src
-    # Seeded from cfg.seed.
-    assert "self._reset_generator.manual_seed(self._resolved_seed)" in src
-
-
 def test_nett_env_draws_pose_from_per_episode_substream():
     # Determinism upgrade: the start pose is no longer drawn from the shared
     # _reset_generator. Each env's pose comes from an INDEPENDENT per-episode substream
