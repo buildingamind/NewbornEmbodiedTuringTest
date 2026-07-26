@@ -91,7 +91,9 @@ def variant_name(emissive: int, style: str = PUBLISHED_STYLE) -> str:
 
 def build_config(emissive: int, brain_id_offset: int, episodes_train: int,
                  locomotion: str = PUBLISHED_LOCOMOTION,
-                 style: str = PUBLISHED_STYLE) -> dict:
+                 style: str = PUBLISHED_STYLE,
+                 resolution: int | None = None,
+                 auto_envs: bool = False) -> dict:
     """The canonical 8-brain binding config with the curve's deltas applied."""
     import train_binding_8brain as canonical
 
@@ -121,6 +123,21 @@ def build_config(emissive: int, brain_id_offset: int, episodes_train: int,
     cfg["episodes"] = dict(cfg["episodes"], train=episodes_train)
     # Delta 3: the seed knob. Absent from the canonical config, which is offset 0.
     cfg["brain_id_offset"] = brain_id_offset
+    # Delta 4 (optional): observation resolution. The canonical recipe is 256. 128
+    # is ~4x less render work per env, which matters because throughput here is
+    # bound by the per-GPU RTX submission floor, not by compute (GPU util ~25-38%
+    # with the CPU idle). ⚠ IT CHANGES THE STIMULUS -- a res128 point is not
+    # comparable to the published res256 curve.
+    if resolution is not None:
+        cfg["environment"] = dict(cfg["environment"], input_resolution=int(resolution))
+    # Delta 5 (optional): let measured VRAM size the env count. Per the schema,
+    # "auto" VERIFIES training's count and only ever backs OFF (training num_envs is
+    # load-bearing for learning), and separately measures how wide the TEST phase can
+    # run -- test only replays a fixed schedule, so width there is free speed.
+    # Requires task_memory "auto": the ceiling comes from the dry-run measurement.
+    if auto_envs:
+        cfg["max_parallel_envs"] = "auto"
+        cfg["task_memory"] = "auto"
     return cfg
 
 
@@ -166,6 +183,23 @@ def main() -> int:
                          "are not comparable to flat points at the same value")
     ap.add_argument("--device", type=int, default=0,
                     help="index WITHIN the visible devices (pin with CUDA_VISIBLE_DEVICES)")
+    ap.add_argument("--resolution", type=int, default=None,
+                    help="observation resolution; default = the canonical 256. 128 is "
+                         "~4x less render work but CHANGES THE STIMULUS, so res128 "
+                         "points are not comparable to the published curve.")
+    ap.add_argument("--auto-envs", action="store_true",
+                    help="max_parallel_envs/task_memory = auto: verify training's env "
+                         "count against measured VRAM (backs off only) and size the "
+                         "TEST phase as wide as VRAM allows")
+    ap.add_argument("--devices", type=int, nargs="+", default=None,
+                    help="spread this run's per-brain tasks over SEVERAL GPUs instead "
+                         "of packing all of them onto one. NETT dispatches one task "
+                         "per brain (nett.py::_max_concurrent_tasks) and places each on "
+                         "the most ledger-free GPU, so 8 brains over 8 GPUs means 2 envs "
+                         "per GPU instead of 16 — the per-GPU RTX submission floor is "
+                         "what limits throughput here (GPU util only ~25-38%, CPU idle), "
+                         "so this cuts WALL time per run at the cost of running one "
+                         "brightness point at a time.")
     ap.add_argument("--out-root", default="~/nett_emissive_replication")
     args = ap.parse_args()
 
@@ -182,7 +216,8 @@ def main() -> int:
     from nett_skrl.analysis.episode_integrity import verify_run
 
     cfg = build_config(args.emissive, args.brain_id_offset, args.episodes_train,
-                       args.locomotion, args.chamber_style)
+                       args.locomotion, args.chamber_style,
+                       resolution=args.resolution, auto_envs=args.auto_envs)
     out_root = Path(os.path.expanduser(args.out_root))
     out_root.mkdir(parents=True, exist_ok=True)
 
@@ -192,7 +227,9 @@ def main() -> int:
              args.locomotion)
 
     t0 = time.time()
-    NETT(cfg).run(output_path=str(out_root), devices=[args.device], verbose=True)
+    NETT(cfg).run(output_path=str(out_root),
+                  devices=args.devices if args.devices else [args.device],
+                  verbose=True)
     train_s = time.time() - t0
 
     run_dir = out_root / cfg["name"]
@@ -205,6 +242,9 @@ def main() -> int:
         "brain_id_offset": args.brain_id_offset,
         "episodes_train": args.episodes_train,
         "locomotion": args.locomotion,
+        "devices": args.devices if args.devices else [args.device],
+        "resolution": args.resolution or "canonical(256)",
+        "auto_envs": bool(args.auto_envs),
         "wall_clock_s": {"run": round(train_s, 1),
                          "run_plus_analysis": round(time.time() - t0, 1)},
         "run_dir": str(run_dir),
