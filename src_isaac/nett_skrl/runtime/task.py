@@ -177,7 +177,20 @@ def set_seeds(seed: int) -> None:
     # renderer/camera path may invoke on CUDA) lack a deterministic
     # implementation. warn_only makes them WARN instead of raising and killing a
     # long training run, while every op that *can* be deterministic still is.
-    torch.use_deterministic_algorithms(True, warn_only=True)
+    #
+    # NETT_STRICT_DETERMINISM=1 makes the AMBIENT policy strict, so a
+    # nondeterministic op ANYWHERE -- including rollout collection, which the
+    # PPO-update-scoped `strict_determinism()` does not cover -- raises and names
+    # itself in the traceback. This is a DIAGNOSTIC for attributing run-to-run
+    # weight divergence; it is off by default because it aborts long runs on ops
+    # that have no deterministic implementation at all.
+    strict = os.environ.get("NETT_STRICT_DETERMINISM", "0") == "1"
+    torch.use_deterministic_algorithms(True, warn_only=not strict)
+    if strict:
+        logging.getLogger("nett.runtime").warning(
+            "NETT_STRICT_DETERMINISM=1: nondeterministic torch ops will RAISE "
+            "(diagnostic mode, not for production runs)"
+        )
 
     # TF32 tensor-core matmul/conv (NETT_TF32). DEFAULT ON. ~1.44x on any fp32
     # matmul/conv, REPLAY-DETERMINISTIC (measured run-to-run grad diff = 0). Under

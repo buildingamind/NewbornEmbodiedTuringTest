@@ -17,8 +17,11 @@ import pytest
 import yaml
 
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
-PRIVATE_ROOT = REPO_ROOT.parent / "NewbornEmbodiedTuringTest_Private"
+from _repo_paths import repo_a_root
+
+# $NETT_REPO_A overrides the sibling default; `_isaac_missing` below already
+# auto-skips the tree when the assets it points at are absent.
+PRIVATE_ROOT = repo_a_root()
 DESIGN_SHEET_MINIMAL = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets" / "binding_minimal.csv"
 DESIGN_SHEET_FULL = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets" / "binding.csv"
 MEDIA_ROOT = PRIVATE_ROOT / "isaac_lab" / "assets" / "videos"

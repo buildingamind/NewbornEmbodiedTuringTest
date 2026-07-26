@@ -327,7 +327,10 @@ class TestTestVizPositionMetric:
         out = test_viz(tmp_path / "empty_run", tmp_path / "out")
         with (out / "test_preferences.csv").open() as f:
             rows = list(csv.reader(f))
-        assert rows[0] == ["imprint", "test_condition", "brain_id", "n_steps", "correct_pct"]
+        assert rows[0] == [
+            "imprint", "test_condition", "brain_id", "n_steps", "correct_pct",
+            "side_preference", "pct_target_left", "pct_target_right", "verdict",
+        ]
         assert len(rows) == 1  # header only
 
 

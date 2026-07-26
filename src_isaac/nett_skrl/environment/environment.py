@@ -92,7 +92,12 @@ class Environment:
         decision_period: int = 1,
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
-        locomotion: str = "kinematic",
+        # Default WHEELED, matching schema.json's "default": "wheeled" and the
+        # validated operating point (blueprint 04 / rewards.py: the ~0.95-rest binding
+        # validation is wheeled). jsonschema does NOT apply schema defaults, so this
+        # Python default is what actually governs an unset config — it used to be
+        # "kinematic", silently running the UNVALIDATED mode and costing a debug cycle.
+        locomotion: str = "wheeled",
         lighting_mode: str = "emissive",
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
@@ -294,12 +299,12 @@ class Environment:
         # the wheeled agent back to CPU for an apples-to-apples compare).
         render_device_index = int(getattr(config, "device", 0) or 0)
         strategy = select_physx_strategy(
-            locomotion=getattr(self, "locomotion", "kinematic"),
+            locomotion=getattr(self, "locomotion", "wheeled"),
             render_device_index=render_device_index,
             num_envs=int(getattr(self, "num_envs", 1) or 1),
             free_vram_bytes=(
                 probe_free_vram_bytes(render_device_index)
-                if getattr(self, "locomotion", "kinematic") == "wheeled"
+                if getattr(self, "locomotion", "wheeled") == "wheeled"
                 else None
             ),
             cpu_threads=usable_cpu_threads(),

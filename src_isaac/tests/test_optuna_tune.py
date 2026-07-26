@@ -20,10 +20,18 @@ import os
 import math
 from pathlib import Path
 
-import optuna
 import pytest
 
-import examples.optuna_tune as ot
+# optuna is an OPTIONAL dependency -- it is not declared in pyproject.toml and is
+# absent from the standard venv. Skip rather than fail collection, which would
+# otherwise break a bare `pytest tests` run for everyone not tuning HPs.
+# ``examples.optuna_tune`` imports optuna at module scope, so this must come
+# first.
+optuna = pytest.importorskip(
+    "optuna", reason="optional HP-tuning dependency (`pip install optuna`)"
+)
+
+import examples.optuna_tune as ot  # noqa: E402  (requires optuna at import time)
 
 optuna.logging.set_verbosity(optuna.logging.WARNING)
 

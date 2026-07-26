@@ -9,10 +9,21 @@ VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
   pytest src_isaac/tests
 ```
 
-Current expected result:
+Some tests assert on the *source text* of the sibling repoA (`nett_isaac`)
+checkout, because the in-Isaac env wiring lives in the other repository. They
+resolve it from `$NETT_REPO_A`, falling back to
+`<workspace>/NewbornEmbodiedTuringTest_Private`, and **skip** when neither
+exists — which is what happens when you run from a worktree. Nothing
+cross-checks that path against the `nett_isaac` on `PYTHONPATH`, so set
+`NETT_REPO_A` to match it, or run from the primary checkouts.
+
+`optuna` is an optional dependency; its test module skips when it is absent.
+No `--ignore` flags are needed.
+
+Current expected result from the primary checkouts:
 
 ```text
-155 passed, 24 deselected
+550 passed, 3 skipped, 23 deselected
 ```
 
 Run a smoke training job:

@@ -26,13 +26,20 @@ def strict_determinism():
     that was replaced by DeterministicAvgPool2d was one such op). Wrapping the
     PPO update in strict mode makes any *future* nondeterministic op in the
     learning path fail loud instead of silently corrupting reproducibility, then
-    restores the render-tolerant policy on exit.
+    restores the AMBIENT policy on exit.
+
+    Exit restores whatever was in force on entry rather than hardcoding
+    warn_only=True: under the NETT_STRICT_DETERMINISM diagnostic the ambient
+    policy is itself strict, and forcing warn_only back would silently disarm the
+    diagnostic after the first PPO update -- i.e. exactly the window where the
+    run-to-run divergence accumulates.
     """
+    was_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     torch.use_deterministic_algorithms(True, warn_only=False)
     try:
         yield
     finally:
-        torch.use_deterministic_algorithms(True, warn_only=True)
+        torch.use_deterministic_algorithms(True, warn_only=was_warn_only)
 
 
 def strict_update(update_fn):

@@ -292,6 +292,9 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
         _write_dry_run_mem_report(run_config)
 
     torch.cuda.empty_cache()
+    # Must precede _exit_worker_cleanly: that ends in os._exit, which discards
+    # anything not already on disk (see _finalize_env_artifacts).
+    _finalize_env_artifacts(loaded, run_config.logger)
     _exit_worker_cleanly(run_config.logger)
 
 
@@ -450,6 +453,39 @@ def _make_record_cfg(env, config: TaskConfig) -> RecordingCfg | None:
         egocentric_enabled=ego_enabled,
         chamber_enabled=chamber_enabled,
     )
+
+
+def _finalize_env_artifacts(loaded, logger: logging.Logger) -> None:
+    """Flush the env's Python-side outputs BEFORE the worker's hard exit.
+
+    The worker ends via _exit_worker_cleanly -> ``atexit.register(os._exit, 0)``,
+    and os._exit skips the interpreter finalization that would flush open files.
+    NETTEnv.close() is never reached on that path, so everything it finalises was
+    silently lost: the profiler JSON entirely, and the LAST grid-video round's
+    manifest (earlier rounds self-finalise when the next round starts). It also
+    left the mp4 to be completed by an orphaned ffmpeg after we exit (measured
+    still writing ~9 MB six seconds later), which a process-group kill would
+    truncate.
+
+    We call ``finalize_artifacts()`` -- NOT ``close()`` -- because close() ends in
+    Isaac/Kit teardown, which is the fragile step os._exit exists to bypass.
+    finalize_artifacts is Kit-free and idempotent. Never fatal: a teardown problem
+    must not fail a finished run.
+    """
+    obj, seen = loaded, set()
+    for _ in range(8):  # unwrap skrl/body wrappers to reach NETTEnv
+        if obj is None or id(obj) in seen:
+            break
+        seen.add(id(obj))
+        finalize = getattr(obj, "finalize_artifacts", None)
+        if callable(finalize):
+            try:
+                finalize()
+            except Exception:
+                logger.exception("env artifact finalize failed (non-fatal)")
+            return
+        obj = getattr(obj, "unwrapped", None) or getattr(obj, "_env", None)
+    logger.debug("no finalize_artifacts() on the env chain; nothing to flush")
 
 
 def _exit_worker_cleanly(logger: logging.Logger) -> None:

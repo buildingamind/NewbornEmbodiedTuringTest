@@ -161,6 +161,42 @@ def write_status(jobs, state, running):
     STATUS.write_text(json.dumps(snap, indent=2))
 
 
+def _prebuild_frame_caches(jobs: list[dict]) -> None:
+    """Serially materialize the shared frame cache for every experiment BEFORE the
+    concurrent fan-out, so no training proc hits a cold cache under Kit contention.
+
+    A cold BC7 cache built by the first of N concurrently-booting Kit procs
+    deadlocks (contention on GPU/texture cache); the build itself is CPU-only, so we
+    do it here, serially, up front. Idempotent (a warm cache is a fast no-op), Kit-
+    free. Best-effort: on any failure we log and continue -- the per-proc build path
+    still exists as the fallback, just without the serial-first guarantee.
+    """
+    res = int(os.environ.get("NETT_RES", "256"))
+    fmt = os.environ.get("NETT_FRAME_FORMAT", "bc7").strip().lower()
+    try:
+        if str(HERE) not in sys.path:
+            sys.path.insert(0, str(HERE))
+        from campaign_train import EXPERIMENTS as EXP_PATHS
+        from nett_isaac.video import prebuild_frame_cache
+    except Exception as exc:  # noqa: BLE001 - never let prebuild wiring break a run
+        print(f"[campaign] prebuild-cache skipped (import failed: {exc})", flush=True)
+        return
+    seen: set[tuple[str, int]] = set()
+    for exp in {j["experiment"] for j in jobs}:
+        key = (exp, res)
+        if key in seen or exp not in EXP_PATHS:
+            continue
+        seen.add(key)
+        sheet, media, _imprint = EXP_PATHS[exp]
+        sheet = os.environ.get("NETT_DESIGN_SHEET", sheet)
+        media = os.environ.get("NETT_MEDIA_ROOT", media)
+        try:
+            print(f"[campaign] prebuild-cache exp={exp} res={res} fmt={fmt} ...", flush=True)
+            prebuild_frame_cache(sheet, media, res, frame_format=fmt)
+        except Exception as exc:  # noqa: BLE001
+            print(f"[campaign] prebuild-cache {exp} FAILED ({exc}); per-proc build will handle it", flush=True)
+
+
 def main() -> int:
     for d in (LOGS, DONE):
         d.mkdir(parents=True, exist_ok=True)
@@ -168,6 +204,7 @@ def main() -> int:
     jobs_per_gpu = max(1, int(os.environ.get("NETT_JOBS_PER_GPU", "1")))
     stagger = float(os.environ.get("NETT_STAGGER_SECS", "12"))
     jobs = build_jobs()
+    _prebuild_frame_caches(jobs)
     state = {}
     for j in jobs:
         done_marker = DONE / f"{j['id']}.done"

@@ -52,3 +52,34 @@ The Isaac package maintains the analysis stack used by current runs:
 
 Other Unity-era analysis helpers are intentionally not part of the maintained
 Isaac/skrl surface.
+
+## Reading The Preference Numbers
+
+`test_preferences.csv` has one row per (imprint condition, test condition,
+brain):
+
+| column | meaning |
+| --- | --- |
+| `n_steps` | steps in either outer third — the denominator |
+| `correct_pct` | steps in the *correct* outer third / `n_steps` |
+| `side_preference` | `(R - L) / (R + L)` over outer-third steps, target-agnostic |
+| `pct_target_left` | `correct_pct` restricted to LEFT-target episodes |
+| `pct_target_right` | `correct_pct` restricted to RIGHT-target episodes |
+| `verdict` | `LEARN` / `SIDE-LOCK` / `chance` / `n/a` |
+
+**Do not report `correct_pct` on its own.** It cannot distinguish a side-locked
+policy from a wandering one: an agent that walks to the same wall every episode
+scores 1.0 whenever the target happens to be that wall and 0.0 otherwise, which
+averages to ~0.5 and reads as chance. `side_preference` catches that case with
+no target bookkeeping (`|value|` near 1 = parked on one wall); the per-target
+split and `verdict` confirm it. See `side_bias_verdict()` for the thresholds.
+
+`n_steps == 0` means the agent never left the centre third, so every ratio has
+an empty denominator. `correct_pct` reports 0.5 there — a deliberate fallback,
+not a measurement (0.5 is at chance, 0 would read as a novel-stimulus
+preference). The other columns are left BLANK, and `analyze()`'s summary counts
+those brains under `n_brains_immobile` and excludes them from
+`correct_pct_mean_defined` and the `side_preference_*` means.
+
+For binding-style comparisons the endpoint is `learn_fraction` in
+`summary.json` — the fraction of brains whose verdict is `LEARN`.

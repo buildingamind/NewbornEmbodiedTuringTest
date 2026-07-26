@@ -29,21 +29,16 @@ from nett_skrl.environment.environment import Environment
 
 
 # --- Repo path resolution (robust to checkout location) ---------------------
-_SRC_ISAAC = Path(__file__).resolve().parents[1]
+# repoA is resolved via $NETT_REPO_A or the sibling default; see _repo_paths for
+# what that does and does NOT guarantee about the package on PYTHONPATH.
+from _repo_paths import SRC_ISAAC as _SRC_ISAAC, nett_isaac_dir, read_source as _read
+
 _ENVIRONMENT_PY = _SRC_ISAAC / "nett_skrl" / "environment" / "environment.py"
-_WORKSPACE = _SRC_ISAAC.parents[1]
-_NETT_ISAAC = (
-    _WORKSPACE / "NewbornEmbodiedTuringTest_Private" / "isaac_lab" / "source" / "nett_isaac"
-)
+_NETT_ISAAC = nett_isaac_dir()
 _NETT_ENV_PY = _NETT_ISAAC / "nett_env.py"
 _CAMERA_RIG_PY = _NETT_ISAAC / "camera_rig.py"
 _NETT_ENV_CFG_PY = _NETT_ISAAC / "nett_env_cfg.py"
 _MOTOR_PY = _NETT_ISAAC / "motor_system.py"
-
-
-def _read(path: Path) -> str:
-    assert path.exists(), f"expected source file missing: {path}"
-    return path.read_text()
 
 
 # === Distribution head (behavior) ==========================================
@@ -233,9 +228,10 @@ def _env(tmp_path, **kw):
     return Environment(design_sheet=_design_sheet(tmp_path), media_root=media_root, **kw)
 
 
-def test_locomotion_defaults_to_kinematic(tmp_path):
+def test_locomotion_defaults_to_wheeled(tmp_path):
+    # Default is wheeled, matching schema.json and the validated operating point.
     env = _env(tmp_path)
-    assert env.locomotion == "kinematic"
+    assert env.locomotion == "wheeled"
 
 
 def test_invalid_locomotion_rejected(tmp_path):
@@ -329,7 +325,8 @@ def test_cfg_enables_replicate_physics_for_wheeled():
 
 def test_environment_gates_physx_device_on_locomotion():
     src = _read(_ENVIRONMENT_PY)
-    assert 'getattr(self, "locomotion", "kinematic") == "wheeled"' in src
+    # Default fallback is now "wheeled" (matches the constructor + schema default).
+    assert 'getattr(self, "locomotion", "wheeled") == "wheeled"' in src
     assert "NETT_SIM_DEVICE" in src
 
 

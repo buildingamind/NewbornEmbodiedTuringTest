@@ -47,6 +47,21 @@ Important fields:
 - `decision_period`: Isaac env steps per motor/log/reward decision.
 - `random_first_frame`: randomize stimulus start frame.
 - `record_mode`: `tSNE` or `spatial` for record-phase sampling.
+- `locomotion`: `wheeled` (**default**) or `kinematic`. `wheeled` drives the body
+  through PhysX (GPU PhysX); `kinematic` writes the root pose directly and is
+  pinned to CPU PhysX. **Changed 2026-07-24**: the runtime default used to be
+  `kinematic` even though `schema.json` declared `wheeled`. `jsonschema` does not
+  apply schema defaults, so the Python default governed and any config omitting
+  this key silently ran the *unvalidated* mode. The two now agree. Set it
+  explicitly if you depend on a specific mode.
+- `lighting_mode`: `emissive` (default) or `rectlight`.
+- `chamber_variant`: optional chamber USD filename under `assets/chamber/`
+  (e.g. `chamber_e300.usdc`), overridable per-process with `NETT_CHAMBER_VARIANT`.
+  Unset keeps the production asset. This is how monitor **emissive brightness** is
+  swept: the value is baked into the chamber USD at build time, not set at runtime.
+  The production default is `emissive_intensity = 1000` (the measured binding
+  discrimination optimum; see `blueprint.md` SESSION 2026-07-24). Whole-run, not
+  per-env, so parallel-env parity holds.
 
 Top-level `eval_freq` is optional. When set, it is interpreted as a train-step
 interval and runs metrics-only test rollouts in separate Isaac subprocesses at

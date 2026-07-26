@@ -10,14 +10,14 @@ Two flavors, per the env constraints (Isaac Sim is not importable here):
   substrings, following the repo's established pattern
   (``isaac_lab/tests/test_camera_mount.py``).
 
-Paths are computed from this file's location so the suite is relocatable.
+repoB paths are computed from this file's location so the suite is relocatable;
+repoA is resolved by ``_repo_paths`` (``$NETT_REPO_A`` or the sibling default).
 """
 
 from __future__ import annotations
 
 import os
 import random
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,25 +27,12 @@ from nett_skrl.runtime.task import set_seeds, TaskConfig
 
 
 # --- Repo-root resolution (robust to absolute checkout location) -------------
-# This file: <repo>/NewbornEmbodiedTuringTest/src_isaac/tests/test_reproducibility.py
-_SRC_ISAAC = Path(__file__).resolve().parents[1]          # .../src_isaac
+# repoA is resolved via $NETT_REPO_A or the sibling default; see _repo_paths for
+# what that does and does NOT guarantee about the package on PYTHONPATH.
+from _repo_paths import SRC_ISAAC as _SRC_ISAAC, nett_isaac_dir, read_source as _read
+
 _TASK_PY = _SRC_ISAAC / "nett_skrl" / "runtime" / "task.py"
-
-# Sibling private repo holds the in-Isaac env wiring.
-_WORKSPACE = _SRC_ISAAC.parents[1]                        # dir containing both repos
-_NETT_ENV_PY = (
-    _WORKSPACE
-    / "NewbornEmbodiedTuringTest_Private"
-    / "isaac_lab"
-    / "source"
-    / "nett_isaac"
-    / "nett_env.py"
-)
-
-
-def _read(path: Path) -> str:
-    assert path.exists(), f"expected source file missing: {path}"
-    return path.read_text()
+_NETT_ENV_PY = nett_isaac_dir() / "nett_env.py"
 
 
 # === Criterion 1: set_seeds configures full determinism =====================
@@ -241,11 +228,68 @@ def test_set_seeds_leaves_deterministic_in_warn_only_mode():
 
 
 def test_set_seeds_source_reasserts_warn_only_after_skrl():
-    """warn_only=True must appear AFTER the skrl set_seed call in source order."""
+    """The ambient policy must be re-asserted AFTER the skrl set_seed call.
+
+    ``skrl.set_seed(deterministic=True)`` flips STRICT mode on; set_seeds has to
+    put the policy back afterwards. warn_only is the default; the only way to get
+    strict is the NETT_STRICT_DETERMINISM diagnostic opt-in.
+    """
     src = _read(_TASK_PY)
     skrl_idx = src.index("from skrl.utils import set_seed")
-    warn_idx = src.index("use_deterministic_algorithms(True, warn_only=True)")
-    assert warn_idx > skrl_idx, "warn_only must be re-asserted after skrl set_seed"
+    reassert_idx = src.index("torch.use_deterministic_algorithms(", skrl_idx)
+    assert reassert_idx > skrl_idx, "warn_only must be re-asserted after skrl set_seed"
+    assert "warn_only=not strict" in src[reassert_idx:reassert_idx + 120]
+
+
+# === NETT_STRICT_DETERMINISM: opt-in strict AMBIENT policy (diagnostic) ======
+# The PPO update already runs strict via @strict_update, but rollout COLLECTION
+# runs under the warn_only ambient policy, so a nondeterministic op there is
+# silently tolerated. This knob makes it raise, so run-to-run weight divergence
+# can be ATTRIBUTED to a named op instead of merely observed.
+
+
+def test_strict_determinism_env_var_makes_ambient_policy_raise(monkeypatch):
+    monkeypatch.setenv("NETT_STRICT_DETERMINISM", "1")
+    try:
+        set_seeds(321)
+        assert torch.are_deterministic_algorithms_enabled() is True
+        assert torch.is_deterministic_algorithms_warn_only_enabled() is False
+    finally:
+        # set_seeds mutates PROCESS-GLOBAL torch state; put the default back so
+        # this diagnostic cannot leak into later tests.
+        monkeypatch.delenv("NETT_STRICT_DETERMINISM", raising=False)
+        set_seeds(321)
+    assert torch.is_deterministic_algorithms_warn_only_enabled() is True
+
+
+def test_strict_determinism_is_off_by_default(monkeypatch):
+    """A long production run must not abort on an op with no deterministic kernel."""
+    monkeypatch.delenv("NETT_STRICT_DETERMINISM", raising=False)
+    set_seeds(321)
+    assert torch.is_deterministic_algorithms_warn_only_enabled() is True
+
+
+def test_strict_determinism_context_restores_the_ambient_policy():
+    """The PPO-update wrapper must RESTORE the ambient policy, not force warn_only.
+
+    It used to hardcode ``warn_only=True`` on exit, which disarmed
+    NETT_STRICT_DETERMINISM after the very first PPO update — leaving the rest of
+    the run, where the divergence accumulates, silently tolerant again.
+    """
+    from nett_skrl.brain.skrl_patches import strict_determinism
+
+    try:
+        for ambient_warn_only in (True, False):
+            torch.use_deterministic_algorithms(True, warn_only=ambient_warn_only)
+            with strict_determinism():
+                # Inside, the learning path is always strict.
+                assert torch.is_deterministic_algorithms_warn_only_enabled() is False
+            assert (
+                torch.is_deterministic_algorithms_warn_only_enabled()
+                is ambient_warn_only
+            )
+    finally:
+        torch.use_deterministic_algorithms(True, warn_only=True)
 
 
 def test_nett_env_seed_override_reasserts_warn_only():

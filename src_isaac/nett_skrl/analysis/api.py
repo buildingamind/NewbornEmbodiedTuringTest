@@ -10,7 +10,10 @@ Each public function consumes a NETT run directory (the path produced by
   condition × test condition), writes ``test_preferences.csv`` + one bar
   chart per imprint condition. Each chart overlays the newborn-chick
   reference data (red band = avg ± avg_dev) from ``ChickData/`` for the
-  matching experiment (default ``"binding"``).
+  matching experiment (default ``"binding"``). The CSV also carries the
+  side-lock diagnostics (``side_preference``, the per-target-side split and a
+  ``LEARN``/``SIDE-LOCK``/``chance`` verdict) — ``correct_pct`` alone reports a
+  side-locked policy as chance, so it must not be the only reported number.
 * :func:`analyze` — runs both of the above and writes a summary JSON.
 * :func:`merge` — concatenates the analysis CSVs from multiple runs and
   regenerates the aggregated plots so per-cohort comparisons can be made.
@@ -63,6 +66,27 @@ DEFAULT_CHICK_EXPERIMENT = "binding"
 DEFAULT_CHAMBER_HALF_X = 33.15
 DEFAULT_CHAMBER_HALF_Y = 21.0
 
+# ---------------------------------------------------------------------------
+# Side-lock classifier thresholds.
+#
+# ``correct_pct`` alone CANNOT separate a side-locked policy from indecision: an
+# agent that always walks to the same wall scores 1.0 on the episodes whose
+# target is that wall and 0.0 on the rest, averaging to ~0.5 -- which reads as
+# "chance" but is a pathological deterministic policy. Splitting the score by
+# WHICH SIDE held the target separates the two.
+#
+# The thresholds are wide because the measured per-episode scores are strongly
+# bimodal (2026-07-24 emissive sweep: per-episode scores were exactly 0.0 or
+# 1.0; side-locked brains measured side_preference = +/-1.00, genuine learners
+# -0.21..-0.02). Nothing in the observed data sits near either boundary, so the
+# classification is insensitive to the exact cut.
+# ---------------------------------------------------------------------------
+
+#: Both target sides must be scored at least this well to call a brain a learner.
+LEARN_MIN_PER_SIDE = 0.70
+#: A gap at least this large between the two sides means the brain parked on one wall.
+SIDE_LOCK_MIN_GAP = 0.70
+
 _REWARD_TAG_HINTS = ("Reward/Total reward (mean)", "Reward / Total reward (mean)")
 
 
@@ -90,6 +114,16 @@ def analyze(
     root = Path(run_path)
     out = Path(output_path) if output_path else root / "analysis"
     out.mkdir(parents=True, exist_ok=True)
+
+    # Verify the test logs actually contain the episodes/steps the run promised.
+    # An under-sized eval budget truncates the LAST episode of each env silently,
+    # and the shortfall lands unevenly across co-hosted brains -- which fabricates
+    # between-brain differences in the preference metric. Report, never raise.
+    try:
+        from .episode_integrity import verify_run
+        verify_run(root)
+    except Exception:  # noqa: BLE001 - a reporting guard must not break analysis
+        logger.exception("episode-integrity check failed (non-fatal)")
 
     train_out = train_viz(root, out / "train")
     test_out = test_viz(
@@ -169,8 +203,9 @@ def test_viz(
     out.mkdir(parents=True, exist_ok=True)
 
     matplotlib.use("Agg", force=False)
-    rows: list[tuple[str, str, str, int, float]] = []
-    # (imprint, test_cond, brain_id, n_steps, correct_pct)
+    rows: list[tuple] = []
+    # (imprint, test_cond, brain_id, n_steps, correct_pct,
+    #  side_preference, pct_target_left, pct_target_right, verdict)
 
     for cond_dir in _condition_dirs(root):
         imprint = cond_dir.name
@@ -191,7 +226,17 @@ def test_viz(
 
     _write_csv(
         out / "test_preferences.csv",
-        ["imprint", "test_condition", "brain_id", "n_steps", "correct_pct"],
+        [
+            "imprint",
+            "test_condition",
+            "brain_id",
+            "n_steps",
+            "correct_pct",
+            "side_preference",
+            "pct_target_left",
+            "pct_target_right",
+            "verdict",
+        ],
         rows,
     )
     return out
@@ -377,11 +422,16 @@ __all__ = [
     "DEFAULT_CHAMBER_HALF_X",
     "DEFAULT_CHAMBER_HALF_Y",
     "DEFAULT_CHICK_EXPERIMENT",
+    "LEARN_MIN_PER_SIDE",
+    "SIDE_LOCK_MIN_GAP",
     "analyze",
+    "chamber_third",
     "in_correct_chamber_third",
     "log_analysis_to_wandb",
     "merge",
     "normalize_isaac_output",
+    "side_bias_verdict",
+    "side_preference",
     "test_viz",
     "train_viz",
 ]
@@ -481,23 +531,85 @@ def in_correct_chamber_third(
         denominator; ``in_correct_third`` additionally counts toward the
         numerator.
     """
+    third = chamber_third(agent_x, half_x)
+    in_outer = third != "middle"
+    return in_outer, in_outer and third == correct_monitor
+
+
+def chamber_third(agent_x: float, half_x: float) -> str:
+    """Return which third of the chamber ``agent_x`` falls in.
+
+    ``"left"`` (``agent_x < -half_x/3``), ``"right"`` (``agent_x > half_x/3``)
+    or ``"middle"``. Non-finite positions are reported as ``"middle"`` so a
+    corrupt row is excluded from both numerator and denominator rather than
+    biasing one side.
+
+    This is the single definition of the outer-third geometry; both the
+    target-relative score (:func:`in_correct_chamber_third`) and the
+    target-agnostic occupancy behind :func:`side_preference` go through it.
+    """
     if not math.isfinite(agent_x):
-        return False, False
+        return "middle"
     threshold = half_x / 3.0
-    in_left = agent_x < -threshold
-    in_right = agent_x > threshold
-    in_outer = in_left or in_right
-    in_correct = (correct_monitor == "left" and in_left) or (
-        correct_monitor == "right" and in_right
-    )
-    return in_outer, in_correct
+    if agent_x < -threshold:
+        return "left"
+    if agent_x > threshold:
+        return "right"
+    return "middle"
+
+
+def side_preference(left_steps: int, right_steps: int) -> float | None:
+    """Target-agnostic lateral occupancy, ``(R - L) / (R + L)`` in ``[-1, +1]``.
+
+    ``|value|`` near 1 means the agent parks on one wall REGARDLESS of where the
+    target is (side-lock); near 0 means it visits both. Because it ignores the
+    target entirely it needs no counterbalancing bookkeeping, which makes it the
+    cheap first-pass side-lock screen — unlike ``correct_pct``, which averages a
+    side-locked policy to ~0.5 and so reports it as chance.
+
+    Returns ``None`` when the agent never entered either outer third (empty
+    denominator — the preference is UNDEFINED, not zero). Callers must exclude
+    those brains from means rather than substituting a value.
+    """
+    total = left_steps + right_steps
+    if total <= 0:
+        return None
+    return (right_steps - left_steps) / total
+
+
+def side_bias_verdict(
+    pct_target_left: float | None, pct_target_right: float | None
+) -> str:
+    """Classify a brain from its per-target-side scores.
+
+    Args:
+        pct_target_left: fraction of outer-third steps spent on the correct side
+            across the episodes whose target was the LEFT monitor (``None`` if
+            the brain produced no such steps).
+        pct_target_right: the same for RIGHT-target episodes.
+
+    Returns one of:
+
+    - ``"LEARN"``     — both sides scored at least :data:`LEARN_MIN_PER_SIDE`.
+    - ``"SIDE-LOCK"`` — the two sides differ by at least :data:`SIDE_LOCK_MIN_GAP`
+      (one wall ~1.0, the other ~0.0): a deterministic wall-parking policy.
+    - ``"chance"``    — neither: the agent wandered.
+    - ``"n/a"``       — at least one side has no data, so no verdict is possible.
+    """
+    if pct_target_left is None or pct_target_right is None:
+        return "n/a"
+    if min(pct_target_left, pct_target_right) >= LEARN_MIN_PER_SIDE:
+        return "LEARN"
+    if abs(pct_target_left - pct_target_right) >= SIDE_LOCK_MIN_GAP:
+        return "SIDE-LOCK"
+    return "chance"
 
 
 def _test_preference_rows(
     csv_path: Path,
     imprint: str,
     half_x: float,
-) -> list[tuple[str, str, str, int, float]]:
+) -> list[tuple]:
     """Aggregate per (brain_id, test_cond) preference percentages from one CSV.
 
     THE UNIT IS THE BRAIN (one model instance), not the env. A brain may own
@@ -518,6 +630,13 @@ def _test_preference_rows(
     preference nor avoidance.
 
     See :func:`in_correct_chamber_third` for the exact threshold definition.
+
+    Alongside ``correct_pct`` each row also carries the side-lock diagnostics —
+    ``side_preference`` and the per-target-side split feeding
+    :func:`side_bias_verdict`. They are reported PER BRAIN and left undefined
+    (``None``) rather than defaulted when their denominator is empty, because a
+    fabricated value would be averaged downstream as though it were a
+    measurement.
     """
     buckets: dict[tuple[str, str], list[dict]] = defaultdict(list)
     with csv_path.open() as f:
@@ -525,27 +644,54 @@ def _test_preference_rows(
             brain = row.get("brain_id", row["env_id"])
             buckets[(brain, row["test.cond"])].append(row)
 
-    out: list[tuple[str, str, str, int, float]] = []
+    out: list[tuple] = []
     for (brain_id, test_cond), rows in buckets.items():
         if not rows:
             continue
         outer_count = 0
         correct_count = 0
+        # Target-agnostic lateral occupancy (feeds side_preference).
+        occupancy = {"left": 0, "right": 0}
+        # Outer-third steps and correct-side steps split by which wall held the
+        # target on that step (feeds the per-target-side split).
+        by_target = {"left": [0, 0], "right": [0, 0]}
         for row in rows:
             try:
                 ax = float(row["agent.x"])
             except (KeyError, ValueError):
                 continue
+            third = chamber_third(ax, half_x)
+            if third == "middle":
+                continue
+            occupancy[third] += 1
+            outer_count += 1
             correct_monitor = row.get("correct.monitor", "")
-            in_outer, in_correct = in_correct_chamber_third(ax, correct_monitor, half_x)
-            if in_outer:
-                outer_count += 1
-                if in_correct:
-                    correct_count += 1
+            hit = third == correct_monitor
+            if hit:
+                correct_count += 1
+            if correct_monitor in by_target:
+                by_target[correct_monitor][0] += 1
+                if hit:
+                    by_target[correct_monitor][1] += 1
         # If the agent never reached either outer third (e.g. all NaN or all
         # centre steps) default to chance so downstream aggregation is stable.
         pct = correct_count / outer_count if outer_count > 0 else 0.5
-        out.append((imprint, test_cond, brain_id, outer_count, pct))
+        pct_side = {
+            side: (hits / n if n else None) for side, (n, hits) in by_target.items()
+        }
+        out.append(
+            (
+                imprint,
+                test_cond,
+                brain_id,
+                outer_count,
+                pct,
+                side_preference(occupancy["left"], occupancy["right"]),
+                pct_side["left"],
+                pct_side["right"],
+                side_bias_verdict(pct_side["left"], pct_side["right"]),
+            )
+        )
     return out
 
 
@@ -599,10 +745,12 @@ def _plot_test_preferences(
     """
     if not rows:
         return
-    # rows: (imprint, test_cond, env_id, n_steps, correct_pct)
+    # rows: (imprint, test_cond, brain_id, n_steps, correct_pct, ...). Only the
+    # first five fields are read here; later fields (side-lock diagnostics) are
+    # optional so merged CSVs written before they existed still plot.
     by_cond: dict[str, list[float]] = defaultdict(list)
-    for _, test_cond, _, _, pct in rows:
-        by_cond[test_cond].append(pct)
+    for row in rows:
+        by_cond[row[1]].append(row[4])
     if not by_cond:
         return
     labels = sorted(by_cond)
@@ -683,18 +831,56 @@ def _summary_from_outputs(train_dir: Path, test_dir: Path) -> dict:
 
     test_csv = test_dir / "test_preferences.csv"
     if test_csv.exists():
-        per_cond: dict[tuple[str, str], list[float]] = defaultdict(list)
+        per_cond: dict[tuple[str, str], list[dict]] = defaultdict(list)
         with test_csv.open() as f:
             for row in csv.DictReader(f):
-                per_cond[(row["imprint"], row["test_condition"])].append(
-                    float(row["correct_pct"])
-                )
-        for (imp, tc), values in per_cond.items():
-            summary["test"].setdefault(imp, {})[tc] = {
+                per_cond[(row["imprint"], row["test_condition"])].append(row)
+        for (imp, tc), brains in per_cond.items():
+            values = [float(b["correct_pct"]) for b in brains]
+            # A brain that never left the centre third has an EMPTY DENOMINATOR:
+            # correct_pct reports the 0.5 chance default, which is a fallback and
+            # not a measurement. correct_pct_mean keeps it (the historical, stable
+            # headline); the *_defined variants exclude those brains so "expressed
+            # no preference" cannot masquerade as "approached both equally".
+            defined = [
+                float(b["correct_pct"]) for b in brains if int(b["n_steps"]) > 0
+            ]
+            entry = {
                 "correct_pct_mean": sum(values) / len(values),
                 "correct_pct_stddev": _stddev(values),
                 "n_brains": len(values),
+                "n_brains_defined": len(defined),
+                "n_brains_immobile": len(values) - len(defined),
+                "correct_pct_mean_defined": (
+                    sum(defined) / len(defined) if defined else None
+                ),
             }
+            # Side-lock diagnostics are absent from CSVs written before they
+            # existed; only report them when the columns are present.
+            if brains and "verdict" in brains[0]:
+                verdicts = [b["verdict"] for b in brains]
+                prefs = [
+                    float(b["side_preference"])
+                    for b in brains
+                    if b["side_preference"] not in (None, "")
+                ]
+                entry["verdict_counts"] = {
+                    v: verdicts.count(v)
+                    for v in ("LEARN", "SIDE-LOCK", "chance", "n/a")
+                }
+                # The primary endpoint for brightness comparisons: a fraction of
+                # brains that genuinely learned, which correct_pct_mean cannot
+                # express (a side-locked brain also averages ~0.5).
+                entry["learn_fraction"] = (
+                    verdicts.count("LEARN") / len(verdicts) if verdicts else None
+                )
+                entry["side_preference_mean"] = (
+                    sum(prefs) / len(prefs) if prefs else None
+                )
+                entry["side_preference_abs_mean"] = (
+                    sum(abs(p) for p in prefs) / len(prefs) if prefs else None
+                )
+            summary["test"].setdefault(imp, {})[tc] = entry
     return summary
 
 

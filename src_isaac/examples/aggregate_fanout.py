@@ -2,8 +2,14 @@
 and compare to the Unity Object1 baseline + ideal ChickData targets.
 
 Reads each run's analysis/test/test_preferences.csv (cols: imprint,
-test_condition, brain_id, n_steps, correct_pct) and averages correct_pct
-per test condition across all seeds (each run = 1 independent brain).
+test_condition, brain_id, n_steps, correct_pct, then the side-lock
+diagnostics side_preference / pct_target_left / pct_target_right / verdict)
+and averages correct_pct per test condition across all seeds (each run = 1
+independent brain).
+
+NOTE: correct_pct alone cannot tell a side-locked brain from a wandering one --
+both average to ~0.5. For binding-style comparisons read ``verdict`` (or
+``learn_fraction`` in the run's summary.json) instead of this table.
 
 Usage:
   python examples/aggregate_fanout.py --output ~/nett_replicate_out \
