@@ -54,56 +54,13 @@ Important fields:
   apply schema defaults, so the Python default governed and any config omitting
   this key silently ran the *unvalidated* mode. The two now agree. Set it
   explicitly if you depend on a specific mode.
-- `lighting_mode`: `emissive` (default) or `rectlight`.
-- `chamber_variant`: optional chamber USD filename under `assets/chamber/`
-  (e.g. `chamber_e300.usdc`), overridable per-process with `NETT_CHAMBER_VARIANT`.
-  Unset keeps the production asset. This is how monitor **emissive brightness** is
-  swept: the value is baked into the chamber USD at build time, not set at runtime.
-  The production default is `emissive_intensity = 1000` (the measured binding
-  discrimination optimum; see `blueprint.md` SESSION 2026-07-24). Whole-run, not
-  per-env, so parallel-env parity holds.
-
-Top-level `eval_freq` is optional. When set, it is interpreted as a train-step
-interval and runs metrics-only test rollouts in separate Isaac subprocesses at
-each milestone. Final test-mode recording is still controlled by
-`episodes.test` and `environment.recording`.
-
-Top-level `max_parallel_envs` is optional and caps each condition task's total
-vectorized env count. Accepted values:
-
-| value | meaning |
-| --- | --- |
-| `null` (default) | use the recipe's own count (`rollouts // steps_per_episode` per brain) |
-| an integer | an upper bound on that count |
-| `"auto"` | derive the ceiling from measured VRAM; requires `task_memory: "auto"` |
-
-**num_envs is never chosen freely.** A valid count must (a) tile into a SQUARE
-camera grid — `N` in `[k²-k+1, k²]` — because at a non-square grid the fisheye eye
-render is distorted (Isaac Sim #488), and (b) be a multiple of `num_brains`, since
-each brain owns one contiguous env scope. With `task_memory: auto` the VRAM search
-snaps to a valid count and logs when it does; with a declared numeric `task_memory`
-nothing snaps it, and an invalid count is only warned about. `52`, for example, tiles
-8x7 and renders distorted — use `49`.
-
-With `task_memory: auto`, NETT verifies the requested count with a real dry run and
-backs off to a smaller valid one if it does not fit. It never RAISES the training
-count: `envs_per_brain` is derived from `rollouts // steps_per_episode`, so a larger
-count would change the PPO batch composition and therefore the experiment.
-
-`max_parallel_envs: "auto"` additionally measures how wide the TEST phase can run
-(test replays a fixed schedule and learns nothing, so its count only affects
-wall-clock). The resolved integers — `max_parallel_envs`, `task_memory`, and
-`resolved_test_num_envs` per condition — are written back to the output
-`config.yaml`, which is what makes the run reproducible on another machine: the
-render depends on `num_envs` (Isaac Lab #4431), so a machine-derived count that was
-never recorded would make results machine-dependent.
-
-## Brain
-
-`brain` configures skrl agents.
-
-Common fields:
-
+- Chamber lighting is NOT configurable. Repo A ships exactly one chamber,
+  `assets/chamber/chamber.usdc`: statically baked radiosity lightmaps with the
+  monitors measured at 300 cd/m^2 against NVIDIA's OmniEmissive reference. It is the
+  only configuration that is realistic, temporally static and bit-reproducible at the
+  same time; the former `lighting_mode` / `chamber_variant` / emissive-brightness
+  knobs and their chamber variants were removed 2026-07-26. See
+  `isaac/CHAMBER_LIGHTING_STATE.md`.
 - `algorithm`: skrl agent name such as `PPO`, `A2C`, `SAC`, `TD3`, or `DDPG`.
   Recurrent and discrete agents are intentionally unsupported until NETT has
   recurrent model state plumbing or a discrete action adapter.

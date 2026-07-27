@@ -46,7 +46,6 @@ _ENV_CFG_FIELDS = (
     ("motor.enable_neck_flexion", "enable_neck_flexion", bool),
     ("motor.enable_lateral_bending", "enable_lateral_bending", bool),
     ("motor.locomotion", "locomotion", str),
-    ("lighting_mode", "lighting_mode", str),
     ("screens.random_first_frame", "random_first_frame", bool),
     ("screens.decision_period", "decision_period", int),
     ("tracemalloc_interval", "tracemalloc_interval", int),
@@ -68,11 +67,6 @@ class Environment:
         episode_steps: Steps per episode (matches Unity ``--episode-steps``).
         reward_types: Tuple of reward names accepted by ``NETTEnv``
             (``"closeness"``, ``"completeness"``, or both).
-        lighting_mode: ``"emissive"`` (default) renders with ray-traced
-            sampled-emissive area lighting — no RectLights, the two monitors are
-            the sole light source (calibrated ~300 cd/m^2). ``"rectlight"`` runs
-            the original baked-lighting baseline: Isaac-default render with
-            analytic RectLights and monitors emissive at the original 1000 value.
     """
 
     def __init__(
@@ -98,7 +92,6 @@ class Environment:
         # Python default is what actually governs an unset config — it used to be
         # "kinematic", silently running the UNVALIDATED mode and costing a debug cycle.
         locomotion: str = "wheeled",
-        lighting_mode: str = "emissive",
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
         camera_fov: float = 120.0,
@@ -150,18 +143,10 @@ class Environment:
                 f"locomotion must be 'kinematic' or 'wheeled', got {locomotion!r}"
             )
         self.locomotion = locomotion
-        # Lighting model, forwarded to NETTEnvCfg.lighting_mode:
-        #   "emissive" (default): ray tracing ON, no RectLights, monitors emissive
-        #       at the calibrated ~300 cd/m^2 value (chamber.usdc).
-        #   "rectlight": original baked-lighting baseline — ray tracing "off"
-        #       (Isaac-default render), analytic RectLights + monitors emissive at
-        #       the original 1000 value (chamber_rectlight.usdc).
-        if lighting_mode not in ("emissive", "rectlight"):
-            raise ValueError(
-                f"lighting_mode must be 'emissive' or 'rectlight', got "
-                f"{lighting_mode!r}"
-            )
-        self.lighting_mode = lighting_mode
+        # NOTE: there is no lighting_mode. Repo A ships exactly ONE chamber
+        # (assets/chamber/chamber.usdc), statically baked, monitors measured at
+        # 300 cd/m^2. The former emissive/rectlight/analytic axis is gone: only the
+        # baked build is realistic, temporally static and bit-reproducible at once.
         self.render_mode = render_mode
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
         self.camera_fov = float(camera_fov)
