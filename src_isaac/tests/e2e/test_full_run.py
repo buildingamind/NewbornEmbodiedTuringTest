@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import DESIGN_SHEET_FULL
+from .conftest import E2E_DEVICE, DESIGN_SHEET_FULL
 
 
 pytestmark = pytest.mark.e2e_isaac
@@ -178,10 +178,10 @@ def test_resume_test_from_saved_checkpoint(run_nett, e2e_smoke_cfg, e2e_output_d
 
     cfg_path = e2e_output_dir / "resume_cfg.yaml"
     cfg_path.write_text(_yaml.safe_dump(test_cfg))
-    # ★ devices=[0]: this is the resume half, and it calls NETT DIRECTLY instead of the
+    # ★ devices=[E2E_DEVICE]: this is the resume half, and it calls NETT DIRECTLY instead of the
     # pinned `run_nett` fixture -- which is exactly why this test wedged for 23 min while
     # its first (fixture-driven, pinned) half succeeded. See conftest.run_nett.
-    NETT([str(cfg_path)]).run(output_path=str(e2e_output_dir), devices=[0], verbose=False)
+    NETT([str(cfg_path)]).run(output_path=str(e2e_output_dir), devices=[E2E_DEVICE], verbose=False)
 
     test_csvs = list((e2e_output_dir / test_cfg["name"] / "Object1" / "logs").glob("test_*.csv"))
     assert test_csvs, "test-only resume produced no test CSV"

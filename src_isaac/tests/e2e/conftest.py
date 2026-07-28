@@ -54,6 +54,11 @@ _VIDEOS = WORKSPACE / "videos" / "binding"
 DESIGN_SHEET_MINIMAL = _asset("NETT_DESIGN_SHEET_MINIMAL", _DS / "binding_minimal.csv")
 DESIGN_SHEET_FULL = _asset("NETT_DESIGN_SHEET_FULL", _VIDEOS / "DesignSheet_Binding.csv")
 MEDIA_ROOT = _asset("NETT_MEDIA_ROOT", PRIVATE_ROOT / "isaac_lab" / "assets" / "videos")
+#: Which PHYSICAL gpu the e2e tests pin to. Default 0 for deterministic placement; override
+#: when GPU0 is busy or dirty -- benchmarks in particular need an idle, clean card, and
+#: since 2026-07-28 the runtime pins each task itself so a non-zero device is usable.
+E2E_DEVICE = int(os.environ.get("NETT_E2E_DEVICE", "0"))
+
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
 GOLDEN_PATH = BENCHMARKS_DIR / "golden.json"
 
@@ -204,7 +209,7 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # this is now determinism, not the sole guard. Keep it anyway: a test that picks a
         # different GPU per run is a test whose timings and VRAM behaviour drift.
         NETT([str(cfg_path)]).run(
-            output_path=str(e2e_output_dir), devices=[0], verbose=False
+            output_path=str(e2e_output_dir), devices=[E2E_DEVICE], verbose=False
         )
         return e2e_output_dir / cfg["name"]
 

@@ -368,6 +368,8 @@ def test_dry_run_probe_is_bounded_and_real_runs_are_not(tmp_path, monkeypatch):
 
     nett.executor = SimpleNamespace(submit=_submit)
     monkeypatch.setattr(nett_module, "future_wait", lambda *a, **k: None)
+    # Validation is a real Kit-booting subprocess now; stub the seam (0 == clean).
+    monkeypatch.setattr(nett_module, "validate_tasklist_subprocess", lambda *a, **k: 0)
 
     brain = SimpleNamespace(envs_per_brain=1)
     body = SimpleNamespace(adjust_to_agent=lambda env, **kw: None)
@@ -508,6 +510,8 @@ def test_single_run_resolves_auto_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(nett_module, "Body", _Body)
     monkeypatch.setattr(nett_module, "Environment", _Environment)
     monkeypatch.setattr(nett_module, "future_wait", lambda *a, **k: None)
+    # Validation is a real Kit-booting subprocess now; stub the seam (0 == clean).
+    monkeypatch.setattr(nett_module, "validate_tasklist_subprocess", lambda *a, **k: 0)
     monkeypatch.setattr(
         nett_module, "build_tasks",
         lambda *a, **k: built.update(kwargs=k, args=a) or ["task"],

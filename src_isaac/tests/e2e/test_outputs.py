@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from .conftest import MINIMAL_SMOKE_CFG
+from .conftest import E2E_DEVICE, MINIMAL_SMOKE_CFG
 
 
 pytestmark = pytest.mark.e2e_isaac
@@ -56,7 +56,7 @@ def shared_run_output(tmp_path_factory) -> Path:
 
     from nett_skrl import NETT
 
-    # ★ devices=[0] IS LOAD-BEARING. This fixture builds its own run instead of using
+    # ★ devices=[E2E_DEVICE] IS LOAD-BEARING. This fixture builds its own run instead of using
     # conftest's `run_nett`, so it needs the same pin: without it nett.py
     # `set_device(most_free_gpu)` picks the most-free PHYSICAL gpu (pynvml ignores
     # CUDA_VISIBLE_DEVICES) and Kit's usdrt scenegraph supports ONLY cuda:0 -- the run
@@ -64,7 +64,7 @@ def shared_run_output(tmp_path_factory) -> Path:
     # 6+ min here with GPU0 busy, while the same work completes in ~110s pinned.
     # ⚠ IF YOU ADD ANOTHER FIXTURE THAT CALLS NETT DIRECTLY, IT NEEDS THIS TOO -- that is
     # exactly how this one was missed when conftest's run_nett was pinned.
-    NETT([str(cfg_path)]).run(output_path=str(out), devices=[0], verbose=False)
+    NETT([str(cfg_path)]).run(output_path=str(out), devices=[E2E_DEVICE], verbose=False)
     return out / cfg["name"]
 
 

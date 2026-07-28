@@ -561,6 +561,12 @@ def test_single_run_logs_wandb_instructions_without_argument_mismatch(monkeypatc
     monkeypatch.setattr(nett_module, "Environment", _Environment)
     monkeypatch.setattr(nett_module, "build_tasks", lambda *args, **kwargs: ["task"])
     monkeypatch.setattr(nett_module, "future_wait", lambda *args, **kwargs: None)
+    # Validation is a real subprocess now (it boots Kit), so stub the seam. This
+    # replaced the old future_wait-based path; patching future_wait alone no longer
+    # skips it. 0 == "validated clean".
+    monkeypatch.setattr(
+        nett_module, "validate_tasklist_subprocess", lambda *a, **k: 0
+    )
 
     nett = object.__new__(NETT)
     nett.logger = logging.getLogger("test")
