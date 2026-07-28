@@ -15,6 +15,7 @@ Key differences from the legacy Unity path:
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from pathlib import Path
@@ -54,37 +55,56 @@ _ENV_CFG_FIELDS = (
 )
 
 
-def _applauncher_device(config) -> str:
-    """Device string for ``AppLauncher``, preserving the unassigned-device behaviour.
+@contextlib.contextmanager
+def _kit_safe_argv():
+    """Hide the HOST's command line from Kit for the duration of an AppLauncher call.
 
-    ⚠ WHEN ``config.device`` IS None THIS DELIBERATELY EMITS THE INVALID STRING
-    ``"cuda:None"``, which is what this call site has always produced. Do not "clean it
-    up" -- doing so cost a full e2e suite (2026-07-28) and the reason is a latent defect
-    elsewhere:
+    ★ FIX A (2026-07-28). Kit parses ``sys.argv`` when it boots and rejects anything it
+    does not recognise. It therefore inherits whatever CLI happened to start the process,
+    which is none of its business. Under ``python -m pytest`` that is fatal:
 
-    ``nett.py`` runs ``validate_tasklist`` (line ~359) BEFORE any ``set_device`` (~782/842),
-    so ``config.device`` is None during validation. Validation executes in a ProcessPool
-    worker created by **fork**, and it calls ``Environment.load`` -> ``AppLauncher``. The
-    invalid device string makes AppLauncher fail there, validation is skipped ("skip if the
-    env claims it cannot dry-run"), and no Kit ever boots in that forked worker.
-
-    Emit a VALID device instead and Kit really does boot inside the forked worker, where it
-    parses the PARENT's argv -- under pytest that is ``-m pytest``:
         [Error] [omni.kit.app.plugin] Ill formed parameter: -m
+        [Error] [omni.kit.app.plugin] Failed to parse command line arguments.
         Fatal Python error: Segmentation fault
-    which breaks the pool (BrokenProcessPool) and fails every task. Measured: 20 passed
-    before, 5 passed / 11 failed / 4 errors after, in 36s.
 
-    So an accident is currently load-bearing. THE REAL FIX is for validation not to boot
-    Kit in a forked worker at all (fork + CUDA is unsafe regardless of pytest); until that
-    is addressed deliberately, this preserves the status quo instead of silently enabling
-    a Kit boot nobody asked for. Once a device IS assigned, the index is translated
-    properly -- see runtime/device.py.
+    and because the boot happens inside a ProcessPool worker, the segfault takes the POOL
+    with it (BrokenProcessPool), failing every task rather than the one call -- measured
+    20 passed -> 5 passed / 11 failed / 4 errors.
+
+    ``sys.argv[0]`` is kept (Kit reads the program name) and the render-mode flag this
+    method appends is preserved, because those ARE intended for Kit. Everything else --
+    pytest's ``-m``, uv's wrapper args, a notebook's kernel JSON -- is withheld and
+    restored immediately after, so nothing outside this window sees a modified argv.
+
+    ⚠ This does NOT make it safe to boot Kit in a FORKED worker; that is fix B (give the
+    pool a spawn context). A removes an unnecessary way to die, not the fork hazard.
     """
-    configured = getattr(config, "device", None)
-    if configured is None:
-        return f"cuda:{configured}"
-    return torch_device_str(configured)
+    import sys
+
+    original = sys.argv[:]
+    kit_flags = [a for a in original[1:] if a.startswith("--/")]
+    sys.argv = [original[0], *kit_flags]
+    try:
+        yield
+    finally:
+        sys.argv = original
+
+
+def _applauncher_device(config) -> str:
+    """Device string for ``AppLauncher``, in the index this process understands.
+
+    ⚠ HISTORY, because the obvious "cleanup" here has already cost one full test suite.
+    This used to emit the INVALID string "cuda:None" whenever ``config.device`` was unset,
+    and that accident was load-bearing: validation ran BEFORE device placement, in a
+    ProcessPool worker, and an invalid device was the only thing stopping Kit from booting
+    there -- which killed the pool. Making the string valid without fixing the cause turned
+    20 passing e2e tests into 5 passed / 11 failed / 4 errors.
+
+    Both causes are now fixed: validation runs in its own spawn process (tasklist.
+    validate_tasklist_subprocess) and is given a provisional device before it runs, so an
+    unset device no longer reaches here on that path. Kit is never booted in a pool worker.
+    """
+    return torch_device_str(getattr(config, "device", None))
 
 
 class Environment:
@@ -231,26 +251,27 @@ class Environment:
             # Size Kit's carb.tasking pool to THIS cell's CPU budget; left at
             # Isaac's default every cell would claim 32 threads no matter how
             # many cells share the host. See runtime/cpu_budget.py.
-            self._sim_app = AppLauncher(
-                headless=self.headless,
-                enable_cameras=True,
-                device=_applauncher_device(config),
-                kit_args=kit_thread_args(
-                    cell_cpu_threads(),
-                    # Texture-residency defaults (loader threads + on-disk texture
-                    # cache): +2.8% throughput vs an unmodified control, flicker-free,
-                    # stimulus unchanged. NOT a memory win -- see
-                    # runtime/texture_defaults.py for the measurements, the retracted
-                    # memory claim, and the NETT_TEXTURE_DEFAULTS=0 escape hatch.
-                    #
-                    # NETT_EXTRA_KIT_ARGS is appended AFTER them, so it wins on any
-                    # flag it repeats. Used to pin experiment-specific values, e.g.
-                    # "--/rtx-transient/resourcemanager/maxMipCount=8" (removes the
-                    # monitor-texture flicker AND the frame-0 startup blank while
-                    # leaving streaming enabled).
-                    existing=kit_texture_args(os.environ.get("NETT_EXTRA_KIT_ARGS", "")),
-                ),
-            ).app
+            with _kit_safe_argv():
+                self._sim_app = AppLauncher(
+                    headless=self.headless,
+                    enable_cameras=True,
+                    device=_applauncher_device(config),
+                    kit_args=kit_thread_args(
+                        cell_cpu_threads(),
+                        # Texture-residency defaults (loader threads + on-disk texture
+                        # cache): +2.8% throughput vs an unmodified control, flicker-free,
+                        # stimulus unchanged. NOT a memory win -- see
+                        # runtime/texture_defaults.py for the measurements, the retracted
+                        # memory claim, and the NETT_TEXTURE_DEFAULTS=0 escape hatch.
+                        #
+                        # NETT_EXTRA_KIT_ARGS is appended AFTER them, so it wins on any
+                        # flag it repeats. Used to pin experiment-specific values, e.g.
+                        # "--/rtx-transient/resourcemanager/maxMipCount=8" (removes the
+                        # monitor-texture flicker AND the frame-0 startup blank while
+                        # leaving streaming enabled).
+                        existing=kit_texture_args(os.environ.get("NETT_EXTRA_KIT_ARGS", "")),
+                    ),
+                ).app
 
         # DO NOT arm crash_guard here. It is tempting: NETTEnv(cfg) below builds the
         # scene and the tiled-camera canvas, which is exactly where an over-size
