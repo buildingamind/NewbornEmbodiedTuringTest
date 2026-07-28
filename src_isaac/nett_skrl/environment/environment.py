@@ -145,8 +145,12 @@ class Environment:
         self.locomotion = locomotion
         # NOTE: there is no lighting_mode. Repo A ships exactly ONE chamber
         # (assets/chamber/chamber.usdc), statically baked, monitors measured at
-        # 300 cd/m^2. The former emissive/rectlight/analytic axis is gone: only the
-        # baked build is realistic, temporally static and bit-reproducible at once.
+        # 250 cd/m^2 (the Acer V193W EJb panels of the original experiment). The former
+        # emissive/rectlight/analytic axis is gone: only the baked build is realistic,
+        # temporally static and bit-reproducible at once. ⚠ 250, NOT the 300 this
+        # comment used to claim -- that target predates the 2026-07-27 recalibration,
+        # which found the monitor measurement had been pegged to a mid-grey seed
+        # texture rather than a full-white screen. See isaac/CHAMBER_LIGHTING_STATE.md.
         self.render_mode = render_mode
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
         self.camera_fov = float(camera_fov)

@@ -56,11 +56,16 @@ Important fields:
   explicitly if you depend on a specific mode.
 - Chamber lighting is NOT configurable. Repo A ships exactly one chamber,
   `assets/chamber/chamber.usdc`: statically baked radiosity lightmaps with the
-  monitors measured at 300 cd/m^2 against NVIDIA's OmniEmissive reference. It is the
-  only configuration that is realistic, temporally static and bit-reproducible at the
-  same time; the former `lighting_mode` / `chamber_variant` / emissive-brightness
-  knobs and their chamber variants were removed 2026-07-26. See
-  `isaac/CHAMBER_LIGHTING_STATE.md`.
+  monitors measured at **250 cd/m^2** (the Acer V193W EJb panels of the original
+  experiment) against NVIDIA's OmniEmissive reference. It is the only configuration
+  that is realistic, temporally static and bit-reproducible at the same time; the
+  former `lighting_mode` / emissive-brightness knobs and their chamber variants were
+  removed 2026-07-26, and the dead `lighting_mode` key was dropped from `schema.json`
+  on 2026-07-27 (a config still carrying it now fails validation loudly instead of
+  being silently ignored). `chamber_variant` survives in repo A as a diagnostic-only
+  field — it is not reachable from a run config. ⚠ 250, not the 300 stated here before
+  2026-07-27: the earlier measurement was pegged to a mid-grey seed texture rather than
+  a full-white screen. See `isaac/CHAMBER_LIGHTING_STATE.md`.
 - `algorithm`: skrl agent name such as `PPO`, `A2C`, `SAC`, `TD3`, or `DDPG`.
   Recurrent and discrete agents are intentionally unsupported until NETT has
   recurrent model state plumbing or a discrete action adapter.
