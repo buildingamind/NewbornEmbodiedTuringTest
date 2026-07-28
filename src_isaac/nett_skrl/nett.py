@@ -49,7 +49,7 @@ from .runtime.parallel_envs import (
     snap_num_envs,
 )
 from .validate import validate_config
-from .runtime.tasklist import validate_tasklist
+from .runtime.tasklist import validate_tasklist_subprocess
 
 
 # Reserved fallback when dry-run estimation fails for any reason.
@@ -352,14 +352,43 @@ class NETT:
             max_test_envs=int(test_ceiling),
         )
 
-        # Per-task validation runs against the local Isaac Lab build — skip if
-        # the env claims it cannot dry-run (e.g. headless device limits).
+        # Pre-flight: construct each task's env once against the local Isaac Lab build.
+        #
+        # ★ THIS CHECK NEVER RAN, AND NEVER REPORTED, UNTIL 2026-07-28. Two independent
+        # reasons, both silent:
+        #   1. It was submitted to the shared ProcessPoolExecutor, where it booted Kit --
+        #      and Kit cannot boot in a pool worker here (it dies, taking the pool with
+        #      it). It now runs in its own spawn process, the mechanism task_runner
+        #      already uses for every Kit-touching subprocess.
+        #   2. `future_wait` does NOT re-raise. The worker's exception sat in the Future,
+        #      nobody called .result()/.exception(), and the except below never fired
+        #      because it only guards submit/wait themselves. Every run logged
+        #      "Validating tasks…" and then simply moved on.
+        # Net effect: a pre-flight check that silently passed on every run in this
+        # project's history. It reports now.
+        #
+        # ⚠ A DEVICE IS ASSIGNED FIRST, deliberately. Validation runs BEFORE placement, so
+        # config.device was None and the env could not construct even when everything else
+        # was fine. The provisional device is overwritten by the real placement in
+        # _assign_task below; it exists only so the smoke check has a GPU to build on.
         self.logger.info("Validating tasks…")
-        try:
-            fut: Future = self.executor.submit(validate_tasklist, tasklist)
-            future_wait([fut], return_when="ALL_COMPLETED")
-        except Exception:
-            self.logger.exception("Task validation raised; submitting anyway")
+        if os.environ.get("NETT_SKIP_VALIDATION"):
+            self.logger.warning("Task validation SKIPPED (NETT_SKIP_VALIDATION set)")
+        else:
+            # getattr: `devices` is bound inside the MemoryManager context in run(),
+            # and callers that exercise this path directly (unit tests) never enter it.
+            provisional = (getattr(self, "devices", None) or [0])[0]
+            code = validate_tasklist_subprocess(
+                tasklist, self.logger, device=provisional
+            )
+            if code != 0:
+                # Fail here rather than launch N tasks that will each fail later, more
+                # expensively and less legibly. The child's traceback is already on stderr.
+                raise RuntimeError(
+                    f"Task validation failed (exit code {code}). The traceback above is "
+                    f"from the validation subprocess. Set NETT_SKIP_VALIDATION=1 to "
+                    f"launch anyway."
+                )
 
         self.logger.info("Assigning tasks…")
         for task in tasklist:
