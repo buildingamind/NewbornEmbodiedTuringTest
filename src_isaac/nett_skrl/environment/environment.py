@@ -22,6 +22,7 @@ from typing import Optional
 
 from ..runtime.cpu_budget import cell_cpu_threads, kit_thread_args
 from ..runtime.texture_defaults import kit_texture_args
+from ..runtime.device import torch_device_index, torch_device_str
 from ..runtime.task import TaskConfig, recording_phase_map
 from .design import get_experiment_design, validate_conditions
 from .physx_strategy import (
@@ -51,6 +52,39 @@ _ENV_CFG_FIELDS = (
     ("tracemalloc_interval", "tracemalloc_interval", int),
     ("train_step_logging", "train_step_logging", bool),
 )
+
+
+def _applauncher_device(config) -> str:
+    """Device string for ``AppLauncher``, preserving the unassigned-device behaviour.
+
+    ⚠ WHEN ``config.device`` IS None THIS DELIBERATELY EMITS THE INVALID STRING
+    ``"cuda:None"``, which is what this call site has always produced. Do not "clean it
+    up" -- doing so cost a full e2e suite (2026-07-28) and the reason is a latent defect
+    elsewhere:
+
+    ``nett.py`` runs ``validate_tasklist`` (line ~359) BEFORE any ``set_device`` (~782/842),
+    so ``config.device`` is None during validation. Validation executes in a ProcessPool
+    worker created by **fork**, and it calls ``Environment.load`` -> ``AppLauncher``. The
+    invalid device string makes AppLauncher fail there, validation is skipped ("skip if the
+    env claims it cannot dry-run"), and no Kit ever boots in that forked worker.
+
+    Emit a VALID device instead and Kit really does boot inside the forked worker, where it
+    parses the PARENT's argv -- under pytest that is ``-m pytest``:
+        [Error] [omni.kit.app.plugin] Ill formed parameter: -m
+        Fatal Python error: Segmentation fault
+    which breaks the pool (BrokenProcessPool) and fails every task. Measured: 20 passed
+    before, 5 passed / 11 failed / 4 errors after, in 36s.
+
+    So an accident is currently load-bearing. THE REAL FIX is for validation not to boot
+    Kit in a forked worker at all (fork + CUDA is unsafe regardless of pytest); until that
+    is addressed deliberately, this preserves the status quo instead of silently enabling
+    a Kit boot nobody asked for. Once a device IS assigned, the index is translated
+    properly -- see runtime/device.py.
+    """
+    configured = getattr(config, "device", None)
+    if configured is None:
+        return f"cuda:{configured}"
+    return torch_device_str(configured)
 
 
 class Environment:
@@ -200,7 +234,7 @@ class Environment:
             self._sim_app = AppLauncher(
                 headless=self.headless,
                 enable_cameras=True,
-                device=f"cuda:{getattr(config, 'device', 0)}",
+                device=_applauncher_device(config),
                 kit_args=kit_thread_args(
                     cell_cpu_threads(),
                     # Texture-residency defaults (loader threads + on-disk texture
@@ -286,7 +320,13 @@ class Environment:
         #     parallelism that fits").
         # NETT_SIM_DEVICE remains an absolute override (GPU-PhysX probe, or forcing
         # the wheeled agent back to CPU for an apples-to-apples compare).
-        render_device_index = int(getattr(config, "device", 0) or 0)
+        # TORCH index, not the physical one: this feeds select_physx_strategy (which builds
+        # the "cuda:N" string for sim.device) and probe_free_vram_bytes (torch.cuda.
+        # mem_get_info) -- both are torch-side, and both see only the pinned card. Passing
+        # the physical index here is what made the first pin attempt still fail with
+        # "invalid device ordinal" AFTER AppLauncher was already correct. See
+        # runtime/device.py for why the two numberings must not be mixed.
+        render_device_index = torch_device_index(getattr(config, "device", 0))
         strategy = select_physx_strategy(
             locomotion=getattr(self, "locomotion", "wheeled"),
             render_device_index=render_device_index,

@@ -183,10 +183,11 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # Isaac Sim imports for non-e2e test runs.
         from nett_skrl import NETT
 
-        # ★ devices=[0] IS LOAD-BEARING, NOT TIDINESS (added 2026-07-27 after this tree
-        # wedged for 26-71 min per test). Without it, nett.py `set_device(most_free_gpu)`
-        # picks the most-free PHYSICAL gpu via pynvml -- which IGNORES
-        # CUDA_VISIBLE_DEVICES -- and Kit's usdrt scenegraph supports ONLY cuda:0:
+        # devices=[0] pins the tests to ONE known card so placement is deterministic run
+        # to run. ⚠ HISTORY WORTH KEEPING: this used to be the ONLY thing standing between
+        # this tree and an indefinite hang, because nett.py `set_device(most_free_gpu)`
+        # handed Kit a PHYSICAL gpu index (pynvml IGNORES CUDA_VISIBLE_DEVICES) and Kit's
+        # usdrt scenegraph supports ONLY cuda:0:
         #   "UsdStage::SelectPrims: GPU 3 requested. GPUs other than cuda:0 are not
         #    currently supported"
         # The run then HANGS at the Fabric XFormPrimView with no error, indefinitely.
@@ -197,7 +198,11 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # CUDA_VISIBLE_DEVICES=<phys> + devices=[0] combination "USD-safe". To aim the
         # tests at a specific physical GPU, set CUDA_VISIBLE_DEVICES in the SHELL: the
         # single visible card re-indexes to cuda:0 and this pin still holds.
-        # MEASURED: the same workload wedges >26 min unpinned, and COMPLETES IN 110s here.
+        # MEASURED: the same workload wedged >26 min unpinned, and COMPLETES IN ~110s here.
+        # ★ SINCE 2026-07-28 THE RUNTIME PINS EVERY TASK ITSELF (task_runner.
+        # _visible_device_scope + runtime/device.py), so an unpinned run no longer hangs --
+        # this is now determinism, not the sole guard. Keep it anyway: a test that picks a
+        # different GPU per run is a test whose timings and VRAM behaviour drift.
         NETT([str(cfg_path)]).run(
             output_path=str(e2e_output_dir), devices=[0], verbose=False
         )

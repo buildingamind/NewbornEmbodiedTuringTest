@@ -7,12 +7,15 @@ from pathlib import Path
 
 import torch
 
+from ..runtime.device import torch_device_str
 from ..runtime.task import TaskConfig
 from .trainer import TrainCfg
 
 
 def policy_device(config: TaskConfig) -> torch.device:
-    return torch.device(f"cuda:{config.device}" if torch.cuda.is_available() else "cpu")
+    # torch_device_str, not config.device: the latter is a PHYSICAL index and is not
+    # what cuda:N means once the task is pinned. See runtime/device.py.
+    return torch.device(torch_device_str(config.device) if torch.cuda.is_available() else "cpu")
 
 
 #: Steps a TEST-mode dry run takes. Test has no rollout to fill and runs no update,
