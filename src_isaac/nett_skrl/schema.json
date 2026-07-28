@@ -13,62 +13,152 @@
         "encoder": {
           "description": "NETTFeatureExtractor name or subclass.",
           "anyOf": [
-            { "type": "string" },
-            { "not": { "type": "string" } }
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "type": "string"
+              }
+            }
           ],
           "default": "small"
         },
         "algorithm": {
           "description": "skrl agent class name from the algorithm registry.",
           "anyOf": [
-            { "type": "string" },
-            { "not": { "type": "string" } }
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "type": "string"
+              }
+            }
           ],
           "default": "PPO"
         },
         "reward": {
           "description": "Environment reward string or registered intrinsic reward.",
           "anyOf": [
-            { "type": "string" },
-            { "not": { "type": "string" } }
+            {
+              "type": "string"
+            },
+            {
+              "not": {
+                "type": "string"
+              }
+            }
           ],
           "default": "closeness"
         },
         "evaluation_policy": {
           "description": "Evaluation-time action source. 'agent' uses the trained policy; 'target_side_oracle' steers toward the design-sheet target monitor during test rollouts.",
           "type": "string",
-          "enum": ["agent", "target_side_oracle"],
+          "enum": [
+            "agent",
+            "target_side_oracle"
+          ],
           "default": "agent"
         },
-        "checkpoint_freq":       { "type": ["integer", "null"], "minimum": 1, "default": null },
+        "checkpoint_freq": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": null
+        },
         "encoder_cfg": {
           "type": "object",
           "properties": {
-            "features_dim": { "type": "integer", "minimum": 1, "default": 512 },
-            "trainable": { "type": "boolean", "default": true }
+            "features_dim": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 512
+            },
+            "trainable": {
+              "type": "boolean",
+              "default": true
+            }
           },
           "additionalProperties": true,
-          "default": { "features_dim": 512, "trainable": true }
+          "default": {
+            "features_dim": 512,
+            "trainable": true
+          }
         },
         "algorithm_cfg": {
           "type": "object",
           "properties": {
             "learning_rate": {
-              "anyOf": [ { "type": "number", "minimum": 0 }, { "not": { "type": "string" } } ],
-              "default": 1e-5
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0
+                },
+                {
+                  "not": {
+                    "type": "string"
+                  }
+                }
+              ],
+              "default": 1e-05
             },
-            "rollouts": { "type": "integer", "minimum": 1, "default": 8000 },
-            "mini_batches": { "type": "integer", "minimum": 1, "default": 16 },
-            "value_loss_scale": { "type": ["number", "null"], "default": 0.25 },
-            "grad_norm_clip": { "type": ["number", "null"], "default": 0.25 },
-            "batch_size": { "type": "integer", "minimum": 1, "default": 64 },
-            "memory_size": { "type": "integer", "minimum": 1, "default": 8000 },
-            "gradient_steps": { "type": ["integer", "null"], "minimum": 1, "default": null },
-            "learning_starts": { "type": ["integer", "null"], "minimum": 0, "default": null }
+            "rollouts": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 8000
+            },
+            "mini_batches": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 16
+            },
+            "value_loss_scale": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "default": 0.25
+            },
+            "grad_norm_clip": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "default": 0.25
+            },
+            "batch_size": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 64
+            },
+            "memory_size": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 8000
+            },
+            "gradient_steps": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 1,
+              "default": null
+            },
+            "learning_starts": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0,
+              "default": null
+            }
           },
           "additionalProperties": true,
           "default": {
-            "learning_rate": 1e-5,
+            "learning_rate": 1e-05,
             "rollouts": 8000,
             "mini_batches": 16,
             "value_loss_scale": 0.25,
@@ -78,17 +168,78 @@
         "model": {
           "type": "object",
           "properties": {
-            "hidden_sizes": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "default": [64, 64] },
-            "activation": { "type": "string", "enum": ["elu", "relu", "tanh"], "default": "elu" },
-            "initial_log_std": { "type": "number", "default": 0.0 },
-            "max_log_std": { "type": ["number", "null"], "default": null },
-            "clip_actions": { "type": "boolean", "default": true },
-            "value_bound": { "type": ["number", "null"], "default": 10.0 },
-            "orthogonal_init": { "type": "boolean", "default": true },
-            "hidden_gain": { "type": "number", "exclusiveMinimum": 0, "default": 1.4142135623730951 },
-            "output_gain": { "type": "number", "exclusiveMinimum": 0, "default": 0.01 },
-            "shared_encoder": { "type": "boolean", "default": false },
-            "actor_distribution": { "type": ["string", "null"], "enum": ["gaussian", "multivariate_gaussian", null], "default": null }
+            "hidden_sizes": {
+              "type": "array",
+              "items": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "default": [
+                64,
+                64
+              ]
+            },
+            "activation": {
+              "type": "string",
+              "enum": [
+                "elu",
+                "relu",
+                "tanh"
+              ],
+              "default": "elu"
+            },
+            "initial_log_std": {
+              "type": "number",
+              "default": 0.0
+            },
+            "max_log_std": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "default": null
+            },
+            "clip_actions": {
+              "type": "boolean",
+              "default": true
+            },
+            "value_bound": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "default": 10.0
+            },
+            "orthogonal_init": {
+              "type": "boolean",
+              "default": true
+            },
+            "hidden_gain": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 1.4142135623730951
+            },
+            "output_gain": {
+              "type": "number",
+              "exclusiveMinimum": 0,
+              "default": 0.01
+            },
+            "shared_encoder": {
+              "type": "boolean",
+              "default": false
+            },
+            "actor_distribution": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "gaussian",
+                "multivariate_gaussian",
+                null
+              ],
+              "default": null
+            }
           },
           "additionalProperties": false,
           "default": {}
@@ -96,27 +247,77 @@
         "reward_cfg": {
           "type": "object",
           "properties": {
-            "beta": { "type": "number", "default": 0.2 },
-            "kappa": { "type": "number", "default": 0.0 },
-            "gamma": { "type": "number", "default": 0.99 },
-            "weight": { "type": "number", "default": 1.0 },
-            "trainable": { "type": "boolean", "default": true }
+            "beta": {
+              "type": "number",
+              "default": 0.2
+            },
+            "kappa": {
+              "type": "number",
+              "default": 0.0
+            },
+            "gamma": {
+              "type": "number",
+              "default": 0.99
+            },
+            "weight": {
+              "type": "number",
+              "default": 1.0
+            },
+            "trainable": {
+              "type": "boolean",
+              "default": true
+            }
           },
           "additionalProperties": true,
-          "default": { "beta": 0.2, "kappa": 0.0, "gamma": 0.99, "weight": 1.0, "trainable": true }
+          "default": {
+            "beta": 0.2,
+            "kappa": 0.0,
+            "gamma": 0.99,
+            "weight": 1.0,
+            "trainable": true
+          }
         },
         "wandb": {
           "description": "Weights & Biases logging. skrl's native integration creates one wandb run per agent (per brain).",
           "type": "object",
           "properties": {
-            "project": { "type": "string", "default": "nett-skrl" },
-            "entity":  { "type": ["string", "null"], "default": null,
-                         "description": "wandb entity (team/user). null = use the WANDB_ENTITY env var or default account." },
-            "mode":    { "type": "string", "enum": ["online", "offline", "disabled"], "default": "online",
-                         "description": "online = upload; offline = local only; disabled = skip wandb entirely." },
-            "tags":    { "type": "array", "items": { "type": "string" }, "default": [],
-                         "description": "Extra wandb tags appended to the auto-tags (run/condition/brain/phase)." },
-            "notes":   { "type": ["string", "null"], "default": null },
+            "project": {
+              "type": "string",
+              "default": "nett-skrl"
+            },
+            "entity": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null,
+              "description": "wandb entity (team/user). null = use the WANDB_ENTITY env var or default account."
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "online",
+                "offline",
+                "disabled"
+              ],
+              "default": "online",
+              "description": "online = upload; offline = local only; disabled = skip wandb entirely."
+            },
+            "tags": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "default": [],
+              "description": "Extra wandb tags appended to the auto-tags (run/condition/brain/phase)."
+            },
+            "notes": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
             "kwargs": {
               "type": "object",
               "default": {},
@@ -139,13 +340,26 @@
           "uniqueItems": true,
           "items": {
             "anyOf": [
-              { "type": "string" },
-              { "not": { "type": "string" } }
+              {
+                "type": "string"
+              },
+              {
+                "not": {
+                  "type": "string"
+                }
+              }
             ]
           },
           "default": []
         },
-        "input_resolution": { "type": ["integer", "null"], "minimum": 16, "default": null }
+        "input_resolution": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 16,
+          "default": null
+        }
       },
       "additionalProperties": false,
       "default": {}
@@ -153,29 +367,91 @@
     "environment": {
       "type": "object",
       "properties": {
-        "experiment":       { "type": "string",
-                              "description": "Self-contained experiment bundle: a directory (or .zip) with a design CSV + its videos. Overrides design_sheet/media_root — the drop-in way to swap experiments." },
-        "design_sheet":     { "type": "string",
-                              "description": "Path to design CSV (replaces Unity AssetBundles). Not needed when `experiment` is set." },
-        "media_root":       { "type": "string",
-                              "description": "Directory containing video/PNG stimulus assets. Not needed when `experiment` is set." },
-        "conditions":       { "type": ["array", "null"], "uniqueItems": true,
-                              "items": { "type": "string" }, "default": null },
-        "headless":         { "type": "boolean", "default": true },
-        "input_resolution": { "type": "integer", "minimum": 16, "default": 128 },
-        "camera_fov":       { "type": "number", "minimum": 10, "maximum": 200, "default": 150.0 },
-        "record_mode":      { "type": "string", "enum": ["tSNE", "spatial"], "default": "tSNE" },
-        "random_first_frame": { "type": "boolean", "default": false },
-        "decision_period":  { "type": "integer", "minimum": 1, "default": 1 },
-        "enable_neck_flexion": { "type": "boolean", "default": true },
-        "enable_lateral_bending": { "type": "boolean", "default": true },
-        "locomotion": { "type": "string", "enum": ["kinematic", "wheeled"], "default": "wheeled" },
+        "experiment": {
+          "type": "string",
+          "description": "Self-contained experiment bundle: a directory (or .zip) with a design CSV + its videos. Overrides design_sheet/media_root \u2014 the drop-in way to swap experiments."
+        },
+        "design_sheet": {
+          "type": "string",
+          "description": "Path to design CSV (replaces Unity AssetBundles). Not needed when `experiment` is set."
+        },
+        "media_root": {
+          "type": "string",
+          "description": "Directory containing video/PNG stimulus assets. Not needed when `experiment` is set."
+        },
+        "conditions": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "uniqueItems": true,
+          "items": {
+            "type": "string"
+          },
+          "default": null
+        },
+        "headless": {
+          "type": "boolean",
+          "default": true
+        },
+        "input_resolution": {
+          "type": "integer",
+          "minimum": 16,
+          "default": 128
+        },
+        "camera_fov": {
+          "type": "number",
+          "minimum": 10,
+          "maximum": 200,
+          "default": 150.0
+        },
+        "record_mode": {
+          "type": "string",
+          "enum": [
+            "tSNE",
+            "spatial"
+          ],
+          "default": "tSNE"
+        },
+        "random_first_frame": {
+          "type": "boolean",
+          "default": false
+        },
+        "decision_period": {
+          "type": "integer",
+          "minimum": 1,
+          "default": 1
+        },
+        "enable_neck_flexion": {
+          "type": "boolean",
+          "default": true
+        },
+        "enable_lateral_bending": {
+          "type": "boolean",
+          "default": true
+        },
+        "locomotion": {
+          "type": "string",
+          "enum": [
+            "kinematic",
+            "wheeled"
+          ],
+          "default": "wheeled"
+        },
         "recording": {
           "type": "object",
           "properties": {
-            "fps": { "type": "integer", "minimum": 1, "default": 24 },
-            "egocentric": { "$ref": "#/$defs/recordingSection" },
-            "chamber": { "$ref": "#/$defs/recordingSection" }
+            "fps": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 24
+            },
+            "egocentric": {
+              "$ref": "#/$defs/recordingSection"
+            },
+            "chamber": {
+              "$ref": "#/$defs/recordingSection"
+            }
           },
           "additionalProperties": false,
           "default": {}
@@ -183,20 +459,24 @@
         "reward_types": {
           "description": "NETTEnv reward names; validated against the registry.",
           "type": "array",
-          "items": { "type": "string" },
-          "default": ["closeness", "completeness"]
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "closeness",
+            "completeness"
+          ]
         },
         "render_mode": {
-          "description": "Isaac Sim /rtx/rendermode. Only RaytracedLighting (real-time hardware RT; Isaac default) and PathTracing (full path trace, slowest) actually take effect. NOTE: 'RealTimeRenderer' is NOT a rasterizer and is NOT a valid /rtx/rendermode value — Kit ignores it and keeps RaytracedLighting; it remains here only as a backward-compatible no-op default. Empty string leaves Isaac's built-in default in place. (Verified 2026-07-09: probing the live carb setting shows RaytracedLighting regardless of a RealTimeRenderer request.)",
+          "description": "Isaac Sim /rtx/rendermode, passed as a Kit command-line flag at boot. TREAT AS A LEGACY NO-OP: every observed boot renders RaytracedLighting whatever this says (verified 2026-07-09 by probing the live carb setting, and again 2026-07-27 from the repo A side, where RenderCfg.carb_settings provably CANNOT set this key at all \u2014 the experience file fixes it at boot and the RTX Hydra delegate owns it thereafter). 'RealTimeRenderer' is not a rasterizer and is not a valid value; it survives only as a backward-compatible default. The renderer knob that DOES take effect is repo A's RenderCfg.rendering_mode (performance/balanced/quality), pinned to 'balanced' in nett_env_cfg and deliberately not exposed here \u2014 changing it changes the observation. See isaac/CHAMBER_LIGHTING_STATE.md \u00a74.",
           "type": "string",
-          "enum": ["RealTimeRenderer", "RaytracedLighting", "PathTracing", ""],
+          "enum": [
+            "RealTimeRenderer",
+            "RaytracedLighting",
+            "PathTracing",
+            ""
+          ],
           "default": "RealTimeRenderer"
-        },
-        "lighting_mode": {
-          "description": "Chamber lighting model. emissive = monitors are sampled emissive area lights (ray-traced, Monte-Carlo direct lighting). rectlight = analytic RectLights baked into chamber_rectlight.usdc (closed-form, no MC light sampling).",
-          "type": "string",
-          "enum": ["emissive", "rectlight"],
-          "default": "emissive"
         },
         "tracemalloc_interval": {
           "description": "Debug: take a Python heap snapshot every N simulation steps and log the top allocators to stdout. 0 = disabled. Useful for diagnosing per-step memory growth; negligible overhead when disabled.",
@@ -211,58 +491,150 @@
         }
       },
       "anyOf": [
-        { "required": ["experiment"] },
-        { "required": ["design_sheet", "media_root"] }
+        {
+          "required": [
+            "experiment"
+          ]
+        },
+        {
+          "required": [
+            "design_sheet",
+            "media_root"
+          ]
+        }
       ],
       "additionalProperties": false
     },
     "episodes": {
       "type": "object",
       "properties": {
-        "train": { "type": "integer", "minimum": 0, "default": 5000 },
-        "test":  { "type": "integer", "minimum": 0, "default": 100 },
-        "record": { "type": "integer", "minimum": 0, "default": 0 }
+        "train": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 5000
+        },
+        "test": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 100
+        },
+        "record": {
+          "type": "integer",
+          "minimum": 0,
+          "default": 0
+        }
       },
       "additionalProperties": false
     },
-    "steps_per_episode": { "type": "integer", "minimum": 1, "default": 200 },
-    "num_brains":        { "type": "integer", "minimum": 1, "default": 1 },
-    "max_parallel_envs": { "description": "Cap for total vectorized env rows per condition-task. An integer is an upper bound (task_memory: auto may search downward from it); null uses the recipe's preferred count. \"auto\" (requires task_memory: auto) VERIFIES the recipe's count against measured VRAM and backs off on a smaller GPU -- it never raises training's num_envs, which is load-bearing for learning -- and additionally measures how wide the TEST phase can run, since test only replays a fixed schedule. Resolved integers are written back to the output config.yaml.",
-                           "oneOf": [
-                             { "type": "integer", "minimum": 1 },
-                             { "type": "string", "enum": ["auto"] },
-                             { "type": "null" }
-                           ],
-                           "default": null },
-    "brain_id_offset":   { "type": "integer", "minimum": 0, "default": 0 },
-    "eval_freq":         { "type": ["integer", "null"], "minimum": 1, "default": null },
-    "task_memory":       { "description": "GB per task; \"auto\" runs dry-run profiling to estimate.",
-                           "oneOf": [
-                             { "type": "number", "minimum": 0 },
-                             { "type": "string", "enum": ["auto"] }
-                           ],
-                           "default": "auto" }
+    "steps_per_episode": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 200
+    },
+    "num_brains": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    },
+    "max_parallel_envs": {
+      "description": "Cap for total vectorized env rows per condition-task. An integer is an upper bound (task_memory: auto may search downward from it); null uses the recipe's preferred count. \"auto\" (requires task_memory: auto) VERIFIES the recipe's count against measured VRAM and backs off on a smaller GPU -- it never raises training's num_envs, which is load-bearing for learning -- and additionally measures how wide the TEST phase can run, since test only replays a fixed schedule. Resolved integers are written back to the output config.yaml.",
+      "oneOf": [
+        {
+          "type": "integer",
+          "minimum": 1
+        },
+        {
+          "type": "string",
+          "enum": [
+            "auto"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "resolved_test_num_envs": {
+      "description": "OUTPUT-ONLY, written into the emitted config.yaml -- the per-condition test-phase num_envs that was actually resolved. Declared here because nett.py writes it into config.yaml so that snapshot 're-runs identically on another machine' (env0's render depends on num_envs: #4431 brightness, #488 distortion), and with additionalProperties:false an undeclared key made the emitted config FAIL its own schema -- i.e. NETT produced configs it could not re-ingest. Its siblings max_parallel_envs and task_memory were already declared; this one was missed when it was added (fixed 2026-07-28, caught by e2e test_config_yaml_round_trips_back_into_NETT the first time that test ever ran). Null when no test phase was resolved.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
+    },
+    "brain_id_offset": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "eval_freq": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "default": null
+    },
+    "task_memory": {
+      "description": "GB per task; \"auto\" runs dry-run profiling to estimate.",
+      "oneOf": [
+        {
+          "type": "number",
+          "minimum": 0
+        },
+        {
+          "type": "string",
+          "enum": [
+            "auto"
+          ]
+        }
+      ],
+      "default": "auto"
+    }
   },
   "patternProperties": {
-    "^\\$": { "type": "string" }
+    "^\\$": {
+      "type": "string"
+    }
   },
   "$defs": {
     "recordingSection": {
       "description": "Per-camera recording config. Each phase key (train/test/record) holds an episode selector. Omitting a phase records nothing for that phase; omitting the whole camera block records nothing for that camera. Selector formats: slice string 'start:stop:step' (Python-slice semantics, '0:5' = episodes 0..4); integer N = episode N only; integer list = those exact episode indices; null = every episode in that phase.",
       "type": "object",
       "properties": {
-        "train":  { "$ref": "#/$defs/episodeSelector" },
-        "test":   { "$ref": "#/$defs/episodeSelector" },
-        "record": { "$ref": "#/$defs/episodeSelector" }
+        "train": {
+          "$ref": "#/$defs/episodeSelector"
+        },
+        "test": {
+          "$ref": "#/$defs/episodeSelector"
+        },
+        "record": {
+          "$ref": "#/$defs/episodeSelector"
+        }
       },
       "additionalProperties": false,
       "default": {}
     },
     "episodeSelector": {
-      "type": ["string", "integer", "array", "null"],
-      "items": { "type": "integer", "minimum": 0 }
+      "type": [
+        "string",
+        "integer",
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "integer",
+        "minimum": 0
+      }
     }
   },
-  "required": ["name", "environment"],
+  "required": [
+    "name",
+    "environment"
+  ],
   "additionalProperties": false
 }
