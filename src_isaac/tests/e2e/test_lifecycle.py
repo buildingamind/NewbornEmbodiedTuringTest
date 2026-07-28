@@ -34,6 +34,7 @@ pytestmark = pytest.mark.e2e_isaac
 def _minimal_task(tmp_path: Path):
     """Build a Task that the parent can construct without importing Isaac."""
     from nett_skrl.brain import Brain
+    from nett_skrl import Body
     from nett_skrl.environment import Environment
     from nett_skrl.runtime.task import Task
 
@@ -53,7 +54,10 @@ def _minimal_task(tmp_path: Path):
     )
     return Task(
         brain=brain,
-        wrappers=(),
+        # Was `wrappers=()`. Task now takes a Body, which OWNS the wrapper list;
+        # Body() with no args is the faithful translation of "no wrappers".
+        # (Fixed 2026-07-27 — the rename happened while this whole tree was dormant.)
+        body=Body(),
         env=env,
         condition="Object1",
         output_dir=tmp_path,
@@ -154,11 +158,19 @@ class _FakeProcess:
         self.args = args
         self.daemon = daemon
         self.exitcode = exitcode
+        # ``task_runner`` hands the child to the orphan reaper (`reaper.adopt(p.pid)`),
+        # so the double needs a pid like the real Process. A fixed sentinel is enough:
+        # nothing here is ever signalled. (Added 2026-07-27 — the reaper landed while
+        # this whole tree was dormant, and no run existed to notice the stub had
+        # fallen behind the interface it stands in for.)
+        self.pid = 424242
 
     def start(self) -> None:
         pass
 
-    def join(self) -> None:
+    def join(self, timeout=None) -> None:
+        # The reaper joins with a timeout; the real Process accepts one and the
+        # double must too. It exits instantly, so the value is never used.
         pass
 
 

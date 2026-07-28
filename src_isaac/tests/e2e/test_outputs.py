@@ -56,7 +56,15 @@ def shared_run_output(tmp_path_factory) -> Path:
 
     from nett_skrl import NETT
 
-    NETT([str(cfg_path)]).run(output_path=str(out), verbose=False)
+    # ★ devices=[0] IS LOAD-BEARING. This fixture builds its own run instead of using
+    # conftest's `run_nett`, so it needs the same pin: without it nett.py
+    # `set_device(most_free_gpu)` picks the most-free PHYSICAL gpu (pynvml ignores
+    # CUDA_VISIBLE_DEVICES) and Kit's usdrt scenegraph supports ONLY cuda:0 -- the run
+    # then HANGS at the Fabric XFormPrimView with no error. Measured 2026-07-28: wedged
+    # 6+ min here with GPU0 busy, while the same work completes in ~110s pinned.
+    # ⚠ IF YOU ADD ANOTHER FIXTURE THAT CALLS NETT DIRECTLY, IT NEEDS THIS TOO -- that is
+    # exactly how this one was missed when conftest's run_nett was pinned.
+    NETT([str(cfg_path)]).run(output_path=str(out), devices=[0], verbose=False)
     return out / cfg["name"]
 
 
@@ -114,4 +122,19 @@ def test_csv_columns_match_unity_log_channel_header(shared_run_output):
     for path in csv_paths:
         with path.open() as f:
             header = next(csv.reader(f))
-        assert header == UNITY_CSV_HEADER, f"{path.name} header drift: {header}"
+        # ``brain_id`` was APPENDED to LogChannel's header for multi-brain runs, and the
+        # append position is the contract, not an accident: repoA log_channel.py says
+        # "Appended, not prepended: existing consumers index these columns by position,
+        # so brain_id goes last to keep env_id at 0, step at 2, etc.", and repoB's
+        # analysis reads `row.get("brain_id", row["env_id"])` so pre-brain_id CSVs still
+        # parse. This test predated the column and asserted exact equality (2026-07-28).
+        #
+        # Split rather than just appending it to UNITY_CSV_HEADER: the Unity-parity
+        # requirement is that those columns keep their ORDER AND POSITIONS, which a
+        # single equality against an extended list would no longer state. Checked this
+        # way, prepending brain_id -- the change the repoA comment warns against -- still
+        # fails, while a legitimate append passes.
+        assert header[:len(UNITY_CSV_HEADER)] == UNITY_CSV_HEADER, \
+            f"{path.name} Unity column drift: {header}"
+        assert header[len(UNITY_CSV_HEADER):] == ["brain_id"], \
+            f"{path.name} unexpected trailing columns: {header[len(UNITY_CSV_HEADER):]}"

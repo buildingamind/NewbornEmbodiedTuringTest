@@ -8,16 +8,29 @@ from pathlib import Path
 
 import pytest
 
+from _repo_paths import WORKSPACE
+
 from nett_skrl.environment.design import (
     get_experiment_design,
     validate_conditions,
 )
 
 
+#: The real binding design sheet. ⚠ THIS DEFAULT USED TO BE THE LITERAL PLACEHOLDER
+#: ``/path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv``
+#: — a path that can never exist, so both tests below skipped ALWAYS and on every host,
+#: reporting the honest-sounding "binding.csv not available" while never once running
+#: (fixed 2026-07-27; they pass against the real sheet). ``/path/to/...`` is this project's
+#: convention for DOCS, where a reader substitutes their own path. It must never be the
+#: default in code that decides whether a test runs.
+#:
+#: Resolution mirrors ``_repo_paths``: an env override, else a workspace-relative default.
+#: The sheet lives with the stimulus videos, NOT inside either repository — it is
+#: experiment data, and neither repo ships one.
 _BINDING_CSV = Path(
     os.environ.get(
         "NETT_BINDING_CSV",
-        "/path/to/NewbornEmbodiedTuringTest_Private/isaac_lab/assets/design_sheets/binding.csv",
+        str(WORKSPACE / "videos" / "binding" / "DesignSheet_Binding.csv"),
     )
 )
 
@@ -26,13 +39,18 @@ def _has_binding() -> bool:
     return _BINDING_CSV.exists()
 
 
-@pytest.mark.skipif(not _has_binding(), reason="binding.csv not available")
+#: Name the path that was actually looked for. "binding.csv not available" gave a reader
+#: no way to tell a missing file from a wrong default — which is how the bug above hid.
+_NO_BINDING = f"design sheet not found at {_BINDING_CSV} (set $NETT_BINDING_CSV)"
+
+
+@pytest.mark.skipif(not _has_binding(), reason=_NO_BINDING)
 def test_binding_design_has_two_imprint_conditions():
     design = get_experiment_design(_BINDING_CSV)
     assert set(design) == {"Object1", "Object2"}
 
 
-@pytest.mark.skipif(not _has_binding(), reason="binding.csv not available")
+@pytest.mark.skipif(not _has_binding(), reason=_NO_BINDING)
 def test_binding_design_test_row_counts_match():
     design = get_experiment_design(_BINDING_CSV)
     # Both conditions have the same number of test rows in binding.csv.

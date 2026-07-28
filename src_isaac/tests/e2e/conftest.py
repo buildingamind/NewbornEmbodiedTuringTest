@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 from typing import Callable
 
@@ -17,14 +18,42 @@ import pytest
 import yaml
 
 
-from _repo_paths import repo_a_root
+from _repo_paths import WORKSPACE, repo_a_root
 
 # $NETT_REPO_A overrides the sibling default; `_isaac_missing` below already
 # auto-skips the tree when the assets it points at are absent.
 PRIVATE_ROOT = repo_a_root()
-DESIGN_SHEET_MINIMAL = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets" / "binding_minimal.csv"
-DESIGN_SHEET_FULL = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets" / "binding.csv"
-MEDIA_ROOT = PRIVATE_ROOT / "isaac_lab" / "assets" / "videos"
+
+# ⚠ UNTIL 2026-07-27 THESE DEFAULTS HAD NEVER RESOLVED ON ANY HOST, so the whole e2e tree
+# auto-skipped with an accurate-but-terminal reason from the day it was written — the first
+# time it ever executed was 2026-07-27, and it was rotted in three places. Two assets, two
+# different homes, and the distinction is deliberate:
+#
+#   * binding_minimal.csv is a purpose-built TEST FIXTURE (Object1, two test rows). It is
+#     vendored in repoA at assets/design_sheets/ so the smoke tests resolve with NO env var.
+#   * The FULL sheet is EXPERIMENT DATA. Its real name is DesignSheet_Binding.csv and it
+#     lives with the stimuli it references, at <workspace>/videos/binding/ — outside both
+#     repositories, because the .mov clips it names are far too large to vendor.
+#     `binding.csv` was only ever an alias for it in this file; no such file has ever
+#     existed. Defaulting to the real path keeps ONE source of truth: a vendored copy of an
+#     experiment design would drift from the sheet the runs actually use, silently.
+#
+# Overrides, for a host that stores them elsewhere:
+#   NETT_DESIGN_SHEET_MINIMAL / NETT_DESIGN_SHEET_FULL / NETT_MEDIA_ROOT
+#
+# MEDIA_ROOT still has no working default for the same size reason — set NETT_MEDIA_ROOT to
+# <workspace>/videos/binding/videos. Once it is set these become REAL training runs: minutes,
+# not seconds. Do not set it inside a pre-push hook without knowing that.
+def _asset(env_var: str, default: Path) -> Path:
+    override = os.environ.get(env_var)
+    return Path(override) if override else default
+
+
+_DS = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets"
+_VIDEOS = WORKSPACE / "videos" / "binding"
+DESIGN_SHEET_MINIMAL = _asset("NETT_DESIGN_SHEET_MINIMAL", _DS / "binding_minimal.csv")
+DESIGN_SHEET_FULL = _asset("NETT_DESIGN_SHEET_FULL", _VIDEOS / "DesignSheet_Binding.csv")
+MEDIA_ROOT = _asset("NETT_MEDIA_ROOT", PRIVATE_ROOT / "isaac_lab" / "assets" / "videos")
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
 GOLDEN_PATH = BENCHMARKS_DIR / "golden.json"
 
@@ -154,7 +183,24 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # Isaac Sim imports for non-e2e test runs.
         from nett_skrl import NETT
 
-        NETT([str(cfg_path)]).run(output_path=str(e2e_output_dir), verbose=False)
+        # ★ devices=[0] IS LOAD-BEARING, NOT TIDINESS (added 2026-07-27 after this tree
+        # wedged for 26-71 min per test). Without it, nett.py `set_device(most_free_gpu)`
+        # picks the most-free PHYSICAL gpu via pynvml -- which IGNORES
+        # CUDA_VISIBLE_DEVICES -- and Kit's usdrt scenegraph supports ONLY cuda:0:
+        #   "UsdStage::SelectPrims: GPU 3 requested. GPUs other than cuda:0 are not
+        #    currently supported"
+        # The run then HANGS at the Fabric XFormPrimView with no error, indefinitely.
+        # ⚠ IT IS HOST-STATE DEPENDENT, which is why this tree could pass for months and
+        # then wedge: the picker only strays off GPU0 when GPU0 is the busier card.
+        # This is the pin the rest of the repo already uses -- examples/campaign_train.py
+        # passes devices=[device], and examples/_smoke_pin_launch.py calls the
+        # CUDA_VISIBLE_DEVICES=<phys> + devices=[0] combination "USD-safe". To aim the
+        # tests at a specific physical GPU, set CUDA_VISIBLE_DEVICES in the SHELL: the
+        # single visible card re-indexes to cuda:0 and this pin still holds.
+        # MEASURED: the same workload wedges >26 min unpinned, and COMPLETES IN 110s here.
+        NETT([str(cfg_path)]).run(
+            output_path=str(e2e_output_dir), devices=[0], verbose=False
+        )
         return e2e_output_dir / cfg["name"]
 
     return _runner

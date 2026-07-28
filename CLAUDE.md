@@ -40,3 +40,13 @@ PYTHONPATH=.:../../NewbornEmbodiedTuringTest_Private/isaac_lab/source \
 (Use the real venv path from `../blueprint.md`.) Tests that import `pxr` require a
 Kit-booting driver — that is a harness constraint, not a broken test; see the
 blueprint.
+
+⚠ A plain `pytest tests` reports `542 passed, 1 skipped, 23 deselected` — and the
+deselected 23 are the whole `tests/e2e/` tree, which had **never run on any host** until
+2026-07-27 because its design sheet and media root resolve to paths that do not exist in
+repoA. Point `NETT_DESIGN_SHEET_MINIMAL` / `NETT_MEDIA_ROOT` at `<workspace>/videos/binding/`
+to actually run them. The single remaining skip line is `optuna`, and it stands for 22
+tests, all of which pass when optuna is installed.
+
+`src_isaac/scripts/install_git_hooks.sh` installs a `pre-push` hook that runs both groups
+and blocks the push on failure. Full detail: `src_isaac/docs/development.md`.

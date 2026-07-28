@@ -118,7 +118,7 @@ def test_train_throughput_steps_per_second(tmp_path, golden, update_golden):
     )
 
     t0 = time.monotonic()
-    NETT([str(cfg_path)]).run(output_path=str(tmp_path), verbose=False)
+    NETT([str(cfg_path)]).run(output_path=str(tmp_path), devices=[0], verbose=False)
     elapsed = time.monotonic() - t0
     timing = _assert_train_artifacts(tmp_path / cfg["name"], expected_brains=cfg["num_brains"])
 
@@ -172,7 +172,7 @@ def test_train_peak_vram_under_ceiling(tmp_path, golden, update_golden):
     from nett_skrl import NETT
 
     with _GpuPoller() as poller:
-        NETT([str(cfg_path)]).run(output_path=str(tmp_path), verbose=False)
+        NETT([str(cfg_path)]).run(output_path=str(tmp_path), devices=[0], verbose=False)
 
     delta_mb = max(0, poller.peak_mb - poller.start_mb)
     print(f"[perf] train_peak_vram: delta={delta_mb} MB (start={poller.start_mb}, peak={poller.peak_mb})")
@@ -210,7 +210,7 @@ def test_train_smoke_convergence_signal(tmp_path, golden, update_golden):
 
     from nett_skrl import NETT
 
-    NETT([str(cfg_path)]).run(output_path=str(tmp_path), verbose=False)
+    NETT([str(cfg_path)]).run(output_path=str(tmp_path), devices=[0], verbose=False)
 
     try:
         from tensorboard.backend.event_processing.event_accumulator import EventAccumulator

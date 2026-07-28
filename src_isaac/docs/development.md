@@ -18,13 +18,76 @@ cross-checks that path against the `nett_isaac` on `PYTHONPATH`, so set
 `NETT_REPO_A` to match it, or run from the primary checkouts.
 
 `optuna` is an optional dependency; its test module skips when it is absent.
-No `--ignore` flags are needed.
+No `--ignore` flags are needed. ⚠ That single SKIPPED line stands for **22 tests**
+(`importorskip` at module scope collapses the whole file into one), and all 22 pass when
+optuna is installed — verified 2026-07-27. One skip line is not one test.
 
 Current expected result from the primary checkouts:
 
 ```text
-550 passed, 3 skipped, 23 deselected
+542 passed, 1 skipped, 23 deselected
 ```
+
+## The 23 deselected tests — read this before trusting a green run
+
+`addopts` deselects everything marked `e2e_isaac` / `e2e_perf`, so a plain `pytest` run
+does **not** cover `tests/e2e/`. Run it with:
+
+```bash
+pytest src_isaac/tests/e2e -m "e2e_isaac or e2e_perf"
+```
+
+⚠ **They will SKIP unless you point them at real stimuli.** `tests/e2e/conftest.py`
+resolves its design sheet and media root under repoA's `assets/`, and neither has ever
+existed there — the sheets and `.mov` files are experiment data living at
+`<workspace>/videos/binding/`. Override per asset:
+
+```bash
+NETT_DESIGN_SHEET_MINIMAL=<workspace>/videos/binding/DesignSheet_Binding.csv \
+NETT_MEDIA_ROOT=<workspace>/videos/binding/videos \
+  pytest src_isaac/tests/e2e -m "e2e_isaac"
+```
+
+The skip is honest — it names the path it wanted — but it is terminal, so this tree had
+**never once run** until 2026-07-28. `binding_minimal.csv` is now committed under repoA
+`assets/design_sheets/`, so only `NETT_MEDIA_ROOT` is still needed. Running it for the
+first time surfaced six defects in three classes:
+
+* **interface drift** — `Task(wrappers=...)` had become `Task(body=Body(...))`, and the
+  `_FakeProcess` double had fallen behind the real `Process` twice (no `.pid` for
+  `reaper.adopt`, no `timeout=` on `join`);
+* **stale expectations** — the train CSV assertion predated the `train_step_logging`
+  default flipping to False, and the CSV header assertion predated the appended
+  `brain_id` column;
+* **a real product defect** — the emitted `config.yaml` carried `resolved_test_num_envs`,
+  which `schema.json` rejected under `additionalProperties: false`. NETT was writing
+  configs it could not re-ingest, breaking the "re-runs identically on another machine"
+  property `nett.py` explicitly claims. Fixed in the schema, not the test.
+
+★★ **THE PIN IS THE ONE THAT MATTERS.** Every `NETT(...).run()` in this tree passes
+`devices=[0]`. Without it `nett.py` `set_device(most_free_gpu)` picks the most-free
+PHYSICAL gpu — pynvml ignores `CUDA_VISIBLE_DEVICES` — and Kit's usdrt scenegraph supports
+**only cuda:0**, so the run HANGS at the Fabric XFormPrimView with no error. Measured:
+26-71 min wedged unpinned, ~110s pinned. ⚠ It is HOST-STATE DEPENDENT — the picker only
+strays off GPU0 when GPU0 is busier — which is why this tree could pass for months and
+then wedge. If you add a fixture that calls `NETT` directly, it needs the pin too; that is
+exactly how `test_outputs.py`'s own fixture was missed. This mirrors what the rest of the
+repo already does (`campaign_train.py` passes `devices=[device]`, and
+`examples/_smoke_pin_launch.py` calls `CUDA_VISIBLE_DEVICES=<phys>` + `devices=[0]`
+"USD-safe"). To aim the tests at a specific card, set `CUDA_VISIBLE_DEVICES` in the shell.
+
+Current: **20 passed** (the 3 `e2e_perf` benchmarks are separate — they write
+`benchmarks/golden.json`). Expect minutes, not seconds.
+
+## Pre-push hook
+
+There is no CI. `src_isaac/scripts/install_git_hooks.sh` points `core.hooksPath` at
+`src_isaac/scripts/hooks/`, whose `pre-push` runs the unit suite and the e2e tree and
+blocks the push on failure (~43 s today, since e2e skips). It sets `PYTHONPATH` and
+`NETT_REPO_A` correctly for you — note `NETT_REPO_A` must be the repo **root**, the
+directory *containing* `isaac_lab/`; one level too deep produces 15 "expected source file
+missing" failures that look like broken wiring rather than a bad path.
+Bypass: `NETT_SKIP_HOOKS=1 git push`; skip only e2e: `NETT_SKIP_E2E=1 git push`.
 
 Run a smoke training job:
 
