@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+# Block a push whose tests do not pass.
+#
+# WHY A HOOK. There is no CI in this repo, so "run the suite" is a command someone has to
+# remember. In the sibling repoA that failed: three chamber tests sat RED for weeks because
+# nothing ever ran them. This repo had no hook at all until 2026-07-27, which made it the
+# remaining half of that same gap.
+#
+# Install with:  scripts/install_git_hooks.sh
+# Bypass once:   NETT_SKIP_HOOKS=1 git push        (or git push --no-verify)
+# Skip e2e only: NETT_SKIP_E2E=1 git push          (unit suite still runs)
+set -uo pipefail
+
+[ -n "${NETT_SKIP_HOOKS:-}" ] && { echo "pre-push: skipped (NETT_SKIP_HOOKS)"; exit 0; }
+
+ROOT="$(git rev-parse --show-toplevel)"
+SRC="$ROOT/src_isaac"
+PY="${NETT_PYTHON:-/home/zlaborde/code/.venv/nett-private/bin/python}"
+
+# ⚠ TWO PATHS, AND THEY MEAN DIFFERENT THINGS. Getting either wrong produces failures that
+# look like real defects:
+#   * PYTHONPATH needs repoA's `source/` so `nett_isaac` imports.
+#   * NETT_REPO_A must be the repoA REPOSITORY ROOT -- the directory CONTAINING isaac_lab/,
+#     NOT isaac_lab/ itself. Point it one level too deep and tests/_repo_paths.py builds
+#     `.../isaac_lab/isaac_lab/...` and 15 cross-repo tests fail with "expected source file
+#     missing", which reads as a broken wiring rather than a bad env var. (Measured
+#     2026-07-27 -- this exact mistake.)
+REPO_A="${NETT_REPO_A:-$(cd "$ROOT/.." && pwd)/NewbornEmbodiedTuringTest_Private}"
+if [ ! -d "$REPO_A/isaac_lab" ]; then
+  echo "pre-push: repoA not found at $REPO_A (needs to contain isaac_lab/) -- set NETT_REPO_A" >&2
+  exit 1
+fi
+if [ ! -x "$PY" ]; then
+  echo "pre-push: python not found at $PY -- set NETT_PYTHON" >&2
+  exit 1
+fi
+export NETT_REPO_A="$REPO_A"
+export PYTHONPATH="$SRC:$REPO_A/isaac_lab/source"
+
+cd "$SRC" || exit 1
+
+echo "pre-push: unit suite ..."
+if ! "$PY" -m pytest tests -q >/tmp/nett_repob_prepush.log 2>&1; then
+  grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush.log | head -15 >&2
+  grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush.log | tail -1 >&2
+  echo "pre-push: BLOCKED -- unit tests failed (full log /tmp/nett_repob_prepush.log)" >&2
+  exit 1
+fi
+grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush.log | tail -1
+
+# The e2e tree (markers e2e_isaac / e2e_perf) is deselected by addopts, so the run above
+# does NOT cover it. It is included here rather than left out, because "excluded by default
+# and therefore never run" is exactly how the repoA tests rotted.
+#
+# ⚠ AS OF 2026-07-27 ALL 23 e2e TESTS SKIP ON THIS HOST -- tests/e2e/conftest.py resolves its
+# design sheet and media root under repoA's assets/, and neither exists there; the real ones
+# live in <workspace>/videos/binding/. The gate is honest (it names the missing path), but
+# these tests have never actually run here. Running them costs ~4s while they skip; if the
+# prerequisites ever appear they become real training runs and this hook will get slow --
+# that is the point at which to reach for NETT_SKIP_E2E, not before.
+if [ -z "${NETT_SKIP_E2E:-}" ]; then
+  echo "pre-push: e2e tree (skips today -- see the note in this hook) ..."
+  if ! "$PY" -m pytest tests/e2e -q -m "e2e_isaac or e2e_perf" -rs \
+          >/tmp/nett_repob_prepush_e2e.log 2>&1; then
+    grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush_e2e.log | head -15 >&2
+    grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush_e2e.log | tail -1 >&2
+    echo "pre-push: BLOCKED -- e2e tests failed (full log /tmp/nett_repob_prepush_e2e.log)" >&2
+    exit 1
+  fi
+  tail -1 /tmp/nett_repob_prepush_e2e.log
+fi
+
+echo "pre-push: OK"
+exit 0
