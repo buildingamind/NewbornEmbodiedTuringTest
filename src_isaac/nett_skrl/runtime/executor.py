@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
+import multiprocessing as mp
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
+
+def _mute_stdout() -> None:
+    """Silence a worker's stdout.
+
+    MODULE-LEVEL ON PURPOSE. ``spawn`` pickles the initializer to send it to each worker,
+    and a closure defined inside ``__init__`` is not picklable -- "Can't pickle local
+    object 'Executor.__init__.<locals>.mute'". It worked as a closure only because the pool
+    used to fork, which inherits the function object instead of sending it.
+    """
+    sys.stdout = open(os.devnull, "w")
+
 
 class Executor(ProcessPoolExecutor):
     """Process pool sized to the work, not to the machine.
@@ -35,14 +47,29 @@ class Executor(ProcessPoolExecutor):
     """
 
     def __init__(self, verbose: bool, max_tasks: int | None = None) -> None:
-        def mute() -> None:
-            sys.stdout = open(os.devnull, "w")
-
         cores = os.cpu_count() or 1
         workers = cores if max_tasks is None else min(max(1, int(max_tasks)) + 1, cores)
+        # ★ FIX B (2026-07-28): SPAWN, not the Linux default fork.
+        #
+        # Workers here call `validate_tasklist` -> `Environment.load` -> `AppLauncher`, i.e.
+        # they boot Kit and touch CUDA. Doing that in a FORKED child is unsafe in general
+        # (CUDA contexts do not survive fork) and was concretely fatal: the fork inherits
+        # the parent's argv, and under `python -m pytest` Kit died on it --
+        # "Ill formed parameter: -m" then a segfault, which killed a POOL WORKER and so
+        # broke the whole pool (BrokenProcessPool), failing every task rather than one.
+        #
+        # `_spawn_mode_subprocess` already chose spawn deliberately for exactly this
+        # reason; the pool was the remaining fork path, and it was the one running Kit
+        # first. Aligning them removes the asymmetry rather than papering over it.
+        #
+        # COST, accepted: spawn re-imports the module in each worker and requires picklable
+        # arguments. Task objects already cross a spawn boundary in
+        # `_spawn_mode_subprocess`, so they qualify. Worker startup is slower, which is
+        # noise next to a Kit boot.
         super().__init__(
             max_workers=workers,
-            initializer=None if verbose else mute,
+            initializer=None if verbose else _mute_stdout,
+            mp_context=mp.get_context("spawn"),
         )
 
     def __enter__(self) -> "Executor":
