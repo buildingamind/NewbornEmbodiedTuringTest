@@ -22,6 +22,7 @@ import torch
 from nett_skrl.recording import RecordingCfg
 
 from . import crash_guard
+from .device import visible_device_scope
 from .parallel_envs import select_test_num_envs
 from .reap import (
     DeviceLostError,
@@ -130,53 +131,6 @@ def _copy_final_checkpoints_to_global_step(task: Task, step: int) -> None:
         shutil.copy2(src, dst)
 
 
-@contextlib.contextmanager
-def _visible_device_scope(device: int | None):
-    """Expose ONLY ``device`` to the child, so it indexes that GPU as ``cuda:0``.
-
-    ★ WHY THIS EXISTS. ``nett.py`` assigns each task the most-free PHYSICAL gpu (pynvml,
-    which IGNORES CUDA_VISIBLE_DEVICES). Kit's usdrt scenegraph supports ONLY ``cuda:0``:
-
-        UsdStage::SelectPrims: GPU 3 requested. GPUs other than cuda:0 are not
-        currently supported
-
-    Handed a non-zero device, torch accepts it, Kit does not, and the run HANGS at the
-    Fabric XFormPrimView with no error at all -- 26-71 min observed, indefinite in
-    principle. ⚠ It is HOST-STATE DEPENDENT: the picker only leaves GPU0 when GPU0 is the
-    busier card, so this lies dormant until someone else uses GPU0.
-
-    THE FIX IS THE REPO'S OWN "USD-SAFE" RECIPE (``examples/_smoke_pin_launch.py``,
-    ``examples/optuna_tune.py``): give the child ONE visible GPU so it re-indexes to
-    ``cuda:0``. ``optuna_tune`` also records the second reason to do it -- Isaac otherwise
-    "creates contexts (and a multi-GB allocation) on ALL visible GPUs ... even when
-    devices=[N] pins the primary compute".
-
-    ⚠ ``config.device`` STAYS PHYSICAL and is deliberately not rewritten. Five consumers
-    want the physical index because nvml/nvidia-smi ignore CUDA_VISIBLE_DEVICES entirely
-    (TaskReaper scoping and its ``--id=``, crash_guard.arm, MemoryManager.get_free_memory);
-    exactly one consumer wants the torch index, and that one reads the visibility we set
-    here (``environment.py``). Rewriting device to 0 would silently point the reaper and
-    the VRAM accounting at the wrong card.
-
-    Same mechanism and lifetime as ``TaskReaper.launch_scope``: spawn snapshots
-    ``os.environ`` at ``start()``, so set it around the spawn and restore straight after.
-    Safe to mutate here because each task owns its ProcessPoolExecutor worker -- this is
-    NOT the shared-parent-environ race ``optuna_tune`` warns about.
-    """
-    if device is None:
-        yield
-        return
-    previous = os.environ.get("CUDA_VISIBLE_DEVICES")
-    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(device))
-    try:
-        yield
-    finally:
-        if previous is None:
-            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
-        else:
-            os.environ["CUDA_VISIBLE_DEVICES"] = previous
-
-
 def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
     import multiprocessing as mp
 
@@ -194,7 +148,7 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
     # tracker would be born inside the scope, inherit the token, and be reaped as
     # if it were ours. The token is removed again as soon as start() returns, so
     # a later healthy spawn is never mis-attributed to this task.
-    with _visible_device_scope(task.config.device), reaper.launch_scope():
+    with visible_device_scope(task.config.device), reaper.launch_scope():
         p = ctx.Process(
             target=_run_single_mode, args=(task, mode, overrides), daemon=False
         )

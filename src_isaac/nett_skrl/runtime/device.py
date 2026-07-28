@@ -31,6 +31,7 @@ sites, one rule -- so the rule lives in one place and every consumer imports it.
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 
@@ -57,3 +58,32 @@ def torch_device_index(configured: int | None) -> int:
 def torch_device_str(configured: int | None) -> str:
     """``"cuda:N"`` using the index this process actually understands."""
     return f"cuda:{torch_device_index(configured)}"
+
+
+@contextlib.contextmanager
+def visible_device_scope(device: int | None):
+    """Expose ONLY ``device`` to a child process, so it indexes that GPU as ``cuda:0``.
+
+    ⚠ EVERY process that boots Kit must be started inside this scope. Kit's usdrt
+    scenegraph supports only ``cuda:0``; handed a physical index it errors
+    ("GPU 3 requested. GPUs other than cuda:0 are not currently supported") and the run
+    HANGS with no traceback. This has now been missed twice -- once for the mode
+    subprocesses, once for the validation subprocess added later -- so the scope lives
+    HERE, next to the index rule, rather than beside any single caller.
+
+    ``spawn`` snapshots ``os.environ`` at ``start()``, so wrap the ``start()`` call and the
+    parent's environment is restored immediately after. Safe because each task owns its
+    pool worker; this is not the shared-parent race ``optuna_tune`` warns about.
+    """
+    if device is None:
+        yield
+        return
+    previous = os.environ.get("CUDA_VISIBLE_DEVICES")
+    os.environ["CUDA_VISIBLE_DEVICES"] = str(int(device))
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop("CUDA_VISIBLE_DEVICES", None)
+        else:
+            os.environ["CUDA_VISIBLE_DEVICES"] = previous
