@@ -555,17 +555,6 @@
       ],
       "default": null
     },
-    "resolved_test_num_envs": {
-      "description": "OUTPUT-ONLY, written into the emitted config.yaml -- the per-condition test-phase num_envs that was actually resolved. Declared here because nett.py writes it into config.yaml so that snapshot 're-runs identically on another machine' (env0's render depends on num_envs: #4431 brightness, #488 distortion), and with additionalProperties:false an undeclared key made the emitted config FAIL its own schema -- i.e. NETT produced configs it could not re-ingest. Its siblings max_parallel_envs and task_memory were already declared; this one was missed when it was added (fixed 2026-07-28, caught by e2e test_config_yaml_round_trips_back_into_NETT the first time that test ever ran). Null when no test phase was resolved.",
-      "type": [
-        "object",
-        "null"
-      ],
-      "additionalProperties": {
-        "type": "integer",
-        "minimum": 1
-      }
-    },
     "brain_id_offset": {
       "type": "integer",
       "minimum": 0,
@@ -594,11 +583,22 @@
         }
       ],
       "default": "auto"
+    },
+    "resolved_test_num_envs": {
+      "description": "OUTPUT-ONLY (see `resolved_` note below): per-condition test-phase num_envs actually chosen. Null when no test phase ran.",
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": {
+        "type": "integer",
+        "minimum": 1
+      }
     }
   },
   "patternProperties": {
-    "^\\$": {
-      "type": "string"
+    "^resolved_": {
+      "description": "OUTPUT-ONLY snapshot fields. nett.py writes RESOLVED values into the emitted config.yaml so that snapshot re-runs identically on another machine (env0's render depends on num_envs: #4431 brightness, #488 distortion). They are NOT inputs -- setting one in a hand-written config has no effect; it is overwritten at resolve time. Matched by prefix so a NEW resolved_* field cannot silently make every emitted config fail its own schema, which is exactly what happened to resolved_test_num_envs (added without a schema entry; caught 2026-07-28 by the e2e round-trip test the first time it ever ran)."
     }
   },
   "$defs": {
