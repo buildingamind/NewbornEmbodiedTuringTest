@@ -41,11 +41,12 @@ PYTHONPATH=.:../../NewbornEmbodiedTuringTest_Private/isaac_lab/source \
 Kit-booting driver — that is a harness constraint, not a broken test; see the
 blueprint.
 
-Two packages the runtime does not need — `pytest` and `psutil` — are the `test` extra:
-`pip install -e 'src_isaac[test]'`. Without `psutil` the suite fails *collection*, not a
-test.
+Three packages the runtime does not need are the `test` extra —
+`pip install -e 'src_isaac[test]'`: `pytest`, `psutil` (without it the suite fails
+*collection*, not a test), and `pytest-xdist` (what lets the e2e tree run one worker per
+GPU).
 
-⚠ A plain `pytest tests` reports `582 passed, 23 deselected` (`581 passed, 1 skipped`
+⚠ A plain `pytest tests` reports `582 passed, 23 deselected` on this working tree — `577` on a clean checkout, since 5 come from an uncommitted `test_campaign_retest.py` (`581 passed, 1 skipped`
 without `optuna` — that one skip line stands for 22 tests). The deselected 23 are the whole
 `tests/e2e/` tree, which had **never run on any host** until 2026-07-27 because its design
 sheet and media root pointed at paths that did not exist. They resolve on their own now:

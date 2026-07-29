@@ -37,6 +37,11 @@ installed — without it, `581 passed, 1 skipped`):
 582 passed, 23 deselected
 ```
 
+⚠ That figure was measured on a tree that also held **uncommitted** work — a
+`tests/test_campaign_retest.py` contributing 5 tests. A clean checkout of the committed
+branch therefore reports **577**, not 582. Recount before treating a smaller number as a
+regression.
+
 ## The 23 deselected tests — read this before trusting a green run
 
 `addopts` deselects everything marked `e2e_isaac` / `e2e_perf`, so a plain `pytest` run
