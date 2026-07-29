@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from dataclasses import dataclass
@@ -14,6 +15,9 @@ from tqdm import tqdm
 
 from ..recording import RecordingCfg, RunRecorder
 from .env_wrappers import IntrinsicRewardEnvWrapper
+
+# Read once at import: evaluation action selection (see _collect_actions_for_eval).
+_EVAL_STOCHASTIC = os.environ.get("NETT_EVAL_STOCHASTIC", "0").strip().lower() in {"1", "true", "yes"}
 
 logger = logging.getLogger("nett.trainer")
 
@@ -224,7 +228,23 @@ class BrainTrainer:
             obs_i = observations[offset : offset + scope]
             state_i = states[offset : offset + scope] if states is not None else None
             action_i, outputs = agent.act(obs_i, state_i, timestep=timestep, timesteps=timesteps)
-            actions.append(outputs.get("mean_actions", action_i))
+            # ★ MEAN vs SAMPLED ACTION AT TEST -- this decides whether the evaluation can
+            # express preference STRENGTH at all (added 2026-07-29).
+            # The default takes the Gaussian policy's MEAN, discarding the sample. With
+            # the fixed test start pose (motor.reset_deterministic) and a deterministic
+            # env, that makes every episode of a condition a BIT-IDENTICAL REPLAY: the
+            # readout is binary (which wall), not graded. A weak-but-real preference is
+            # then reported as exactly chance -- measured 2026-07-29, shape conditions
+            # came out 46-50% with |side_preference| = 1.000 for 7/7 brains, while `rest`
+            # (a strong cue) came out 100%.
+            # Unity ML-Agents SAMPLES continuous actions at inference by default
+            # (deterministic inference is opt-in), so the original runs could express a
+            # graded preference. NETT_EVAL_STOCHASTIC=1 restores that behaviour.
+            # ⚠ Changing this changes the evaluation protocol and costs a re-baseline.
+            if _EVAL_STOCHASTIC:
+                actions.append(action_i)
+            else:
+                actions.append(outputs.get("mean_actions", action_i))
             offset += scope
         return torch.cat(actions, dim=0)
 
