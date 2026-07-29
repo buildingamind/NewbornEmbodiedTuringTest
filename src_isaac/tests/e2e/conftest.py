@@ -41,9 +41,14 @@ PRIVATE_ROOT = repo_a_root()
 # Overrides, for a host that stores them elsewhere:
 #   NETT_DESIGN_SHEET_MINIMAL / NETT_DESIGN_SHEET_FULL / NETT_MEDIA_ROOT
 #
-# MEDIA_ROOT still has no working default for the same size reason — set NETT_MEDIA_ROOT to
-# <workspace>/videos/binding/videos. Once it is set these become REAL training runs: minutes,
-# not seconds. Do not set it inside a pre-push hook without knowing that.
+# MEDIA_ROOT NOW HAS A WORKING DEFAULT (2026-07-28): repoA ships
+# isaac_lab/assets/videos/{O1_imprint.mov, White.mov} — 213 KB total — which is exactly the
+# pair binding_minimal.csv names, so DESIGN_SHEET_MINIMAL + MEDIA_ROOT resolve with no env
+# vars set. Before that both pointed at paths that never existed, and a missing clip is only
+# a logger.warning ("video preload skipped"), so these tests ran against BLANK MONITORS.
+# Point NETT_MEDIA_ROOT at <workspace>/videos/binding/videos to use the full binding
+# stimulus instead. ⚠ Either way these are REAL training runs: minutes, not seconds. Do not
+# set them inside a pre-push hook without knowing that.
 def _asset(env_var: str, default: Path) -> Path:
     override = os.environ.get(env_var)
     return Path(override) if override else default
