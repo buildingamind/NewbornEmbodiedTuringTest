@@ -1,6 +1,6 @@
 """Test-only replay of a completed campaign run from its saved checkpoint.
 
-Re-runs ONLY the deterministic test phase (episodes.train=0 -> modes=['test']) from a
+Re-runs ONLY the test phase (episodes.train=0 -> modes=['test']) from a
 run's saved config.yaml, so NETT loads the final checkpoint and produces the FULL
 test=N episodes/condition needed for a comparable score — no retraining. Same env
 count as the trained run, for score comparability (blueprint: env0 render depends on
@@ -63,10 +63,35 @@ def main() -> int:
     t0 = time.time()
     NETT(config).run(output_path=out_root, devices=[device], verbose=True)
     secs = time.time() - t0
+
+    # ★ RE-RUN THE ANALYSIS. Without this the retest rewrote test_*.csv and left
+    # analysis/summary.json describing the PREVIOUS run -- so anyone reading the summary
+    # after a retest saw the OLD numbers and concluded the retest had changed nothing.
+    # That happened on 2026-07-29: a stochastic-evaluation retest looked identical to the
+    # deterministic baseline in all eight conditions, and only the implausibility of exact
+    # 3-decimal agreement prompted a check of the file mtimes (CSV 10:30, summary 05:07).
+    # Same failure class as a stale golden.json: an artifact that silently describes a
+    # different run than the one just executed.
+    from nett_skrl.analysis import analyze, log_analysis_to_wandb
+    result = analyze(run_dir)
+    log_analysis_to_wandb(run_dir, result)
+
+    # Fail loudly if the summary is somehow still older than the data it summarises,
+    # rather than leaving a stale file for the next reader to trust.
+    summary = run_dir / "analysis" / "summary.json"
+    if summary.is_file():
+        newest_csv = max((f.stat().st_mtime for cond in run_dir.iterdir()
+                          if (cond / "logs").is_dir()
+                          for f in (cond / "logs").glob("test_*.csv")), default=0.0)
+        if summary.stat().st_mtime < newest_csv:
+            print(f"[retest] ERROR: {summary} is OLDER than the test CSVs it should "
+                  f"summarise -- the analysis did not take effect."); return 1
+
     (run_dir / "campaign_retest_timing.json").write_text(json.dumps(
         {"name": name, "test_eps": test_eps, "retest_secs": round(secs, 1),
+         "eval_stochastic": os.environ.get("NETT_EVAL_STOCHASTIC", "0"),
          "finished": datetime.now().isoformat()}, indent=2))
-    print(f"[retest] DONE {name} in {secs:.1f}s")
+    print(f"[retest] DONE {name} in {secs:.1f}s -> {result}")
     return 0
 
 
