@@ -20,7 +20,14 @@ import yaml
 from .conftest import E2E_DEVICE, MINIMAL_SMOKE_CFG
 
 
-pytestmark = pytest.mark.e2e_isaac
+# ⚠ xdist_group KEEPS THESE FOUR TESTS ON ONE WORKER, AND THAT IS A COST DECISION, NOT A
+# correctness one. They share `shared_run_output`, a MODULE-scoped fixture holding one real
+# train+test run. Under plain `--dist load` the four would scatter across four workers and
+# each would rebuild that fixture -- four full training runs to assert on one run's output,
+# which is slower than running them serially. The hook therefore uses `--dist loadgroup`,
+# so this file stays whole while every other e2e test distributes per-test.
+# If you add a module- or session-scoped fixture to another e2e file, mark it the same way.
+pytestmark = [pytest.mark.e2e_isaac, pytest.mark.xdist_group("outputs")]
 
 
 # Canonical Unity LogChannel header order (mirrors

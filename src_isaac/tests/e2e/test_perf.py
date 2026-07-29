@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 import shutil
 import subprocess
 import threading
@@ -49,6 +50,20 @@ from .conftest import (
 
 
 pytestmark = [pytest.mark.e2e_isaac, pytest.mark.e2e_perf]
+
+# ⚠⚠ A TIMING MEASUREMENT TAKEN UNDER CONTENTION IS NOT A MEASUREMENT. Under `pytest -n`
+# the other workers are running their own Isaac training on sibling GPUs, which moves this
+# number by more than the regression band -- and worse, `--update-golden` would then bake a
+# contended figure in as the new "optimum", permanently poisoning the baseline for every
+# later run. So refuse to run rather than report a number nobody should trust.
+# The rest of the tree parallelises freely; only these three cannot.
+if os.environ.get("PYTEST_XDIST_WORKER"):
+    pytest.skip(
+        "e2e_perf measures wall-clock throughput and VRAM, so it must own the machine: "
+        "run it serially (no -n), e.g. `pytest tests/e2e -m e2e_perf`. The pre-push hook "
+        "deliberately excludes e2e_perf for this reason -- see docs/development.md.",
+        allow_module_level=True,
+    )
 
 # How far below the recorded optimum throughput may drift before it is a regression.
 # Sized against measured run-to-run spread on this stack: the renderer alone moves
