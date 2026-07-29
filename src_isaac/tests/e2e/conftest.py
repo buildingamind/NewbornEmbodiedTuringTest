@@ -38,31 +38,114 @@ PRIVATE_ROOT = repo_a_root()
 #     existed. Defaulting to the real path keeps ONE source of truth: a vendored copy of an
 #     experiment design would drift from the sheet the runs actually use, silently.
 #
+# MEDIA_ROOT IS RESOLVED AGAINST THE SHEET, NOT PINNED TO ONE DIRECTORY (2026-07-29).
+# A media root is only "the right one" relative to a design sheet: it has to contain EVERY
+# clip that sheet names. Picking a fixed directory and hoping is what broke twice —
+#
+#   * pinned to a path that never existed → whole tree auto-skipped (fixed 2026-07-27);
+#   * then pinned to repoA's isaac_lab/assets/videos, on the belief that its shipped pair
+#     {O1_imprint.mov, White.mov} "is exactly the pair binding_minimal.csv names". It is
+#     not: the sheet's `1color` test row also names O1_1Ca_1.mov, which repoA does not
+#     ship. That was survivable while a missing clip was a logger.warning, i.e. while the
+#     tests rendered BLANK MONITORS and passed; repoA 400683cd made unresolvable media a
+#     hard error, at which point every test that reaches the test phase FAILS on a stock
+#     checkout. A green run and a red run for the same reason — hence resolve, don't pin.
+#
+# `_resolve_media_root` walks the candidates in order and returns the first that satisfies
+# the sheet, so the vendored fixture clips are still preferred when they are enough and the
+# workspace stimulus library is used when they are not. Nothing is downloaded or built; the
+# clips are experiment data far too large to vendor in full.
+#
 # Overrides, for a host that stores them elsewhere:
 #   NETT_DESIGN_SHEET_MINIMAL / NETT_DESIGN_SHEET_FULL / NETT_MEDIA_ROOT
-#
-# MEDIA_ROOT NOW HAS A WORKING DEFAULT (2026-07-28): repoA ships
-# isaac_lab/assets/videos/{O1_imprint.mov, White.mov} — 213 KB total — which is exactly the
-# pair binding_minimal.csv names, so DESIGN_SHEET_MINIMAL + MEDIA_ROOT resolve with no env
-# vars set. Before that both pointed at paths that never existed, and a missing clip is only
-# a logger.warning ("video preload skipped"), so these tests ran against BLANK MONITORS.
-# Point NETT_MEDIA_ROOT at <workspace>/videos/binding/videos to use the full binding
-# stimulus instead. ⚠ Either way these are REAL training runs: minutes, not seconds. Do not
-# set them inside a pre-push hook without knowing that.
+# NETT_MEDIA_ROOT is honoured verbatim and is NOT validated — an explicit path is a
+# deliberate choice, and silently overruling it would be worse than the error it causes.
+# ⚠ These are REAL training runs: minutes, not seconds. Do not set them inside a pre-push
+# hook without knowing that.
 def _asset(env_var: str, default: Path) -> Path:
     override = os.environ.get(env_var)
     return Path(override) if override else default
+
+
+def _sheet_clips(sheet: Path) -> set[str]:
+    """Every clip filename a design sheet references, or empty if unreadable.
+
+    Mirrors ``nett_isaac.condition_manager.ConditionManager.video_set`` — columns 6 and 7
+    (LeftMonitor / RightMonitor) of the 7-column row — but with the stdlib only, because
+    this module is imported during the plain unit run, where ``nett_isaac`` need not be
+    importable. Returning empty on any parse trouble makes the caller fall back to the
+    first candidate, i.e. to the previous behaviour, rather than fail collection.
+    """
+    import csv
+
+    try:
+        with sheet.open(newline="") as f:
+            rows = list(csv.reader(f))[1:]  # drop header
+    except OSError:
+        return set()
+    return {
+        cell.strip().strip('"').strip()
+        for row in rows
+        if len(row) >= 7
+        for cell in row[5:7]
+        if cell.strip()
+    }
+
+
+def _resolve_media_root(sheet: Path, candidates: tuple[Path, ...]) -> Path:
+    """First candidate holding every clip ``sheet`` names; else the first candidate.
+
+    The fallback is deliberate: when nothing satisfies the sheet, the tree should skip or
+    fail naming a real directory, not silently pick the least-wrong one.
+    """
+    clips = _sheet_clips(sheet)
+    if clips:
+        for root in candidates:
+            if all((root / clip).exists() for clip in clips):
+                return root
+    return candidates[0]
 
 
 _DS = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets"
 _VIDEOS = WORKSPACE / "videos" / "binding"
 DESIGN_SHEET_MINIMAL = _asset("NETT_DESIGN_SHEET_MINIMAL", _DS / "binding_minimal.csv")
 DESIGN_SHEET_FULL = _asset("NETT_DESIGN_SHEET_FULL", _VIDEOS / "DesignSheet_Binding.csv")
-MEDIA_ROOT = _asset("NETT_MEDIA_ROOT", PRIVATE_ROOT / "isaac_lab" / "assets" / "videos")
-#: Which PHYSICAL gpu the e2e tests pin to. Default 0 for deterministic placement; override
-#: when GPU0 is busy or dirty -- benchmarks in particular need an idle, clean card, and
-#: since 2026-07-28 the runtime pins each task itself so a non-zero device is usable.
-E2E_DEVICE = int(os.environ.get("NETT_E2E_DEVICE", "0"))
+#: Candidate media roots, most-vendored first: repoA's fixture clips, then the workspace
+#: stimulus library the experiment sheets actually reference.
+MEDIA_ROOTS = (PRIVATE_ROOT / "isaac_lab" / "assets" / "videos", _VIDEOS / "videos")
+MEDIA_ROOT = _asset("NETT_MEDIA_ROOT", _resolve_media_root(DESIGN_SHEET_MINIMAL, MEDIA_ROOTS))
+#: The full sheet names both imprint objects, so it needs its own resolution — the minimal
+#: fixture's root will not cover it. ``test_full_run`` swaps BOTH when it swaps the sheet.
+MEDIA_ROOT_FULL = _asset("NETT_MEDIA_ROOT", _resolve_media_root(DESIGN_SHEET_FULL, MEDIA_ROOTS))
+def _e2e_device() -> int:
+    """Which PHYSICAL gpu this process's runs pin to.
+
+    `$NETT_E2E_DEVICE` wins outright. Otherwise, under `pytest -n` each xdist worker takes
+    its OWN card, derived from `PYTEST_XDIST_WORKER` ("gw0" -> 0, "gw3" -> 3) modulo the
+    visible device count. That is what makes the tree parallel: every test here is a real
+    training run, so serialised on one card the 23 of them cost ~17 min, while one run per
+    GPU turns the wall clock into (tests / GPUs) rounds.
+
+    ⚠ ONE RUN PER CARD, NOT MORE. Do not raise `-n` above the GPU count expecting more
+    throughput: two Kit processes on one card contend for the same Vulkan/RTX queue, and
+    VRAM does not scale linearly. Serial (no xdist) still means GPU 0, unchanged.
+    """
+    explicit = os.environ.get("NETT_E2E_DEVICE")
+    if explicit:
+        return int(explicit)
+    worker = os.environ.get("PYTEST_XDIST_WORKER")  # set only under `-n`
+    if not worker or not worker.startswith("gw"):
+        return 0
+    try:
+        import torch
+        n = torch.cuda.device_count() or 1
+    except Exception:
+        n = 1
+    return int(worker[2:]) % n
+
+
+#: Resolved once at import; every `NETT(...).run()` in this tree passes it as devices=[...].
+E2E_DEVICE = _e2e_device()
 
 BENCHMARKS_DIR = Path(__file__).parent / "benchmarks"
 GOLDEN_PATH = BENCHMARKS_DIR / "golden.json"

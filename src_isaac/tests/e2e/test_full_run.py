@@ -32,7 +32,7 @@ from pathlib import Path
 
 import pytest
 
-from .conftest import E2E_DEVICE, DESIGN_SHEET_FULL
+from .conftest import E2E_DEVICE, DESIGN_SHEET_FULL, MEDIA_ROOT_FULL
 
 
 pytestmark = pytest.mark.e2e_isaac
@@ -134,6 +134,10 @@ def test_train_test_record_three_mode_pipeline(run_nett, e2e_smoke_cfg):
 def test_two_conditions_run_independently(run_nett, e2e_smoke_cfg):
     """Object1 and Object2 produce separate output trees, no cross-talk."""
     e2e_smoke_cfg["environment"]["design_sheet"] = str(DESIGN_SHEET_FULL)
+    # The media root travels WITH the sheet. Leaving the fixture's root in place here left
+    # the run pointed at a directory holding none of Object2's clips, which was invisible
+    # while missing media was a warning and is a hard error since repoA 400683cd.
+    e2e_smoke_cfg["environment"]["media_root"] = str(MEDIA_ROOT_FULL)
     e2e_smoke_cfg["environment"]["conditions"] = ["Object1", "Object2"]
     e2e_smoke_cfg["num_brains"] = 1
     e2e_smoke_cfg["episodes"] = {"train": 2}
