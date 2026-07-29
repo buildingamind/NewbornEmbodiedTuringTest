@@ -41,10 +41,27 @@ dependencies = [
     "jsonschema",
     "pyyaml",
     "tqdm",
+    # Runtime, not test-only: analysis/api.py reads tfevents through
+    # tensorboard.backend.event_processing to recover per-run reward curves, and the optuna
+    # tuner picks trials off those same event files. A run that trains fine but cannot be
+    # analysed is not a working install.
+    "tensorboard",
 ]
 
 [project.optional-dependencies]
 notebook = ["ipywidgets"]
+# What the SUITE needs and the package does not. Undeclared, these look like a broken
+# checkout rather than a missing install: `psutil` is imported at module scope by
+# tests/fault_injection.py, which tests/conftest.py imports, so a venv without it fails
+# COLLECTION -- every test errors out with `ModuleNotFoundError: No module named 'psutil'`
+# and nothing points at the real cause. Install with `pip install -e '.[test]'`.
+# `tensorboard` is deliberately NOT here: the analysis path needs it at runtime, so it is a
+# main dependency. `optuna` also stays out: tests/test_optuna_tune.py `importorskip`s it,
+# and it is a tuning-only dependency. Note its ONE skip line stands for 22 tests.
+# `pytest-xdist` is what makes the e2e tree bearable: every test in it is a real training
+# run, so `-n <gpus>` (one worker per GPU, assigned in tests/e2e/conftest.py) turns ~17
+# serial minutes into tests/GPUs rounds. The pre-push hook uses it automatically.
+test = ["pytest", "psutil", "pytest-xdist"]
 
 [project.scripts]
 # `pip install -e .` then `nett-skrl --config path/to.yaml`

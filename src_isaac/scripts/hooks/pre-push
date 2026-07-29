@@ -6,6 +6,14 @@
 # nothing ever ran them. This repo had no hook at all until 2026-07-27, which made it the
 # remaining half of that same gap.
 #
+# WHAT THIS HOOK OWNS. Everything the suite needs that a `git clone` does not carry, because
+# that is where "passes on my machine, fails on yours" actually comes from. Three things,
+# and none of them were handled until 2026-07-29:
+#   * the INTERPRETER -- discovered and probed, not hardcoded (see below);
+#   * the NATIVE LIBS -- libGLU, which lives outside every repo;
+#   * the EXTERNAL PREREQUISITES -- built assets and the compiled frame cache, delegated to
+#     scripts/prepare_test_env.py so the hook and the tests share one source of truth.
+#
 # Install with:  scripts/install_git_hooks.sh
 # Bypass once:   NETT_SKIP_HOOKS=1 git push        (or git push --no-verify)
 # Skip e2e only: NETT_SKIP_E2E=1 git push          (unit suite still runs)
@@ -15,7 +23,7 @@ set -uo pipefail
 
 ROOT="$(git rev-parse --show-toplevel)"
 SRC="$ROOT/src_isaac"
-PY="${NETT_PYTHON:-/home/zlaborde/code/.venv/nett-private/bin/python}"
+WORKSPACE="$(cd "$ROOT/.." && pwd)"
 
 # ⚠ TWO PATHS, AND THEY MEAN DIFFERENT THINGS. Getting either wrong produces failures that
 # look like real defects:
@@ -25,22 +33,98 @@ PY="${NETT_PYTHON:-/home/zlaborde/code/.venv/nett-private/bin/python}"
 #     `.../isaac_lab/isaac_lab/...` and 15 cross-repo tests fail with "expected source file
 #     missing", which reads as a broken wiring rather than a bad env var. (Measured
 #     2026-07-27 -- this exact mistake.)
-REPO_A="${NETT_REPO_A:-$(cd "$ROOT/.." && pwd)/NewbornEmbodiedTuringTest_Private}"
+REPO_A="${NETT_REPO_A:-$WORKSPACE/NewbornEmbodiedTuringTest_Private}"
 if [ ! -d "$REPO_A/isaac_lab" ]; then
   echo "pre-push: repoA not found at $REPO_A (needs to contain isaac_lab/) -- set NETT_REPO_A" >&2
-  exit 1
-fi
-if [ ! -x "$PY" ]; then
-  echo "pre-push: python not found at $PY -- set NETT_PYTHON" >&2
   exit 1
 fi
 export NETT_REPO_A="$REPO_A"
 export PYTHONPATH="$SRC:$REPO_A/isaac_lab/source"
 
+# --- the interpreter ------------------------------------------------------------------
+# ⚠ DO NOT PUT A SINGLE HARDCODED PATH BACK HERE. This hook used to default to one host's
+# venv (`.../.venv/nett-private/bin/python`). On another host the venv is `nett_private`
+# -- underscore -- and BOTH names exist, so the hardcoded one resolved to a real,
+# executable, EMPTY interpreter. `[ -x "$PY" ]` passed and the suite died at collection on
+# `ModuleNotFoundError: No module named 'psutil'`, which reads as a missing dependency
+# rather than as the wrong python. Hence: discover candidates, then PROBE each by importing
+# what the suite actually needs. An interpreter that cannot import them is not a candidate,
+# however executable it is.
+PROBE='import pytest, psutil, yaml, jsonschema, torch, skrl'
+_probe_fail=""      # remembers WHY the last candidate was rejected, for the error message
+
+py_ok() {
+  [ -x "$1" ] || { _probe_fail="not executable"; return 1; }
+  _probe_fail="$("$1" -c "$PROBE" 2>&1 | tail -1)"
+  [ -z "$_probe_fail" ]
+}
+
+# NETT_PYTHON is an ANSWER, not a hint: if it is set and fails the probe, say so and stop
+# rather than quietly running a different interpreter than the one that was named. Silent
+# substitution is how you end up debugging the wrong venv.
+if [ -n "${NETT_PYTHON:-}" ] && ! py_ok "$NETT_PYTHON"; then
+  echo "pre-push: \$NETT_PYTHON=$NETT_PYTHON is unusable -- $_probe_fail" >&2
+  echo "  it must import: $PROBE" >&2
+  echo "  install the test extra: $NETT_PYTHON -m pip install -e '$SRC[test]'" >&2
+  echo "  or unset NETT_PYTHON to let the hook discover a venv" >&2
+  exit 1
+fi
+
+PY=""
+REJECTED=""
+# Candidate order: explicit override, then an active venv, then every venv in or beside the
+# workspace, then whatever python is on PATH. The glob is what makes this host-agnostic --
+# it finds `nett_private` and `nett-private` alike and lets the probe decide.
+CANDIDATES=()
+[ -n "${NETT_PYTHON:-}" ] && CANDIDATES+=("$NETT_PYTHON")
+[ -n "${VIRTUAL_ENV:-}" ] && CANDIDATES+=("$VIRTUAL_ENV/bin/python")
+for cand in "$WORKSPACE"/.venv*/bin/python "$WORKSPACE"/.venv/*/bin/python \
+            "$(dirname "$WORKSPACE")"/.venv*/bin/python \
+            "$(dirname "$WORKSPACE")"/.venv/*/bin/python; do
+  [ -e "$cand" ] && CANDIDATES+=("$cand")
+done
+_syspy="$(command -v python3 2>/dev/null)"
+[ -n "$_syspy" ] && CANDIDATES+=("$_syspy")
+
+for cand in ${CANDIDATES[@]+"${CANDIDATES[@]}"}; do   # +expansion: empty array under set -u
+  if py_ok "$cand"; then PY="$cand"; break; fi
+  REJECTED="$REJECTED
+  $cand -- $_probe_fail"
+done
+
+if [ -z "$PY" ]; then
+  echo "pre-push: no usable python found. Each candidate failed to import one of:" >&2
+  echo "  $PROBE" >&2
+  echo "Candidates tried:$REJECTED" >&2
+  echo "Set NETT_PYTHON to the venv from ../blueprint.md, or install the test extra:" >&2
+  echo "  <venv>/bin/python -m pip install -e '$SRC[test]'" >&2
+  exit 1
+fi
+echo "pre-push: python $PY"
+
+# --- native libs ----------------------------------------------------------------------
+# libGLU.so.1 is absent from the system linker path on the NETT hosts and lives in a
+# hand-built prefix OUTSIDE every repository. Drop it and libneuray fails to load, RTX
+# dies, and the tiled camera throws "CUDA illegal memory access" ~15-20s into init -- a
+# masquerading fault that reads as a driver or PhysX problem. Only prepend when the loader
+# cannot already find it, so a host that ships GLU properly is left alone. (repoA's hook
+# does the same; keep them in step.)
+if ! ldconfig -p 2>/dev/null | grep -q 'libGLU\.so\.1'; then
+  GLU_DIR="${NETT_GLU_DIR:-$HOME/glu_libs/lib}"
+  if [ -e "$GLU_DIR/libGLU.so.1" ]; then
+    export LD_LIBRARY_PATH="$GLU_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  else
+    echo "pre-push: warning -- libGLU.so.1 not on the linker path and not at $GLU_DIR;" >&2
+    echo "          GPU tests may die with a masquerading CUDA error (set NETT_GLU_DIR)" >&2
+  fi
+fi
+
 cd "$SRC" || exit 1
 
+# -u here too: same buffering trap as the e2e block below, just cheaper to hit.
 echo "pre-push: unit suite ..."
-if ! "$PY" -m pytest tests -q >/tmp/nett_repob_prepush.log 2>&1; then
+if ! timeout "${NETT_UNIT_TIMEOUT:-900}" "$PY" -u -m pytest tests -q \
+        >/tmp/nett_repob_prepush.log 2>&1; then
   grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush.log | head -15 >&2
   grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush.log | tail -1 >&2
   echo "pre-push: BLOCKED -- unit tests failed (full log /tmp/nett_repob_prepush.log)" >&2
@@ -52,22 +136,99 @@ grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush.log | tai
 # does NOT cover it. It is included here rather than left out, because "excluded by default
 # and therefore never run" is exactly how the repoA tests rotted.
 #
-# ⚠ AS OF 2026-07-27 ALL 23 e2e TESTS SKIP ON THIS HOST -- tests/e2e/conftest.py resolves its
-# design sheet and media root under repoA's assets/, and neither exists there; the real ones
-# live in <workspace>/videos/binding/. The gate is honest (it names the missing path), but
-# these tests have never actually run here. Running them costs ~4s while they skip; if the
-# prerequisites ever appear they become real training runs and this hook will get slow --
-# that is the point at which to reach for NETT_SKIP_E2E, not before.
+# ⚠ THESE ARE REAL TRAINING RUNS -- minutes, not the ~4s they cost while the whole tree
+# auto-skipped for want of stimuli. That skip is what the prepare step below removes, so
+# this hook is now slow by design. NETT_SKIP_E2E=1 is the escape hatch.
 if [ -z "${NETT_SKIP_E2E:-}" ]; then
-  echo "pre-push: e2e tree (skips today -- see the note in this hook) ..."
-  if ! "$PY" -m pytest tests/e2e -q -m "e2e_isaac or e2e_perf" -rs \
-          >/tmp/nett_repob_prepush_e2e.log 2>&1; then
-    grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush_e2e.log | head -15 >&2
-    grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush_e2e.log | tail -1 >&2
-    echo "pre-push: BLOCKED -- e2e tests failed (full log /tmp/nett_repob_prepush_e2e.log)" >&2
+  # Build what the e2e tree needs from outside both repositories BEFORE running it: the
+  # versioned USD assets are verified, and the frame cache (~/.cache/nett_frame_cache) is
+  # compiled. Doing it here rather than letting the tests do it lazily is deliberate --
+  # the lazy path builds under a cross-process flock, and a cold cache plus concurrent Kit
+  # boots is a known deadlock. It is idempotent, so a warm cache costs a second.
+  echo "pre-push: external prerequisites (assets + frame cache) ..."
+  if ! "$PY" scripts/prepare_test_env.py >/tmp/nett_repob_prepush_prep.log 2>&1; then
+    grep -E "ERROR" /tmp/nett_repob_prepush_prep.log | head -10 >&2
+    echo "pre-push: BLOCKED -- prerequisites unavailable (full log /tmp/nett_repob_prepush_prep.log)" >&2
     exit 1
   fi
-  tail -1 /tmp/nett_repob_prepush_e2e.log
+  tail -3 /tmp/nett_repob_prepush_prep.log
+
+  # ⚠⚠ -u AND timeout ARE BOTH LOAD-BEARING, and the reason is a measured 50 minutes of
+  # nothing (2026-07-29). This ran WITHOUT them, hit a wall-clock cap, was SIGTERMed, and
+  # left a ZERO-BYTE log: pytest block-buffers stdout when it is a file, so everything it
+  # had printed died in the buffer. A push-blocking hook that can hang and then say
+  # nothing at all is worse than no hook. `-u` makes progress survive the kill; `timeout`
+  # means a hang FAILS instead of blocking the push forever (repoA's hook already bounds
+  # its workers for exactly this reason). NETT_E2E_TIMEOUT overrides the budget.
+  #
+  # -v not -q, deliberately: with one test per training run, "which test was I on when it
+  # died" is the whole diagnostic, and the progress-dot line never flushes.
+  # --- how many GPUs to spread the e2e tree over -------------------------------------
+  # Every test in this tree is a real training run, so serialised on one card the 23 of
+  # them cost ~17 min (measured). tests/e2e/conftest.py gives each xdist worker its OWN
+  # gpu (PYTEST_XDIST_WORKER -> device index), so the wall clock becomes tests/GPUs rounds.
+  # ⚠ ONE WORKER PER GPU, NOT MORE. Two Kit processes on one card contend for the same
+  # Vulkan/RTX queue and VRAM does not scale linearly, so over-subscribing loses time.
+  E2E_JOBS="${NETT_E2E_JOBS:-}"
+  if [ -z "$E2E_JOBS" ]; then
+    E2E_JOBS="$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | wc -l)"
+    [ "$E2E_JOBS" -lt 1 ] 2>/dev/null && E2E_JOBS=1
+  fi
+  # ⚠ EACH CELL MUST GET A CPU BUDGET OR THE PARALLEL RUN IS SLOWER THAN THE SERIAL ONE.
+  # Kit's carb pool, torch's intra-op pool and the process pool each size themselves to
+  # the WHOLE host per cell, so N cells oversubscribe the box N-fold and collapse. One
+  # budget governs all three; cores/cells is the rule that produced the measured knee.
+  if [ -z "${NETT_KIT_THREADS:-}" ] && [ "$E2E_JOBS" -gt 1 ]; then
+    _cores="$(nproc 2>/dev/null || echo 8)"
+    export NETT_KIT_THREADS="$(( _cores / E2E_JOBS ))"
+    [ "$NETT_KIT_THREADS" -lt 2 ] && export NETT_KIT_THREADS=2
+  fi
+
+  # ⚠ e2e_perf IS DELIBERATELY NOT IN THE PUSH GATE. It asserts wall-clock throughput and
+  # peak VRAM against benchmarks/golden.json, which makes it a MEASUREMENT, not a test of
+  # the code being pushed -- so it fails for reasons that have nothing to do with the diff.
+  # Measured 2026-07-29: a push was blocked at 26.80 vs 27.02 steps/s, i.e. 15.2% below a
+  # baseline recorded on a DIFFERENT host against a 15% band -- a 0.8% miss, pure noise,
+  # and the same gate passed on the same commit minutes earlier on an idle machine.
+  # A benchmark that blocks pushes teaches people to use --no-verify, and it cannot run
+  # under -n anyway (see the guard in test_perf.py). Run it deliberately instead:
+  #     pytest tests/e2e -m e2e_perf          # serial, on an idle machine
+  E2E_TIMEOUT="${NETT_E2E_TIMEOUT:-5400}"
+  _jobs_args=""
+  # --dist loadgroup, NOT loadfile: `loadfile` pins a whole FILE to one worker, and
+  # test_full_run.py alone holds 5 heavy training runs, so it became the critical path --
+  # measured 6m41 with loadfile, where the tree's total work over 8 GPUs should be ~3
+  # rounds. `loadgroup` distributes per TEST but honours @pytest.mark.xdist_group, which
+  # test_outputs.py uses to keep its 4 tests (sharing one module-scoped training run) on a
+  # single worker instead of rebuilding that fixture four times.
+  [ "$E2E_JOBS" -gt 1 ] && _jobs_args="-n $E2E_JOBS --dist loadgroup"
+  echo "pre-push: e2e tree (real training runs; ${E2E_JOBS} gpu(s), kit_threads=${NETT_KIT_THREADS:-default}, cap ${E2E_TIMEOUT}s) ..."
+  timeout "$E2E_TIMEOUT" "$PY" -u -m pytest tests/e2e -v -m "e2e_isaac and not e2e_perf" \
+          -rs --tb=short $_jobs_args >/tmp/nett_repob_prepush_e2e.log 2>&1
+  _e2e_rc=$?
+  if [ "$_e2e_rc" -ne 0 ]; then
+    if [ "$_e2e_rc" -eq 124 ]; then
+      echo "pre-push: BLOCKED -- e2e exceeded ${E2E_TIMEOUT}s and was killed." >&2
+      echo "  last test reached:" >&2
+      grep -E "^tests/e2e.*(PASSED|FAILED|ERROR|SKIPPED)" \
+          /tmp/nett_repob_prepush_e2e.log | tail -3 >&2
+      # A killed pytest orphans its Isaac workers: they are reparented to PID 1 and keep
+      # holding GPU memory indefinitely. Naming them beats leaving them to be found later
+      # by a run that mysteriously cannot allocate.
+      echo "  ⚠ check for orphaned Isaac workers still holding a GPU:" >&2
+      echo "      nvidia-smi --query-compute-apps=pid,used_memory --format=csv" >&2
+      echo "    reap with SIGTERM first; a Kit process that is WEDGED should be" >&2
+      echo "    diagnosed, not -9'd (repeated SIGKILL of wedged boots can leave the" >&2
+      echo "    driver in a bad state across all GPUs)." >&2
+    else
+      grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush_e2e.log | head -15 >&2
+      grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush_e2e.log | tail -1 >&2
+      echo "pre-push: BLOCKED -- e2e tests failed" >&2
+    fi
+    echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
+    exit 1
+  fi
+  grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush_e2e.log | tail -1
 fi
 
 echo "pre-push: OK"
