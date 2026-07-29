@@ -44,11 +44,16 @@ MODELS = ["CNN", "3DCNN", "SimCLR-CLTT", "ViT", "ViT-CLTT", "ViT+VICReg",
           "ViViT", "ViViT+VICReg", "GuessWhatMoves"]
 EXPERIMENTS = ["binding", "parsing", "viewinvariance"]
 
-# OOM safety ladder (mini_batches, max_envs). rollouts=8192, steps=256, so
-# scope=max_envs//8 must keep (8192//scope)%256==0 -> max_envs in {256,128,64,32}.
-# Start at 256 envs (32/brain, max) to saturate the GPU; on OOM shed envs, then
-# shrink the update batch (mini_batches 16->32 -> batch 512->256).
-LADDER = [(16, 256), (16, 128), (16, 64), (16, 32), (32, 32)]
+# OOM safety ladder (mini_batches, max_envs) for 7 BRAINS, rollouts=8000, steps=500.
+# scope=max_envs//7 must keep (8000//scope)%500==0 -> scope in {16,8,4,2,1}
+# -> max_envs in {112,56,28,14,7} for whole episodes per env.
+# ⚠ 56 and 28 are EXCLUDED: they tile 8x7 and 6x5, and a NON-SQUARE tile grid distorts
+# the fisheye (Isaac Sim #488). The June campaign shed to 128 (12x11) on OOM and trained
+# through a distorted render with nothing noticing -- shedding envs must never land on
+# an invalid count. Every rung here satisfies parallel_envs.is_valid_num_envs(n, 7).
+# Shed the update batch FIRST (112 envs is the whole point of the shape); only then drop
+# to 14 envs, which is a 8x cut in parallelism.
+LADDER = [(16, 112), (32, 112), (16, 14), (32, 14)]
 
 # Buffer placement is per-model (campaign_train.py): single-frame -> on-GPU uint8
 # buffer (~6 GB) fits the renderer at 128 envs (~18.5 GB); framestack -> CPU
@@ -74,7 +79,8 @@ def build_jobs() -> list[dict]:
     jobs = []
     for model in models:
         for exp in exps:
-            rung = 1  # all start at 128 envs (single-frame: GPU buffer; framestack: CPU buffer)
+            rung = 0  # 112 envs (11x11). Buffer placement is chosen by SIZE in
+                      # campaign_train (7 x 8000 x 128^2 x 3 = 2.75 GB -> stays on GPU).
             mb, envs = LADDER[rung]
             jobs.append({"id": f"{exp}_{_slug(model)}", "model": model,
                          "experiment": exp, "rung": rung, "mini_batches": mb, "max_envs": envs})

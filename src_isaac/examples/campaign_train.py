@@ -7,10 +7,10 @@ Drives the 9-model x 3-condition sweep requested in the project goal:
 
 All training hyperparameters are held identical to the VALIDATED SB3/Unity
 replication protocol (train_binding_8brain_targets.py): PPO, ent=0.01, lr=3e-4,
-rollouts=8000, mini_batches=16, learning_epochs=10, steps=500, 2000 train / 10
+rollouts=8000, mini_batches=16, learning_epochs=10, steps=500, 2000 train / 20
 test episodes, closeness-only extrinsic reward, FOV=150, 2D action space
-(neck flexion + lateral bending OFF), input_resolution=256, hidden_sizes=[],
-shared_encoder, clip_actions=False, 8 brains. ONLY the encoder (+ its temporal
+(neck flexion + lateral bending OFF), input_resolution=128, hidden_sizes=[],
+shared_encoder, clip_actions=False, 7 brains. ONLY the encoder (+ its temporal
 framestacking + its self-supervised objective) varies between models.
 
 Self-supervised objectives:
@@ -25,12 +25,16 @@ Select via env:
   NETT_EXPERIMENT  binding | parsing | viewinvariance (default binding)
   NETT_IMPRINT     imprint condition override (default = goal condition per exp)
   NETT_DEVICE      GPU index (default 0)
-  NETT_BRAINS      brains_per_process (default 8); 1 = single-brain topology
+  NETT_BRAINS      brains_per_process (default 7 -> 112 envs, a square grid)
   NETT_BRAIN_OFFSET brain/seed index offset (default 0); a single-brain fleet packs
                    offsets 0..N-1 as N processes (folds the former orch_run_single.py)
   NETT_TRAIN_EPS   training episodes (default 2000)
-  NETT_MAX_ENVS    max parallel envs (default 32)
-  NETT_RES         input resolution (default 256)
+  NETT_MAX_ENVS    max parallel envs, TOTAL across brains (default 112)
+  NETT_RES         input resolution (default 128)
+  NETT_ROLLOUTS    per-brain transitions between PPO updates (default 8000)
+  NETT_MINIBATCHES minibatches per update (default 16 -> batch 500 = 1 episode)
+  NETT_STEPS       steps_per_episode (default 500)
+  NETT_TEST_EPS    test episodes (default 20)
   NETT_REWARD_TYPES comma-sep (default closeness); e.g. closeness,completeness
   NETT_DESIGN_SHEET / NETT_MEDIA_ROOT  override the per-experiment sheet/media defaults
   NETT_AUX_WEIGHT  unused for VICReg (driver forces 1.0 per user directive)
@@ -123,15 +127,20 @@ def main() -> int:
     # single-brain-offset-b run is NOT yet bit-identical to brain b of a multi-brain run;
     # the unified global-brain-id seeding is the determinism-plan's job (do it there).
     device = int(os.environ.get("NETT_DEVICE", "0"))
-    brains = int(os.environ.get("NETT_BRAINS", "8"))
+    # 7, not 8: 7 x 16 envs = 112 = an 11x11 SQUARE tile grid. 8 x 16 = 128
+    # tiles 12x11 and distorts the fisheye (Isaac Sim #488).
+    brains = int(os.environ.get("NETT_BRAINS", "7"))
     offset = int(os.environ.get("NETT_BRAIN_OFFSET", "0"))
     train_eps = int(os.environ.get("NETT_TRAIN_EPS", "2000"))
-    max_envs = int(os.environ.get("NETT_MAX_ENVS", "32"))
-    res = int(os.environ.get("NETT_RES", "256"))
+    max_envs = int(os.environ.get("NETT_MAX_ENVS", "112"))
+    # 128 stands by decision (see nett_env_cfg.ObservationCfg.input_resolution).
+    res = int(os.environ.get("NETT_RES", "128"))
     # Overridable (defaults preserve the existing campaign behavior; single-brain runs
     # that reproduce orch_run_single set these). reward_types default = closeness only.
     reward_types = [r.strip() for r in
                     os.environ.get("NETT_REWARD_TYPES", "closeness").split(",") if r.strip()]
+
+    _rollouts_for_budget = int(os.environ.get("NETT_ROLLOUTS", "8000"))
 
     # VICReg aux is read from the environment by agent_factory; set it here so the
     # whole process tree (incl. brain subprocesses) inherits it. CLTT is a reward
@@ -152,10 +161,32 @@ def main() -> int:
     # renderer (OOMs even at 32 envs), so they keep the buffer on CPU.
     # An explicit NETT_MEMORY_DEVICE (e.g. for A/B benchmarks) overrides the
     # per-model default below.
+    # ★ ROLLOUT-AWARE (2026-07-28). The on-GPU buffer is rollouts x obs PER BRAIN, so
+    # doubling rollouts to 16000 (for whole-episode rollouts at 32 envs/brain) doubled
+    # it to 8 x 16000 x 128x128x3 = 6.3 GB. Added to the ~14.5 GB the renderer needs at
+    # 256 envs that exceeds the A10's 23 GB: MEASURED as a hard Vulkan
+    # ERROR_OUT_OF_DEVICE_MEMORY on the camera projection texture, with the card pinned
+    # at 22.4 GB. The old policy ("single-frame -> GPU buffer") was written when the
+    # buffer was 3.2 GB and is no longer safe on size alone, so size is now what decides.
+    _obs_bytes = res * res * 3
+    _buf_gb = brains * _rollouts_for_budget * _obs_bytes / 1e9
+    _budget_gb = float(os.environ.get("NETT_GPU_BUFFER_BUDGET_GB", "4.0"))
+    # ⚠ SIZE IS NECESSARY BUT NOT SUFFICIENT. The buffer fitting says nothing about the
+    # ENCODER's activation peak. Measured previously: the on-GPU buffer is reliable only
+    # for the lean nature_cnn; ViT/ViViT attention creeps to ~22 GB and OOMs LATE -- about
+    # 72% through training, i.e. after hours of compute. So the GPU buffer is opt-IN by
+    # model, and every other encoder keeps it on the host.
+    _GPU_BUFFER_MODELS = {"nature_cnn"}
+    _lean = spec["encoder"] in _GPU_BUFFER_MODELS
     if "NETT_MEMORY_DEVICE" not in os.environ:
-        if spec["framestack"]:
+        if spec["framestack"] or _buf_gb > _budget_gb or not _lean:
             os.environ["NETT_MEMORY_DEVICE"] = "cpu"
             os.environ.pop("NETT_UINT8_BUFFER", None)
+            why = ("framestack" if spec["framestack"]
+                   else f"> {_budget_gb:.1f} GB GPU budget" if _buf_gb > _budget_gb
+                   else f"encoder {spec['encoder']} not in the GPU-buffer allowlist "
+                        "(attention peak OOMs late)")
+            log.info("rollout buffer -> CPU (est %.1f GB; %s)", _buf_gb, why)
         # Single-frame: leave NETT_MEMORY_DEVICE UNSET so the buffer follows the
         # compute device (resolve_memory_device), which is already the default.
         #
@@ -173,16 +204,32 @@ def main() -> int:
     # off{offset} keeps single-brain-packed runs (same model/exp, different offsets on the
     # same GPU/out dir) from colliding; off0 for the multi-brain case is harmless.
     name = f"{_slug(model)}_{exp}_{imprint}_off{offset}_{datetime.now():%m%d_%H%M%S}"[:63]
-    out = Path(f"~/nett_campaign/{exp}_{_slug(model)}").expanduser()
+    # ★ SEPARATE ROOT PER BASELINE. The June runs live under ~/nett_campaign; nothing
+    # produced before 2026-07-28 is poolable with anything after (dt 1/60->1/24,
+    # FXAA->DLAA, 256->500 step episodes, and the 128-env non-square render). Writing
+    # the new baseline into the same tree would make the two trivially confusable by
+    # any glob that walks it. NETT_OUT_ROOT keeps them apart.
+    _out_root = os.environ.get("NETT_OUT_ROOT", "~/nett_campaign")
+    out = Path(f"{_out_root}/{exp}_{_slug(model)}").expanduser()
 
+    # Resolved once: the tag list below cannot reference `brain` while `brain` is
+    # still being constructed (self-reference -> UnboundLocalError).
+    _rollouts = int(os.environ.get("NETT_ROLLOUTS", "8000"))
     brain: dict = {
         "algorithm": "PPO",
         "encoder": spec["encoder"],
         "encoder_cfg": spec["cfg"],
         "algorithm_cfg": {
-            "rollouts": 8192,   # 8192 = 256 steps x 32 envs/brain -> 1 episode/env/rollout
-            # batch = 8192 / mini_batches. 16 -> 512. The scheduler escalates
-            # mini_batches on OOM to shrink the update batch.
+            # ★ 8000 over 16 envs/brain -> EXACTLY 1 FULL EPISODE per env per rollout
+            # (user directive: "envs should always record only full episodes"), with
+            # 7 BRAINS x 16 = 112 envs, which tiles 11x11 -- SQUARE, so the fisheye is
+            # undistorted. This is why the brain count is 7 and not 8: at 8 brains the
+            # same shape gives 128 envs, which tiles 12x11 and hits the NON-SQUARE
+            # distortion of Isaac Sim #488. Several jobs of the June campaign trained
+            # through exactly that. 256 envs was tried and OOMs the A10 outright at
+            # res128 (Vulkan ERROR_OUT_OF_DEVICE_MEMORY at 22.4/23 GB, renderer alone).
+            "rollouts": _rollouts,
+            # batch = rollouts / mini_batches = 8000 / 16 = 500 = ONE EPISODE.
             "mini_batches": int(os.environ.get("NETT_MINIBATCHES", "16")),
             "learning_rate": 3e-4,
             "learning_epochs": 10,
@@ -201,8 +248,9 @@ def main() -> int:
         "wandb": {
             "mode": "online",
             "project": f"nett-{exp}-replication",
-            "tags": [model, spec["encoder"], "ppo", "8brain", exp, imprint,
-                     "rollouts=8000", "steps=500", f"{train_eps}ep",
+            "tags": [model, spec["encoder"], "ppo", f"{brains}brain", exp, imprint,
+                     f"rollouts={_rollouts}", f"steps={os.environ.get('NETT_STEPS', '500')}",
+                     f"{train_eps}ep",
                      "closeness-only", "fov=150", "2d-action", f"res={res}",
                      *( ["cltt"] if spec.get("reward") == "CLTT" else [] ),
                      *( ["vicreg"] if spec.get("aux") == "vicreg" else [] )],
@@ -229,12 +277,41 @@ def main() -> int:
         "body": {"wrappers": (["framestack"] if spec["framestack"] else [])},
         "num_brains": brains,
         "brain_id_offset": offset,
-        "episodes": {"train": train_eps, "test": int(os.environ.get("NETT_TEST_EPS", "10"))},
-        "steps_per_episode": int(os.environ.get("NETT_STEPS", "256")),
+        "episodes": {"train": train_eps, "test": int(os.environ.get("NETT_TEST_EPS", "20"))},
+        "steps_per_episode": int(os.environ.get("NETT_STEPS", "500")),
         "eval_freq": 10_000_000,
         "task_memory": float(os.environ.get("NETT_TASK_MEMORY", "1")),
         "max_parallel_envs": max_envs,
     }
+
+    # ★ REFUSE A DISTORTED RENDER. max_parallel_envs is passed through verbatim (an
+    # explicit value is deliberately never overridden -- the recipe's num_envs is
+    # load-bearing for learning), so nothing downstream re-checks it. The June campaign
+    # ran many jobs at 128 envs, which tiles 12x11: Isaac Sim #488 applies the fisheye
+    # lens distortion over the full non-square canvas, so every training frame was
+    # rendered at the wrong aspect. Fitting in VRAM says nothing about whether the
+    # render is correct. Fail loudly rather than train a whole job through it.
+    from nett_skrl.runtime.parallel_envs import is_valid_num_envs, largest_valid_num_envs
+    _envs = config["max_parallel_envs"]
+    if not is_valid_num_envs(_envs, brains):
+        _alt = largest_valid_num_envs(_envs, brains)
+        raise SystemExit(
+            f"NETT_MAX_ENVS={_envs} is not a valid env count for {brains} brains: it "
+            f"must be a multiple of num_brains AND tile into a SQUARE camera grid "
+            f"(Isaac Sim #488 -- a non-square grid distorts the fisheye). "
+            f"Largest valid value at or below it: {_alt}."
+        )
+    # And the rollout must cover WHOLE episodes per env (user directive): every env
+    # records only complete episodes, so rollouts/scope must be a multiple of steps.
+    _scope = _envs // brains
+    _roll = brain["algorithm_cfg"]["rollouts"]
+    _steps = config["steps_per_episode"]
+    if (_roll // _scope) % _steps != 0:
+        raise SystemExit(
+            f"rollouts={_roll} over scope={_scope} envs/brain gives {_roll // _scope} "
+            f"steps/env, which is not a whole number of {_steps}-step episodes. "
+            f"Envs must record only full episodes."
+        )
 
     log.info("MODEL=%s EXP=%s IMPRINT=%s device=%d brains=%d off=%d res=%d envs=%d mb=%s "
              "rewards=%s aux=%s ssl=%s -> %s",
