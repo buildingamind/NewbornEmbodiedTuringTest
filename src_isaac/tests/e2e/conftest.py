@@ -233,6 +233,30 @@ def load_golden() -> dict:
 
 
 def save_golden(values: dict) -> None:
+    """Write golden.json, stamped with WHEN and WHERE it was recorded.
+
+    ★ The stamp is the point. The previous baseline sat unmodified for 112 commits --
+    through the baked chamber, the current chick/rig, DLAA and the 24 Hz step clock --
+    with nothing in the file to say how old it was, so healthy numbers kept reading as
+    regressions. A baseline nobody re-records becomes an artifact; a dated one at least
+    announces itself.
+    """
+    import datetime
+    import platform
+
+    gpu = "unknown"
+    try:
+        import torch
+        if torch.cuda.is_available():
+            gpu = torch.cuda.get_device_name(0)
+    except Exception:
+        pass
+    values = dict(values)
+    values["recorded"] = {
+        "date": datetime.date.today().isoformat(),
+        "host": platform.node(),
+        "gpu": gpu,
+    }
     BENCHMARKS_DIR.mkdir(parents=True, exist_ok=True)
     GOLDEN_PATH.write_text(json.dumps(values, indent=2, sort_keys=True) + "\n")
 
