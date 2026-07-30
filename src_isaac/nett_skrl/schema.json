@@ -243,7 +243,8 @@
                 "multivariate_gaussian",
                 null
               ],
-              "default": null
+              "description": "Stochastic-actor distribution head. Defaults to the joint multivariate Gaussian, which can represent the correlation between the wheeled agent's two commands. Use 'gaussian' (or legacy null) for the independent per-component actor.",
+              "default": "multivariate_gaussian"
             }
           },
           "additionalProperties": false,

@@ -87,13 +87,20 @@ def test_mvg_actor_builds_and_acts():
     assert "log_prob" in extra and tuple(extra["log_prob"].shape) == (6, 1)
 
 
-def test_builder_selects_mvg_only_when_opted_in():
+def test_builder_defaults_to_mvg_and_gaussian_is_opt_out():
+    """The DEFAULT is the correlated actor; the diagonal one is now the opt-out.
+
+    Flipped 2026-07-30 (was the reverse). Explicit ``None`` keeps resolving to the diagonal
+    head on purpose -- old configs and checkpoints were built with it, so silently upgrading
+    them would change an architecture mid-experiment.
+    """
+    assert type(_build()["policy"]).__name__ == "MultivariateGaussianActor"
     assert type(_build(actor_distribution="multivariate_gaussian")["policy"]).__name__ == (
         "MultivariateGaussianActor"
     )
-    # Default and explicit "gaussian" both keep the diagonal Gaussian.
-    assert isinstance(_build()["policy"], GaussianActor)
+    # Both opt-outs -- the explicit name and the legacy None -- give the diagonal actor.
     assert isinstance(_build(actor_distribution="gaussian")["policy"], GaussianActor)
+    assert isinstance(_build(actor_distribution=None)["policy"], GaussianActor)
     # Value head is unchanged by the distribution swap.
     assert type(_build(actor_distribution="multivariate_gaussian")["value"]).__name__ == (
         "ValueCritic"
@@ -171,8 +178,14 @@ def test_mvg_off_diagonal_introduces_correlation():
     assert abs(float(m._mg_distribution.covariance_matrix[0, 0, 1])) > 0.1
 
 
-def test_model_cfg_actor_distribution_defaults_none():
-    assert ModelCfg().actor_distribution is None
+def test_model_cfg_actor_distribution_defaults_to_mvg():
+    """Pins the DEFAULT itself, not just the builder's dispatch on it.
+
+    Worth its own test because this default was documented in blueprint.md as
+    multivariate-Gaussian long before the code agreed, so a run made on defaults did not
+    match the written configuration. The assertion is now the thing keeping them in step.
+    """
+    assert ModelCfg().actor_distribution == "multivariate_gaussian"
 
 
 # === Environment config wiring (behavior) ==================================

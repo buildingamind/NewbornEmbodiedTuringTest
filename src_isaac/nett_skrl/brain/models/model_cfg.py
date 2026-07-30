@@ -26,13 +26,20 @@ class ModelCfg:
     hidden_gain: float = math.sqrt(2.0)
     output_gain: float = 0.01
     shared_encoder: bool = False
-    # Optional override of the stochastic-actor distribution head. ``None`` keeps
-    # the algorithm's default (diagonal ``GaussianActor``). Set to
-    # ``"multivariate_gaussian"`` to use the joint ``MultivariateGaussianActor``
-    # (intended for the wheeled agent's correlated wheel commands). Only affects
-    # stochastic on-policy actors (``actor_type == "gaussian"``); ignored for
-    # deterministic actors. See workspace/notes/10_wheeled_physics.md.
-    actor_distribution: str | None = None
+    # Stochastic-actor distribution head. THE NETT DEFAULT IS THE JOINT
+    # ``MultivariateGaussianActor``: the wheeled agent's two commands are
+    # correlated (they mix into one differential drive), and a diagonal Gaussian
+    # cannot represent that correlation. Set ``"gaussian"`` -- or explicit
+    # ``None``, kept as the legacy escape hatch -- for the independent
+    # per-component actor. Only affects stochastic on-policy actors
+    # (``actor_type == "gaussian"``); ignored for deterministic actors.
+    # See workspace/notes/10_wheeled_physics.md.
+    # ⚠ FLIPPED FROM ``None`` 2026-07-30. blueprint.md's header had claimed
+    # multivariate-Gaussian was the out-of-the-box default since well before that,
+    # while the code shipped diagonal -- so runs made on defaults did NOT match the
+    # documented configuration. Anything trained on the old default is not
+    # comparable to anything trained after it; see the DEFAULT-FLIP LEDGER.
+    actor_distribution: str | None = "multivariate_gaussian"
 
 
 def model_cfg_from(value: dict[str, Any] | None = None) -> ModelCfg:

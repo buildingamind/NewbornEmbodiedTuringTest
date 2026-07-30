@@ -52,7 +52,10 @@ def build_models_for_algorithm(
 
     def actor():
         if spec.actor_type == "gaussian":
-            # Opt-in distribution override (default keeps diagonal GaussianActor).
+            # NETT DEFAULTS to the correlated multivariate actor (ModelCfg). Explicit
+            # "gaussian" -- and legacy explicit None -- select the independent
+            # per-component actor; None is deliberately still accepted so old configs
+            # and checkpoints keep resolving to the diagonal head they were built with.
             if cfg.actor_distribution == "multivariate_gaussian":
                 cls = MultivariateGaussianActor
             elif cfg.actor_distribution in (None, "gaussian"):
