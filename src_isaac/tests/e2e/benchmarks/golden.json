@@ -1,11 +1,11 @@
 {
-  "convergence_max_delta": 0.0048,
-  "optimized_train_steps_per_second": 31.784,
+  "convergence_max_delta": 0.0014,
+  "optimized_train_steps_per_second": 27.327,
   "recorded": {
-    "date": "2026-07-28",
+    "date": "2026-07-30",
     "gpu": "NVIDIA A10",
-    "host": "insect"
+    "host": "lion"
   },
-  "train_peak_vram_mb": 4041,
+  "train_peak_vram_mb": 4039,
   "train_steps_per_second": 7.697
 }
