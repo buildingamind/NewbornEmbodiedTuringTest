@@ -649,19 +649,26 @@ class VramOomError(RuntimeError):
 
 
 class DeviceLostRunError(ReapedTaskError):
-    """Aggregate: the run finished, but N tasks died on the DEVICE_LOST/timeout path.
+    """Aggregate: the run finished, but N tasks died as tolerated casualties.
 
     Raised by ``_task_waiter`` AFTER every remaining task has been scheduled and
     awaited. This is what keeps "continue the wave" from becoming "fail
     silently": the wave completes, and the run still ends NONZERO.
+
+    The name is historical -- it predates :class:`StallError`, and now aggregates
+    every ``ReapedTaskError`` cause (DEVICE_LOST, reap-timeout, stall). The summary
+    line deliberately does NOT name one cause: a run whose only casualty was a render
+    -pump stall used to be reported as "DEVICE_LOST/timeout", which points the reader
+    at the wrong subsystem. Per-failure detail carries the real cause.
     """
 
     def __init__(self, failures: "list[tuple[str, BaseException]]") -> None:
         self.failures = list(failures)
         detail = "; ".join(f"{key}: {exc}" for key, exc in self.failures)
         super().__init__(
-            f"{len(self.failures)} task(s) ended by DEVICE_LOST/timeout; "
-            f"remaining tasks completed. Failures -> {detail}"
+            f"{len(self.failures)} task(s) ended as tolerated casualties "
+            f"(DEVICE_LOST / reap-timeout / stall); remaining tasks completed. "
+            f"Failures -> {detail}"
         )
 
 
