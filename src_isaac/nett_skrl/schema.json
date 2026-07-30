@@ -80,6 +80,11 @@
             "trainable": {
               "type": "boolean",
               "default": true
+            },
+            "spatial_pool": {
+              "type": "boolean",
+              "default": true,
+              "description": "NatureCNN only: pool the final convolution map to 4x4 before the linear projection. Set false for the full-spatial-map ablation."
             }
           },
           "additionalProperties": true,
