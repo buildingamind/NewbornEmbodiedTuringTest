@@ -243,3 +243,55 @@ def test_startup_grace_is_separate_from_the_steady_state_timeout():
         linger=5.0,
     )
     assert out.returncode == 0, (out.returncode, out.stderr[-2000:])
+
+
+# --- is_pure_stall_failure: the "retry this, it was infra" predicate ----------
+#
+# Guards a gate that would otherwise fail on a coin flip: measured 2026-07-30, 46% of
+# cells wedge (15 of 32). The predicate must be STRICT -- retrying on any aggregate
+# would silently paper over a genuine DEVICE_LOST, which is a real GPU fault shipping
+# forensics.
+
+
+def _agg(*errs):
+    from nett_skrl.runtime.reap import DeviceLostRunError
+
+    return DeviceLostRunError([(f"task{i}", e) for i, e in enumerate(errs)])
+
+
+def test_pure_stall_aggregate_is_retryable():
+    from nett_skrl.runtime.reap import StallError, is_pure_stall_failure
+
+    assert is_pure_stall_failure(_agg(StallError("a"), StallError("b"))) is True
+
+
+def test_a_real_device_lost_is_NOT_retryable():
+    """The whole point of the strictness: a GPU fault must stay loud."""
+    from nett_skrl.runtime.reap import DeviceLostError, is_pure_stall_failure
+
+    assert is_pure_stall_failure(_agg(DeviceLostError("boom"))) is False
+
+
+def test_mixed_aggregate_is_NOT_retryable():
+    """One real crash alongside three stalls is still a real crash."""
+    from nett_skrl.runtime.reap import (
+        DeviceLostError,
+        StallError,
+        is_pure_stall_failure,
+    )
+
+    mixed = _agg(StallError("a"), DeviceLostError("boom"), StallError("c"))
+    assert is_pure_stall_failure(mixed) is False
+
+
+def test_empty_failure_list_is_NOT_retryable():
+    """"nothing failed" is not "a stall failed" -- do not retry on an empty aggregate."""
+    from nett_skrl.runtime.reap import is_pure_stall_failure
+
+    assert is_pure_stall_failure(_agg()) is False
+
+
+def test_unrelated_exception_is_NOT_retryable():
+    from nett_skrl.runtime.reap import is_pure_stall_failure
+
+    assert is_pure_stall_failure(RuntimeError("something else")) is False

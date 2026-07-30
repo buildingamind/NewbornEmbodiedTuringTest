@@ -296,12 +296,66 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # _visible_device_scope + runtime/device.py), so an unpinned run no longer hangs --
         # this is now determinism, not the sole guard. Keep it anyway: a test that picks a
         # different GPU per run is a test whose timings and VRAM behaviour drift.
-        NETT([str(cfg_path)]).run(
-            output_path=str(e2e_output_dir), devices=[E2E_DEVICE], verbose=False
-        )
-        return e2e_output_dir / cfg["name"]
+        # Retries only a pure render-pump-wedge failure; a real DEVICE_LOST still fails.
+        used = run_nett_tolerating_stalls(cfg_path, e2e_output_dir, [E2E_DEVICE])
+        return used / cfg["name"]
 
     return _runner
+
+
+# ---------------------------------------------------------------------------
+# Stall tolerance: the gate must fail on the DIFF, not on a known infra wedge
+# ---------------------------------------------------------------------------
+
+
+def run_nett_tolerating_stalls(cfg_path, output_path, devices, attempts: int = 2):
+    """Run NETT, retrying ONLY when every casualty was the Kit render-pump wedge.
+
+    WHY THIS EXISTS
+        Measured 2026-07-30 on an idle 8-GPU host: **46% of cells wedge** (15 of 32,
+        across four 8-cell arms). Every e2e fixture that performs a real run therefore
+        fails on a coin flip, and one did exactly that on a `git push` -- the wedge took
+        out the module-scoped fixture and errored all four tests in test_outputs.py at
+        setup, blocking a push whose diff was fine.
+
+        The wedge is upstream and unfixed: it is Kit spinning inside ``_app.update()``
+        with the GPU idle, emitting no DEVICE_LOST. Two attempts to move it with
+        configuration both came back negative (carb.tasking 32 vs 8; test canvas 64 vs
+        16 envs), and identical configs swing 2/8..6/8 run to run. So the gate has to
+        tolerate it or it does not measure the diff.
+
+    WHY IT IS NARROW
+        Retries ONLY if *every* failure in the aggregate is a :class:`StallError`. A
+        genuine DEVICE_LOST is a real GPU fault with forensics attached and MUST still
+        fail -- otherwise this stops being tolerance and becomes "ignore failures".
+        Anything that is not a stall re-raises immediately.
+
+    Each attempt gets a FRESH output directory: a wedged run leaves partial artifacts,
+    and tests assert on the tree, so reusing the directory would let attempt 1's debris
+    satisfy (or corrupt) attempt 2's assertions.
+    """
+    from nett_skrl import NETT
+    from nett_skrl.runtime.reap import DeviceLostRunError, is_pure_stall_failure
+
+    base = Path(output_path)
+    for attempt in range(1, attempts + 1):
+        out = base if attempt == 1 else base.parent / f"{base.name}_retry{attempt - 1}"
+        out.mkdir(parents=True, exist_ok=True)
+        try:
+            NETT([str(cfg_path)]).run(
+                output_path=str(out), devices=devices, verbose=False
+            )
+            return out
+        except DeviceLostRunError as exc:
+            if not is_pure_stall_failure(exc) or attempt == attempts:
+                raise
+            print(
+                f"\n[e2e] attempt {attempt}/{attempts} lost {len(exc.failures)} task(s) "
+                f"to the Kit render-pump wedge (exit 77) -- retrying in a fresh output "
+                f"dir. This is tolerated INFRA flake, not a result. Detail: {exc}",
+                flush=True,
+            )
+    raise AssertionError("unreachable: loop either returns or raises")
 
 
 # ---------------------------------------------------------------------------

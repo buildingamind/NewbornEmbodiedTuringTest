@@ -17,7 +17,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from .conftest import E2E_DEVICE, MINIMAL_SMOKE_CFG
+from .conftest import E2E_DEVICE, MINIMAL_SMOKE_CFG, run_nett_tolerating_stalls
 
 
 # ⚠ xdist_group KEEPS THESE FOUR TESTS ON ONE WORKER, AND THAT IS A COST DECISION, NOT A
@@ -61,8 +61,6 @@ def shared_run_output(tmp_path_factory) -> Path:
     cfg_path = out / "cfg.yaml"
     cfg_path.write_text(yaml.safe_dump(cfg))
 
-    from nett_skrl import NETT
-
     # ★ devices=[E2E_DEVICE] IS LOAD-BEARING. This fixture builds its own run instead of using
     # conftest's `run_nett`, so it needs the same pin: without it nett.py
     # `set_device(most_free_gpu)` picks the most-free PHYSICAL gpu (pynvml ignores
@@ -71,8 +69,11 @@ def shared_run_output(tmp_path_factory) -> Path:
     # 6+ min here with GPU0 busy, while the same work completes in ~110s pinned.
     # ⚠ IF YOU ADD ANOTHER FIXTURE THAT CALLS NETT DIRECTLY, IT NEEDS THIS TOO -- that is
     # exactly how this one was missed when conftest's run_nett was pinned.
-    NETT([str(cfg_path)]).run(output_path=str(out), devices=[E2E_DEVICE], verbose=False)
-    return out / cfg["name"]
+    # Retries ONLY a pure Kit render-pump wedge (exit 77). Measured 2026-07-30: 46% of
+    # cells wedge, so without this the four tests in this module error at setup on a coin
+    # flip -- which is exactly how a clean push got blocked. A real DEVICE_LOST still fails.
+    used = run_nett_tolerating_stalls(cfg_path, out, [E2E_DEVICE])
+    return used / cfg["name"]
 
 
 def test_run_output_tree_matches_documented_structure(shared_run_output):

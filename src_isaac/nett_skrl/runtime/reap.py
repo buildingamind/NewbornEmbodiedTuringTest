@@ -758,6 +758,31 @@ def is_stall_exit(exitcode: Optional[int]) -> bool:
     return exitcode == stall_exit_code()
 
 
+def is_pure_stall_failure(exc: BaseException) -> bool:
+    """True iff *exc* is an aggregate whose casualties were ALL render-pump stalls.
+
+    The predicate behind "retry this, it was infrastructure". Deliberately strict, and
+    the strictness is the whole point: a caller that retries on any
+    :class:`DeviceLostRunError` would also paper over a genuine renderer DEVICE_LOST --
+    a real GPU fault that ships forensics (Aftermath dump, pagefault address, nvidia-smi
+    telemetry) and must stay loud. Mixed aggregates return False for the same reason:
+    one real crash alongside three stalls is still a real crash.
+
+    Motivation, measured 2026-07-30 on an idle 8-GPU host: **46% of cells wedge** (15 of
+    32 across four 8-cell arms; identical configs swing 2/8..6/8). At that rate any gate
+    performing a real run fails on a coin flip, so tolerating THIS failure is what lets
+    the gate measure the diff. Two attempts to remove the wedge by configuration --
+    carb.tasking 32 vs 8, and test canvas 64 vs 16 envs -- both came back negative; it
+    is upstream and open.
+
+    An empty failure list returns False: "nothing failed" is not "a stall failed".
+    """
+    failures = getattr(exc, "failures", None)
+    if not failures:
+        return False
+    return all(isinstance(err, StallError) for _, err in failures)
+
+
 def join_with_reap(
     proc,
     reaper: TaskReaper,
