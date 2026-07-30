@@ -72,6 +72,15 @@ Important fields:
 - `encoder`: visual feature extractor.
 - `model`: MLP head settings. Defaults to hidden sizes `[64, 64]`, `elu`
   activation, bounded value output, orthogonal init, and clipped actions.
+- `model.actor_distribution`: which stochastic actor head a Gaussian-policy
+  algorithm builds. Defaults to `"multivariate_gaussian"` (a joint covariance, so
+  the action components can be sampled as correlated) since 2026-07-30; set
+  `"gaussian"` for the independent per-component diagonal head. ⚠ The default
+  **changed** on that date — it previously resolved to the diagonal head, so runs
+  made on defaults before then are not comparable with runs made after. Explicit
+  `null` still selects the diagonal head, so old configs and checkpoints keep
+  resolving to the head they were built with. See the DEFAULT-FLIP LEDGER in
+  `isaac/blueprint.md`.
 - `reward`: env reward string or intrinsic reward name.
 - `checkpoint_freq`: per-brain checkpoint interval in trainer steps.
 - `encoder_cfg`: encoder constructor config. Defaults include
