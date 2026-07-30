@@ -22,14 +22,17 @@ import torch
 from nett_skrl.recording import RecordingCfg
 
 from . import crash_guard
+from . import stall_guard
 from .device import visible_device_scope
 from .parallel_envs import select_test_num_envs
 from .reap import (
     DeviceLostError,
+    StallError,
     TaskReaper,
     TaskTimeoutError,
     VramOomError,
     is_device_lost_exit,
+    is_stall_exit,
     is_vram_oom_exit,
     join_with_reap,
 )
@@ -197,6 +200,16 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
                 f"Mode {mode} subprocess ran out of VRAM (exit {p.exitcode}); "
                 f"num_envs is too large for this GPU"
             )
+        if is_stall_exit(p.exitcode):
+            # Same os._exit story as DEVICE_LOST: stall_guard hard-exits, so no atexit
+            # hooks ran, the child's spawn workers are still alive and its RTX context
+            # still holds ~5GB. ONLY this reap frees the device for the next wave item.
+            reaper.reap("stall-exit")
+            raise StallError(
+                f"Mode {mode} subprocess made no env-step progress for the stall "
+                f"budget and self-exited (exit {p.exitcode}); this is the Kit "
+                f"render-pump wedge, which emits no DEVICE_LOST"
+            )
         if is_device_lost_exit(p.exitcode):
             # The child self-exited via crash_guard's os._exit(75) (or its
             # SIGALRM backstop, -14/142). os._exit runs no atexit hooks, so its
@@ -266,6 +279,11 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     # leaves it off -- a steady-state OOM is not confirmed unrecoverable, and killing a
     # long training on a transient allocation failure would be worse than the hang.
     crash_guard.arm(config.path, device=config.device, oom_fatal=bool(config.dry_run))
+    # Sibling guard for the hang crash_guard CANNOT see: Kit wedging inside
+    # SimulationContext.render -> self._app.update() with no DEVICE_LOST and no crash
+    # signature (measured 2026-07-30, 2-4 of every 8 cells). Its signal is our own
+    # env-step counter, so it needs no carb and works before Kit is up. Default ON.
+    stall_guard.arm()
     if mode == "train":
         agent.brain.train(
             loaded,
@@ -492,9 +510,12 @@ def _finalize_env_artifacts(loaded, logger: logging.Logger) -> None:
 
 def _exit_worker_cleanly(logger: logging.Logger) -> None:
     """Flush Python-side outputs, then bypass Kit's fragile atexit teardown."""
-    # This IS the clean path — retire the device-lost guard so teardown is
-    # exactly what it was before crash_guard existed.
+    # This IS the clean path — retire both guards so teardown is exactly what it was
+    # before they existed. stall_guard MUST be disarmed here: a healthy run stops
+    # stepping and then spends real time in analysis/teardown, which a still-armed
+    # watchdog would eventually read as a stall.
     crash_guard.disarm()
+    stall_guard.disarm()
     try:
         import sys
 

@@ -15,6 +15,8 @@ from skrl.utils.spaces.torch import (
     unflatten_tensorized_space,
 )
 
+from ..runtime import stall_guard
+
 
 class IsaacEnvWrapper(Wrapper):
     """Flatten ``obs["policy"]`` from raw or Gym-wrapped NETT Isaac envs."""
@@ -64,6 +66,11 @@ class IsaacEnvWrapper(Wrapper):
         actions = unflatten_tensorized_space(self.action_space, actions)
         with torch.no_grad():
             observations, reward, terminated, truncated, self._info = self._env.step(actions)
+        # Progress heartbeat for stall_guard, notified AFTER the env step returns --
+        # this is the exact call that wedges when Kit's render pump stops returning, so
+        # notifying before it would keep resetting the clock on a hang. One place covers
+        # every training and eval step.
+        stall_guard.note_progress()
         self._update_observations(observations)
         return (
             self._observations,

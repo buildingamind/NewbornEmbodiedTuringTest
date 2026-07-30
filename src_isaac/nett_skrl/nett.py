@@ -893,15 +893,20 @@ class NETT:
                 try:
                     done.result()
                 except ReapedTaskError as exc:
-                    # DEVICE_LOST / reap-timeout ONLY. Its processes are already
-                    # reaped and its GPU released, so a transient renderer crash
-                    # in one task must not cost the other N-1 tasks their hours
-                    # of work. Recorded, not swallowed: re-raised in aggregate
+                    # DEVICE_LOST / reap-timeout / STALL only. Its processes are
+                    # already reaped and its GPU released, so a transient renderer
+                    # casualty in one task must not cost the other N-1 tasks their
+                    # hours of work. Recorded, not swallowed: re-raised in aggregate
                     # below once the wave has drained.
+                    #
+                    # StallError joins this path because it is the SAME kind of
+                    # casualty: Kit wedging in its render pump with no DEVICE_LOST,
+                    # which hits 2-4 of every 8 cells, so failing the whole wave on it
+                    # would make multi-cell waves unusable.
                     self.failed_tasks.append((f"{cfg.name}/{cfg.condition}", exc))
                     self.logger.error(
-                        "Task ended by DEVICE_LOST/timeout: %s condition=%s: %s; "
-                        "continuing remaining tasks",
+                        "Task ended by DEVICE_LOST/timeout/stall: %s condition=%s: "
+                        "%s; continuing remaining tasks",
                         cfg.name, cfg.condition, exc,
                     )
                 except Exception:

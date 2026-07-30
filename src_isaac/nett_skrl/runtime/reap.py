@@ -623,6 +623,20 @@ class TaskTimeoutError(ReapedTaskError):
     """Child exceeded an explicitly-configured ``NETT_REAP_TIMEOUT`` and was reaped."""
 
 
+class StallError(ReapedTaskError):
+    """Child made no env-step progress for the stall budget and self-exited.
+
+    A ``ReapedTaskError`` on purpose: this IS a casualty to tolerate so the wave
+    continues. The hang it covers is a Kit renderer wedge inside
+    ``SimulationContext.render`` -> ``self._app.update()`` (measured 2026-07-30: GPU
+    at 2% while the process burns 136% CPU), which produces NO ``DEVICE_LOST`` and no
+    crash signature at all -- so ``crash_guard`` never fires and, with
+    ``NETT_REAP_TIMEOUT`` disabled by default, the parent's ``join`` is unbounded. It
+    is transient in the same sense DEVICE_LOST is: the same config re-run usually
+    proceeds (2-4 cells of 8 hang, and a relaunched seed may not).
+    """
+
+
 class VramOomError(RuntimeError):
     """Child ran out of VRAM and self-exited via crash_guard's bounded OOM path.
 
@@ -709,6 +723,32 @@ def is_vram_oom_exit(exitcode: Optional[int]) -> bool:
     if exitcode is None:
         return False
     return exitcode == vram_oom_exit_code()
+
+
+def stall_exit_code() -> int:
+    """The child's no-progress exit code (77 by default).
+
+    Same parent/child env contract as :func:`device_lost_exit_code`, read at call time
+    for the same reason. Distinct from 75 (DEVICE_LOST) and 76 (VRAM OOM) so the three
+    causes stay separable in a wave's failure list -- they want different responses: a
+    stall is worth retrying, an OOM is not.
+    """
+    try:
+        return int(os.environ.get("NETT_STALL_EXIT_CODE", "77"))
+    except ValueError:
+        return 77
+
+
+def is_stall_exit(exitcode: Optional[int]) -> bool:
+    """True if *exitcode* is stall_guard's no-progress signature.
+
+    The SIGALRM backstop codes are deliberately NOT included: they are shared with
+    DEVICE_LOST (whose guard arms the same timer), so an ambiguous -14/142 keeps the
+    conservative DEVICE_LOST reading rather than being claimed by this newer path.
+    """
+    if exitcode is None:
+        return False
+    return exitcode == stall_exit_code()
 
 
 def join_with_reap(

@@ -440,6 +440,17 @@ def _emit(msg: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+def flush_artifacts_now() -> None:
+    """Public entry to the same artifact flush the DEVICE_LOST path uses.
+
+    Exists so :mod:`nett_skrl.runtime.stall_guard` can flush IDENTICALLY on its own
+    bounded-exit path rather than growing a second, drifting copy. Deliberately a thin
+    wrapper: the ordering inside (durability before forensics) is load-bearing and
+    should have exactly one implementation.
+    """
+    _flush_artifacts()
+
+
 def _flush_artifacts() -> None:
     # Order matters: the durability flushes (tfevents is the load-bearing one)
     # run FIRST, so if forensics collection is slow and the flush budget expires,
