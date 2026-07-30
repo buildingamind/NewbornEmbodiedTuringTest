@@ -19,6 +19,7 @@ import pytest
 from nett_skrl.runtime.cpu_budget import (
     DEFAULT_CELL_THREADS,
     ENV_VAR,
+    MIN_COMPILE_THREADS,
     apply_torch_thread_limits,
     cell_cpu_threads,
     kit_thread_args,
@@ -111,6 +112,94 @@ def test_apply_torch_thread_limits_defaults_to_budget(monkeypatch):
     monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
     with mock.patch.dict("sys.modules", {"torch": mock.MagicMock()}):
         assert apply_torch_thread_limits() == 5
+
+
+# --- inductor compile pool ------------------------------------------------
+#
+# The FOURTH host-sized pool: torch._inductor.config.compile_threads defaults to
+# min(32, cpu_count) = 32, and torch forks a compile_worker per thread -> 33
+# descendant processes per cell during the reward torch.compile. Measured cold on
+# an A10: 4/8/32 threads all compile the six reward graphs in 74.6-75.3s (the
+# graphs compile sequentially and have too few kernels to feed 32 workers), so
+# following the budget is free; only compile_threads=1 is slower (92.9s).
+
+
+def _fake_torch():
+    """A mocked torch whose ``_inductor.config`` is importable.
+
+    ``from torch._inductor import config`` goes through the real import machinery,
+    which cannot walk a MagicMock's __path__ -- so the submodules must be in
+    sys.modules for the assignment under test to be reachable at all.
+    """
+    torch = mock.MagicMock()
+    inductor = mock.MagicMock()
+    config = mock.MagicMock()
+    config.compile_threads = 32  # torch's own default on this host
+    inductor.config = config
+    torch._inductor = inductor
+    return {
+        "torch": torch,
+        "torch._inductor": inductor,
+        "torch._inductor.config": config,
+    }
+
+
+def test_compile_pool_follows_the_budget(monkeypatch):
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.delenv("TORCHINDUCTOR_COMPILE_THREADS", raising=False)
+    mods = _fake_torch()
+    with mock.patch.dict("sys.modules", mods):
+        apply_torch_thread_limits(4)
+    assert os.environ["TORCHINDUCTOR_COMPILE_THREADS"] == "4"
+    assert mods["torch._inductor.config"].compile_threads == 4
+
+
+def test_compile_pool_is_set_on_an_ALREADY_IMPORTED_torch(monkeypatch):
+    """REGRESSION: the env var alone is a NO-OP at this call site.
+
+    decide_compile_threads() runs at ``import torch``, and the spawn child has
+    already imported torch (unpickling the Task pulls it in) by the time the
+    budget is applied. Measured: env-var-only left compile_threads at 32 and
+    still forked 33 processes; assigning the attribute gave 5. If this test is
+    ever "simplified" down to the env var, the pin silently stops working --
+    the same silent-drop class as ``limit_cpu_threads`` in kit_thread_args.
+    """
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.delenv("TORCHINDUCTOR_COMPILE_THREADS", raising=False)
+    mods = _fake_torch()
+    with mock.patch.dict("sys.modules", mods):
+        apply_torch_thread_limits(6)
+    assert mods["torch._inductor.config"].compile_threads == 6, (
+        "compile_threads must be assigned on the loaded torch, not only exported"
+    )
+
+
+def test_compile_pool_never_drops_to_one(monkeypatch):
+    """compile_threads=1 disables async compile: +24% cold wall (92.9s vs 74.6s).
+
+    Deliberately ABOVE the budget at budget=1 -- the one pool that does not
+    follow it all the way down, because those workers block rather than compete.
+    """
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.delenv("TORCHINDUCTOR_COMPILE_THREADS", raising=False)
+    mods = _fake_torch()
+    with mock.patch.dict("sys.modules", mods):
+        applied = apply_torch_thread_limits(1)
+    assert applied == 1, "the cell budget itself is still 1"
+    assert MIN_COMPILE_THREADS == 2
+    assert os.environ["TORCHINDUCTOR_COMPILE_THREADS"] == "2"
+    assert mods["torch._inductor.config"].compile_threads == 2
+
+
+def test_explicit_compile_threads_override_wins(monkeypatch):
+    """torch documents =1 as the way to make pdb usable; do not stomp it."""
+    monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
+    monkeypatch.setenv("TORCHINDUCTOR_COMPILE_THREADS", "1")
+    mods = _fake_torch()
+    with mock.patch.dict("sys.modules", mods):
+        apply_torch_thread_limits(8)
+    assert os.environ["TORCHINDUCTOR_COMPILE_THREADS"] == "1"
+    assert mods["torch._inductor.config"].compile_threads == 1
 
 
 # --- executor pool sizing -------------------------------------------------

@@ -103,8 +103,17 @@ def kit_thread_args(num_threads: int, existing: str = "") -> str:
     return " ".join(parts)
 
 
+#: Floor under the inductor compile pool, deliberately ABOVE the cell budget when
+#: the budget is 1. compile_threads=1 disables async compile entirely and costs
+#: +24% cold-compile wall (92.9s vs 74.6s, measured below), while those workers
+#: spend their lives blocked rather than competing for cores -- so this is the one
+#: pool that does NOT follow the budget all the way down.
+MIN_COMPILE_THREADS = 2
+
+
 def apply_torch_thread_limits(num_threads: int | None = None) -> int:
-    """Pin torch/OpenMP to this cell's budget. Call in the CHILD, before torch work.
+    """Pin torch/OpenMP/inductor to this cell's budget. Call in the CHILD, before
+    torch work.
 
     torch reads OMP_NUM_THREADS at import and sizes its intra-op pool from
     os.cpu_count() otherwise, so an 8-way wave would run 8 x 64 = 512 intra-op
@@ -112,12 +121,56 @@ def apply_torch_thread_limits(num_threads: int | None = None) -> int:
     BLAS/OpenMP library loaded later; set_num_threads covers an already-imported
     torch. Both are needed.
 
+    INDUCTOR is a FOURTH pool that none of the above reaches:
+    ``torch._inductor.config.compile_threads`` has its own default of
+    ``min(32, cpu_count)`` = 32 here, and torch spawns one compile_worker
+    subprocess that forks that many workers -> **33 descendant processes per
+    cell** while the reward ``torch.compile`` runs (see nett_isaac.rewards).
+
+    MEASURED 2026-07-30 (cold caches, the six reward graphs, A10):
+
+        compile_threads   cold compile   procs/cell   steady-state
+              32 (torch)     74.6-77.8s       33      0.295-0.304 ms/call
+               8            75.2s              9      0.300
+               4            75.3s              5      0.308
+               1            92.9s              0      0.310
+
+    4 / 8 / 32 are indistinguishable: the six graphs compile SEQUENTIALLY and
+    each has too few kernels to feed 32 workers, so the pool has nothing to chew
+    on. There is no wave width -- and no solo case -- at which 32 wins, which is
+    why this can simply follow the budget.
+
+    Scope, so nobody over-values this: the pool is only spawned on a COLD
+    inductor cache (after a torch upgrade or a rewards.py edit). Warm, the same
+    six graphs take 3.9s and spawn **1** process, so this is a startup-burst
+    tidy-up, not a throughput lever. It is also NOT a stall cause -- the Kit
+    render-pump wedge reproduces with NETT_REWARD_COMPILE=0 and no pool at all.
+
+    ⚠ THE ENV VAR ALONE IS A NO-OP HERE. ``decide_compile_threads()`` runs at
+    ``import torch`` (module-level in ``torch._inductor.config``), and by the time
+    the spawn child reaches this function torch is ALREADY imported -- unpickling
+    the Task pulls it in. Measured: setting only TORCHINDUCTOR_COMPILE_THREADS
+    late leaves ``compile_threads`` at 32 and still forks 33 processes; assigning
+    the config attribute gives 5. So we do BOTH, exactly like OMP_NUM_THREADS +
+    ``set_num_threads``: the env var binds a torch imported later, the attribute
+    covers the one already loaded. Same silent-drop class as ``limit_cpu_threads``
+    in :func:`kit_thread_args` -- if you touch this, re-check the process count,
+    do not assume the setting took.
+
+    ``setdefault`` preserves torch's own precedence: an explicit
+    TORCHINDUCTOR_COMPILE_THREADS still wins (=1 is the documented way to make
+    pdb usable), and the attribute write honours it too.
+
     Returns the applied thread count. Idempotent.
     """
     threads = cell_cpu_threads() if num_threads is None else max(1, int(num_threads))
     # Must be set before a BLAS/OpenMP runtime is first initialized to bind.
     os.environ.setdefault("OMP_NUM_THREADS", str(threads))
     os.environ.setdefault("MKL_NUM_THREADS", str(threads))
+    # Read by decide_compile_threads() at torch import: binds only a torch
+    # imported AFTER this point. The attribute write below covers the usual case.
+    compile_threads = max(MIN_COMPILE_THREADS, threads)
+    os.environ.setdefault("TORCHINDUCTOR_COMPILE_THREADS", str(compile_threads))
     try:
         import torch
     except ImportError:  # torch-free callers (tests, validation)
@@ -128,5 +181,16 @@ def apply_torch_thread_limits(num_threads: int | None = None) -> int:
     try:
         torch.set_num_interop_threads(threads)
     except RuntimeError:
+        pass
+    # torch was already imported (the normal case in a spawn child), so the env
+    # var above did nothing -- assign the resolved value. Honour an explicit
+    # override rather than the budget, matching torch's own precedence.
+    try:
+        from torch._inductor import config as _inductor_config
+
+        _inductor_config.compile_threads = int(
+            os.environ.get("TORCHINDUCTOR_COMPILE_THREADS", compile_threads)
+        )
+    except Exception:  # noqa: BLE001 - a torch without inductor is not fatal here
         pass
     return threads
