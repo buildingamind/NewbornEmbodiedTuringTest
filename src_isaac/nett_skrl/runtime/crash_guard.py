@@ -440,14 +440,24 @@ def _emit(msg: str) -> None:
 # ---------------------------------------------------------------------------
 
 
-def flush_artifacts_now() -> None:
+def flush_artifacts_now(reason: str = "") -> None:
     """Public entry to the same artifact flush the DEVICE_LOST path uses.
 
     Exists so :mod:`nett_skrl.runtime.stall_guard` can flush IDENTICALLY on its own
     bounded-exit path rather than growing a second, drifting copy. Deliberately a thin
     wrapper: the ordering inside (durability before forensics) is load-bearing and
     should have exactly one implementation.
+
+    ``reason`` LABELS the forensics for a caller that is not a DEVICE_LOST. Without it a
+    stall wrote ``crash_summary.json`` with ``"reason": ""`` into a directory called
+    ``crash_forensics/`` for a run that never crashed -- not false, but misleading
+    exactly where someone would be looking for a cause. The GPU telemetry snapshot IS
+    worth keeping for a stall (it captures device state at hang time), so the fix is to
+    say what happened, not to skip it.
     """
+    global _trigger_reason
+    if reason and not _trigger_reason:
+        _trigger_reason = reason
     _flush_artifacts()
 
 

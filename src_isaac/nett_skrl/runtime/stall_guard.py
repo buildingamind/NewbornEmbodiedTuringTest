@@ -232,7 +232,10 @@ def _trigger(idle: float, steps: int, before_first_step: bool) -> None:
         # like a crashed run's (tfevents are the real exposure). Bounded internally.
         from . import crash_guard
 
-        crash_guard.flush_artifacts_now()
+        crash_guard.flush_artifacts_now(
+            reason=f"stall: no env-step progress for {idle:.0f}s "
+                   f"({steps} steps seen) -- Kit render-pump wedge, NOT a crash"
+        )
     except Exception:  # noqa: BLE001 - never let cleanup stop the exit
         _log.debug("stall guard: artifact flush failed", exc_info=True)
     os._exit(_env_int("NETT_STALL_EXIT_CODE", 77))
