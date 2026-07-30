@@ -39,10 +39,24 @@ more cells than it has GPUs: 2 cells/GPU buys +72% aggregate for -18% per-cell.
 **Past 16 the box is saturated** -- 20 and 24 cells buy nothing (aggregate flat at
 ~200-209 while per-cell falls), so 16-way is the production point.
 
-* 24-way only reached 24/24 with a per-cell Kit cache dir (NETT_KIT_CACHE_ID); with the
-shared cache 3/24 hung in Kit init on a shared-cache race. That knob was REMOVED as
-dead weight -- aggregate is flat past 16, so there is no reason to run 24 and pay for
-it. If you ever need >16 cells/host, see git log "per-cell Kit cache dirs" (B@c43fd46).
+* 24-way once needed a per-cell Kit cache dir (NETT_KIT_CACHE_ID) to reach 24/24: with
+the shared cache 3/24 hung in Kit init on a shared-cache race, whose signature is
+"omni.datastore: Locked base cache layer ...". That knob was REMOVED as dead weight
+(138de0c) -- aggregate is flat past 16, so there is no reason to run 24 and pay for it.
+If you ever need >16 cells/host, see git log "per-cell Kit cache dirs" (B@c43fd46).
+
+  RE-TESTED 2026-07-30 and the init hang NO LONGER REPRODUCES: two 24-way waves of
+  concurrent Kit boot + scene build (num_envs=4/res64, then 16/res128, no stagger)
+  gave **24/24 and 24/24**, zero "Locked base cache layer" lines, kit-up times tightly
+  clustered (median 57.7s, max 59.6s -- a race would leave a long tail). The condition
+  that produced it is still present (nv_shadercache pinned at its 3.9GB cap), so this
+  is "does not reproduce", not "was fixed". Remaining fidelity gap: those probes run
+  with screens/video OFF, and a real cell has video on.
+
+  ⚠ The "omni.kvdb.plugin: Disabling key-value database because another kit process is
+  locking it" line is a RED HERRING and always has been -- kvdb is leveldb, which takes
+  an exclusive dir lock, so every secondary Kit process logs it and runs fine. It
+  appeared in 22-23 of 24 cells in BOTH clean waves above. Do not diagnose from it.
 
 Do not be fooled by a staggered launch: a 24-way run with a 5s stagger reported
 12.02 it/s/cell / 254.4 aggregate, but that is an ARTIFACT -- the stagger spread
