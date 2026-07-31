@@ -250,6 +250,16 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
 
     apply_torch_thread_limits()
 
+    # Die with the parent, enforced by the kernel. Every reaper.reap() call site is on a
+    # path the PARENT chooses, and there is no SIGTERM handler -- so a parent killed from
+    # OUTSIDE (the shell `timeout` bounding a wave, a pkill, an operator) leaves THIS
+    # process, which owns the Isaac/Kit GPU context, orphaned at PPID=1 forever. Measured
+    # 2026-07-30: 29 such orphans up to 8h old (52GB RAM) plus three Kit orphans holding
+    # ~31GB of VRAM. A handler could not cover the SIGKILL case; PR_SET_PDEATHSIG does.
+    from . import pdeathsig
+
+    pdeathsig.arm()
+
     config = task.config
     agent = task.agent
     set_seeds(config.seed)
