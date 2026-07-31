@@ -295,3 +295,36 @@ def test_unrelated_exception_is_NOT_retryable():
     from nett_skrl.runtime.reap import is_pure_stall_failure
 
     assert is_pure_stall_failure(RuntimeError("something else")) is False
+
+
+def test_startup_grace_default_is_bounded_by_measurement():
+    """The pre-first-step budget must cover Kit boot, not an OOM wedge.
+
+    Measured worst case at 24-way concurrency: kit_up 57.7s median / 59.6s max; a
+    declared-memory cell reaches its first env step in ~1 min. 300s is ~5x that. It was
+    900s, which only meant an OOM-WEDGED cell -- one that never progresses and ignores
+    SIGTERM -- sat on its GPU for 15 minutes before its own guard reclaimed it.
+
+    Pinned because the number is a measured trade-off, not a taste: too low kills healthy
+    cells mid-boot (losing hours of training), too high wastes a GPU on a dead one.
+    """
+    import os
+    from nett_skrl.runtime import stall_guard
+
+    os.environ.pop("NETT_STALL_STARTUP_GRACE_S", None)
+    assert stall_guard._env_int("NETT_STALL_STARTUP_GRACE_S", 300) == 300
+    # steady-state budget is a different number and must stay larger: a PPO update
+    # legitimately pauses stepping.
+    assert stall_guard._env_int("NETT_STALL_TIMEOUT_S", 600) > 300
+
+
+def test_startup_grace_is_still_overridable():
+    """Cold texture cache / very wide waves can legitimately need longer."""
+    import os
+    from nett_skrl.runtime import stall_guard
+
+    os.environ["NETT_STALL_STARTUP_GRACE_S"] = "1200"
+    try:
+        assert stall_guard._env_int("NETT_STALL_STARTUP_GRACE_S", 300) == 1200
+    finally:
+        os.environ.pop("NETT_STALL_STARTUP_GRACE_S", None)

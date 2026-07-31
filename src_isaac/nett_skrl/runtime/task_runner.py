@@ -14,7 +14,6 @@ import csv
 import json
 import logging
 import os
-import shutil
 from pathlib import Path
 
 import torch
@@ -77,11 +76,7 @@ def _run_train_with_eval_milestones(task: Task) -> None:
         return
 
     eval_num_envs = _compute_eval_num_envs(task)
-    boundaries = _training_boundaries(
-        total,
-        eval_freq=eval_freq,
-        checkpoint_freq=getattr(task.agent.brain, "checkpoint_freq", None),
-    )
+    boundaries = _training_boundaries(total, eval_freq=eval_freq)
     previous = 0
     for boundary in boundaries:
         chunk = boundary - previous
@@ -99,7 +94,6 @@ def _run_train_with_eval_milestones(task: Task) -> None:
                 train_global_step=boundary,
                 train_start_step=previous,
             )
-            _copy_final_checkpoints_to_global_step(task, boundary)
         if boundary % eval_freq == 0:
             config.logger.info(
                 "Spawning metrics-only eval at train step %d for condition %s "
@@ -116,22 +110,6 @@ def _run_train_with_eval_milestones(task: Task) -> None:
                 num_envs=eval_num_envs,
             )
         previous = boundary
-
-
-def _copy_final_checkpoints_to_global_step(task: Task, step: int) -> None:
-    freq = getattr(task.agent.brain, "checkpoint_freq", None)
-    if not freq or step % int(freq) != 0:
-        return
-    for brain_id in range(1, int(task.config.num_brains) + 1):
-        ckpt_dir = (
-            task.config.path / "wandb_runs" / f"brain_{brain_id}" / "checkpoints"
-        )
-        src = ckpt_dir / "final_agent.pt"
-        dst = ckpt_dir / f"agent_{step}.pt"
-        if not src.exists():
-            task.config.logger.warning("checkpoint alias skipped; missing %s", src)
-            continue
-        shutil.copy2(src, dst)
 
 
 def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
@@ -384,16 +362,31 @@ def _compute_eval_num_envs(task: Task) -> int:
     return best
 
 
-def _training_boundaries(
-    total: int,
-    *,
-    eval_freq: int,
-    checkpoint_freq: int | None,
-) -> list[int]:
+def _training_boundaries(total: int, *, eval_freq: int) -> list[int]:
+    """Points at which training is SPLIT INTO SEPARATE SUBPROCESSES.
+
+    ⚠ ``checkpoint_freq`` deliberately does NOT appear here. Saving the model is a side
+    effect of training, not a control-flow event: skrl writes ``agent_{timestep}.pt`` from
+    INSIDE its training loop via ``cfg.experiment.checkpoint_interval`` (wired in
+    ``brain/experiment.py``), which needs no chunking at all.
+
+    It used to add boundaries, and the cost was severe (measured 2026-07-31):
+      * a 500-episode run with ``checkpoint_freq=7812`` was split into **33 subprocesses**;
+      * each boundary then copied ``final_agent.pt`` -> ``agent_{step}.pt`` via
+        ``_copy_final_checkpoints_to_global_step``, redundantly with skrl's own in-loop
+        write, and produced **33 byte-identical files** (one MD5 across all of them) --
+        i.e. no usable snapshots, and any "learning curve" built from them is one policy
+        measured N times;
+      * and because every mode subprocess calls ``set_seeds(config.seed)`` with the SAME
+        seed, a chunked run restarts its RNG stream at every boundary and is NOT
+        trajectory-identical to the same seed run continuously.
+
+    ``eval_freq`` still chunks, because a mid-training *evaluation* genuinely needs the
+    trainer to stop. That remains the documented reason to prefer post-hoc checkpoint
+    evaluation over ``eval_freq`` (see maintenance/checkpoint-eval-design.md).
+    """
     boundaries = {int(total)}
     boundaries.update(range(eval_freq, total + 1, eval_freq))
-    if checkpoint_freq:
-        boundaries.update(range(int(checkpoint_freq), total + 1, int(checkpoint_freq)))
     return sorted(boundaries)
 
 

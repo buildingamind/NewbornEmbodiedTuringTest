@@ -129,9 +129,9 @@ class TestComputeEvalNumEnvs:
 # ---------------------------------------------------------------------------
 
 class TestTrainingBoundaries:
-    def _call(self, total, eval_freq, checkpoint_freq=None):
+    def _call(self, total, eval_freq):
         from nett_skrl.runtime.task_runner import _training_boundaries
-        return _training_boundaries(total, eval_freq=eval_freq, checkpoint_freq=checkpoint_freq)
+        return _training_boundaries(total, eval_freq=eval_freq)
 
     def test_eval_boundaries_present(self):
         boundaries = self._call(total=10000, eval_freq=2000)
@@ -146,14 +146,24 @@ class TestTrainingBoundaries:
         boundaries = self._call(total=10000, eval_freq=3000)
         assert boundaries == sorted(boundaries)
 
-    def test_checkpoint_boundaries_merged(self):
-        boundaries = self._call(total=10000, eval_freq=4000, checkpoint_freq=3000)
-        assert 3000 in boundaries
-        assert 4000 in boundaries
-        assert 6000 in boundaries
+    def test_checkpoint_freq_does_NOT_create_boundaries(self):
+        """INVERTED 2026-07-31. This test previously asserted that checkpoint_freq
+        merged into the training boundaries; that behaviour was the bug.
+
+        Chunking training to take a snapshot meant a 500-episode run with
+        checkpoint_freq=7812 became 33 subprocesses, and each boundary copied
+        final_agent.pt over agent_{step}.pt -- producing 33 BYTE-IDENTICAL files
+        (one MD5 across all of them), i.e. no usable snapshots at all. Saving the
+        model is a side effect of training: skrl writes agent_{timestep}.pt from
+        inside its own loop via cfg.experiment.checkpoint_interval.
+        eval_freq still chunks, because an evaluation genuinely must pause training.
+        """
+        boundaries = self._call(total=10000, eval_freq=4000)
+        assert boundaries == [4000, 8000, 10000]
+        assert 3000 not in boundaries  # a checkpoint step must not appear
 
     def test_no_duplicates(self):
-        boundaries = self._call(total=6000, eval_freq=2000, checkpoint_freq=3000)
+        boundaries = self._call(total=6000, eval_freq=2000)
         assert len(boundaries) == len(set(boundaries))
 
 

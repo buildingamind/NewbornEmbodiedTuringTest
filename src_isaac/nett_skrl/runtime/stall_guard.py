@@ -54,9 +54,19 @@ mid-update, which is far worse than a slow detect. So:
                                       Observed healthy cadence is ~19 steps/s, and the
                                       longest legitimate pause is a PPO update, orders
                                       of magnitude under this.
-``NETT_STALL_STARTUP_GRACE_S``  "900"  before the FIRST step ever completes: Kit boot +
-                                      scene build + first render, which is minutes under
-                                      8-way contention.
+``NETT_STALL_STARTUP_GRACE_S``  "300"  before the FIRST step ever completes: Kit boot +
+                                      scene build + first render. MEASURED worst case at
+                                      24-way concurrency is kit_up 57.7s median / 59.6s
+                                      max, and a declared-memory cell reaches its first
+                                      step in ~1 min -- so 300s is ~5x the observed worst
+                                      case. Was 900s, i.e. 10-15x, which meant an
+                                      OOM-WEDGED cell (never progresses, ignores SIGTERM)
+                                      held its GPU for a needless 15 minutes.
+                                      ⚠ Raise it for a COLD texture cache or a very wide
+                                      wave, where first render can legitimately take
+                                      minutes longer. The VRAM dry-run probes do NOT rely
+                                      on this -- they are bounded separately by
+                                      TaskConfig.dry_run_timeout.
 ``NETT_STALL_EXIT_BUDGET_S``    "60"   SIGALRM backstop, for a wedged GIL.
 ``NETT_STALL_EXIT_CODE``        "77"   distinct from 75 (DEVICE_LOST) / 76 (VRAM OOM).
 ``NETT_STALL_GUARD``            "1"    DEFAULT ON. Set 0 to disable.
@@ -154,7 +164,7 @@ def arm() -> bool:
     _log.info(
         "stall guard armed (timeout=%ds, startup_grace=%ds, exit_code=%d)",
         _env_int("NETT_STALL_TIMEOUT_S", 600),
-        _env_int("NETT_STALL_STARTUP_GRACE_S", 900),
+        _env_int("NETT_STALL_STARTUP_GRACE_S", 300),
         _env_int("NETT_STALL_EXIT_CODE", 77),
     )
     return True
@@ -177,7 +187,7 @@ def disarm() -> None:
 def _deadline() -> float:
     if _seen_progress:
         return float(_env_int("NETT_STALL_TIMEOUT_S", 600))
-    return float(_env_int("NETT_STALL_STARTUP_GRACE_S", 900))
+    return float(_env_int("NETT_STALL_STARTUP_GRACE_S", 300))
 
 
 def _arm_kernel_backstop() -> None:

@@ -280,3 +280,35 @@ def test_task_bound_unknown_when_unresolvable():
 def test_task_bound_unknown_when_sheet_unreadable():
     n = _nett([{"num_brains": 1, "environment": {"design_sheet": "/no/such.csv"}}])
     assert n._max_concurrent_tasks() is None
+
+
+# --- checkpointing must not chunk training ---------------------------------
+#
+# `checkpoint_freq` used to be folded into _training_boundaries, so setting it split a
+# 500-episode run into 33 subprocesses AND copied final_agent.pt over each agent_{step}.pt
+# -- yielding 33 byte-identical files (1 MD5 across all of them). Saving the model is a
+# side effect of training; skrl writes agent_{timestep}.pt from inside its loop.
+
+
+def test_checkpoint_freq_does_not_chunk_training():
+    """REGRESSION: only eval_freq may create training boundaries."""
+    from nett_skrl.runtime.task_runner import _training_boundaries
+
+    # eval disabled -> exactly one boundary, i.e. ONE continuous training subprocess
+    assert _training_boundaries(250_000, eval_freq=10_000_000) == [250_000]
+
+
+def test_eval_freq_still_chunks_because_eval_must_pause_training():
+    from nett_skrl.runtime.task_runner import _training_boundaries
+
+    assert _training_boundaries(200_000, eval_freq=50_000) == [
+        50_000, 100_000, 150_000, 200_000
+    ]
+
+
+def test_training_boundaries_takes_no_checkpoint_argument():
+    """The coupling is gone at the signature level, not just in the body."""
+    import inspect
+    from nett_skrl.runtime.task_runner import _training_boundaries
+
+    assert "checkpoint_freq" not in inspect.signature(_training_boundaries).parameters

@@ -758,12 +758,16 @@ def test_intrinsic_reward_requires_one_adapter_per_env_row():
         raise AssertionError("expected ValueError for missing per-env intrinsic adapter")
 
 
-def test_eval_checkpoint_boundaries_use_eval_and_checkpoint_milestones():
-    assert _training_boundaries(
-        200_000,
-        eval_freq=50_000,
-        checkpoint_freq=60_000,
-    ) == [50_000, 60_000, 100_000, 120_000, 150_000, 180_000, 200_000]
+def test_training_boundaries_come_from_eval_freq_ONLY():
+    """INVERTED 2026-07-31: checkpoint_freq must not chunk training.
+
+    It used to contribute boundaries, which split a run into one subprocess per
+    checkpoint and then overwrote each snapshot with final_agent.pt. See
+    TestTrainingBoundaries.test_checkpoint_freq_does_NOT_create_boundaries.
+    """
+    assert _training_boundaries(200_000, eval_freq=50_000) == [
+        50_000, 100_000, 150_000, 200_000
+    ]
 
 
 def test_only_known_isaac_teardown_exit_codes_are_tolerated():
