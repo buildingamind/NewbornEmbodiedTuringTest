@@ -172,13 +172,29 @@ default 5400 s; `NETT_UNIT_TIMEOUT`, 900 s) turns a hang into a failure instead 
 indefinite block. The e2e stage runs `-v`, not `-q`, because with one training run per test
 "which test was I on" is the entire diagnostic and the progress-dot line never flushes.
 
-⚠ **A killed e2e run orphans its Isaac workers.** They reparent to PID 1 and keep holding
-GPU memory *indefinitely* — the observed one was still in state `R` with 2.4 GB on GPU 0
-long after its parent died. The hook prints the check on timeout:
-`nvidia-smi --query-compute-apps=pid,used_memory --format=csv`. Reap with **SIGTERM first**
-and give it a real grace (Kit defers the signal while in its render loop; 10 s is not
-always enough). A Kit process that is genuinely *wedged* should be diagnosed, not `-9`'d —
-repeated SIGKILL of wedged boots can leave the driver in a bad state across all GPUs.
+⚠ **A killed run used to orphan its Isaac workers — now largely prevented.** Every
+`reaper.reap()` call site is on a path the parent *chooses* (VRAM-OOM exit, stall exit,
+device-lost exit, `join_with_reap`'s absolute timeout), and there is no SIGTERM handler, so
+a parent killed from *outside* — the hook's `timeout`, a `pkill` — died without reaping and
+left the Isaac worker at PID 1 holding GPU memory indefinitely. Measured 2026-07-30: 29
+such orphans up to 8 h old (52 GB RAM), plus three Kit orphans holding ~31 GB of VRAM.
+`runtime/pdeathsig.py` now arms `PR_SET_PDEATHSIG` in the task child, so the **kernel**
+terminates it when its parent dies — including the SIGKILL case, which a signal handler
+structurally cannot cover.
+
+It is a safety net, not a licence to skip the check. Verify with
+`nvidia-smi --query-compute-apps=pid,used_memory --format=csv` and note that **a process
+already wedged when its parent dies may still linger**: PDEATHSIG delivers SIGTERM, and a
+*teardown*-hung process dies on it while an *OOM-wedged* one does not (a Vulkan OOM wedges
+rather than crashing, emitting no DEVICE_LOST). Reap with **SIGTERM first** and a real
+grace — Kit defers signals inside its render loop, and 10 s is not always enough.
+
+A genuinely wedged Kit process should be diagnosed rather than `-9`'d: repeated SIGKILL of
+wedged boots can leave the driver in a bad state across all GPUs. When you must, **prove
+CUDA still works afterwards** (allocate + matmul + synchronize on each device) instead of
+assuming either outcome. `maintenance/diagnostics/` (outside both repos) holds the
+`/proc`-based thread sampler used to identify what a wedged Kit is actually doing, since
+`ptrace_scope=2` blocks both py-spy and gdb on this host.
 
 The hook owns everything the suite needs that `git clone` does not carry, which is where
 "passes on my machine, fails on yours" actually comes from:
