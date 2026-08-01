@@ -272,12 +272,21 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         cfg_path = e2e_output_dir / "cfg.yaml"
         cfg_path.write_text(yaml.safe_dump(cfg))
 
-        # Import lazily — top-level conftest module load must not trigger
-        # Isaac Sim imports for non-e2e test runs.
-        from nett_skrl import NETT
+        # (The lazy `from nett_skrl import NETT` that used to sit here was dead — the run
+        # goes through `run_nett_tolerating_stalls`, which does its own lazy import. The
+        # invariant it guarded still holds and still matters: top-level conftest module
+        # load must not trigger Isaac Sim imports for non-e2e runs.)
 
-        # devices=[0] pins the tests to ONE known card so placement is deterministic run
-        # to run. ⚠ HISTORY WORTH KEEPING: this used to be the ONLY thing standing between
+        # An EXPLICIT device pins each worker to a known card so placement is deterministic
+        # run to run. ⚠ This passes E2E_DEVICE — a PHYSICAL index (`xdist worker index %
+        # device_count`), with no CUDA_VISIBLE_DEVICES set — i.e. no-CVD + devices=[<phys>].
+        # That is the convention that is correct both in a bare spawn and inside NETT.run();
+        # the CVD=<phys> + devices=[0] pairing that `examples/_smoke_pin_launch.py` calls
+        # "USD-safe" is NOT safe in a bare spawn (it lands on physical GPU 0 — measured by
+        # maintenance/diagnostics/device_pin_isolation.py) even though it works inside
+        # NETT.run(). Do not switch this tree to it. See blueprint.md §SESSION 2026-07-31b
+        # item 7 — the primitive and the full path disagree and the mechanism is unresolved.
+        # ⚠ HISTORY WORTH KEEPING: this used to be the ONLY thing standing between
         # this tree and an indefinite hang, because nett.py `set_device(most_free_gpu)`
         # handed Kit a PHYSICAL gpu index (pynvml IGNORES CUDA_VISIBLE_DEVICES) and Kit's
         # usdrt scenegraph supports ONLY cuda:0:
@@ -286,9 +295,10 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # The run then HANGS at the Fabric XFormPrimView with no error, indefinitely.
         # ⚠ IT IS HOST-STATE DEPENDENT, which is why this tree could pass for months and
         # then wedge: the picker only strays off GPU0 when GPU0 is the busier card.
-        # This is the pin the rest of the repo already uses -- examples/campaign_train.py
-        # passes devices=[device], and examples/_smoke_pin_launch.py calls the
-        # CUDA_VISIBLE_DEVICES=<phys> + devices=[0] combination "USD-safe". To aim the
+        # ⚠ Passing a non-zero PHYSICAL index here is safe only because `task_runner`
+        # applies `visible_device_scope(device)` in the child, so the target card re-indexes
+        # to cuda:0 and usdrt's constraint above is satisfied. That scope is load-bearing.
+        # examples/campaign_train.py passes devices=[device] the same way. To aim the
         # tests at a specific physical GPU, set CUDA_VISIBLE_DEVICES in the SHELL: the
         # single visible card re-indexes to cuda:0 and this pin still holds.
         # MEASURED: the same workload wedged >26 min unpinned, and COMPLETES IN ~110s here.

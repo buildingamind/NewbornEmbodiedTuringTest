@@ -5,7 +5,6 @@ Expect exactly ONE 'View run at' line in the log (brains 2..N reuse brain 1's ru
 from __future__ import annotations
 from _paths import BINDING_DESIGN_SHEET, BINDING_MEDIA_ROOT
 from datetime import datetime
-from pathlib import Path
 from nett_skrl import NETT
 
 CONFIG = {

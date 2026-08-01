@@ -11,9 +11,6 @@ Covers:
 
 from __future__ import annotations
 
-import math
-import types
-from dataclasses import replace
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -35,7 +32,6 @@ def _make_mock_task(
     condition: str = "C1",
 ):
     """Build a minimal mock Task for _compute_eval_num_envs."""
-    from nett_skrl.runtime.task import TaskConfig
 
     config = MagicMock()
     config.num_brains = num_brains
@@ -729,7 +725,6 @@ def test_orchestration_wandb_timestep_offset_per_chunk(tmp_path):
     This keeps the training reward curve continuous in W&B.
     """
     from nett_skrl.brain.run_config import train_cfg_for
-    from nett_skrl.runtime.task import TaskConfig
 
     envs_per_brain = 10
     eval_freq = 2000

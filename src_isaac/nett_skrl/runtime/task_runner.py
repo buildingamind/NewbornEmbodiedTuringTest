@@ -9,7 +9,6 @@ late ``os._exit(0)`` atexit hook after artifacts are flushed.
 from __future__ import annotations
 
 import atexit
-import contextlib
 import csv
 import json
 import logging

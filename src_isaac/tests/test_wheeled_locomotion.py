@@ -135,7 +135,6 @@ def test_mvg_shares_gaussian_params_plus_only_correlation_terms():
 def test_mvg_is_identical_diagonal_gaussian_at_init():
     """At init (off-diagonal = 0, log_std = 0) the MVG actor's log-prob equals the
     independent-Normal log-prob — a clean A/B baseline identical to GaussianActor."""
-    import math
     from torch.distributions import Normal
     obs, act = _spaces(2)
     m = MultivariateGaussianActor(

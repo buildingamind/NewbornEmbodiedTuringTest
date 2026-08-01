@@ -10,10 +10,9 @@ from __future__ import annotations
 import os
 import gymnasium as gym
 import numpy as np
-import torch.nn as nn
 
 from nett_skrl.brain.registry import encoder_mapping
-from campaign_train import MODELS, VIT_CFG, VIVIT_CFG  # reuse the campaign specs
+from campaign_train import MODELS  # reuse the campaign specs
 
 RES = int(os.environ.get("NETT_RES", "128"))
 ACTION_DIM = 2  # 2D action space (turn + forward)

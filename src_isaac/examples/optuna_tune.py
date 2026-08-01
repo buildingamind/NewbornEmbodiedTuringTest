@@ -30,7 +30,6 @@ import math
 import os
 import queue
 import threading
-import traceback
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path

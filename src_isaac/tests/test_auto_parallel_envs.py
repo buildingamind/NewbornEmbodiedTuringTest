@@ -344,7 +344,7 @@ def test_dry_run_probe_is_bounded_and_real_runs_are_not(tmp_path, monkeypatch):
     OOM is not one. A probe knows its own budget, so it gets an absolute cap; a real
     run's duration is unbounded by design and must NOT."""
     import nett_skrl.nett as nett_module
-    from nett_skrl.runtime.task import Task, TaskConfig
+    from nett_skrl.runtime.task import TaskConfig
 
     nett = object.__new__(NETT)
     nett.logger = logging.getLogger("test")
