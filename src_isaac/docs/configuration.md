@@ -42,7 +42,23 @@ Important fields:
 - `conditions`: optional subset of imprint conditions. `null` runs all train
   conditions in the design sheet.
 - `headless`: `true` for server runs; `false` to open the Isaac viewport.
-- `input_resolution`: square per-eye resolution.
+- `input_resolution`: square per-eye resolution. Default **64**.
+- `camera_fov`: the chick eye's horizontal field of view in degrees. Default **150.0** —
+  the fisheye aperture the animal has, and the one the closeness reward is calibrated for.
+  **Treat this as an experimental constant, not a tuning knob.** Two things depend on it:
+  - The reward *is* a projection through this optic. `closeness` measures the target's
+    projected extent, so changing the FOV changes what the reward means, not just how
+    much of the chamber is visible. A wider FOV keeps a monitor in view almost always,
+    which raises the reward floor — `optuna_tune/RESULTS_nature_cnn.md` and
+    `RESULTS_combined.md` record a whole line of investigation that chased encoder
+    capacity before identifying the ~0.40 floor at 150° as the cause.
+  - Repo A declares the same number independently (`NETTEnvCfg.observation.fov`). Repo B's
+    value is copied into the env cfg **unconditionally**, so if the two drift apart repo B
+    wins silently. They *did* drift — repo B defaulted 120.0 until 2026-07-31, so any
+    config omitting the key ran an optic no experiment used. Runs from before that date
+    that omitted `camera_fov` are not comparable to runs after it; runs that set it
+    explicitly (every research config does) are unaffected.
+    `tests/test_schema_defaults.py` now fails if the two repos disagree.
 - `reward_types`: env-side rewards. Use `[]` for no extrinsic reward.
 - `decision_period`: Isaac env steps per motor/log/reward decision.
 - `random_first_frame`: randomize stimulus start frame.
@@ -54,6 +70,20 @@ Important fields:
   apply schema defaults, so the Python default governed and any config omitting
   this key silently ran the *unvalidated* mode. The two now agree. Set it
   explicitly if you depend on a specific mode.
+- The **wheeled action parameterization** is not a config field — it is the env var
+  `NETT_WHEEL_TURNMOVE`, read in repo A's `camera_rig.py`. Both parameterizations drive
+  the *same* differential-drive body velocity, and both normalize identically (full
+  forward = `body_move_speed_limit`, full in-place turn = `body_turn_speed_limit`):
+  - **default** (unset or `1`): `[turn, move]` — decoupled, so turn and move can be
+    maxed independently.
+  - `NETT_WHEEL_TURNMOVE=0`: `[left, right]` wheel commands — coupled diff-drive, where
+    turning trades against forward speed. This is the physically faithful control and
+    was the default before 2026-07-31.
+
+  ⚠ Flipped as a **package** with `model.actor_distribution` (see below) — the axes
+  interact and only the combined arm was measured. Runs from before 2026-07-31 are not
+  comparable to runs after it. Read the DEFAULT-FLIP LEDGER in `isaac/blueprint.md`
+  before relying on this or changing it again.
 - Chamber lighting is NOT configurable. Repo A ships exactly one chamber,
   `assets/chamber/chamber.usdc`: statically baked radiosity lightmaps with the
   monitors measured at **250 cd/m^2** (the Acer V193W EJb panels of the original
@@ -81,6 +111,19 @@ Important fields:
   **on measurement**. Runs made on defaults in different windows are not comparable.
   Explicit `null` has always selected the diagonal head, so old configs and
   checkpoints resolve to the head they were built with regardless.
+  ⚠ **A pre-flip checkpoint will not load under the new default, and the error is
+  cryptic.** The multivariate head owns an extra learnable parameter `tril_offdiag`
+  (the Cholesky off-diagonal); the diagonal head does not. skrl loads with
+  `strict=True`, so re-running a config that *omitted* `actor_distribution` before
+  2026-07-31 now raises
+  `RuntimeError: Unexpected key(s) in state_dict: "tril_offdiag"`.
+  **Fix:** set `actor_distribution: multivariate_gaussian` explicitly in that config —
+  the checkpoint is fine, only the default moved under it. (Verified against
+  `B5_mvg_lr_s0/.../agent_6000.pt`, whose policy keys are `log_std` + `tril_offdiag`.)
+  ⚠ Note the two heads are *identical at initialisation*: `tril_offdiag` starts at zero
+  and the Cholesky diagonal is `exp(log_std)`, matching `GaussianActor` exactly. They
+  diverge only as correlation is learned — so this is not a "correlated vs uncorrelated
+  from step 0" comparison.
   ⚠ Flipped as a **package** with repo A's wheeled action default (`[turn, move]`):
   the axes interact, and only the combined arm has data. Evidence, caveats and the
   budget dependence are in the DEFAULT-FLIP LEDGER in `isaac/blueprint.md` — read it
