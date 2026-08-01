@@ -328,3 +328,45 @@ def test_startup_grace_is_still_overridable():
         assert stall_guard._env_int("NETT_STALL_STARTUP_GRACE_S", 300) == 1200
     finally:
         os.environ.pop("NETT_STALL_STARTUP_GRACE_S", None)
+
+
+# --- the guard must cover Kit BOOT, not just stepping ------------------------
+
+
+def test_stall_guard_is_armed_BEFORE_kit_boot():
+    """REGRESSION (2026-07-31): ordering IS the fix, so pin the ordering.
+
+    `embed()` boots Kit, and a boot-time Vulkan OOM WEDGES rather than crashing -- no
+    DEVICE_LOST, so crash_guard is blind. While stall_guard.arm() sat AFTER embed(), a
+    process that wedged during boot never reached it, so no guard existed at any budget:
+    four such processes ran 41 minutes at ~128% CPU with no output, ignored SIGTERM, and
+    needed SIGKILL.
+
+    crash_guard must stay AFTER embed (Kit resets carb logging at startup, and arming its
+    synchronous log consumer before the scene build wedges Kit outright -- measured).
+    stall_guard has no such constraint: its signal is our own env-step counter.
+    """
+    import inspect
+    from nett_skrl.runtime import task_runner
+
+    src = inspect.getsource(task_runner._run_single_mode)
+    stall = src.index("stall_guard.arm()")
+    embed = src.index("agent.body.embed(")
+    crash = src.index("crash_guard.arm(")
+    assert stall < embed, "stall_guard must arm BEFORE Kit boot, or a boot wedge is unguarded"
+    assert crash > embed, "crash_guard must arm AFTER Kit boot (carb logging is reset there)"
+
+
+def test_pdeathsig_is_armed_before_kit_boot_too():
+    """The kernel net must also predate the phase that can wedge.
+
+    ⚠ It is NOT sufficient on its own: PDEATHSIG delivers SIGTERM, and a wedged Kit
+    process ignores SIGTERM (measured -- the four orphans above). stall_guard's
+    os._exit() is what actually reclaims such a process, which is why its placement
+    above matters.
+    """
+    import inspect
+    from nett_skrl.runtime import task_runner
+
+    src = inspect.getsource(task_runner._run_single_mode)
+    assert src.index("pdeathsig.arm()") < src.index("agent.body.embed(")

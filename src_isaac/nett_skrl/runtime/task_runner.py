@@ -252,6 +252,16 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
         num_brains=config.num_brains,
         num_envs=run_config.num_envs,
     )
+    # ⚠ ARMED BEFORE embed() ON PURPOSE -- moved here 2026-07-31 after it demonstrably
+    # failed to cover the case it exists for. embed() is where Kit boots, and a boot-time
+    # Vulkan OOM WEDGES rather than crashing (no DEVICE_LOST, so crash_guard is blind).
+    # Armed after embed, a process that wedged during boot never reached this line, so NO
+    # guard existed at any budget: four such processes ran 41 MINUTES at ~128% CPU with no
+    # output, ignored SIGTERM, and needed -9. Unlike crash_guard this needs no carb and no
+    # Kit -- its signal is our own env-step counter -- so arming it early is safe, and the
+    # startup grace (NETT_STALL_STARTUP_GRACE_S) exists precisely to span the boot it now
+    # covers. Its exit is os._exit(), which works even when the process ignores signals.
+    stall_guard.arm()
     loaded = agent.body.embed(agent.env, run_config)
     # Kit is up now (embed builds AppLauncher/SimulationApp). Its startup resets carb
     # logging, so the guard MUST arm after this line -- and must not arm EARLIER, inside
@@ -267,11 +277,6 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     # leaves it off -- a steady-state OOM is not confirmed unrecoverable, and killing a
     # long training on a transient allocation failure would be worse than the hang.
     crash_guard.arm(config.path, device=config.device, oom_fatal=bool(config.dry_run))
-    # Sibling guard for the hang crash_guard CANNOT see: Kit wedging inside
-    # SimulationContext.render -> self._app.update() with no DEVICE_LOST and no crash
-    # signature (measured 2026-07-30, 2-4 of every 8 cells). Its signal is our own
-    # env-step counter, so it needs no carb and works before Kit is up. Default ON.
-    stall_guard.arm()
     if mode == "train":
         agent.brain.train(
             loaded,
