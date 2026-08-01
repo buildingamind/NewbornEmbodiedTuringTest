@@ -277,15 +277,30 @@ VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
 
 - `nett_skrl/nett.py`: top-level config orchestration.
 - `nett_skrl/runtime/task.py`: immutable task/run config.
-- `nett_skrl/runtime/isaac_mode_runner.py`: Isaac Sim per-mode subprocess runner.
+- `nett_skrl/runtime/task_runner.py`: Isaac Sim per-mode subprocess runner.
 - `nett_skrl/runtime/memory.py`: NVML-backed GPU memory accounting.
 - `nett_skrl/environment/environment.py`: config bridge into Isaac Lab.
 - `nett_skrl/brain/brain.py`: thin public Brain facade.
 - `nett_skrl/brain/agent_factory.py`: skrl agent/model/memory construction.
 - `nett_skrl/brain/trainer.py`: NETT wrapper around skrl trainers.
-- `nett_skrl/brain/env_adapter.py`: env observation/action bridge.
 - `nett_skrl/brain/env_wrappers.py`: skrl rollout wrappers such as intrinsic reward injection.
+- `nett_skrl/body/skrl_adapter.py`: env observation/action bridge into skrl.
 - `nett_skrl/recording/export.py`: PNG sequence to MP4 export.
+
+The four guards, which is where a hung or orphaned run is actually handled — read these
+before diagnosing anything that "just stopped":
+
+- `nett_skrl/runtime/crash_guard.py`: carb-hook DEVICE_LOST detection → bounded exit 75.
+- `nett_skrl/runtime/stall_guard.py`: env-step watchdog → exit 77. Armed *before* Kit
+  boots, so its startup grace spans the boot, which is where the render pump wedges.
+- `nett_skrl/runtime/pdeathsig.py`: `PR_SET_PDEATHSIG` in the child, so an externally
+  killed parent cannot orphan an Isaac process holding a GPU.
+- `nett_skrl/runtime/reap.py`: token-owned reap of PPID=1 / GPU orphans.
+
+(Until 2026-07-31 this list named `runtime/isaac_mode_runner.py` and
+`brain/env_adapter.py`. Both were renamed and the list was never updated:
+`isaac_mode_runner.py` → `runtime/task_runner.py` in `3a43bf4`, and
+`brain/env_adapter.py` → `body/skrl_adapter.py` in `68bcf56`.)
 
 ## Adding A Native Encoder
 
