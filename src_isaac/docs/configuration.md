@@ -73,16 +73,28 @@ Important fields:
 - `model`: MLP head settings. Defaults to hidden sizes `[64, 64]`, `elu`
   activation, bounded value output, orthogonal init, and clipped actions.
 - `model.actor_distribution`: which stochastic actor head a Gaussian-policy
-  algorithm builds. Defaults to `"multivariate_gaussian"` (a joint covariance, so
-  the action components can be sampled as correlated) since 2026-07-30; set
-  `"gaussian"` for the independent per-component diagonal head. ⚠ The default
-  **changed** on that date — it previously resolved to the diagonal head, so runs
-  made on defaults before then are not comparable with runs made after. Explicit
-  `null` still selects the diagonal head, so old configs and checkpoints keep
-  resolving to the head they were built with. See the DEFAULT-FLIP LEDGER in
-  `isaac/blueprint.md`.
+  algorithm builds. **Defaults to `"gaussian"`** — the independent per-component
+  diagonal head — since 2026-07-31; set `"multivariate_gaussian"` for the joint
+  covariance, which lets the action components be sampled as correlated.
+  ⚠ This default has changed **twice**: to multivariate on 2026-07-30 (on a
+  construction argument, never a measured win) and back to diagonal on 2026-07-31
+  **on measurement**. Runs made on defaults in different windows are not comparable.
+  Explicit `null` has always selected the diagonal head, so old configs and
+  checkpoints resolve to the head they were built with regardless.
+  ⚠ Flipped as a **package** with repo A's wheeled action default (`[turn, move]`):
+  the axes interact, and only the combined arm has data. Evidence, caveats and the
+  budget dependence are in the DEFAULT-FLIP LEDGER in `isaac/blueprint.md` — read it
+  before relying on this or changing it again.
 - `reward`: env reward string or intrinsic reward name.
-- `checkpoint_freq`: per-brain checkpoint interval in trainer steps.
+- `checkpoint_freq`: per-brain checkpoint interval, in **trainer timesteps**
+  (`episodes * steps_per_episode / envs_per_brain` — the trainer advances one
+  timestep per env-batch, so the divisor is real). skrl writes `agent_{timestep}.pt`
+  from inside its training loop, so this does **not** interrupt or chunk training.
+  ⚠ It used to: before `44ff079` it also added *training* boundaries, splitting a run
+  into one subprocess per checkpoint and overwriting each snapshot with
+  `final_agent.pt` — a 500-episode run produced 32 byte-identical files. Verify
+  snapshots differ before building any learning curve:
+  `md5sum agent_*.pt | awk '{print $1}' | sort -u | wc -l` must equal the file count.
 - `encoder_cfg`: encoder constructor config. Defaults include
   `features_dim: 512` and `trainable: true`; extra keys pass through to
   custom encoders.
