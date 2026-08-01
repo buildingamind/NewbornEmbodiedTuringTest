@@ -46,8 +46,11 @@ Three packages the runtime does not need are the `test` extra —
 *collection*, not a test), and `pytest-xdist` (what lets the e2e tree run one worker per
 GPU).
 
-⚠ A plain `pytest tests` reports `582 passed, 23 deselected` (`581 passed, 1 skipped`
-without `optuna` — that one skip line stands for 22 tests). The deselected 23 are the whole
+⚠ A plain `pytest tests` reports `621 passed, 23 deselected` (measured 2026-07-31; one
+skip line replaces 22 of them when `optuna` is absent). **Re-measure rather than trusting
+this number** — it has now gone stale twice, and a count in prose ages every time a test
+is added. It is here to catch a *collapse* (a collection error reporting zero), not to be
+matched exactly. The deselected 23 are the whole
 `tests/e2e/` tree, which had **never run on any host** until 2026-07-27 because its design
 sheet and media root pointed at paths that did not exist. They resolve on their own now:
 the conftest picks the first media root that actually holds every clip the design sheet

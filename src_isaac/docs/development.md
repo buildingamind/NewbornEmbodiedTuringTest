@@ -47,15 +47,17 @@ No `--ignore` flags are needed. ⚠ That single SKIPPED line stands for **22 tes
 (`importorskip` at module scope collapses the whole file into one), and all 22 pass when
 optuna is installed — verified 2026-07-27. One skip line is not one test.
 
-Current expected result from the primary checkouts (measured 2026-07-29, with `optuna`
-installed — without it, `581 passed, 1 skipped`):
+Current expected result from the primary checkouts (measured **2026-07-31**, with `optuna`
+installed — without it, one skip line replaces 22 of them):
 
 ```text
-582 passed, 23 deselected
+621 passed, 23 deselected
 ```
 
-(582 is the committed count: `test_campaign_retest.py`, which contributes 5 of them, was
-uncommitted when this figure was first recorded and has since been committed.)
+⚠ **Re-measure; do not trust this number.** It has gone stale twice already (`582` was
+measured 2026-07-29 and was wrong by 39 within two days) and it ages every time a test is
+added. Treat it as a tripwire for a *collapse* — a collection error reports no counts at
+all — not as a figure to match exactly.
 
 ## The 23 deselected tests — read this before trusting a green run
 
