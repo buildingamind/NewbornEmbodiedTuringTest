@@ -186,13 +186,11 @@ DECLARED = _declared_defaults()
 # gap. `strict=True` is the point: when the code catches up, the xfail turns into an
 # unexpected PASS and this suite goes red until the entry is deleted. A pending exception
 # that outlives its bug is how the original drift survived.
-_PENDING_FIX = {
-    "environment.camera_fov": (
-        "schema declares 150.0 (repo A's ObservationCfg.fov, and what the fisheye reward "
-        "geometry assumes); repo B's Environment still defaults 120.0. Closed by "
-        "maintenance PLAN.md task B1, which moves the CODE to 150.0 — a deliberate "
-        "behavior change, hence its own commit rather than being folded in here."
-    ),
+_PENDING_FIX: dict[str, str] = {
+    # (Empty. `environment.camera_fov` lived here for exactly one commit — T04 declared
+    # 150.0 in the schema, B1 moved the code to meet it. Leave the mechanism in place:
+    # it is how a knowingly-ahead schema value gets a deadline instead of becoming the
+    # next silent drift.)
 }
 
 
@@ -245,7 +243,6 @@ def test_no_stale_exemptions():
     assert not both, f"keys are both mapped and exempted; drop the exemption: {both}"
 
 
-@pytest.mark.xfail(reason=_PENDING_FIX["environment.camera_fov"], strict=True)
 def test_repo_b_environment_fov_matches_repo_a():
     """repo B's ``camera_fov`` default must equal repo A's ``ObservationCfg.fov``.
 

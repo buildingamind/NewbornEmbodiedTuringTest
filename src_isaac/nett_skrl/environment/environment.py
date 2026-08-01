@@ -148,7 +148,14 @@ class Environment:
         locomotion: str = "wheeled",
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
-        camera_fov: float = 120.0,
+        # ⚠ 150.0, not 120.0 — and it must stay equal to repo A's
+        # ``NETTEnvCfg.observation.fov``. ``_ENV_CFG_FIELDS`` copies this value into the
+        # env cfg UNCONDITIONALLY (no "was it set?" test), so when the two disagree this
+        # one wins silently. It said 120.0 until 2026-07-31, which meant every config
+        # omitting the key ran an optic the closeness projection is not calibrated for.
+        # ``tests/test_schema_defaults.py::test_repo_b_environment_fov_matches_repo_a``
+        # is what keeps them equal now; do not "simplify" that guard away.
+        camera_fov: float = 150.0,
         train_phase: str = "train",
         train_step_logging: bool = False,
     ):
