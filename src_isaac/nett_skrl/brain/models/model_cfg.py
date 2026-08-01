@@ -34,12 +34,27 @@ class ModelCfg:
     # per-component actor. Only affects stochastic on-policy actors
     # (``actor_type == "gaussian"``); ignored for deterministic actors.
     # See workspace/notes/10_wheeled_physics.md.
-    # ⚠ FLIPPED FROM ``None`` 2026-07-30. blueprint.md's header had claimed
-    # multivariate-Gaussian was the out-of-the-box default since well before that,
-    # while the code shipped diagonal -- so runs made on defaults did NOT match the
-    # documented configuration. Anything trained on the old default is not
-    # comparable to anything trained after it; see the DEFAULT-FLIP LEDGER.
-    actor_distribution: str | None = "multivariate_gaussian"
+    # ⚠⚠ FLIPPED BACK TO DIAGONAL ("gaussian") 2026-07-31, ON MEASUREMENT.
+    # The 2026-07-30 flip to multivariate rested on the construction argument above
+    # plus matching the validated recipe -- never on a measured win. Three comparisons
+    # have now run, all favouring the DIAGONAL head:
+    #   * 2026-07-30 A/B, n=3, actor isolated (both arms [left,right]):
+    #     diagonal 3/3 vs multivariate 2/3;
+    #   * B5 500 ep (chunked, artifact-affected): diag+[turn,move] 4/4 vs mvg+[L,R] 2/4;
+    #   * B5 384 ep, CONTINUOUS training: diag+[turn,move] 4/4 (mean 0.963) vs
+    #     mvg+[L,R] 2/4 (mean 0.797).
+    # ⚠ NONE of these is significant on its own (p ~ 0.21), and the advantage is
+    # BUDGET-DEPENDENT: at 192 episodes the arms are indistinguishable (2/4 vs 2/4,
+    # means 0.754 vs 0.757, p=0.76). What differs is RECOVERY -- diagonal's weak seeds
+    # climb out between 192 and 384 ep (0.50->0.87, 0.52->0.98) while multivariate's
+    # stay stuck (0.50->0.55, 0.52->0.64). So this is "recovers from early collapse",
+    # NOT "learns faster".
+    # ⚠ Pairs with the wheeled action default, which flipped to [turn, move] in the
+    # same change: diagonal x [left,right] is historically POOR, so the two axes
+    # INTERACT and were flipped as a package. Only the combined arm is evidenced.
+    # Anything trained on a different default is not comparable; see the
+    # DEFAULT-FLIP LEDGER in blueprint.md.
+    actor_distribution: str | None = "gaussian"
 
 
 def model_cfg_from(value: dict[str, Any] | None = None) -> ModelCfg:

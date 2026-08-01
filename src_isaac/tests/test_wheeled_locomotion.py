@@ -87,14 +87,17 @@ def test_mvg_actor_builds_and_acts():
     assert "log_prob" in extra and tuple(extra["log_prob"].shape) == (6, 1)
 
 
-def test_builder_defaults_to_mvg_and_gaussian_is_opt_out():
-    """The DEFAULT is the correlated actor; the diagonal one is now the opt-out.
+def test_builder_defaults_to_diagonal_and_mvg_is_opt_in():
+    """The DEFAULT is the diagonal actor; the correlated one is now opt-in.
 
-    Flipped 2026-07-30 (was the reverse). Explicit ``None`` keeps resolving to the diagonal
-    head on purpose -- old configs and checkpoints were built with it, so silently upgrading
-    them would change an architecture mid-experiment.
+    ⚠ Flipped TWICE: to multivariate on 2026-07-30 (on a construction argument, never a
+    measured win), and BACK to diagonal on 2026-07-31 ON MEASUREMENT -- three comparisons
+    favour it, the cleanest being 384 episodes of continuous training, diag+[turn,move]
+    4/4 (mean 0.963) vs mvg+[left,right] 2/4 (mean 0.797). Explicit ``None`` still resolves
+    to the diagonal head, so old configs and checkpoints are unaffected either way.
+    See blueprint.md's DEFAULT-FLIP LEDGER before flipping it a third time.
     """
-    assert type(_build()["policy"]).__name__ == "MultivariateGaussianActor"
+    assert isinstance(_build()["policy"], GaussianActor)
     assert type(_build(actor_distribution="multivariate_gaussian")["policy"]).__name__ == (
         "MultivariateGaussianActor"
     )
@@ -178,14 +181,21 @@ def test_mvg_off_diagonal_introduces_correlation():
     assert abs(float(m._mg_distribution.covariance_matrix[0, 0, 1])) > 0.1
 
 
-def test_model_cfg_actor_distribution_defaults_to_mvg():
+def test_model_cfg_actor_distribution_defaults_to_diagonal():
     """Pins the DEFAULT itself, not just the builder's dispatch on it.
 
-    Worth its own test because this default was documented in blueprint.md as
-    multivariate-Gaussian long before the code agreed, so a run made on defaults did not
-    match the written configuration. The assertion is now the thing keeping them in step.
+    ⚠ FLIPPED 2026-07-31 multivariate -> diagonal, ON MEASUREMENT (the 2026-07-30 flip TO
+    multivariate rested on a construction argument, never on a measured win). Three
+    comparisons favour the diagonal head, the cleanest being B5 at 384 episodes with
+    CONTINUOUS training: diag+[turn,move] 4/4 (mean 0.963) vs mvg+[left,right] 2/4
+    (mean 0.797).
+    ⚠ Not significant alone (p ~ 0.21) and BUDGET-DEPENDENT: at 192 ep the arms are
+    indistinguishable (p=0.76). The difference is recovery between 192 and 384 ep.
+    ⚠ Flipped as a PACKAGE with the wheeled action default ([turn, move]) -- diagonal x
+    [left,right] is historically poor, so the axes interact and only the combined arm is
+    evidenced. See blueprint.md's DEFAULT-FLIP LEDGER.
     """
-    assert ModelCfg().actor_distribution == "multivariate_gaussian"
+    assert ModelCfg().actor_distribution == "gaussian"
 
 
 # === Environment config wiring (behavior) ==================================
