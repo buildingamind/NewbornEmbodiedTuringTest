@@ -6,6 +6,17 @@ test=N episodes/condition needed for a comparable score — no retraining. Same 
 count as the trained run, for score comparability (blueprint: env0 render depends on
 num_envs). Launched in bulk by campaign_retest_launch.py.
 
+★ THIS IS ALSO THE ONLY VALID WAY TO A/B A TEST-PHASE CHANGE. Training here is NOT
+reproducible at a fixed seed -- the irreducible source is the RTX-rendered observation
+under concurrent training GPU load (see the determinism notes in blueprint.md), and the
+resulting run-to-run spread is LARGER than most test-phase effects. Measured 2026-08-01:
+comparing two full train+test runs reported a 0.181 per-condition correct_pct delta for a
+change that a same-checkpoint comparison put at 0.027, because each arm had trained its
+own policy (same seed, same arm, replicate train tail reward 63.16 vs 61.91; three arms at
+one seed 63.16 / 73.94 / 73.68). So: retest ONE checkpoint under each arm, never train per
+arm. Copy the run directory per arm first -- this script rewrites the run's test CSVs and
+summary.json in place.
+
 Usage:
   NETT_DEVICE=0 NETT_TEST_EPS=20 python examples/campaign_retest.py <run_dir>
   <run_dir> = ~/nett_campaign/<exp>_<model>/<name>_offN_<ts>/

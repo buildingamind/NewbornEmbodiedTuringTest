@@ -24,6 +24,22 @@ benchmark alone draws only ~5.4 cores/cell and does NOT collapse -- the extra
 So: pick ONE number (cores this cell may use) and drive every pool from it.
 Wave launchers should set NETT_KIT_THREADS = cores / concurrent_cells.
 
+PhysX has a FOURTH pool that this module deliberately does NOT budget.
+``/persistent/physics/numThreads`` (default 8, confirmed live on Isaac Sim 5.1)
+is named by NVIDIA's performance handbook, and 8 threads x 24 cells would be 192
+threads on 64 cores -- exactly the oversubscription class above. It is left alone
+because it is MEASURED INERT for this workload (2026-08-01, ne16 res128, solo,
+env-steps/s):
+
+    wheeled / GPU PhysX   nt=8 (default) 323.0   nt=0 320.2   nt=2 326.2   nt=4 316.3
+    kinematic / CPU PhysX nt=8 (default) 354.0                nt=2 356.2
+
+i.e. flat inside run-to-run noise in BOTH locomotion modes, and PhysX is only
+11% of a step to begin with (the render is 72% -- see NETTEnv._instrument_sim_phases).
+Wheeled runs PhysX on the GPU, so the CPU pool is barely in its path at all. If a
+wide wave ever shows PhysX threads contending, the knob is a kit_args flag and
+plugs in beside the two above -- but do not add it on the handbook's word alone.
+
 MEASURED LADDER (64 cores, 8x A10, ne16 wheeled res128, 60 ep x 200 steps,
 aggregate train it/s with ALL cells concurrently active; "stock" = nothing pinned):
 

@@ -192,8 +192,36 @@ class BrainTrainer:
                 unit="timestep",
                 file=sys.stdout,
             )
+        # ACTION-NOISE STREAM (stochastic eval + grouped ordering only). skrl samples
+        # from Normal(mean, std) on the GLOBAL torch RNG, one continuously advanced
+        # stream, so which noise a condition receives is decided by its position in the
+        # sequence. Re-seeding at each episode boundary from a key that restarts at every
+        # new design row gives every condition the SAME noise realizations while repeats
+        # within a row still differ -- variance where it is informative, matched where it
+        # is a confound. Inert while NETT_EVAL_STOCHASTIC=0 (eval takes the mean, drawing
+        # nothing) and while grouping is off (eval_noise_key returns None).
+        raw_env = _unwrap_env(self.env) if _EVAL_STOCHASTIC else None
+        episode_steps = int(getattr(getattr(raw_env, "cfg", None), "episode_steps", 0) or 0)
+        # Save BOTH streams: torch.manual_seed below seeds CPU *and* every CUDA device,
+        # so restoring only torch.get_rng_state() would leave training's CUDA generator
+        # perturbed by a mid-training eval probe -- silent, and in the one area of this
+        # codebase where that matters most.
+        rng_state = torch.get_rng_state() if raw_env is not None else None
+        cuda_rng_state = (
+            torch.cuda.get_rng_state_all()
+            if raw_env is not None and torch.cuda.is_available()
+            else None
+        )
         with torch.no_grad():
             for t in steps:
+                # Boundary from the step counter, not from the env: reading
+                # _step_in_episode would add a device->host sync to every eval step.
+                if raw_env is not None and episode_steps > 0 and t % episode_steps == 0:
+                    key = raw_env.eval_noise_key()
+                    if key is not None:
+                        torch.manual_seed(
+                            (int(getattr(raw_env, "_resolved_seed", 0)) * 1_000_003) ^ int(key)
+                        )
                 actions = self._collect_actions_for_eval(
                     observations, t, total_timesteps, policy=policy
                 )
@@ -206,6 +234,11 @@ class BrainTrainer:
                 reward_rows = rewards.reshape(len(self.agents), self.scopes[0], -1).mean(dim=2)
                 totals += reward_rows.to(totals.device, non_blocking=True).mean(dim=1)
                 observations = next_observations
+        if rng_state is not None:
+            # Eval must not perturb training's stream: mid-training probes call this.
+            torch.set_rng_state(rng_state)
+        if cuda_rng_state is not None:
+            torch.cuda.set_rng_state_all(cuda_rng_state)
         return {i: float(totals[i].item() / total_timesteps) for i in range(len(self.agents))}
 
     def _collect_actions_for_eval(

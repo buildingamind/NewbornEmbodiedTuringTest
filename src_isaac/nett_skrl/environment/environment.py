@@ -331,6 +331,16 @@ class Environment:
             episodes_test = int((config.episodes or {}).get("test", 0))
             total = num_test_rows * episodes_test
             _set_if_present(cfg, "test_total_episodes", total if total > 0 else None)
+            # Grouped test ordering holds every concurrent env on ONE design row
+            # instead of striding rows across envs, which collapses the number of
+            # distinct monitor textures the render must bind per step. It defaults TRUE
+            # (rationale, measurements and equivalence evidence live on
+            # NETTEnvCfg.test_group_by_row -- not repeated here). This env var is the
+            # ESCAPE HATCH: =0 restores strided ordering without editing code, for a run
+            # that must match a pre-2026-08-01 baseline exactly.
+            _group = os.environ.get("NETT_TEST_GROUP_BY_ROW")
+            if _group is not None:
+                _set_if_present(cfg, "test_group_by_row", _group == "1")
         # PhysX (sim.device) placement is chosen at init by select_physx_strategy,
         # which encodes the parallelization policy:
         #   * kinematic locomotion MUST stay on CPU PhysX — GPU PhysX
