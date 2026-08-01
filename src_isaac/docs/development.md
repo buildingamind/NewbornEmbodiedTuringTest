@@ -5,9 +5,26 @@
 Run the fast `src_isaac` unit suite:
 
 ```bash
-VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
-  pytest src_isaac/tests
+cd src_isaac
+PYTHONPATH=.:../../NewbornEmbodiedTuringTest_Private/isaac_lab/source \
+  /path/to/venv/bin/python -m pytest tests -q
 ```
+
+⚠ **`PYTHONPATH` is not optional, and neither half of it is.** `nett_isaac` is *not*
+installed into the venv — it is importable only from repo A's `source/` — and
+`tests/test_closeness_reward_rotation.py` imports it at module scope, so without the
+repo A entry the file fails **collection** (`ModuleNotFoundError: No module named
+'nett_isaac'`) rather than skipping. The `.` entry is what lets
+`tests/test_optuna_tune.py` import `examples.optuna_tune`. Two collection errors, not
+two failures — a run that errors at collection reports no test counts at all, which is
+why this looks like a broken checkout rather than a missing path.
+
+⚠ **Do not substitute `uv run --active --project src_isaac`.** It was published here
+until 2026-07-31 and it is worse than merely wrong: besides producing the two collection
+errors above, it **re-resolves and rewrites `src_isaac/uv.lock`** as a side effect —
+observed dropping `av` (the video decoder the stimulus path depends on) among ~170
+other line changes. If you ran it, check `git status` for `uv.lock` before doing
+anything else.
 
 Some tests assert on the *source text* of the sibling repoA (`nett_isaac`)
 checkout, because the in-Isaac env wiring lives in the other repository. They
