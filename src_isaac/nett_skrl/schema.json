@@ -243,8 +243,8 @@
                 "multivariate_gaussian",
                 null
               ],
-              "description": "Stochastic-actor distribution head. Defaults to the joint multivariate Gaussian, which can represent the correlation between the wheeled agent's two commands. Use 'gaussian' (or legacy null) for the independent per-component actor.",
-              "default": "multivariate_gaussian"
+              "description": "Stochastic-actor distribution head. Defaults to 'gaussian', the independent per-component (diagonal) actor, since 2026-07-31; legacy null selects the same head. Use 'multivariate_gaussian' for the joint covariance, which can represent the correlation between the wheeled agent's two commands. This default has moved twice -- see docs/configuration.md and the DEFAULT-FLIP LEDGER in isaac/blueprint.md before relying on it.",
+              "default": "gaussian"
             }
           },
           "additionalProperties": false,
@@ -403,7 +403,7 @@
         "input_resolution": {
           "type": "integer",
           "minimum": 16,
-          "default": 128
+          "default": 64
         },
         "camera_fov": {
           "type": "number",
@@ -430,11 +430,11 @@
         },
         "enable_neck_flexion": {
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "enable_lateral_bending": {
           "type": "boolean",
-          "default": true
+          "default": false
         },
         "locomotion": {
           "type": "string",
