@@ -405,6 +405,11 @@ class Environment:
     def _copy_env_cfg_fields(self, cfg) -> None:
         for cfg_path, env_attr, transform in _ENV_CFG_FIELDS:
             value = getattr(self, env_attr)
+            # None means "leave the repoA default alone", NOT "coerce it". Without this
+            # an optional field like eye_resolution hits `tuple(None)` and takes the
+            # whole task validation down with a TypeError -- caught by the smoke run.
+            if value is None:
+                continue
             if transform is not None:
                 value = transform(value)
             _set_attr_path(cfg, cfg_path, value)
