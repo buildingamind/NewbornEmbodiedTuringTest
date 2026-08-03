@@ -13,14 +13,29 @@ preserved exactly); at higher resolutions it caps the flatten at
 map goes to the linear projection, with no pooling anywhere. Pooling remains the
 module default so existing configs and checkpoints keep their exact architecture.
 
-⚠ COST AT THE 300 DEG SENSOR. Without pooling the flatten scales with resolution, and
-256x160 is 7.4x the pixels of the old 128x72:
-    256x160, spatial_pool=False -> conv map 64x16x28 -> flatten 28672 -> 14,756,512 params
-    256x160, spatial_pool=True  -> pooled to 64x4x4  -> flatten  1024 ->    600,736 params
-i.e. 24x the parameters, essentially all of it the one Linear(28672, 512) = 14.7M.
-For scale, SB3's reference NatureCNN at 84x84 flattens 3136 (~1.6M params), so the
-unpooled 300 deg encoder is ~9x the reference. That is the architecture as specified --
-recorded here so the training cost is a known quantity rather than a surprise.
+⚠ WITHOUT POOLING THE SENSOR SIZE IS AN ARCHITECTURE DECISION, AND IT DECIDED THE RUN.
+The flatten scales with resolution, so the unpooled parameter count is set by the eye:
+
+    128x80,  spatial_pool=False -> flatten  4096 ->  2,435,744 params   <- SHIPPED
+    256x160, spatial_pool=False -> flatten 25088 -> 14,756,512 params
+    256x160, spatial_pool=True  -> pooled 64x4x4 ->    600,736 params
+    (84x84, SB3's reference size -> flatten  3136 ->  1,682,080 params)
+
+At 256x160 essentially all of the growth is one ``Linear(25088, 512)`` ~= 12.8M, about
+8x the layer the architecture is "standard" with. MEASURED 2026-08-03, 1000 episodes
+x 4 seeds, rest correct_pct:
+
+    128x80 unpooled            1.000 0.998 1.000 1.000   -> 4/4
+    256x160 unpooled lr 3e-4   1.000 0.500 0.500 0.500   -> 1/4
+    256x160 unpooled lr 1e-4   0.920 0.500 0.583 0.751   -> 1/4
+    256x160 POOLED             1.000 1.000 1.000 1.000   -> 4/4
+
+So unpooled-at-256x160 does not merely cost memory, it costs the training
+consistency, and dropping the learning rate recovers only part of it. The fisheye
+field depends on the ASPECT alone, so 128x80 keeps the identical 300 x 148.5 deg view
+(verified: 148.5425 deg vertical at both) and only gives up acuity. If you raise the
+resolution, either enable pooling or re-run the acceptance wave -- do not assume the
+recipe carries over.
 
 The pool is ``DeterministicAvgPool2d`` (not ``nn.AdaptiveAvgPool2d``) because
 adaptive_avg_pool2d's CUDA backward is nondeterministic; see

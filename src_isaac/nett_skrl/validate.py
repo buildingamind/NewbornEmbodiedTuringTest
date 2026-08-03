@@ -4,10 +4,36 @@ from pathlib import Path
 import yaml
 
 
+#: jsonschema's ``"array"`` type accepts ``list`` and NOT ``tuple``, but a dict config
+#: is written in Python where a fixed-size pair is naturally a tuple -- ``(256, 160)``
+#: for a resolution is the obvious spelling, and ``_ENV_CFG_FIELDS`` even declares
+#: ``tuple`` as its transform. Left alone, jsonschema rejects it with "(128, 80) is not
+#: of type 'array', 'null'", which reads like the value is malformed rather than merely
+#: the wrong sequence type, and it fails at config-load time -- before a single step,
+#: after the GPUs are already committed.
+_ARRAY_TYPES = (list, tuple)
+
+
+def _accepts_tuples(schema: dict) -> jsonschema.protocols.Validator:
+    """A validator whose ``"array"`` also means ``tuple``.
+
+    Only the type CHECKER is widened; every keyword (``minItems``, ``items``, ...)
+    still applies, so a tuple is validated exactly as strictly as the list it
+    stands in for.
+    """
+    base = jsonschema.validators.validator_for(schema)
+    checker = base.TYPE_CHECKER.redefine(
+        "array", lambda _checker, value: isinstance(value, _ARRAY_TYPES)
+    )
+    return jsonschema.validators.extend(base, type_checker=checker)(schema)
+
+
 def validate_config(config: Path | str | dict, schema: dict) -> dict:
     if isinstance(config, dict):
         valid_config = config
-        jsonschema.validate(valid_config, schema)
+        # Dict configs come from Python and may carry tuples; file configs are
+        # parsed from JSON/YAML and cannot, so they take the stock validator.
+        _accepts_tuples(schema).validate(valid_config)
     elif isinstance(config, (str, Path)):
         config_str = str(config)
         with open(config, "r") as file:

@@ -405,11 +405,29 @@
           "minimum": 16,
           "default": 64
         },
+        "eye_resolution": {
+          "description": "Non-square eye sensor as [width, height]. null keeps the repoA default (128x80). The radial fisheye map is isotropic, so the sensor CROPS the circular image rather than squeezing it -- the aspect ratio is the vertical-FOV knob (16:10 -> 148.5 deg vertical at any pixel count). Raising the pixel count does NOT widen the view; without pooling it only grows the encoder.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "type": "integer",
+            "minimum": 16
+          },
+          "minItems": 2,
+          "maxItems": 2,
+          "default": null
+        },
         "camera_fov": {
-          "type": "number",
+          "description": "Full horizontal field in degrees. null (the default) DEFERS to repo A's NETTEnvCfg.observation.fov, which is the single declaration of the aperture -- a literal number here is copied into the env cfg and silently overrides repo A, which mis-ran the stack twice (120 vs 150 in 2026-07, 150 vs 300 in 2026-08). The cap is 360, not 200: the shipped lens is a 300 deg equisolid fisheye, and equisolid/equidistant are defined out to a full 360 deg field.",
+          "type": [
+            "number",
+            "null"
+          ],
           "minimum": 10,
-          "maximum": 200,
-          "default": 150.0
+          "maximum": 360,
+          "default": null
         },
         "record_mode": {
           "type": "string",

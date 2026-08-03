@@ -124,8 +124,10 @@ class Environment:
         input_resolution: Per-eye SQUARE resolution (legacy spelling).
         eye_resolution: Per-eye ``(width, height)`` for a NON-SQUARE sensor; ``None``
             keeps the square ``input_resolution``. The 300 deg default eye is
-            256x160 -- the radial fisheye map is isotropic, so the aspect ratio IS
-            the vertical-FOV knob (256x160 -> ~148.5 deg vertical).
+            128x80 -- the radial fisheye map is isotropic, so the aspect ratio IS
+            the vertical-FOV knob (16:10 -> ~148.5 deg vertical, at any pixel count).
+            Raising the pixel count does NOT widen the view; without pooling it only
+            grows the encoder (see brain/encoders/nature_cnn.py).
         episode_steps: Steps per episode (matches Unity ``--episode-steps``).
         reward_types: Tuple of reward names accepted by ``NETTEnv``
             (``"closeness"``, ``"completeness"``, or both).
@@ -157,14 +159,22 @@ class Environment:
         locomotion: str = "wheeled",
         render_mode: str = "RealTimeRenderer",
         tracemalloc_interval: int = 0,
-        # ⚠ 150.0, not 120.0 — and it must stay equal to repo A's
-        # ``NETTEnvCfg.observation.fov``. ``_ENV_CFG_FIELDS`` copies this value into the
-        # env cfg UNCONDITIONALLY (no "was it set?" test), so when the two disagree this
-        # one wins silently. It said 120.0 until 2026-07-31, which meant every config
-        # omitting the key ran an optic the closeness projection is not calibrated for.
-        # ``tests/test_schema_defaults.py::test_repo_b_environment_fov_matches_repo_a``
-        # is what keeps them equal now; do not "simplify" that guard away.
-        camera_fov: float = 150.0,
+        # ⚠ None MEANS "USE REPO A'S ``NETTEnvCfg.observation.fov``". DO NOT PUT A
+        # NUMBER HERE.
+        #
+        # This used to carry a literal default, and ``_ENV_CFG_FIELDS`` copies whatever
+        # it holds into the env cfg (a None is skipped; a number is not), so a literal
+        # here WINS over repo A silently. That has now mis-run the stack twice:
+        #   2026-07-31  repo B 120.0 vs repo A 150.0
+        #   2026-08-03  repo B 150.0 vs repo A 300.0  -- the entire 300 deg fisheye
+        #               acceptance campaign trained at 150 deg. Six wave arms, four
+        #               seeds each, all reported as "300 deg". Nothing in the run
+        #               announces the override; the only symptom is a red guard test.
+        # Keeping the two numbers "in sync" is what failed, both times. Deferring is
+        # structural: with None there is only ONE declaration of the aperture, so they
+        # cannot disagree. An explicit float is still honoured for deliberate overrides
+        # (the 150 deg control arm passes one).
+        camera_fov: float | None = None,
         train_phase: str = "train",
         train_step_logging: bool = False,
     ):
@@ -226,7 +236,10 @@ class Environment:
         # texture rather than a full-white screen. See isaac/CHAMBER_LIGHTING_STATE.md.
         self.render_mode = render_mode
         self.tracemalloc_interval = int(tracemalloc_interval or 0)
-        self.camera_fov = float(camera_fov)
+        # Preserve None: it is the "defer to repo A" sentinel that _ENV_CFG_FIELDS
+        # skips. float(None) would raise, and a coerced default would resurrect the
+        # silent-override bug this sentinel exists to kill.
+        self.camera_fov = None if camera_fov is None else float(camera_fov)
         self.train_phase: str = train_phase
         # Per-step train-phase CSV logging. Default OFF: it's a per-step GPU->CPU
         # handover the rest analysis never reads (analyze uses test CSVs +

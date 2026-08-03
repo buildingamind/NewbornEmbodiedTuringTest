@@ -79,6 +79,7 @@ _MAPPING = {
     # --- environment: Environment.__init__ --------------------------------
     "environment.headless": lambda: _signature_default(Environment.__init__, "headless"),
     "environment.input_resolution": lambda: _signature_default(Environment.__init__, "input_resolution"),
+    "environment.eye_resolution": lambda: _signature_default(Environment.__init__, "eye_resolution"),
     "environment.camera_fov": lambda: _signature_default(Environment.__init__, "camera_fov"),
     "environment.record_mode": lambda: _signature_default(Environment.__init__, "record_mode"),
     "environment.random_first_frame": lambda: _signature_default(Environment.__init__, "random_first_frame"),
@@ -243,31 +244,41 @@ def test_no_stale_exemptions():
     assert not both, f"keys are both mapped and exempted; drop the exemption: {both}"
 
 
-def test_repo_b_environment_fov_matches_repo_a():
-    """repo B's ``camera_fov`` default must equal repo A's ``ObservationCfg.fov``.
+def test_repo_b_does_not_redeclare_the_camera_fov():
+    """repo B's ``camera_fov`` default must be ``None`` — DEFER, do not duplicate.
 
-    The two are independent declarations of one physical fact — the chick's fisheye
-    aperture — and ``_ENV_CFG_FIELDS`` copies repo B's value into the env cfg
-    *unconditionally*, so when they disagree repo B wins silently. They did disagree
-    until 2026-07-31 (repo B 120.0 vs repo A 150.0): every config omitting the key ran an
-    optic no experiment used, and the closeness projection is calibrated for 150°.
+    The aperture is one physical fact, and ``_ENV_CFG_FIELDS`` copies repo B's value
+    into the env cfg whenever it is not None, so any literal here WINS over repo A
+    silently. This guard used to assert the two numbers were *equal*, and keeping two
+    declarations in sync is what failed — twice:
+
+        2026-07-31   repo B 120.0 vs repo A 150.0
+        2026-08-03   repo B 150.0 vs repo A 300.0  -- the whole 300° fisheye
+                     acceptance campaign (6 arms x 4 seeds) trained at 150°, and
+                     every run reported itself as 300°
+
+    The second one slipped through precisely because the equality guard was already
+    red on the branch, so the signal was indistinguishable from known breakage. A
+    sentinel removes the failure mode instead of detecting it: with ``None`` there is
+    only one declaration, so there is nothing to drift.
 
     ⚠ Read repo A's value from its SOURCE TEXT, not by importing it. ``nett_env_cfg``
     pulls in ``isaaclab.actuators``, which only exists once Kit has booted — an
     ``importorskip`` here would skip in the plain unit suite and this guard would never
-    actually run. The source-text convention (``_repo_paths``) is what the rest of the
-    cross-repo assertions in this suite use, and it needs no Kit.
+    actually run.
     """
+    repo_b_fov = _signature_default(Environment.__init__, "camera_fov")
+    assert repo_b_fov is None, (
+        f"Environment(camera_fov={repo_b_fov!r}) re-declares the aperture. It is copied "
+        "into the env cfg whenever it is not None, so this literal silently overrides "
+        "repo A's NETTEnvCfg.observation.fov for every config that omits the key — the "
+        "exact bug that ran the 300° campaign at 150°. Use None to defer."
+    )
+    # And repo A must still declare one, or the sentinel defers into nothing.
     source = read_source(nett_isaac_dir() / "nett_env_cfg.py")
     match = re.search(r"^\s*fov\s*:\s*float\s*=\s*([0-9.]+)", source, re.MULTILINE)
     assert match, (
-        "could not find `fov: float = <value>` in repo A's nett_env_cfg.py — the field was "
-        "renamed or restructured, so this cross-repo guard is stale and needs updating"
+        "could not find `fov: float = <value>` in repo A's nett_env_cfg.py — repo B now "
+        "defers to it, so if repo A stops declaring it the aperture has no owner at all"
     )
-    repo_a_fov = float(match.group(1))
-    repo_b_fov = _signature_default(Environment.__init__, "camera_fov")
-    assert repo_b_fov == repo_a_fov, (
-        f"repo B Environment(camera_fov={repo_b_fov!r}) != repo A ObservationCfg.fov="
-        f"{repo_a_fov!r}. repo B's value is copied into the env cfg unconditionally, so "
-        f"it wins — any config omitting camera_fov silently runs repo B's number."
-    )
+    assert float(match.group(1)) > 0.0
