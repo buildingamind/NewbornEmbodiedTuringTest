@@ -193,18 +193,40 @@ def test_partial_observation_gives_nonzero_reward() -> None:
     so we only assert > 0.  The strict ordering relative to full-facing is
     verified by the separate directional tests.
 
-    ⚠ THIS TEST WAS ALREADY RED AT THE BASELINE of this branch (assert 0.0 > 0.0),
-    before any change here -- it predates the lens work and was stale w.r.t. repoA's
-    2026-08-01b front-hemisphere clip, which stopped crediting the folded rear lobe
-    this pose relied on. Under the 300 deg equisolid default the pose is genuinely in
-    view, so it should now pass on its own terms; if it does not, the geometry (a 45
-    deg field at 5 units) no longer straddles the boundary it was written to probe and
-    the POSE needs choosing again, not the assertion loosening.
+    ⚠ THE PROBE YAWS WERE WRONG, AND THE TEST WAS RED AT THIS BRANCH'S BASELINE.
+    It used to probe (45, 315). It predates the lens work and was stale w.r.t.
+    repoA's 2026-08-01b front-hemisphere clip, which stopped crediting the folded
+    rear lobe that yaw=45 relied on -- so it asserted ``0.0 > 0.0``.
+
+    Re-derived against THIS geometry rather than loosened. The camera faces the
+    correct monitor at yaw=270, the monitor subtends +/-63.4 deg from 5 units
+    (atan(10/5)), and the test lens is a deliberately narrow 45 deg field
+    (22.5 deg half). A view therefore straddles the rim only for a yaw offset of
+    roughly 41..86 deg off facing:
+
+        |offset| + 22.5 > 63.4   (something is outside the field)
+        |offset| - 22.5 < 63.4   (something is still inside it)
+
+    yaw=45 is 135 deg off facing -- wholly outside the field, correctly 0.0. The
+    offsets that actually straddle are +/-45 deg, i.e. **yaw 225 and 315**.
+    MEASURED: 270 -> 0.712254, 225 -> 0.610727, 315 -> 0.610727, and every one of
+    0/45/90/135/180 -> exactly 0.0.
     """
     rewards = _rewards_for_num_envs(1)
-    for yaw in (45, 315):
+    facing = rewards[_YAW_FACING_CORRECT][0].item()
+    for yaw in (225, 315):
         r = rewards[yaw][0].item()
         assert r > 0.0, (
             f"Partial view at yaw={yaw}° should give reward > 0 after near-plane "
             f"clipping; got {r}"
         )
+        # A straddling view must also be strictly WORSE than the full view --
+        # ">0" alone would pass on a reward that had lost its dynamic range.
+        assert r < facing, (
+            f"partial view at yaw={yaw}° ({r:.9f}) should score below the full "
+            f"view at yaw={_YAW_FACING_CORRECT}° ({facing:.9f})"
+        )
+    # The two straddling poses are mirror images about the facing axis.
+    assert rewards[225][0].item() == pytest.approx(
+        rewards[315][0].item(), rel=1e-5
+    ), "the ±45° straddling views should be symmetric about the facing axis"
