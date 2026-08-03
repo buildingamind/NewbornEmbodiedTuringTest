@@ -11,7 +11,8 @@ result via ops that ARE deterministic on CUDA:
   * output ``(1, 1)``      -> a global spatial mean (``x.mean(dim=(2,3))``),
   * fixed input divisible  -> an exact ``F.avg_pool2d`` (deterministic backward).
 
-NETT runs fixed square resolutions, so the divisible branch always applies. A
+NETT's eye is NON-SQUARE as of 2026-08-02 (256x160), so do not assume the
+divisible branch always applies -- it did when the sensor was square. A
 non-divisible input RAISES rather than silently falling back to the
 nondeterministic adaptive kernel (that would defeat the purpose).
 """

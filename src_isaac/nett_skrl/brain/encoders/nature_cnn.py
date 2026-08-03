@@ -9,9 +9,18 @@ preserved exactly); at higher resolutions it caps the flatten at
 4x4xconv_dim. A 4x4 grid still preserves coarse left/right spatial layout
 (e.g. "is the bright thing on the left or right of frame").
 
-``spatial_pool=False`` is a config-selectable ablation that sends the complete
-post-convolution feature map to the linear projection. Pooling remains the
-default so existing configs and checkpoints retain their exact architecture.
+``spatial_pool=False`` is the SB3-legacy form: the complete post-convolution feature
+map goes to the linear projection, with no pooling anywhere. Pooling remains the
+module default so existing configs and checkpoints keep their exact architecture.
+
+⚠ COST AT THE 300 DEG SENSOR. Without pooling the flatten scales with resolution, and
+256x160 is 7.4x the pixels of the old 128x72:
+    256x160, spatial_pool=False -> conv map 64x16x28 -> flatten 28672 -> 14,756,512 params
+    256x160, spatial_pool=True  -> pooled to 64x4x4  -> flatten  1024 ->    600,736 params
+i.e. 24x the parameters, essentially all of it the one Linear(28672, 512) = 14.7M.
+For scale, SB3's reference NatureCNN at 84x84 flattens 3136 (~1.6M params), so the
+unpooled 300 deg encoder is ~9x the reference. That is the architecture as specified --
+recorded here so the training cost is a known quantity rather than a surprise.
 
 The pool is ``DeterministicAvgPool2d`` (not ``nn.AdaptiveAvgPool2d``) because
 adaptive_avg_pool2d's CUDA backward is nondeterministic; see

@@ -42,6 +42,10 @@ _ENV_CFG_FIELDS = (
     ("media_root", "media_root", str),
     ("episode_steps", "episode_steps", int),
     ("observation.input_resolution", "input_resolution", int),
+    # NON-SQUARE eye sensor, (width, height). None => the square input_resolution.
+    # The repoA side resolves both spellings through lens.eye_resolution, so the two
+    # cannot disagree with the spawned camera.
+    ("observation.eye_resolution", "eye_resolution", tuple),
     ("observation.fov", "camera_fov", float),
     ("reward_types", "reward_types", tuple),
     ("record_mode", "record_mode", None),
@@ -117,7 +121,11 @@ class Environment:
         conditions: Subset of imprint conditions to run. ``None`` runs all
             conditions found in the sheet (Train-phase rows).
         headless: Run Isaac Sim without a GUI window. Defaults to ``True``.
-        input_resolution: Per-eye square resolution.
+        input_resolution: Per-eye SQUARE resolution (legacy spelling).
+        eye_resolution: Per-eye ``(width, height)`` for a NON-SQUARE sensor; ``None``
+            keeps the square ``input_resolution``. The 300 deg default eye is
+            256x160 -- the radial fisheye map is isotropic, so the aspect ratio IS
+            the vertical-FOV knob (256x160 -> ~148.5 deg vertical).
         episode_steps: Steps per episode (matches Unity ``--episode-steps``).
         reward_types: Tuple of reward names accepted by ``NETTEnv``
             (``"closeness"``, ``"completeness"``, or both).
@@ -132,6 +140,7 @@ class Environment:
         experiment: str | Path | None = None,
         headless: bool = True,
         input_resolution: int = 64,
+        eye_resolution: tuple[int, int] | None = None,
         episode_steps: int = 200,
         reward_types: tuple[str, ...] = (),
         record_mode: str = "tSNE",
@@ -191,6 +200,9 @@ class Environment:
 
         self.headless = headless
         self.input_resolution = input_resolution
+        self.eye_resolution = (
+            tuple(int(v) for v in eye_resolution) if eye_resolution else None
+        )
         self.episode_steps = episode_steps
         self.reward_types = reward_types
         self.record_mode = record_mode

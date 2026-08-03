@@ -35,7 +35,8 @@ import math
 import pytest
 import torch
 
-from nett_isaac.rewards import closeness_reward, make_intrinsic_from_fov
+from nett_isaac.lens import LensSpec, resolve_method
+from nett_isaac.rewards import closeness_reward
 from nett_isaac.utils.geometry import ChamberSpec, monitor_target_bounds
 
 # ── constants ────────────────────────────────────────────────────────────────
@@ -105,16 +106,19 @@ def _rewards_for_num_envs(num_envs: int) -> dict[int, torch.Tensor]:
     )
     cam_pos = origins + cam_local  # [B, 3]
 
-    K = make_intrinsic_from_fov(_FOV_DEG, _IMAGE_SIZE)  # [3, 3]
-    K_batch = K.unsqueeze(0).expand(num_envs, -1, -1).contiguous()  # [B, 3, 3]
+    # LensSpec replaces the old pinhole K. That matrix built f = (W/2)/tan(fov/2) and
+    # the reward path then read a field back out of it via fov_half = cx/f, so the
+    # nominal 45 deg actually meant a ~53 deg equidistant field. The lens states the
+    # field directly, and being a scalar description it needs no per-env expand.
+    lens = LensSpec(method=resolve_method(), fov_h_deg=_FOV_DEG,
+                    width=_IMAGE_SIZE[1], height=_IMAGE_SIZE[0])
 
     return {
         yaw: closeness_reward(
             corners_world,
             cam_pos,
             _cam_quat_xyzw(float(yaw), num_envs),
-            K_batch,
-            _IMAGE_SIZE,
+            lens,
         )
         for yaw in _YAW_ANGLES
     }
@@ -188,6 +192,14 @@ def test_partial_observation_gives_nonzero_reward() -> None:
     projects to an area larger than the image and saturates the reward at 1.0,
     so we only assert > 0.  The strict ordering relative to full-facing is
     verified by the separate directional tests.
+
+    ⚠ THIS TEST WAS ALREADY RED AT THE BASELINE of this branch (assert 0.0 > 0.0),
+    before any change here -- it predates the lens work and was stale w.r.t. repoA's
+    2026-08-01b front-hemisphere clip, which stopped crediting the folded rear lobe
+    this pose relied on. Under the 300 deg equisolid default the pose is genuinely in
+    view, so it should now pass on its own terms; if it does not, the geometry (a 45
+    deg field at 5 units) no longer straddles the boundary it was written to probe and
+    the POSE needs choosing again, not the assertion loosening.
     """
     rewards = _rewards_for_num_envs(1)
     for yaw in (45, 315):
