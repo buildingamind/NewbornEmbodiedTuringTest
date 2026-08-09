@@ -18,7 +18,7 @@ import pytest
 import yaml
 
 
-from _repo_paths import WORKSPACE, repo_a_root
+from _repo_paths import SRC_ISAAC, WORKSPACE, repo_a_root
 
 # $NETT_REPO_A overrides the sibling default; `_isaac_missing` below already
 # auto-skips the tree when the assets it points at are absent.
@@ -96,7 +96,10 @@ def _resolve_media_root(sheet: Path, candidates: tuple[Path, ...]) -> Path:
     """First candidate holding every clip ``sheet`` names; else the first candidate.
 
     The fallback is deliberate: when nothing satisfies the sheet, the tree should skip or
-    fail naming a real directory, not silently pick the least-wrong one.
+    fail naming a real directory, not silently pick the least-wrong one. ⚠ "Should skip"
+    is now enforced -- see ``_media_incomplete``; for two weeks nothing checked, so the
+    fallback was reached silently and the run died minutes in on the first clip repoA
+    does not ship.
     """
     clips = _sheet_clips(sheet)
     if clips:
@@ -106,17 +109,75 @@ def _resolve_media_root(sheet: Path, candidates: tuple[Path, ...]) -> Path:
     return candidates[0]
 
 
+def _stimulus_library_candidates() -> tuple[Path, ...]:
+    """Every ``videos/binding`` at or above this checkout, nearest first.
+
+    ``WORKSPACE`` is a fixed two-levels-up guess from ``src_isaac``. That is right for
+    the primary checkout (``<workspace>/NewbornEmbodiedTuringTest/src_isaac``) and WRONG
+    for a git worktree (``<workspace>/wt-<name>/NewbornEmbodiedTuringTest/src_isaac``),
+    where it lands on the worktree parent and the stimulus library sits one level
+    further up. MEASURED 2026-08-09 from a worktree: the guess missed, so
+    ``_resolve_media_root`` fell back to repoA's two vendored fixture clips and the run
+    reached the TEST phase before dying on ``O1_1Ca_1.mov`` -- the clip the sheet's
+    ``1color`` row names and repoA does not ship. Walking up finds the library from
+    either layout without hardcoding a depth.
+    """
+    seen: list[Path] = []
+    for start in (SRC_ISAAC, PRIVATE_ROOT):
+        for parent in [start, *start.parents]:
+            candidate = parent / "videos" / "binding"
+            if candidate.is_dir() and candidate not in seen:
+                seen.append(candidate)
+    return tuple(seen)
+
+
 _DS = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets"
-_VIDEOS = WORKSPACE / "videos" / "binding"
+_LIBRARIES = _stimulus_library_candidates()
+#: Nearest stimulus library, or the historical fixed guess when none is on disk (kept so
+#: a skip message still names the path this tree has always documented).
+_VIDEOS = _LIBRARIES[0] if _LIBRARIES else WORKSPACE / "videos" / "binding"
 DESIGN_SHEET_MINIMAL = _asset("NETT_DESIGN_SHEET_MINIMAL", _DS / "binding_minimal.csv")
 DESIGN_SHEET_FULL = _asset("NETT_DESIGN_SHEET_FULL", _VIDEOS / "DesignSheet_Binding.csv")
 #: Candidate media roots, most-vendored first: repoA's fixture clips, then the workspace
 #: stimulus library the experiment sheets actually reference.
-MEDIA_ROOTS = (PRIVATE_ROOT / "isaac_lab" / "assets" / "videos", _VIDEOS / "videos")
+MEDIA_ROOTS = (PRIVATE_ROOT / "isaac_lab" / "assets" / "videos",) + tuple(
+    lib / "videos" for lib in (_LIBRARIES or (_VIDEOS,))
+)
 MEDIA_ROOT = _asset("NETT_MEDIA_ROOT", _resolve_media_root(DESIGN_SHEET_MINIMAL, MEDIA_ROOTS))
 #: The full sheet names both imprint objects, so it needs its own resolution — the minimal
 #: fixture's root will not cover it. ``test_full_run`` swaps BOTH when it swaps the sheet.
 MEDIA_ROOT_FULL = _asset("NETT_MEDIA_ROOT", _resolve_media_root(DESIGN_SHEET_FULL, MEDIA_ROOTS))
+
+
+def _media_incomplete(sheet: Path, root: Path) -> str | None:
+    """Names the clips ``sheet`` needs that ``root`` does not have, or None.
+
+    ⚠ THIS IS A COLLECTION-TIME PREREQUISITE, NOT A NICETY. ``_resolve_media_root``
+    falls back to the first candidate when nothing satisfies the sheet, and nothing used
+    to notice: the tree collected, trained for minutes, and then blew up in the TEST
+    phase inside ``NETTEnv.__init__`` on the first unresolvable clip. Until repoA
+    ``nett_env`` learned to abandon a half-built env, that constructor failure did not
+    even surface as a failure -- Kit's teardown ran against the partial env and HUNG the
+    worker forever (measured 2026-08-09). Detecting it here costs a few ``stat`` calls
+    and turns a multi-minute mystery into an accurate skip reason.
+
+    Skipped entirely when ``NETT_MEDIA_ROOT`` is set: that path is documented as honoured
+    verbatim, and second-guessing a deliberate choice is exactly what this file says not
+    to do.
+    """
+    if os.environ.get("NETT_MEDIA_ROOT"):
+        return None
+    missing = sorted(clip for clip in _sheet_clips(sheet) if not (root / clip).exists())
+    if not missing:
+        return None
+    return (
+        f"media root {root} is missing {len(missing)} clip(s) that {sheet.name} names "
+        f"({', '.join(missing[:3])}{'...' if len(missing) > 3 else ''}); tried "
+        f"{[str(p) for p in MEDIA_ROOTS]} — set $NETT_MEDIA_ROOT to a directory holding "
+        "every clip the sheet references"
+    )
+
+
 def _e2e_device() -> int:
     """Which PHYSICAL gpu this process's runs pin to.
 
@@ -227,6 +288,11 @@ def _isaac_missing() -> str | None:
         return f"missing design sheet: {DESIGN_SHEET_MINIMAL}"
     if not MEDIA_ROOT.exists():
         return f"missing media root: {MEDIA_ROOT}"
+    # An EXISTING media root that does not hold every clip the sheet names is the
+    # failure mode that actually bites — see _media_incomplete.
+    incomplete = _media_incomplete(DESIGN_SHEET_MINIMAL, MEDIA_ROOT)
+    if incomplete:
+        return incomplete
     return None
 
 

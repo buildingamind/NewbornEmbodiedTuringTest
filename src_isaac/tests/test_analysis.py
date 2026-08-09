@@ -456,3 +456,69 @@ def test_normalize_isaac_output_copies_expected_layout(tmp_path):
     assert (out / "logs" / "train.csv").exists()
     assert (out / "recordings" / "agent" / "train" / "env_000000" / "000000.png").exists()
     assert (out / "recordings" / "chamber" / "train" / "env_000000" / "000000.png").exists()
+
+
+# ---------------------------------------------------------------------------
+# Backend selection order.
+#
+# ``import matplotlib.pyplot`` RESOLVES and locks the backend. ``train_viz``,
+# ``test_viz`` and ``merge`` each called ``matplotlib.use("Agg", force=False)``, but the
+# module already did ``import matplotlib.pyplot as plt`` at the top — so on any host
+# where an interactive backend resolved (a set ``$DISPLAY`` plus Tk/Qt; this project's
+# hosts run an X server on every card) the guard was a guaranteed no-op and these
+# write-a-PNG-to-disk functions ran through a GUI toolkit they never need.
+# ---------------------------------------------------------------------------
+
+
+def test_backend_is_selected_before_pyplot_is_imported():
+    from pathlib import Path
+
+    import nett_skrl.analysis.api as api
+
+    # CODE lines only: the explanatory comment above the call names both statements,
+    # and a prose mention must not satisfy an ordering assertion.
+    code = "\n".join(
+        line for line in Path(api.__file__).read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    selected = code.index('matplotlib.use("Agg"')
+    imported = code.index("import matplotlib.pyplot")
+    assert selected < imported, (
+        "matplotlib.use() must run BEFORE `import matplotlib.pyplot`; after it the call "
+        "cannot switch away from an already-resolved interactive backend"
+    )
+
+
+def test_import_leaves_a_non_interactive_backend_even_with_a_display():
+    """Import the module in a fresh interpreter that looks like a desktop session."""
+    import os
+    import subprocess
+    import sys
+
+    env = dict(os.environ, DISPLAY=":0")
+    env.pop("MPLBACKEND", None)
+    out = subprocess.run(
+        [sys.executable, "-c",
+         "import nett_skrl.analysis.api as a; print(a.plt.get_backend())"],
+        capture_output=True, text=True, env=env, timeout=180,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    backend = out.stdout.strip().splitlines()[-1].lower()
+    assert backend in {"agg", "pdf", "ps", "svg", "template"}, (
+        f"analysis import resolved the interactive backend {backend!r}"
+    )
+
+
+def test_an_explicit_mplbackend_still_wins():
+    import os
+    import subprocess
+    import sys
+
+    env = dict(os.environ, MPLBACKEND="svg")
+    out = subprocess.run(
+        [sys.executable, "-c",
+         "import nett_skrl.analysis.api as a; print(a.plt.get_backend())"],
+        capture_output=True, text=True, env=env, timeout=180,
+    )
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip().splitlines()[-1].lower() == "svg"

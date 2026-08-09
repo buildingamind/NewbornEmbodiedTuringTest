@@ -85,3 +85,63 @@ def test_falls_back_to_the_first_candidate_when_none_suffice(tmp_path):
     second = _root(tmp_path, "library", "A.mov")
 
     assert _resolve_media_root(sheet, (first, second)) == first
+
+
+# ---------------------------------------------------------------------------
+# The silent-fallback detector, and finding the library from a git worktree.
+#
+# ⚠ THE FALLBACK ABOVE IS ONLY SAFE IF SOMETHING NOTICES IT. Nothing did: the tree
+# collected, trained for minutes, and then died in the TEST phase inside
+# ``NETTEnv.__init__`` on the first clip repoA does not ship — and until repoA learned
+# to abandon a half-built env, that constructor failure HUNG the worker instead of
+# failing it (measured 2026-08-09, from a worktree checkout).
+# ---------------------------------------------------------------------------
+
+import os
+
+from e2e.conftest import _media_incomplete, _stimulus_library_candidates
+
+
+def test_media_incomplete_names_the_missing_clips(tmp_path, monkeypatch):
+    monkeypatch.delenv("NETT_MEDIA_ROOT", raising=False)
+    sheet = _sheet(tmp_path, "Object1,Test,1color,A.mov,B.mov,A.mov,B.mov")
+    root = _root(tmp_path, "vendored", "A.mov")
+
+    reason = _media_incomplete(sheet, root)
+    assert reason and "B.mov" in reason and str(root) in reason
+    assert "NETT_MEDIA_ROOT" in reason, "the skip reason must say how to fix it"
+
+
+def test_media_incomplete_is_silent_when_the_root_suffices(tmp_path, monkeypatch):
+    monkeypatch.delenv("NETT_MEDIA_ROOT", raising=False)
+    sheet = _sheet(tmp_path, "Object1,Test,1color,A.mov,B.mov,A.mov,B.mov")
+    root = _root(tmp_path, "library", "A.mov", "B.mov")
+
+    assert _media_incomplete(sheet, root) is None
+
+
+def test_media_incomplete_never_second_guesses_an_explicit_override(tmp_path, monkeypatch):
+    """``NETT_MEDIA_ROOT`` is documented as honoured verbatim; a skip would overrule it."""
+    monkeypatch.setenv("NETT_MEDIA_ROOT", str(tmp_path / "wherever"))
+    sheet = _sheet(tmp_path, "Object1,Test,1color,A.mov,B.mov,A.mov,B.mov")
+    root = _root(tmp_path, "empty")
+
+    assert _media_incomplete(sheet, root) is None
+
+
+def test_stimulus_library_is_found_from_this_checkout_whatever_its_depth():
+    """The library must resolve from a worktree too, not only two levels up.
+
+    ``WORKSPACE`` is a fixed guess of ``src_isaac/../..``. In a worktree
+    (``<workspace>/wt-<name>/NewbornEmbodiedTuringTest/src_isaac``) that lands one level
+    short and the guess misses entirely, which is how the vendored-fixture fallback got
+    silently selected. Skips where no library exists at all — that is a host without the
+    stimulus data, not a resolution bug.
+    """
+    import pytest
+
+    candidates = _stimulus_library_candidates()
+    if not candidates:
+        pytest.skip("no videos/binding stimulus library above this checkout")
+    assert all(c.is_dir() for c in candidates)
+    assert len(set(candidates)) == len(candidates), "candidates must be de-duplicated"

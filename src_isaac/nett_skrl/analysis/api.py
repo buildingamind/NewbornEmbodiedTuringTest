@@ -31,6 +31,7 @@ import csv
 import json
 import logging
 import math
+import os
 import shutil
 from collections import defaultdict
 from pathlib import Path
@@ -39,6 +40,18 @@ from typing import Iterable
 logger = logging.getLogger("nett.analysis")
 
 import matplotlib
+
+# ⚠ SELECT THE BACKEND *BEFORE* pyplot IS IMPORTED. ``import matplotlib.pyplot``
+# resolves and locks the backend; after that, ``matplotlib.use("Agg", force=False)``
+# cannot switch away from an interactive one. ``train_viz``, ``test_viz`` and ``merge``
+# each called exactly that, one import line too late, so on any host where matplotlib
+# resolved a GUI backend (a set ``$DISPLAY`` and Tk/Qt installed — this project's own
+# hosts run an X server on every card) the "headless" guard was a guaranteed no-op and
+# every plot went through a toolkit these functions never need: they only write PNGs to
+# disk. An explicit ``$MPLBACKEND`` still wins — that is a deliberate caller choice.
+if not os.environ.get("MPLBACKEND"):
+    matplotlib.use("Agg", force=False)
+
 import matplotlib.pyplot as plt
 
 # Same per-condition palette as the original Unity-era ``test_viz`` so bar
@@ -150,7 +163,6 @@ def train_viz(
     out.mkdir(parents=True, exist_ok=True)
 
     rows: list[tuple[str, str, int, float]] = []  # (condition, brain, step, reward)
-    matplotlib.use("Agg", force=False)
     EA = _import_event_accumulator()
 
     for cond_dir in _condition_dirs(root):
@@ -202,7 +214,6 @@ def test_viz(
     out = Path(output_path) if output_path else root / "analysis_test"
     out.mkdir(parents=True, exist_ok=True)
 
-    matplotlib.use("Agg", force=False)
     rows: list[tuple] = []
     # (imprint, test_cond, brain_id, n_steps, correct_pct,
     #  side_preference, pct_target_left, pct_target_right, verdict)
@@ -388,7 +399,6 @@ def merge(
         if src.exists():
             _copy_tree(src, out)
 
-    matplotlib.use("Agg", force=False)
     train_csv = _find_first(out, "train_rewards.csv")
     if train_csv and plt is not None:
         _replot_train_from_csv(plt, train_csv)
