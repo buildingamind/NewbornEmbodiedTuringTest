@@ -74,11 +74,31 @@ mid-update, which is far worse than a slow detect. So:
 10 minutes still turns a 4.5h dead slot into ~10min, and the wave continues with the
 cell recorded as a casualty (``StallError`` is a ``ReapedTaskError``).
 
-⚠ ONE ALARM, TWO GUARDS. Both this module and ``crash_guard`` arm ``ITIMER_REAL`` as a
-last-resort backstop, and a process has only one. They only ever arm it on their own
-trigger, and either arming leads to the same outcome (bounded termination outside the
-tolerated-teardown set), so a race between them is harmless -- but do not add a third
-consumer of that timer without revisiting this.
+⚠ ONE ALARM, THREE CONSUMERS -- REVISITED 2026-08-09. This module and ``crash_guard``
+both arm ``ITIMER_REAL`` on their own trigger, and :func:`arm_teardown_backstop` now
+arms it on ENTRY to teardown. A process has only one such timer. Every arming leads to
+the same outcome -- bounded termination outside the tolerated-teardown set -- and the
+windows barely overlap (the teardown one opens only once stepping has ended, which is
+also when this guard disarms), so a race is still harmless. The cost of the overlap that
+does exist is attribution, not safety: a ``-14``/``142`` remains ambiguous and keeps its
+conservative DEVICE_LOST reading. Do not add a FOURTH consumer without redoing this
+paragraph.
+
+THE POST-STEPPING WINDOW, AND WHY THE WATCHDOG CANNOT COVER IT
+---------------------------------------------------------------
+:func:`disarm` is called the moment stepping ends, so everything after it -- artifact
+flush, ``wandb.finish``, non-daemon thread joins, interpreter finalization -- was
+UNGUARDED. That is where the "multi-brain run hangs after test" specimens live. Two
+structural reasons the ordinary watchdog could never have covered it even if left armed:
+
+  * it is a DAEMON thread, and CPython stops scheduling daemon threads once
+    ``Py_FinalizeEx`` sets the finalizing flag; and
+  * its SIGALRM backstop is armed INSIDE ``_trigger``, i.e. only after a detection that
+    by then cannot happen.
+
+⚠ SO DO NOT "FIX" THIS BY RAISING ``NETT_STALL_TIMEOUT_S``. A longer grace cannot make a
+stopped thread run. :func:`arm_teardown_backstop` arms the kernel timer on ENTRY to the
+window instead, which is the only thing that survives both problems.
 """
 
 from __future__ import annotations
@@ -182,6 +202,80 @@ def disarm() -> None:
             return
         _armed = False
     _stop.set()
+
+
+def teardown_exit_code() -> int:
+    """Exit code for "the mode finished, then teardown wedged" (78 by default).
+
+    Distinct from 75 (DEVICE_LOST), 76 (VRAM OOM) and 77 (mid-run stall) so the four
+    causes stay separable. It means something materially different from all three: the
+    work COMPLETED and its artifacts were already flushed, and only Kit's shutdown hung.
+    """
+    return _env_int("NETT_TEARDOWN_EXIT_CODE", 78)
+
+
+_teardown_backstop_armed = False
+
+
+def arm_teardown_backstop(budget: float | None = None) -> bool:
+    """Bound the post-stepping window. Call ON ENTRY to teardown, not on detection.
+
+    Two nets, because neither alone is sufficient here:
+
+    * A watchdog thread that hard-exits :func:`teardown_exit_code`. Preferred, because
+      it names the cause. It works in the MEASURED signature of this hang -- the process
+      is ``R`` at ~130% CPU, i.e. wedged in native Kit code that releases the GIL, where
+      other Python threads still run. It does NOT work once CPython stops scheduling
+      daemon threads during finalization.
+    * ``ITIMER_REAL`` with its DEFAULT disposition. The kernel cannot be blocked by a
+      wedged interpreter, a stopped daemon thread, or a main thread stuck inside a native
+      call -- and note that a Python SIGALRM HANDLER would be useless here for that last
+      reason, since CPython only runs handlers on the main thread between bytecodes.
+      Costs attribution: it yields -14/142, which the parent reads conservatively as
+      DEVICE_LOST. That is why it is the SECOND deadline, not the first.
+
+    ⚠ Generous by default (``NETT_TEARDOWN_BUDGET_S`` = 300s). A legitimate teardown here
+    is seconds -- ``_finalize_env_artifacts`` has already run by this point -- but
+    ``wandb.finish`` can upload for a while, and killing a run whose work is DONE is the
+    worse error. Idempotent; a second call is a no-op.
+    """
+    global _teardown_backstop_armed
+    if not _enabled():
+        return False
+    with _state_lock:
+        if _teardown_backstop_armed:
+            return True
+        _teardown_backstop_armed = True
+
+    seconds = float(_env_int("NETT_TEARDOWN_BUDGET_S", 300)) if budget is None \
+        else float(budget)
+    kernel_grace = float(_env_int("NETT_TEARDOWN_KERNEL_GRACE_S", 60))
+
+    def _fire() -> None:
+        time.sleep(seconds)
+        _log.error(
+            "TEARDOWN GUARD: still shutting down %.0fs after the mode completed -- "
+            "hard-exiting %d. The work itself FINISHED and its artifacts were flushed "
+            "before this window opened; this is Kit's shutdown wedging (the specimen "
+            "signature is R at ~130%% CPU with no output). The parent will reap so the "
+            "GPU is released.",
+            seconds, teardown_exit_code(),
+        )
+        os._exit(teardown_exit_code())
+
+    threading.Thread(target=_fire, name="nett-teardown-backstop", daemon=True).start()
+
+    try:
+        import signal
+
+        signal.setitimer(signal.ITIMER_REAL, seconds + kernel_grace)
+    except Exception:  # noqa: BLE001 - a missing safety net must not break a run
+        _log.debug("teardown backstop: setitimer unavailable", exc_info=True)
+    _log.info(
+        "teardown backstop armed (thread %.0fs -> exit %d, kernel %.0fs -> SIGALRM)",
+        seconds, teardown_exit_code(), seconds + kernel_grace,
+    )
+    return True
 
 
 def _deadline() -> float:

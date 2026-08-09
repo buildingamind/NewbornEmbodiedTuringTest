@@ -746,6 +746,34 @@ def stall_exit_code() -> int:
         return 77
 
 
+def teardown_wedge_exit_code() -> int:
+    """The child's "mode finished, then teardown wedged" exit code (78 by default).
+
+    Same parent/child env contract as :func:`device_lost_exit_code`, read at call time
+    for the same reason. Distinct from 75/76/77 because it warrants a DIFFERENT
+    response: the mode's work COMPLETED and ``_finalize_env_artifacts`` had already
+    flushed before the guarded window opened, so the outputs on disk are intact. Only
+    Kit's shutdown hung. See ``stall_guard.arm_teardown_backstop``.
+    """
+    try:
+        return int(os.environ.get("NETT_TEARDOWN_EXIT_CODE", "78"))
+    except ValueError:
+        return 78
+
+
+def is_teardown_wedge_exit(exitcode: Optional[int]) -> bool:
+    """True if *exitcode* is the teardown backstop's signature.
+
+    The SIGALRM codes are deliberately NOT included, for the same reason they are
+    excluded from the OOM and stall predicates: -14/142 is shared with DEVICE_LOST and
+    must keep the conservative casualty reading rather than being upgraded to "this
+    finished fine".
+    """
+    if exitcode is None:
+        return False
+    return exitcode == teardown_wedge_exit_code()
+
+
 def is_stall_exit(exitcode: Optional[int]) -> bool:
     """True if *exitcode* is stall_guard's no-progress signature.
 

@@ -31,6 +31,7 @@ from .reap import (
     VramOomError,
     is_device_lost_exit,
     is_stall_exit,
+    is_teardown_wedge_exit,
     is_vram_oom_exit,
     join_with_reap,
 )
@@ -112,14 +113,38 @@ def _run_train_with_eval_milestones(task: Task) -> None:
 
 
 def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
-    import multiprocessing as mp
+    """Run one mode in its own Isaac process, with the reaper visible to a signal handler.
 
-    ctx = mp.get_context("spawn")
+    ★ THE REGISTRATION IS THE POINT OF THIS WRAPPER. Every other ``reaper.reap()`` call
+    site is on a path THIS process chooses (vram-oom / stall / device-lost /
+    absolute-timeout). Registering the reaper for the life of the task is what lets a
+    SIGTERM or SIGINT arriving from OUTSIDE -- the shell ``timeout`` bounding a wave, a
+    pkill, an operator, or the kernel's PDEATHSIG when the driver is ``kill -9``ed -- run
+    the SAME ownership-checked reap instead of stranding the Isaac child at PPID=1 holding
+    VRAM. The handler itself is installed once per pool worker in ``executor._worker_init``.
+
+    Weakly held, and unregistered in ``finally``: a finished task must not keep its reaper
+    -- or its process identities -- alive for the next one to trip over.
+    """
+    from .lifecycle import register_reaper, unregister_reaper
+
     reaper = TaskReaper(
         task_key=f"{task.config.name}/{task.config.condition}/{mode}",
         device=task.config.device,
         logger=task.config.logger,
     )
+    register_reaper(reaper)
+    try:
+        _run_mode_subprocess(task, mode, reaper, overrides)
+    finally:
+        unregister_reaper(reaper)
+
+
+def _run_mode_subprocess(task: Task, mode: str, reaper: TaskReaper,
+                         overrides: dict) -> None:
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
     # launch_scope() pre-warms multiprocessing's resource_tracker and THEN stamps
     # the per-spawn ownership token into os.environ, so the child (and every
     # descendant it forks) inherits it and stays attributable after reparenting
@@ -198,6 +223,21 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
             raise DeviceLostError(
                 f"Mode {mode} subprocess exited with code {p.exitcode} (DEVICE_LOST)"
             )
+        if is_teardown_wedge_exit(p.exitcode):
+            # NOT a casualty: the mode's work COMPLETED and _finalize_env_artifacts had
+            # already flushed before the guarded window even opened -- only Kit's
+            # shutdown wedged. So the run continues as a success, loudly. The reap is
+            # still mandatory: the child left via os._exit, so no atexit hooks ran and
+            # anything it spawned is still holding VRAM.
+            reaper.reap("teardown-wedge-exit")
+            task.config.logger.warning(
+                "Mode %s COMPLETED but its teardown wedged and was bounded (exit %d). "
+                "Outputs on disk are intact -- artifacts are flushed before that window "
+                "opens. The GPU has been reclaimed by the reap. Raise "
+                "NETT_TEARDOWN_BUDGET_S if a legitimate shutdown here needs longer.",
+                mode, p.exitcode,
+            )
+            return
         if not _is_tolerated_isaac_teardown_exit(p.exitcode):
             raise RuntimeError(
                 f"Mode {mode} subprocess failed with exit code {p.exitcode}"
@@ -211,7 +251,98 @@ def _spawn_mode_subprocess(task: Task, mode: str, **overrides) -> None:
 
 
 def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> None:
-    """Child-process entry point for exactly one NETT mode."""
+    """Child-process entry point for exactly one NETT mode.
+
+    ★ THE ERROR PATH MUST HARD-EXIT TOO. ``_exit_worker_cleanly`` -- whose whole job is
+    ``atexit.register(os._exit, 0)``, bypassing Kit's fragile teardown -- was reached
+    ONLY on success. Any exception therefore fell through into Kit's REAL teardown,
+    which is exactly where this stack hangs, and the parent's join is unbounded
+    (``absolute_timeout=None``, ``NETT_REAP_TIMEOUT`` defaults to 0). A failing mode
+    hung the whole wave instead of failing it. It also lost every artifact, because
+    ``_finalize_env_artifacts`` was on the success path only.
+
+    So the body is wrapped: on ANY exception, flush the env's artifacts, retire both
+    guards, and ``os._exit(1)``. NON-ZERO on purpose -- ``os._exit(0)`` would report a
+    failed mode as a success, and 1 is outside both the tolerated-teardown set and every
+    special code (75/76/77/78), so the parent raises for it as it always has.
+    """
+    state: dict = {}
+    try:
+        _run_single_mode_body(task, mode, overrides, state)
+    except BaseException:  # noqa: BLE001 - the traceback IS the report; then we must exit
+        if not _in_spawned_worker():
+            # ⚠ IN-PROCESS CALLER (a test, or anything that has not spawned). os._exit
+            # here would take the CALLER down -- pytest included -- turning one red test
+            # into a suite that vanishes with no report. The hard exit exists to dodge
+            # Kit's teardown in a throwaway child; in-process there is no such child, so
+            # the exception is the right answer.
+            raise
+        _abort_worker(state, task, mode)          # never returns
+
+
+def _in_spawned_worker() -> bool:
+    """True when this really is the mode subprocess.
+
+    ``multiprocessing`` names the interpreter's root process ``MainProcess`` and every
+    spawned child something else, so this distinguishes "I am the disposable Isaac
+    worker" from "someone called me directly". Kept as a named function so a test can
+    force either answer.
+    """
+    import multiprocessing as mp
+
+    return mp.current_process().name != "MainProcess"
+
+
+def _abort_worker(state: dict, task: Task, mode: str) -> None:
+    """Report the failure, salvage the artifacts, and leave WITHOUT Kit's teardown.
+
+    Ordering is the whole content of this function:
+      1. print the traceback while stdout/stderr still exist;
+      2. flush the env's artifacts -- ``_finalize_env_artifacts`` is Kit-free and
+         idempotent, and on the old error path it never ran at all, so a crashed mode
+         lost its profiler JSON and its last grid-video manifest every time;
+      3. retire both guards, so neither fires during the exit and mislabels it;
+      4. ``os._exit(1)`` -- the same hard exit the success path takes, for the same
+         reason: Kit's real teardown is where this stack hangs.
+    """
+    import sys
+    import traceback
+
+    logger = getattr(getattr(task, "config", None), "logger", None) or logging.getLogger(
+        "nett.task_runner"
+    )
+    try:
+        traceback.print_exc()
+        logger.exception("Mode %s failed; exiting worker without Kit teardown", mode)
+    except Exception:  # noqa: BLE001
+        pass
+    loaded = state.get("loaded")
+    if loaded is not None:
+        try:
+            _finalize_env_artifacts(loaded, logger)
+        except Exception:  # noqa: BLE001 - salvage is best effort
+            pass
+    try:
+        crash_guard.disarm()
+        stall_guard.disarm()
+    except Exception:  # noqa: BLE001
+        pass
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.flush()
+        except Exception:  # noqa: BLE001
+            pass
+    for handler in list(logging.root.handlers):
+        try:
+            handler.flush()
+        except Exception:  # noqa: BLE001
+            pass
+    os._exit(1)
+
+
+def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
+                          state: dict) -> None:
+    """The actual mode. ``state`` carries what :func:`_abort_worker` needs to salvage."""
     # Kit's SimulationApp inspects sys.argv and aborts on flags it does not
     # recognize (e.g. pytest's ``-m``). Spawn forwards the parent's argv
     # verbatim, so scrub it down to the script name before any Isaac import.
@@ -262,6 +393,9 @@ def _run_single_mode(task: Task, mode: str, overrides: dict | None = None) -> No
     # covers. Its exit is os._exit(), which works even when the process ignores signals.
     stall_guard.arm()
     loaded = agent.body.embed(agent.env, run_config)
+    # Hand the env to _abort_worker: without this, a failure after embed() lost every
+    # artifact, because _finalize_env_artifacts was on the success path only.
+    state["loaded"] = loaded
     # Kit is up now (embed builds AppLauncher/SimulationApp). Its startup resets carb
     # logging, so the guard MUST arm after this line -- and must not arm EARLIER, inside
     # embed: the consumer is a synchronous Python callback on every carb message, and
@@ -517,6 +651,14 @@ def _finalize_env_artifacts(loaded, logger: logging.Logger) -> None:
 
 def _exit_worker_cleanly(logger: logging.Logger) -> None:
     """Flush Python-side outputs, then bypass Kit's fragile atexit teardown."""
+    # ★ ARM THE TEARDOWN BACKSTOP FIRST -- BEFORE the disarms below, which is the
+    # instant the post-stepping window opens. Everything from here to process death used
+    # to be UNGUARDED by construction, and that is where the "multi-brain run hangs after
+    # test" specimens live: stall_guard's watchdog is a daemon thread (CPython stops
+    # scheduling it during finalization) and its SIGALRM backstop is armed only inside
+    # _trigger, so neither could ever fire here. ⚠ Raising NETT_STALL_TIMEOUT_S cannot
+    # substitute for this: a longer grace does not make a stopped thread run.
+    stall_guard.arm_teardown_backstop()
     # This IS the clean path — retire both guards so teardown is exactly what it was
     # before they existed. stall_guard MUST be disarmed here: a healthy run stops
     # stepping and then spends real time in analysis/teardown, which a still-armed

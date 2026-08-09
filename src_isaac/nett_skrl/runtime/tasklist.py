@@ -5,6 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from .device import visible_device_scope
+from .lifecycle import register_reaper, unregister_reaper
+from .reap import TaskReaper
 from .task import Task, set_seeds
 
 
@@ -87,6 +89,15 @@ def _validation_child(tasks: list[Task]) -> None:
     import sys
     import traceback
 
+    # ⚠ THIS CHILD BOOTS KIT AND HOLDS A GPU CONTEXT, and unlike every mode subprocess it
+    # is a DIRECT child of the driver, not of a pool worker -- so it was the one
+    # Kit-booting process in the tree with no orphan guard at all. Killing the driver
+    # during "Validating tasks…" stranded it at PPID=1 holding VRAM. Same net as
+    # task_runner._run_single_mode: kernel-enforced, so it covers the -9 case too.
+    from . import pdeathsig
+
+    pdeathsig.arm()
+
     code = 0
     try:
         # close_env=False: os._exit below makes teardown unnecessary, and calling it would
@@ -140,13 +151,29 @@ def validate_tasklist_subprocess(tasks: list[Task], logger=None, device: int = 0
     # every mode, and it is the reason it spawns rather than loops.
     # COST, stated plainly: validation adds ONE Kit boot (~10s) PER CONDITION to every run.
     for task in tasks:
-        proc = ctx.Process(target=_validation_child, args=([task],), daemon=False)
-        # ⚠ THE PIN APPLIES HERE TOO. Without it the child gets the PHYSICAL index and Kit
-        # hangs on "GPU N requested. GPUs other than cuda:0 are not currently supported" --
-        # exactly what happened when this subprocess was first added (2026-07-28).
-        with visible_device_scope(device):
-            proc.start()
-        proc.join()
+        # A TaskReaper, registered for the duration, so a SIGINT/SIGTERM arriving at the
+        # DRIVER while this Kit boot is in flight reaps it with ownership evidence rather
+        # than leaving a VRAM-holding orphan. launch_scope() stamps the token that makes
+        # the child attributable even after it reparents to PPID=1.
+        reaper = TaskReaper(
+            task_key=f"{getattr(task.config, 'name', '?')}/"
+                     f"{getattr(task.config, 'condition', '?')}/validate",
+            device=device,
+            logger=logger,
+        )
+        register_reaper(reaper)
+        try:
+            proc = ctx.Process(target=_validation_child, args=([task],), daemon=False)
+            # ⚠ THE PIN APPLIES HERE TOO. Without it the child gets the PHYSICAL index and
+            # Kit hangs on "GPU N requested. GPUs other than cuda:0 are not currently
+            # supported" -- exactly what happened when this subprocess was first added
+            # (2026-07-28).
+            with visible_device_scope(device), reaper.launch_scope():
+                proc.start()
+            reaper.adopt(proc.pid)
+            proc.join()
+        finally:
+            unregister_reaper(reaper)
         code = proc.exitcode if proc.exitcode is not None else 1
         if code != 0:
             if logger is not None:

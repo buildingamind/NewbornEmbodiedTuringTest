@@ -36,6 +36,7 @@ from .runtime import (
     build_tasks,
     run_task,
 )
+from .runtime.lifecycle import cleanup_on_signal, driver_cleanup
 from .runtime.memory import MemoryManager
 from .runtime.reap import DeviceLostRunError, ReapedTaskError
 from .runtime.parallel_envs import (
@@ -169,17 +170,32 @@ class NETT:
         # then re-raised in aggregate by _task_waiter -> the run ends nonzero.
         self.failed_tasks: list[tuple[str, BaseException]] = []
 
-        with MemoryManager() as self.memory_manager:
-            self.devices = self.memory_manager.validate_devices(devices)
-            self.logger.info("Devices: %s", self.devices)
-            self.free_device_memory = {
-                d: self.memory_manager.get_free_memory(d) for d in self.devices
-            }
-            with Executor(verbose, max_tasks=self._max_concurrent_tasks()) as self.executor:
-                self.logger.info("Launching…")
-                for config in self.configs:
-                    self.single_run(**config)
-                self._task_waiter()
+        # ★ THE DRIVER HAD NO SIGNAL HANDLER, which is the whole of the orphan leak that
+        # `pdeathsig` alone could not close. Every wave is wrapped in a shell `timeout`,
+        # and that timeout TERMs the driver -- which, unguarded, died without touching its
+        # pool workers, each of which was still blocked in `p.join()` on an Isaac process
+        # holding VRAM. Measured 2026-08-09 on a GPU-free stand-in: TERM, INT and KILL of
+        # the driver ALL left the pool worker and the Isaac child alive at PPID=1 (INT did
+        # not even kill the driver -- Executor.__exit__ waits for the busy worker forever).
+        #
+        # driver_cleanup reaps what the driver itself owns (the tasklist-validation Kit
+        # boot) and then TERMs the rest of its descendant tree; each pool worker's own
+        # handler turns that TERM into a full, ownership-checked reap of its Isaac child.
+        # SIGKILL of the driver is covered one layer down, by pdeathsig in the worker.
+        with cleanup_on_signal(driver_cleanup, name="nett-driver", logger=self.logger):
+            with MemoryManager() as self.memory_manager:
+                self.devices = self.memory_manager.validate_devices(devices)
+                self.logger.info("Devices: %s", self.devices)
+                self.free_device_memory = {
+                    d: self.memory_manager.get_free_memory(d) for d in self.devices
+                }
+                with Executor(
+                    verbose, max_tasks=self._max_concurrent_tasks()
+                ) as self.executor:
+                    self.logger.info("Launching…")
+                    for config in self.configs:
+                        self.single_run(**config)
+                    self._task_waiter()
         return list(self.task_sheet.keys())
 
     def _max_concurrent_tasks(self) -> Optional[int]:

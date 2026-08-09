@@ -349,7 +349,10 @@ def test_stall_guard_is_armed_BEFORE_kit_boot():
     import inspect
     from nett_skrl.runtime import task_runner
 
-    src = inspect.getsource(task_runner._run_single_mode)
+    # ⚠ THE BODY, NOT THE WRAPPER. `_run_single_mode` is now a try/except shell
+    # around `_run_single_mode_body` (so a failing mode hard-exits instead of
+    # falling into Kit's teardown); the arming order lives in the body.
+    src = inspect.getsource(task_runner._run_single_mode_body)
     stall = src.index("stall_guard.arm()")
     embed = src.index("agent.body.embed(")
     crash = src.index("crash_guard.arm(")
@@ -368,5 +371,8 @@ def test_pdeathsig_is_armed_before_kit_boot_too():
     import inspect
     from nett_skrl.runtime import task_runner
 
-    src = inspect.getsource(task_runner._run_single_mode)
+    # ⚠ THE BODY, NOT THE WRAPPER. `_run_single_mode` is now a try/except shell
+    # around `_run_single_mode_body` (so a failing mode hard-exits instead of
+    # falling into Kit's teardown); the arming order lives in the body.
+    src = inspect.getsource(task_runner._run_single_mode_body)
     assert src.index("pdeathsig.arm()") < src.index("agent.body.embed(")

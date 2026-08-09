@@ -1,11 +1,16 @@
-"""Thin ``ProcessPoolExecutor`` wrapper that optionally mutes child stdout."""
+"""Thin ``ProcessPoolExecutor`` wrapper that mutes child stdout and cannot orphan."""
 
 from __future__ import annotations
 
+import contextlib
 import multiprocessing as mp
 import os
 import sys
 from concurrent.futures import ProcessPoolExecutor
+
+#: Keeps each pool worker's signal handlers installed for the worker's whole life.
+_WORKER_CLEANUP_STACK: "contextlib.ExitStack | None" = None
+
 
 def _mute_stdout() -> None:
     """Silence a worker's stdout.
@@ -16,6 +21,49 @@ def _mute_stdout() -> None:
     used to fork, which inherits the function object instead of sending it.
     """
     sys.stdout = open(os.devnull, "w")
+
+
+def _worker_init(mute: bool) -> None:
+    """Pool-worker entry hook: make this worker impossible to orphan, then mute it.
+
+    ★ THE POOL WORKER WAS THE UNPROTECTED LAYER (measured 2026-08-09). The tree is
+    ``driver -> pool worker -> mode subprocess (Isaac/Kit, GPU)``. ``pdeathsig`` is armed
+    in the MODE SUBPROCESS, so it fires when the POOL WORKER dies -- but nothing killed
+    the pool worker when the DRIVER died. Killing the driver with TERM, INT or KILL left
+    the pool worker AND the Isaac process alive at PPID=1, every time.
+
+    Two nets, deliberately different in kind:
+
+    * ``pdeathsig.arm()`` -- kernel-enforced, so it covers ``kill -9 <driver>``, which no
+      handler can. When the driver dies this worker gets SIGTERM, and the handler below
+      turns that into a real reap.
+    * ``cleanup_on_signal(worker_cleanup)`` -- on SIGINT/SIGTERM, drive the ``TaskReaper``
+      this worker registered for its in-flight task (``task_runner._spawn_mode_subprocess``)
+      so the Isaac child is terminated WITH ownership evidence and its VRAM released,
+      instead of merely inheriting a SIGTERM it may ignore.
+
+    ⚠ NOT the retracted "arm every spawn descendant" plan -- that one aimed BELOW the
+    process that already arms pdeathsig, and there is nothing there. This aims ABOVE it.
+
+    The context manager is entered and never exited: this hook returns into
+    ``_process_worker``'s loop, and the handlers must outlive it for the whole life of the
+    worker. ``ExitStack`` without ``close()`` is that, stated explicitly.
+    """
+    global _WORKER_CLEANUP_STACK
+
+    from . import pdeathsig
+    from .lifecycle import cleanup_on_signal, worker_cleanup
+
+    pdeathsig.arm()
+    stack = contextlib.ExitStack()
+    stack.enter_context(
+        cleanup_on_signal(worker_cleanup, name=f"pool-worker:{os.getpid()}")
+    )
+    # Parked on the module so it is not garbage-collected -- __exit__ restores the default
+    # handlers, and running it here would undo the guard the instant this frame returns.
+    _WORKER_CLEANUP_STACK = stack
+    if mute:
+        _mute_stdout()
 
 
 class Executor(ProcessPoolExecutor):
@@ -66,9 +114,13 @@ class Executor(ProcessPoolExecutor):
         # arguments. Task objects already cross a spawn boundary in
         # `_spawn_mode_subprocess`, so they qualify. Worker startup is slower, which is
         # noise next to a Kit boot.
+        # The initializer is ALWAYS set now, not only when muting: it is what arms this
+        # worker's orphan guards (see _worker_init). Passing None when verbose=True used
+        # to mean a verbose run had no guards at all.
         super().__init__(
             max_workers=workers,
-            initializer=None if verbose else _mute_stdout,
+            initializer=_worker_init,
+            initargs=(not verbose,),
             mp_context=mp.get_context("spawn"),
         )
 
