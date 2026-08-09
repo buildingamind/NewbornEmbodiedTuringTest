@@ -18,7 +18,12 @@ import pytest
 import yaml
 
 
-from _repo_paths import SRC_ISAAC, WORKSPACE, repo_a_root
+from _repo_paths import (
+    SRC_ISAAC,
+    repo_a_root,
+    stimulus_library,
+    stimulus_library_candidates,
+)
 
 # $NETT_REPO_A overrides the sibling default; `_isaac_missing` below already
 # auto-skips the tree when the assets it points at are absent.
@@ -109,33 +114,20 @@ def _resolve_media_root(sheet: Path, candidates: tuple[Path, ...]) -> Path:
     return candidates[0]
 
 
-def _stimulus_library_candidates() -> tuple[Path, ...]:
-    """Every ``videos/binding`` at or above this checkout, nearest first.
-
-    ``WORKSPACE`` is a fixed two-levels-up guess from ``src_isaac``. That is right for
-    the primary checkout (``<workspace>/NewbornEmbodiedTuringTest/src_isaac``) and WRONG
-    for a git worktree (``<workspace>/wt-<name>/NewbornEmbodiedTuringTest/src_isaac``),
-    where it lands on the worktree parent and the stimulus library sits one level
-    further up. MEASURED 2026-08-09 from a worktree: the guess missed, so
-    ``_resolve_media_root`` fell back to repoA's two vendored fixture clips and the run
-    reached the TEST phase before dying on ``O1_1Ca_1.mov`` -- the clip the sheet's
-    ``1color`` row names and repoA does not ship. Walking up finds the library from
-    either layout without hardcoding a depth.
-    """
-    seen: list[Path] = []
-    for start in (SRC_ISAAC, PRIVATE_ROOT):
-        for parent in [start, *start.parents]:
-            candidate = parent / "videos" / "binding"
-            if candidate.is_dir() and candidate not in seen:
-                seen.append(candidate)
-    return tuple(seen)
+#: ⚠ THE SHARED RESOLVER, DELIBERATELY NOT A LOCAL COPY. ``tests/_repo_paths`` owns the
+#: walk-up because ``test_design.py`` needs exactly the same one to find the binding
+#: sheet. The first version of this fix lived only here, and that left test_design
+#: silently SKIPPING two tests on every worktree run -- the same root cause, fixed at one
+#: of its two sites. Re-exported under the private name because tests import it from this
+#: conftest. See :func:`_repo_paths.stimulus_library_candidates` for the measurement.
+_stimulus_library_candidates = stimulus_library_candidates
 
 
 _DS = PRIVATE_ROOT / "isaac_lab" / "assets" / "design_sheets"
 _LIBRARIES = _stimulus_library_candidates()
 #: Nearest stimulus library, or the historical fixed guess when none is on disk (kept so
 #: a skip message still names the path this tree has always documented).
-_VIDEOS = _LIBRARIES[0] if _LIBRARIES else WORKSPACE / "videos" / "binding"
+_VIDEOS = stimulus_library()
 DESIGN_SHEET_MINIMAL = _asset("NETT_DESIGN_SHEET_MINIMAL", _DS / "binding_minimal.csv")
 DESIGN_SHEET_FULL = _asset("NETT_DESIGN_SHEET_FULL", _VIDEOS / "DesignSheet_Binding.csv")
 #: Candidate media roots, most-vendored first: repoA's fixture clips, then the workspace

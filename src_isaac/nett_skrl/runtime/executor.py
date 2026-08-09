@@ -34,9 +34,23 @@ def _worker_init(mute: bool) -> None:
 
     Two nets, deliberately different in kind:
 
-    * ``pdeathsig.arm()`` -- kernel-enforced, so it covers ``kill -9 <driver>``, which no
-      handler can. When the driver dies this worker gets SIGTERM, and the handler below
-      turns that into a real reap.
+    * ``pdeathsig.arm()`` -- kernel-enforced, so it reaches THIS WORKER even under
+      ``kill -9 <driver>``, which no handler can. When the driver dies this worker gets
+      SIGTERM, and the handler below turns that into a real reap.
+
+      ⚠ THAT IS NOT "``kill -9`` IS COVERED", AND AN EARLIER VERSION OF THIS COMMENT SAID
+      IT WAS. Measured 2026-08-09 against real Kit, not the stand-in: ``kill -9 <driver>``
+      does reap this worker, but the Isaac child then IGNORED the reaper's SIGTERM and
+      wedged at 160% CPU holding 2.7 GB. ``stall_guard`` reclaimed it at 612 s (exit 77),
+      so the leak is BOUNDED AT ~10 MIN, not zero. And ``kill -9`` on the shell ``timeout``
+      WRAPPER leaves the whole tree running indefinitely: nothing arms PDEATHSIG in the
+      driver itself. Closing that would mean arming it in ``NETT.run()``, which would also
+      kill legitimately detached runs (``nohup ... &`` then logout), so it is deliberately
+      not done -- prefer TERM/INT on the wrapper, which ARE covered end to end.
+      ⚠ ``tests/test_process_lifecycle.py``'s SIGKILL case cannot see any of this: its
+      stand-in for the mode subprocess is a ``time.sleep`` loop with the DEFAULT SIGTERM
+      disposition, so it dies instantly where Kit wedges. Do not read that green as
+      evidence about Kit.
     * ``cleanup_on_signal(worker_cleanup)`` -- on SIGINT/SIGTERM, drive the ``TaskReaper``
       this worker registered for its in-flight task (``task_runner._spawn_mode_subprocess``)
       so the Isaac child is terminated WITH ownership evidence and its VRAM released,

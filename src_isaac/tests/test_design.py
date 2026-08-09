@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from _repo_paths import WORKSPACE
+from _repo_paths import stimulus_library
 
 from nett_skrl.environment.design import (
     get_experiment_design,
@@ -24,13 +24,21 @@ from nett_skrl.environment.design import (
 #: convention for DOCS, where a reader substitutes their own path. It must never be the
 #: default in code that decides whether a test runs.
 #:
-#: Resolution mirrors ``_repo_paths``: an env override, else a workspace-relative default.
-#: The sheet lives with the stimulus videos, NOT inside either repository — it is
-#: experiment data, and neither repo ships one.
+#: Resolution mirrors ``_repo_paths``: an env override, else the nearest stimulus
+#: library. The sheet lives with the stimulus videos, NOT inside either repository — it
+#: is experiment data, and neither repo ships one.
+#:
+#: ⚠ AND IT REGRESSED A SECOND TIME, DIFFERENTLY. The default was ``WORKSPACE / videos /
+#: binding``, and ``WORKSPACE`` is a fixed two-levels-up guess that is one level short
+#: from a git worktree — so from 2026-08-09 these two tests silently skipped again on
+#: every worktree run, with the same honest-sounding message, for a new reason. That is
+#: twice now that a wrong DEFAULT (not a missing file) has switched them off while
+#: reporting "not available". ``stimulus_library()`` walks up instead of guessing a
+#: depth; keep the resolution there, where both this and the e2e conftest share it.
 _BINDING_CSV = Path(
     os.environ.get(
         "NETT_BINDING_CSV",
-        str(WORKSPACE / "videos" / "binding" / "DesignSheet_Binding.csv"),
+        str(stimulus_library() / "DesignSheet_Binding.csv"),
     )
 )
 

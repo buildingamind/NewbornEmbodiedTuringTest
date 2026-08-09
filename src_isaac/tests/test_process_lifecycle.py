@@ -146,11 +146,16 @@ class _Tree:
         fh.write(textwrap.dedent(_TREE).format(src=SRC, guarded=guarded))
         fh.close()
         self.path = fh.name
+        # stderr to a FILE, not a pipe: the handlers' log lines are the observable for
+        # the ownership test, and a second pipe nobody drains deadlocks the child once
+        # its buffer fills. A file also survives the process being killed mid-write.
+        self.err_path = self.path + ".err"
+        self._err = open(self.err_path, "w+")
         # start_new_session so the test runner's own signals can never reach the tree,
         # and so a leaked member is still findable by session id.
         self.proc = subprocess.Popen(
             [sys.executable, self.path], stdout=subprocess.PIPE, text=True,
-            start_new_session=True,
+            stderr=self._err, start_new_session=True,
         )
         seen: dict[str, int] = {}
         while len(seen) < 2:
@@ -168,6 +173,14 @@ class _Tree:
     def pids(self) -> list[int]:
         return [self.driver, self.worker, self.mode]
 
+    def stderr(self) -> str:
+        """Everything the tree has logged so far."""
+        try:
+            with open(self.err_path, errors="replace") as fh:
+                return fh.read()
+        except OSError:
+            return ""
+
     def close(self) -> None:
         for sig in (signal.SIGTERM, signal.SIGKILL):
             for pid in self.pids:
@@ -182,9 +195,14 @@ class _Tree:
         except Exception:
             pass
         try:
-            os.unlink(self.path)
-        except OSError:
+            self._err.close()
+        except Exception:
             pass
+        for path in (self.path, self.err_path):
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
 
 
 @pytest.fixture
@@ -210,6 +228,16 @@ def test_killing_the_driver_strands_nothing(tree, sig):
 
     All three signals, because each fails differently without the fix: TERM and KILL
     orphan the worker and the Isaac child, INT additionally hangs the driver.
+
+    ⚠ THE SIGKILL CASE PROVES LESS THAN IT LOOKS, AND CANNOT BE MADE TO PROVE MORE HERE.
+    ``_Tree``'s stand-in for the mode subprocess is a ``time.sleep`` loop with the DEFAULT
+    SIGTERM disposition, so it dies the instant PDEATHSIG's TERM arrives. Real Kit
+    installs its own handler and WEDGES: measured 2026-08-09, ``kill -9 <driver>`` reaped
+    the pool worker but left the Isaac child at 160% CPU holding 2.7 GB until
+    ``stall_guard`` reclaimed it at 612 s (exit 77) -- bounded, not zero. A GPU-free
+    stand-in structurally cannot reproduce that, which is exactly why this green must not
+    be quoted as "``kill -9`` is covered". TERM and INT genuinely are, end to end, and
+    those are the paths the acceptance bar names. See ``executor._worker_init``.
     """
     t = tree(guarded=True)
     assert all(_alive(p) for p in t.pids), "tree did not come up"
@@ -240,14 +268,26 @@ def test_pool_worker_reaps_with_ownership_evidence(tree):
 
     A wedged Kit ignores SIGTERM; only the reaper has the (pid, start_ticks) + env-token
     evidence needed to escalate safely. The log line is the observable.
+
+    ⚠ THE EARLIER VERSION ASSERTED ONLY ``not _alive(t.mode)``, which the preceding test
+    already covers -- so it duplicated that one and checked NOTHING about ownership, the
+    single property it is named for. It could not do better while the tree's stderr was
+    inherited by the test runner; ``_Tree`` now captures it to a file, so the log line is
+    reachable and this test can assert the mechanism rather than the outcome.
     """
     t = tree(guarded=True)
     os.kill(t.driver, signal.SIGTERM)
     assert _wait_gone(t.pids, timeout=45.0) == []
-    # stdout is a pipe we still hold; the handlers log to stderr, which is inherited by
-    # the test runner. Assert on the mechanism instead: the mode subprocess was adopted
-    # by a reaper (root-identity evidence) and is gone.
     assert not _alive(t.mode)
+
+    err = t.stderr()
+    # The pool worker must have run its REAPER, not merely let the signal propagate --
+    # that is the difference that matters against a real Kit, which ignores a bare TERM.
+    assert "lifecycle" in err and str(t.mode) in err, (
+        "expected the pool worker's cleanup to name the mode subprocess it reaped, as "
+        f"evidence it went through the TaskReaper rather than relying on signal "
+        f"propagation. mode={t.mode}\n--- tree stderr ---\n{err[-3000:]}"
+    )
 
 
 # --- unit-level behaviour of the module ------------------------------------
@@ -295,25 +335,58 @@ def test_descendants_reaches_a_grandchild_and_skips_the_resource_tracker():
         os.unlink(fh.name)
 
 
-def test_cleanup_runs_exactly_once_and_reports_survivors():
-    """Idempotent under a repeated signal, and honest about what it could not reclaim."""
-    calls: list[str] = []
+def test_cleanup_runs_exactly_once_and_reports_survivors(tmp_path):
+    """Idempotent under a repeated signal, and honest about what it could not reclaim.
 
-    def cleanup(reason: str):
-        calls.append(reason)
-        return [424242]  # a pid we pretend we could not reclaim
+    ⚠ THIS RUNS IN A SUBPROCESS ON PURPOSE. The earlier version of this test never
+    invoked the handler at all -- it asserted only that cleanup does NOT run on a clean
+    exit, so its `return [424242]` was dead code and NEITHER named property (exactly
+    once, reports survivors) was tested. It could not invoke it in-process because the
+    handler deliberately restores the default disposition and re-raises, which would
+    kill the test runner. A child process is the way to get the real path.
 
-    with lifecycle.cleanup_on_signal(cleanup, name="unit-test"):
-        # Drive the handler directly: raising a real signal would kill the test runner,
-        # since the handler deliberately re-raises with the default disposition.
-        handler = signal.getsignal(signal.SIGTERM)
-        assert callable(handler) and handler not in (signal.SIG_DFL, signal.SIG_IGN)
-    # After the block the previous disposition is restored, so nothing leaks into the
-    # rest of the suite.
-    assert signal.getsignal(signal.SIGTERM) in (signal.SIG_DFL, signal.SIG_IGN) or callable(
-        signal.getsignal(signal.SIGTERM)
+    The re-entrant signal is the point: cleanup sends itself a SECOND SIGTERM while it
+    is still running, which is exactly what an impatient operator does.
+    """
+    marker = tmp_path / "calls.txt"
+    prog = textwrap.dedent(
+        f"""
+        import os, signal, sys, time
+        sys.path.insert(0, {SRC!r})
+        import logging; logging.basicConfig(level=logging.INFO)
+        from nett_skrl.runtime import lifecycle
+
+        def cleanup(reason):
+            with open({str(marker)!r}, "a") as fh:
+                fh.write(reason + chr(10))
+                fh.flush()
+            # Re-entrant: a second signal WHILE cleanup is in flight must not re-run it.
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(0.5)
+            return [424242]          # a pid we pretend we could not reclaim
+
+        with lifecycle.cleanup_on_signal(cleanup, name="unit-test"):
+            os.kill(os.getpid(), signal.SIGTERM)
+            time.sleep(30)
+        """
     )
-    assert calls == [], "cleanup must not run on a clean exit from the block"
+    proc = subprocess.run([sys.executable, "-c", prog], capture_output=True,
+                          text=True, timeout=60)
+
+    assert proc.returncode == -signal.SIGTERM, (
+        f"the handler must re-raise with the DEFAULT disposition so the exit status "
+        f"stays 128+SIGTERM; got {proc.returncode}\n{proc.stderr[-2000:]}"
+    )
+    reasons = marker.read_text().split() if marker.exists() else []
+    assert len(reasons) == 1, (
+        f"cleanup must run EXACTLY ONCE even under a repeated signal; ran {len(reasons)} "
+        f"time(s): {reasons}"
+    )
+    assert "424242" in proc.stderr, (
+        "a pid the cleanup could not reclaim must be REPORTED, not silently dropped -- "
+        f"that is the difference between a bounded leak and an invisible one\n"
+        f"{proc.stderr[-2000:]}"
+    )
 
 
 def test_cleanup_is_not_installed_off_the_main_thread():

@@ -158,6 +158,19 @@ def test_teardown_backstop_arms_the_kernel_timer_on_ENTRY(monkeypatch):
     armed: list = []
     monkeypatch.setattr(signal, "setitimer",
                         lambda which, seconds: armed.append((which, seconds)))
+    # ⚠ STUB THE WATCHDOG THREAD TOO, not just the kernel timer. Patching `setitimer`
+    # alone still let the real daemon thread start -- an os._exit(78) armed 120s into
+    # THIS pytest process. A suite slower than the budget would then vanish with no
+    # summary, which is indistinguishable from a collection collapse. The same live
+    # hazard is why `_exit_worker_cleanly` now gates the arm on `_in_spawned_worker()`.
+    class _NoThread:
+        def __init__(self, *a, **k):
+            pass
+
+        def start(self):
+            pass
+
+    monkeypatch.setattr(stall_guard.threading, "Thread", _NoThread)
     monkeypatch.setattr(stall_guard, "_teardown_backstop_armed", False)
     monkeypatch.setenv("NETT_TEARDOWN_BUDGET_S", "120")
     monkeypatch.setenv("NETT_TEARDOWN_KERNEL_GRACE_S", "30")
@@ -180,6 +193,8 @@ def test_teardown_backstop_is_armed_by_the_clean_exit_path(monkeypatch):
     monkeypatch.setattr(task_runner.crash_guard, "disarm", lambda: order.append("crash"))
     monkeypatch.setattr(task_runner.stall_guard, "disarm", lambda: order.append("stall"))
     monkeypatch.setattr(task_runner.atexit, "register", lambda *a, **k: order.append("atexit"))
+    # The arm is gated on being the spawned worker; this test is about ORDER, so say yes.
+    monkeypatch.setattr(task_runner, "_in_spawned_worker", lambda: True)
     import logging
 
     task_runner._exit_worker_cleanly(logging.getLogger("test.exit"))
@@ -187,6 +202,39 @@ def test_teardown_backstop_is_armed_by_the_clean_exit_path(monkeypatch):
         f"the backstop must be armed BEFORE the disarms open the window; got {order}"
     )
     assert "atexit" in order
+
+
+def test_teardown_backstop_is_NOT_armed_for_an_in_process_caller(monkeypatch):
+    """The complement, and the one that protects the test suite from itself.
+
+    ``arm_teardown_backstop`` is an uncancellable process-wide self-destruct: a daemon
+    thread that ``os._exit``s after ``NETT_TEARDOWN_BUDGET_S`` plus an ``ITIMER_REAL``
+    behind it. Right in a disposable Isaac child; lethal in the caller's own process.
+
+    ⚠ NOT HYPOTHETICAL. ``tests/e2e/test_lifecycle.py`` calls ``_exit_worker_cleanly``
+    in-process (it monkeypatches only ``atexit.register``), which armed a 300s bomb
+    inside pytest -- measured, the session hard-exited 78 mid-run with no summary and no
+    report. It stayed latent only because the parallel e2e tree finishes inside the
+    budget; serialised (~17 min, documented) it would lose every result. A vanishing
+    session reads exactly like a collection collapse, so it would have been expensive to
+    diagnose from the symptom.
+    """
+    order: list[str] = []
+    monkeypatch.setattr(stall_guard, "arm_teardown_backstop",
+                        lambda *a, **k: order.append("arm") or True)
+    monkeypatch.setattr(task_runner.crash_guard, "disarm", lambda: order.append("crash"))
+    monkeypatch.setattr(task_runner.stall_guard, "disarm", lambda: order.append("stall"))
+    monkeypatch.setattr(task_runner.atexit, "register", lambda *a, **k: order.append("atexit"))
+    monkeypatch.setattr(task_runner, "_in_spawned_worker", lambda: False)
+    import logging
+
+    task_runner._exit_worker_cleanly(logging.getLogger("test.exit"))
+    assert "arm" not in order, (
+        "an in-process caller must NOT arm the self-destruct; it would take the caller "
+        f"(pytest included) down with it. got {order}"
+    )
+    # The rest of the clean path must still run -- this is a gate, not a bypass.
+    assert "atexit" in order and "crash" in order and "stall" in order
 
 
 @pytest.mark.skipif(not sys.platform.startswith("linux"), reason="Linux signals")

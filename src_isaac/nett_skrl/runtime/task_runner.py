@@ -658,7 +658,18 @@ def _exit_worker_cleanly(logger: logging.Logger) -> None:
     # scheduling it during finalization) and its SIGALRM backstop is armed only inside
     # _trigger, so neither could ever fire here. ⚠ Raising NETT_STALL_TIMEOUT_S cannot
     # substitute for this: a longer grace does not make a stopped thread run.
-    stall_guard.arm_teardown_backstop()
+    #
+    # ⚠ ONLY IN THE SPAWNED WORKER -- the same rule the error path already follows a few
+    # hundred lines up, and for the same reason. The backstop is a process-wide
+    # self-destruct: a daemon thread that os._exit()s after NETT_TEARDOWN_BUDGET_S and an
+    # ITIMER_REAL behind it, neither of which can be cancelled. That is exactly right in a
+    # disposable Isaac child and lethal anywhere else. `tests/e2e/test_lifecycle.py` calls
+    # this function IN-PROCESS (it monkeypatches only atexit.register), which armed a
+    # 300s bomb inside pytest: measured, the session hard-exited 78 mid-run with no
+    # summary and no report -- one slow suite away from silently losing every result.
+    # It stayed latent only because the parallel e2e run finishes inside the budget.
+    if _in_spawned_worker():
+        stall_guard.arm_teardown_backstop()
     # This IS the clean path — retire both guards so teardown is exactly what it was
     # before they existed. stall_guard MUST be disarmed here: a healthy run stops
     # stepping and then spends real time in analysis/teardown, which a still-armed

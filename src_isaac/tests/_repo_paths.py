@@ -35,6 +35,14 @@ import pytest
 SRC_ISAAC = Path(__file__).resolve().parents[1]
 
 #: The directory holding both repositories.
+#:
+#: ⚠ A FIXED TWO-LEVELS-UP GUESS, AND IT IS WRONG FROM A GIT WORKTREE. Right for the
+#: primary checkout (``<workspace>/NewbornEmbodiedTuringTest/src_isaac``); from a
+#: worktree (``<workspace>/wt-<name>/NewbornEmbodiedTuringTest/src_isaac``) it lands on
+#: the worktree parent, one level short. Prefer :func:`stimulus_library_candidates` for
+#: anything that must resolve the shared, un-checked-out ``videos/`` tree; this constant
+#: is kept because a skip message should still name the path this suite has always
+#: documented.
 WORKSPACE = SRC_ISAAC.parents[1]
 
 #: Used when ``NETT_REPO_A`` is unset.
@@ -55,6 +63,42 @@ def repo_a_root() -> Path:
     if override:
         return Path(override).expanduser()
     return SIBLING_DEFAULT
+
+
+def stimulus_library_candidates() -> tuple[Path, ...]:
+    """Every ``videos/binding`` at or above this checkout, nearest first.
+
+    THE ONE PLACE THAT KNOWS HOW TO FIND THE STIMULUS LIBRARY. The library is a large,
+    un-checked-out tree that lives at the WORKSPACE root, so it is shared by the primary
+    checkout and every worktree alike — but :data:`WORKSPACE` cannot find it from a
+    worktree (see its note). Walking up locates it from either layout without hardcoding
+    a depth, and returns *candidates* rather than one path so a caller can pick the
+    nearest that actually holds what it needs.
+
+    ⚠ MEASURED 2026-08-09, both consequences of the fixed guess: the e2e media root fell
+    back to repoA's two vendored fixture clips and a run reached the TEST phase before
+    dying on ``O1_1Ca_1.mov`` (the clip the sheet's ``1color`` row names and repoA does
+    not ship); and ``test_design.py``'s two binding-sheet tests silently SKIPPED on every
+    worktree run. Same root cause, two sites — which is why this now lives here instead
+    of in one caller.
+    """
+    seen: list[Path] = []
+    for start in (SRC_ISAAC, repo_a_root()):
+        for parent in [start, *start.parents]:
+            candidate = parent / "videos" / "binding"
+            if candidate.is_dir() and candidate not in seen:
+                seen.append(candidate)
+    return tuple(seen)
+
+
+def stimulus_library() -> Path:
+    """The nearest stimulus library, or the historical fixed guess when none is on disk.
+
+    The fallback keeps a skip/error message naming the path this suite has always
+    documented, rather than an empty string.
+    """
+    candidates = stimulus_library_candidates()
+    return candidates[0] if candidates else WORKSPACE / "videos" / "binding"
 
 
 def nett_isaac_dir() -> Path:

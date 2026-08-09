@@ -272,9 +272,29 @@ def cleanup_on_signal(
             log.info("lifecycle[%s]: cleanup(%s) reclaimed everything", name, reason)
 
     installed: dict[int, object] = {}
+    running = threading.Event()
 
     def _handler(signo: int, _frame) -> None:
         signame = signal.Signals(signo).name
+        if running.is_set():
+            # ⚠ A REPEAT SIGNAL MUST NOT ABORT AN IN-FLIGHT CLEANUP. Python runs handlers
+            # between bytecodes on the main thread, so a second TERM re-enters HERE while
+            # cleanup is still reaping -- and the re-raise below would kill the process
+            # mid-reap, stranding exactly the GPU-holding children this module exists to
+            # reclaim, and losing the survivor report with them. An impatient operator
+            # sending TERM twice is ordinary, so this is a live path, not a corner case.
+            # (Found by the "exactly once" test once it was made to actually fire the
+            # handler; the previous version never invoked it and could not see this.)
+            # Cleanup is bounded (`terminate_descendants` caps its own wait), so this
+            # cannot wedge; SIGKILL remains available as the operator's hard escape.
+            log.warning(
+                "lifecycle[%s]: %s again while cleanup is still running -- IGNORED so "
+                "the reap can finish; the process will exit when it does (SIGKILL if "
+                "you must, but it strands whatever has not been reclaimed yet)",
+                name, signame,
+            )
+            return
+        running.set()
         log.warning("lifecycle[%s]: received %s -- cleaning up before exit", name, signame)
         _run(f"signal-{signame}")
         # Re-raise with the default disposition so the exit status is 128+signo.
