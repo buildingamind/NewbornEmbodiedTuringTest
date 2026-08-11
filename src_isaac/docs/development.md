@@ -287,15 +287,49 @@ VIRTUAL_ENV=/path/to/venv uv run --active --project src_isaac \
 - `nett_skrl/body/skrl_adapter.py`: env observation/action bridge into skrl.
 - `nett_skrl/recording/export.py`: PNG sequence to MP4 export.
 
-The four guards, which is where a hung or orphaned run is actually handled — read these
+The five guards, which is where a hung or orphaned run is actually handled — read these
 before diagnosing anything that "just stopped":
 
 - `nett_skrl/runtime/crash_guard.py`: carb-hook DEVICE_LOST detection → bounded exit 75.
 - `nett_skrl/runtime/stall_guard.py`: env-step watchdog → exit 77. Armed *before* Kit
   boots, so its startup grace spans the boot, which is where the render pump wedges.
+  It ALSO provides `arm_teardown_backstop()` → exit **78**, which bounds the
+  post-stepping window (see below).
 - `nett_skrl/runtime/pdeathsig.py`: `PR_SET_PDEATHSIG` in the child, so an externally
   killed parent cannot orphan an Isaac process holding a GPU.
+- `nett_skrl/runtime/lifecycle.py`: SIGINT/SIGTERM handlers + `atexit` in the driver and
+  the pool worker, driving the registered `TaskReaper`s. This is the layer that was
+  missing: every `reap()` call site was on a path the process *chooses*, so a parent
+  killed from OUTSIDE (the shell `timeout` bounding a wave, a `pkill`, Ctrl-C) reaped
+  nothing.
 - `nett_skrl/runtime/reap.py`: token-owned reap of PPID=1 / GPU orphans.
+
+**Exit 78 and the teardown window.** Everything from "the mode finished stepping" to
+process death used to be unguarded *by construction*: `stall_guard`'s watchdog is a
+daemon thread, and CPython stops scheduling daemon threads during interpreter
+finalization — which is exactly where the "multi-brain run hangs after test" specimens
+lived. Raising `NETT_STALL_TIMEOUT_S` cannot help; a longer grace does not make a
+stopped thread run. `arm_teardown_backstop()` is therefore armed on *entry* to teardown
+and lays down two nets: a thread deadline (`NETT_TEARDOWN_BUDGET_S`, 300 s) that exits 78
+and names the cause, and an `ITIMER_REAL` behind it (+`NETT_TEARDOWN_KERNEL_GRACE_S`,
+60 s) whose default disposition the kernel will honour even against a wedged
+interpreter. 78 is read as **success with a mandatory reap**, not a casualty: the work
+completed and its artifacts were flushed before that window opened.
+
+⚠ It is a process-wide, uncancellable self-destruct, so it is armed only when
+`task_runner._in_spawned_worker()` is true. Calling `_exit_worker_cleanly` in-process
+(as some tests do) must not arm it — that armed a 300 s `os._exit(78)` inside pytest and
+hard-exited a real session with no summary, which looks exactly like a collection
+collapse.
+
+⚠ **`kill -9` is not fully covered, and the regression test cannot see the gap.**
+`-9` on the driver reaps the pool worker, but real Kit ignores the reaper's SIGTERM and
+wedges (~160 % CPU, GB of VRAM) until `stall_guard` reclaims it — bounded at ~10 min, not
+zero. `-9` on the shell `timeout` *wrapper* leaves the whole tree running, because
+nothing arms `PR_SET_PDEATHSIG` in the driver itself. `tests/test_process_lifecycle.py`'s
+SIGKILL case passes because its stand-in is a `time.sleep` loop with the default SIGTERM
+disposition; it dies where Kit wedges. TERM and INT *are* covered end to end. Prefer
+them on the wrapper.
 
 (Until 2026-07-31 this list named `runtime/isaac_mode_runner.py` and
 `brain/env_adapter.py`. Both were renamed and the list was never updated:

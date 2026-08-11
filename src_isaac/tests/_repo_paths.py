@@ -45,8 +45,16 @@ SRC_ISAAC = Path(__file__).resolve().parents[1]
 #: documented.
 WORKSPACE = SRC_ISAAC.parents[1]
 
-#: Used when ``NETT_REPO_A`` is unset.
+#: Used when ``NETT_REPO_A`` is unset, and named for the message when nothing is found.
 SIBLING_DEFAULT = WORKSPACE / "NewbornEmbodiedTuringTest_Private"
+
+#: repoA is a SIBLING, so finding it means leaving this repository — the same boundary
+#: crossing that made ``WORKSPACE`` wrong from a worktree. It survives today only by
+#: luck of layout: ``wt-<name>/`` happens to hold worktrees of BOTH repos side by side,
+#: so the short guess lands. Check out a worktree of repo B alone and it points at a
+#: path that does not exist, and the cross-repo source-text tests all skip — silently,
+#: which is how this class of bug keeps costing a debug cycle. Walk up instead.
+_REPO_A_DIRNAME = "NewbornEmbodiedTuringTest_Private"
 
 #: Env var overriding the sibling default. Point it at a repoA *repository root*.
 REPO_A_ENV_VAR = "NETT_REPO_A"
@@ -55,13 +63,25 @@ REPO_A_ENV_VAR = "NETT_REPO_A"
 def repo_a_root() -> Path:
     """Return the repoA repository root — the dir containing ``isaac_lab/``.
 
-    Never raises and never checks existence: callers that must tolerate a
-    missing repoA (e.g. building module-level constants in a conftest that
-    auto-skips later) can use the path unconditionally.
+    Never raises: callers that must tolerate a missing repoA (e.g. building
+    module-level constants in a conftest that auto-skips later) can use the path
+    unconditionally, and get :data:`SIBLING_DEFAULT` to name in the message when
+    nothing is on disk.
+
+    ``$NETT_REPO_A`` still wins outright and is never probed — an explicit override
+    that silently resolved somewhere else would be worse than a broken one. Below it,
+    the nearest sibling that actually CONTAINS ``isaac_lab/`` wins, so a worktree at any
+    depth resolves without hardcoding one. Note this does NOT infer the path from the
+    imported ``nett_isaac`` package: that would make a green run depend on which package
+    happened to load first, which the module docstring rejects for good reason.
     """
     override = os.environ.get(REPO_A_ENV_VAR)
     if override:
         return Path(override).expanduser()
+    for parent in SRC_ISAAC.parents:
+        candidate = parent / _REPO_A_DIRNAME
+        if (candidate / "isaac_lab").is_dir():
+            return candidate
     return SIBLING_DEFAULT
 
 

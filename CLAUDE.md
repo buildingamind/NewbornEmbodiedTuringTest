@@ -46,11 +46,16 @@ Three packages the runtime does not need are the `test` extra —
 *collection*, not a test), and `pytest-xdist` (what lets the e2e tree run one worker per
 GPU).
 
-⚠ A plain `pytest tests` reports `621 passed, 23 deselected` (measured 2026-07-31; one
+⚠ A plain `pytest tests` reports `700 passed, 23 deselected` (measured 2026-08-09; one
 skip line replaces 22 of them when `optuna` is absent). **Re-measure rather than trusting
-this number** — it has now gone stale twice, and a count in prose ages every time a test
-is added. It is here to catch a *collapse* (a collection error reporting zero), not to be
-matched exactly. The deselected 23 are the whole
+this number** — it has now gone stale three times, and a count in prose ages every time a
+test is added. It is here to catch a *collapse* (a collection error reporting zero), not
+to be matched exactly. Expect **zero skips**: `test_design.py`'s two binding-sheet tests
+used to skip silently from any git worktree (`WORKSPACE` is a fixed two-levels-up guess,
+one level short there), which is the second time a wrong *default* rather than a missing
+file switched those two off while reporting "not available". `tests/_repo_paths.py`
+`stimulus_library()` now walks up instead, and the e2e conftest shares it. The
+deselected 23 are the whole
 `tests/e2e/` tree, which had **never run on any host** until 2026-07-27 because its design
 sheet and media root pointed at paths that did not exist. They resolve on their own now:
 the conftest picks the first media root that actually holds every clip the design sheet
