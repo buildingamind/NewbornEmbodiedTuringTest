@@ -36,6 +36,7 @@ from .runtime import (
     build_tasks,
     run_task,
 )
+from .runtime import pdeathsig
 from .runtime.lifecycle import cleanup_on_signal, driver_cleanup
 from .runtime.memory import MemoryManager
 from .runtime.reap import DeviceLostRunError, ReapedTaskError
@@ -71,6 +72,16 @@ _FALLBACK_TASK_MEMORY_GB = 6.0
 # "does not fit" -- a false "too big" silently costs parallelism, which is worse than
 # waiting. NETT_DRY_RUN_TIMEOUT overrides both.
 _DRY_RUN_TIMEOUT_S = {"test": 300.0, "train": 900.0}
+
+
+def _env_flag(name: str) -> bool:
+    """True for 1/true/yes/on, case-insensitively. Unset or empty is False.
+
+    Spelled out rather than ``bool(os.environ.get(name))`` because that reads
+    ``NETT_PDEATHSIG_DRIVER=0`` as ON, and a flag whose "off" value turns it on is a
+    trap -- especially for one whose job is to have the kernel kill this process.
+    """
+    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _dry_run_timeout_for(mode: str) -> float:
@@ -182,6 +193,21 @@ class NETT:
         # boot) and then TERMs the rest of its descendant tree; each pool worker's own
         # handler turns that TERM into a full, ownership-checked reap of its Isaac child.
         # SIGKILL of the driver is covered one layer down, by pdeathsig in the worker.
+        #
+        # ⚠ WHAT IS *NOT* COVERED: `kill -9` of the shell `timeout` WRAPPER above this
+        # process. Nothing arms PR_SET_PDEATHSIG in the driver ITSELF, so the whole tree
+        # simply keeps running. Arming it unconditionally here would be wrong -- the
+        # driver's parent is the interactive shell in ordinary use, so a legitimately
+        # detached run (`nohup nett … &` then logout) would be killed the moment the
+        # shell exits. It is therefore OPT-IN, for the one context where the parent is a
+        # wrapper whose death really does mean "abandon this wave".
+        if _env_flag("NETT_PDEATHSIG_DRIVER"):
+            armed = pdeathsig.arm()
+            self.logger.info(
+                "NETT_PDEATHSIG_DRIVER set: driver will be TERMed by the kernel when its "
+                "PARENT dies (armed=%s). Only correct when the parent is a wrapper, e.g. "
+                "the shell `timeout` bounding a wave -- NOT for a detached run.", armed,
+            )
         with cleanup_on_signal(driver_cleanup, name="nett-driver", logger=self.logger):
             with MemoryManager() as self.memory_manager:
                 self.devices = self.memory_manager.validate_devices(devices)

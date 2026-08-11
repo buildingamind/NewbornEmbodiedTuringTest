@@ -423,3 +423,111 @@ def test_reap_registered_survives_a_raising_reaper():
     finally:
         for r in list(lifecycle._reapers):
             lifecycle.unregister_reaper(r)
+
+
+# --- opt-in: PDEATHSIG in the DRIVER ----------------------------------------
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [("1", True), ("true", True), ("YES", True), ("on", True),
+     ("0", False), ("false", False), ("", False), ("  ", False)],
+)
+def test_env_flag_does_not_read_zero_as_on(monkeypatch, value, expected):
+    """``NETT_PDEATHSIG_DRIVER=0`` must mean OFF.
+
+    The obvious spelling, ``bool(os.environ.get(name))``, reads "0" as True. A flag
+    whose documented off-value turns it ON is a trap in general and an especially bad
+    one here, where the flag's job is to have the KERNEL kill this process.
+    """
+    from nett_skrl.nett import _env_flag
+
+    monkeypatch.setenv("NETT_PDEATHSIG_DRIVER", value)
+    assert _env_flag("NETT_PDEATHSIG_DRIVER") is expected
+
+
+def test_env_flag_is_false_when_unset(monkeypatch):
+    from nett_skrl.nett import _env_flag
+
+    monkeypatch.delenv("NETT_PDEATHSIG_DRIVER", raising=False)
+    assert _env_flag("NETT_PDEATHSIG_DRIVER") is False
+
+
+def _wrapper_tree(arm: bool) -> tuple[int, int]:
+    """`wrapper -> child`, where the child optionally arms PDEATHSIG. Returns both pids.
+
+    Stands in for `shell timeout -> nett driver`, which is the layer `kill -9` does not
+    reach: nothing arms PR_SET_PDEATHSIG in the driver itself, so -9 on the wrapper
+    leaves the whole tree running.
+    """
+    # ⚠ Build the inner program SEPARATELY and embed it with !r. Nesting a triple-quoted
+    # literal inside the outer one puts lines at column 0, which makes
+    # textwrap.dedent's common prefix "" -- so the OUTER program keeps its indentation
+    # and dies with IndentationError before printing anything.
+    child_prog = textwrap.dedent(
+        f"""
+        import os, sys, time
+        sys.path.insert(0, {SRC!r})
+        if {arm!r}:
+            from nett_skrl.runtime import pdeathsig
+            pdeathsig.arm()
+        print(os.getpid(), flush=True)
+        time.sleep(300)
+        """
+    )
+    prog = textwrap.dedent(
+        f"""
+        import os, subprocess, sys, time
+        sys.path.insert(0, {SRC!r})
+        child = subprocess.Popen([sys.executable, "-c", {child_prog!r}],
+                                 stdout=subprocess.PIPE, text=True)
+        print("CHILD " + child.stdout.readline().strip(), flush=True)
+        print("WRAPPER " + str(os.getpid()), flush=True)
+        time.sleep(300)
+        """
+    )
+    proc = subprocess.Popen([sys.executable, "-c", prog], stdout=subprocess.PIPE,
+                            text=True, start_new_session=True)
+    seen: dict[str, int] = {}
+    while len(seen) < 2:
+        line = proc.stdout.readline()
+        if not line:
+            raise AssertionError("wrapper tree died before reporting its pids")
+        key, _, value = line.strip().partition(" ")
+        if key in ("CHILD", "WRAPPER"):
+            seen[key] = int(value)
+    return seen["WRAPPER"], seen["CHILD"]
+
+
+@pytest.mark.parametrize("arm,should_die", [(True, True), (False, False)])
+def test_pdeathsig_in_the_driver_is_what_covers_a_kill_9_wrapper(arm, should_die):
+    """Both directions, because the OFF case is the documented default.
+
+    ⚠ THE DEFAULT IS DELIBERATELY THE LEAKY ONE. Arming unconditionally would kill a
+    legitimately detached run (`nohup nett … &` then logout), since the driver's parent
+    is the interactive shell in ordinary use. NETT_PDEATHSIG_DRIVER exists for the one
+    context where the parent really is a wrapper whose death means "abandon this wave".
+    The `should_die=False` arm is not an aspiration -- it pins the tradeoff, so nobody
+    "fixes" the default without reading why.
+    """
+    wrapper, child = _wrapper_tree(arm)
+    try:
+        os.kill(wrapper, signal.SIGKILL)
+        survivors = _wait_gone([child], timeout=20.0)
+        if should_die:
+            assert survivors == [], (
+                f"armed child {child} should have been TERMed by the kernel when its "
+                "wrapper was -9'd"
+            )
+        else:
+            assert survivors == [child], (
+                f"unarmed child {child} is EXPECTED to survive -- that is the documented "
+                "gap the opt-in closes. If this fails, something now arms it by default; "
+                "check that detached runs still work before celebrating."
+            )
+    finally:
+        for pid in (child, wrapper):
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except OSError:
+                pass
