@@ -65,6 +65,55 @@ VIT_CFG = {
     "embed_dim": 144, "depth": 3, "num_heads": 4, "mlp_ratio": 2.0,   # 144 -> ~699K
     "pool": "cls", "stem": "linear",
 }
+# ── The QK-ablation arms (SIDE_LOCK_INVESTIGATION.md Phases 10-12). `attn_mode` swaps the
+# token-mixing operator only; embed_dim is re-matched to the ViT arm's 697,184 in each,
+# because an ablation that also deletes a third of the parameters proves nothing.
+VIT_NOQK_CFG = {**VIT_CFG, "embed_dim": 164, "attn_mode": "uniform"}   # 706,368 at 128x80 (+1.8%)
+VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # 682,675 at 128x80 (-1.6%)
+# ⚠ THOSE TWO ARE CLS-POOLED AND ARE NOT VALID CONTROLS. They are kept because they still
+# BUILD and still match on parameters at the current eye -- but note the justification that
+# used to be here ("kept to reproduce the 2026-08-01/02 arms") IS NOW VOID: those arms ran at
+# a square 128x128, and at 128x80 these are a different model on a different input, so they
+# reproduce nothing. Treat any run of them as a new experiment, and do not read binding off
+# one: with pool="cls" the readout is ONE token, which under uniform/static
+# mixing is a global average, so a sub-patch object is diluted ~64x: both fell to EXACT
+# chance on a supervised small-stimulus probe while qk and CNN scored 1.000. Removing QK
+# therefore also removed small-object detection -- upstream of every condition, including
+# the positive control, which all three RL arms duly failed.
+#
+# ★ pool="spatial" FIXED IT (probe 2026-08-03: both ablations 0.497 -> 1.000 at sz8/n10, and
+# 0.998-1.000 at sz2/n30). It reduces each patch token, folds them back to the patch grid and
+# pools to a small map, so per-patch evidence survives the readout via the residual stream.
+# Applied to the qk arm TOO, or the comparison confounds pooling with routing. Those were the
+# valid ablation arms, and the result of record is that qk - mixer on binding is +0.053 at
+# p = 0.163 (n=56), i.e. NOT resolvable at that n. See NEXT_STEPS.md §G3.
+#
+# ⚠⚠ THE THREE SPATIAL ARMS BELOW ARE SQUARE-EYE ARCHIVE CONFIGS, NOT LAUNCHABLE ARMS.
+# Scoped 2026-08-12, when the eye became permanently non-square. They are calibrated for a
+# SQUARE 128x128 -> 8x8 tokens -> 4x4 pool, 65 tokens, which is what the 2026-08-03/05 n=56
+# arms trained at. The current 128x80 eye gives a 5x8 token grid with no square divisor but 1,
+# and `mixer`'s NxN matrix changes size, so 136/152/156 hold nothing at ~697K any more.
+#
+# ★ THEY ARE KEPT BECAUSE OFFLINE RE-ANALYSIS STILL NEEDS THEM. The n=56 checkpoints are on
+# disk (~/nett_vit_sp_20260803, ~/nett_vit_mixer_sp_20260803) and examples/probe_frozen_features.py
+# rebuilds each arm's encoder through MODELS[...] at a SQUARE RES=128 to load them. That probe
+# is how Phases 14/15 were produced, and re-asking the QK question with the per-agent COUPLING
+# as the endpoint -- which separates at p ~ 0.006 on the n already on disk -- runs through it.
+# Deleting these would have broken that, and it is the cheapest open experiment there is.
+#
+# ⚠ DO NOT LAUNCH THEM AS TRAINING ARMS. At 128x80 CompactViT raises at CONSTRUCTION, so the
+# failure is immediate and loud rather than a silently incomparable run -- but do not rely on
+# that as the guard; the point is that a new spatial arm is a NEW EXPERIMENT that does not pool
+# with the n=56 results, because it is a different model on a different input.
+#
+# TO REVIVE THE LINE at the current eye: CompactViT now accepts a RECTANGULAR spatial_grid,
+# so (5, 4) works (20 cells, the closest analogue to the old 4x4 = 16). Re-match embed_dim
+# with examples/count_params.py against what the ViT arm costs at THAT resolution, and treat
+# the result as a fresh baseline.
+VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
+VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
+VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
+VIT_NOQK_SP_CFG = {**VIT_SP, "embed_dim": 156, "attn_mode": "uniform"} # 706,928 at 128x128
 VIVIT_CFG = {
     "trainable": True, "features_dim": 512, "patch_size": 16,
     "embed_dim": 144, "depth": 3, "num_heads": 3, "mlp_ratio": 2.0,   # 144 -> ~699K
@@ -77,6 +126,13 @@ MODELS: dict[str, dict] = {
     "3DCNN":          dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": 2}, framestack=True),   # ~698K
     "SimCLR-CLTT":    dict(encoder="simclr_cltt",     cfg={"trainable": True, "features_dim": 512, "conv_dim": 77},                  framestack=False, reward="CLTT"),  # ~702K
     "ViT":            dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False),
+    "ViT-NoQK":       dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_CFG),                                                        framestack=False),  # ~706K at 128x80
+    "ViT-Mixer":      dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_CFG),                                                       framestack=False),  # ~683K at 128x80
+    # ⚠ SQUARE-EYE ARCHIVE ONLY -- for probe_frozen_features.py to rebuild the 2026-08 n=56
+    # encoders at RES=128 square. NOT launchable at the 128x80 eye (raises at construction).
+    "ViT-Sp":         dict(encoder="compact_vit",     cfg=dict(VIT_SP_CFG),                                                          framestack=False),  # 696K at 128x128
+    "ViT-Mixer-Sp":   dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_SP_CFG),                                                    framestack=False),  # 694K at 128x128
+    "ViT-NoQK-Sp":    dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_SP_CFG),                                                     framestack=False),  # 707K at 128x128
     "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, reward="CLTT"),
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
     "ViViT":          dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True),
@@ -139,6 +195,34 @@ def main() -> int:
     # that reproduce orch_run_single set these). reward_types default = closeness only.
     reward_types = [r.strip() for r in
                     os.environ.get("NETT_REWARD_TYPES", "closeness").split(",") if r.strip()]
+
+    # ── Arm knobs. campaign/launch_arm.sh sets these per arm; without them the launcher
+    # would set an env var this driver silently ignores, which is strictly worse than one
+    # it never sets -- the name says one thing and the data is another. (That exact class
+    # of bug ran Object1 into a directory named `object2` on 2026-07-31.)
+    #
+    # NETT_HIDDEN_SIZES: comma-separated policy-head MLP; "" = LINEAR, which is the campaign
+    # default and identical across encoders (why the 9-model sweep chose it).
+    # ⚠ [64,64] was defaulted 2026-07-30 and REVERTED the same day: the Unity archive's head
+    # effect (linear 0.516 -> 0.724, n=10) did NOT transfer -- matched Isaac arms gave 0.804
+    # vs 0.742, Welch p = 0.51. n=8 (sd~0.19) could not have resolved it either way; ~152
+    # agents/arm would be needed. See NEXT_STEPS.md §G5 before running a head ladder.
+    _hs = os.environ.get("NETT_HIDDEN_SIZES", "")
+    hidden_sizes = [int(x) for x in _hs.split(",") if x.strip()] if _hs.strip() else []
+    # NETT_ENTROPY: PPO entropy_loss_scale. 0.01 is the validated SB3/Unity value.
+    # ⚠ 0.03 was tested at n=56: it moves the LOCK but not binding (`learn_frac` 12/56 in
+    # both arms, p = 1.00), loosening |sp| exactly where the cue is unusable. A lever on the
+    # measurability of the shape conditions, not on binding. SIDE_LOCK Phase 8.
+    entropy = float(os.environ.get("NETT_ENTROPY", "0.01"))
+    # ★ RECORD THE EVALUATION ACTION MODE WITH THE RUN. NETT_EVAL_STOCHASTIC (read in
+    # brain/trainer.py) decides whether test-time actions are the Gaussian policy's MEAN or
+    # a SAMPLE, and with a fixed test start pose the mean makes every episode of a condition
+    # a bit-identical replay -- a binary readout instead of a graded preference. So it
+    # changes what the scores MEAN, not just their noise. On 2026-07-29 a stochastic retest
+    # was compared against a deterministic summary with nothing on disk saying which
+    # protocol produced which number; this driver must never leave that ambiguity again.
+    from nett_skrl.brain.trainer import eval_stochastic_enabled
+    eval_stochastic = eval_stochastic_enabled()
 
     _rollouts_for_budget = int(os.environ.get("NETT_ROLLOUTS", "8000"))
 
@@ -235,14 +319,14 @@ def main() -> int:
             "learning_epochs": 10,
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
-            "entropy_loss_scale": 0.01,
+            "entropy_loss_scale": entropy,
             "kl_threshold": 0.5,
             "value_clip": 0,
         },
         "model": {
             "value_bound": None,
             "shared_encoder": True,
-            "hidden_sizes": [],
+            "hidden_sizes": hidden_sizes,
             "clip_actions": False,
         },
         "wandb": {
@@ -318,6 +402,8 @@ def main() -> int:
              model, exp, imprint, device, brains, offset, res, max_envs,
              os.environ.get("NETT_MINIBATCHES", "16"), reward_types, spec.get("aux"),
              spec.get("reward"), out)
+    log.info("hidden_sizes=%s entropy=%s eval=%s", hidden_sizes, entropy,
+             "stochastic" if eval_stochastic else "mean")
     t0 = time.time()
     NETT(config).run(output_path=str(out), devices=[device], verbose=True)
     train_secs = time.time() - t0
@@ -330,6 +416,11 @@ def main() -> int:
         {"name": name, "model": model, "experiment": exp, "imprint": imprint,
          "brain_offset": offset, "num_brains": brains, "device": device,
          "num_envs": max_envs, "res": res, "train_eps": train_eps,
+         # ★ The three arm knobs, recorded so a score is never ambiguous about the protocol
+         # that produced it. eval_stochastic especially: nothing evaluated under one value
+         # pools with anything under the other.
+         "hidden_sizes": hidden_sizes, "entropy_loss_scale": entropy,
+         "eval_stochastic": eval_stochastic,
          "train_secs": round(train_secs, 1), "finished": datetime.now().isoformat()}, indent=2))
     log.info("analyzing: %s", run_dir)
     result = analyze(run_dir)

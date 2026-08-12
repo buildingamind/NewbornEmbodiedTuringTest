@@ -32,6 +32,8 @@ from pathlib import Path
 
 import yaml
 
+from nett_skrl.brain.trainer import eval_stochastic_enabled
+
 
 def main() -> int:
     if len(sys.argv) < 2:
@@ -100,7 +102,11 @@ def main() -> int:
 
     (run_dir / "campaign_retest_timing.json").write_text(json.dumps(
         {"name": name, "test_eps": test_eps, "retest_secs": round(secs, 1),
-         "eval_stochastic": os.environ.get("NETT_EVAL_STOCHASTIC", "0"),
+         # ⚠ THROUGH THE ACCESSOR, never a second os.environ.get with its own default.
+         # This line used to hardcode "0" and would now record the OPPOSITE of the protocol
+         # it actually ran under -- precisely the provenance failure that made the 2026-07-29
+         # stochastic retest uncomparable to the deterministic summary it was read against.
+         "eval_stochastic": eval_stochastic_enabled(),
          "finished": datetime.now().isoformat()}, indent=2))
     print(f"[retest] DONE {name} in {secs:.1f}s -> {result}")
     return 0

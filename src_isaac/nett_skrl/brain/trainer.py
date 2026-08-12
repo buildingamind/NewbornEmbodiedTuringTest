@@ -16,8 +16,49 @@ from tqdm import tqdm
 from ..recording import RecordingCfg, RunRecorder
 from .env_wrappers import IntrinsicRewardEnvWrapper
 
+def eval_stochastic_enabled() -> bool:
+    """Whether test-time actions are SAMPLED from the policy rather than its MEAN.
+
+    ★ ONE ACCESSOR, so callers cannot disagree with the value that actually produced the
+    numbers -- the exact provenance ambiguity that cost the 2026-07-29 stale-summary
+    incident, where a stochastic retest was compared against a deterministic summary with
+    nothing on disk recording which protocol produced which number.
+
+    ``1`` = SAMPLED (stochastic inference, Unity ML-Agents' default; Unity's
+    ``deterministic: False``). ``0`` = the Gaussian MEAN (deterministic inference; Unity's
+    ``deterministic: true``). Note the polarity is INVERTED relative to Unity's key name --
+    "mean action" and "deterministic action selection" are the SAME option.
+
+    ★ DEFAULT IS ``1`` (SAMPLED) -- decided 2026-08-12, matching the protocol that produced
+    every result in SIDE_LOCK_INVESTIGATION.md from Phase 3 onward and every arm launched by
+    campaign/launch_arm.sh (which sets it explicitly). Before that date this tree defaulted
+    to ``0`` while the isaac1 tree ran at ``1``; the two are now consistent.
+
+    WHY SAMPLED. With the mean action and the fixed test start pose (motor.reset_deterministic)
+    the environment is deterministic, so every episode of a condition is a BIT-IDENTICAL
+    REPLAY: the readout is binary (which wall) rather than graded, and a weak-but-real
+    preference reports as exactly chance. Measured 2026-07-29: the shape conditions came out
+    46-50% with |side_preference| = 1.000 for 7/7 brains while `rest` (a strong cue) came out
+    100%. Unity ML-Agents samples continuous actions at inference by default, so the original
+    runs could express a graded preference.
+
+    ⚠ IT IS NOT FREE, AND THE COST IS MEASURED. Sampling LOOSENS a side-lock without releasing
+    it (|sp|avg -0.05 to -0.11 in every shape condition, at fixed weights, Phase 3) and it
+    DEGRADES the positive control (ViT `rest` 0.957 -> 0.910; `1color` lost significance,
+    p 0.013 -> 0.059). The learned sigma is large relative to the clamped [-1,1] action range
+    -- median 1.20 for the ViT arms against 0.79 for CNN -- so this is a substantial
+    perturbation, not a dither, and it penalises the higher-sigma architectures more.
+
+    ⚠ NOTHING EVALUATED UNDER ONE VALUE POOLS WITH ANYTHING UNDER THE OTHER. The value is
+    recorded per run in campaign_timing.json, so no existing result is ambiguous. Set it
+    explicitly in BOTH directions in any harness -- ``0`` is what reproduces a pre-2026-07-30
+    run, and code that merely POPPED the variable now gets sampling rather than the mean.
+    """
+    return os.environ.get("NETT_EVAL_STOCHASTIC", "1").strip().lower() in {"1", "true", "yes"}
+
+
 # Read once at import: evaluation action selection (see _collect_actions_for_eval).
-_EVAL_STOCHASTIC = os.environ.get("NETT_EVAL_STOCHASTIC", "0").strip().lower() in {"1", "true", "yes"}
+_EVAL_STOCHASTIC = eval_stochastic_enabled()
 
 logger = logging.getLogger("nett.trainer")
 
@@ -200,6 +241,9 @@ class BrainTrainer:
         # within a row still differ -- variance where it is informative, matched where it
         # is a confound. Inert while NETT_EVAL_STOCHASTIC=0 (eval takes the mean, drawing
         # nothing) and while grouping is off (eval_noise_key returns None).
+        # ★ SINCE 2026-08-12 THE DEFAULT IS 1, so this path is LIVE out of the box -- it used
+        # to be dead unless opted into. Noise realizations now depend on design-row position
+        # unless grouping keys them, which is what this block exists to do.
         raw_env = _unwrap_env(self.env) if _EVAL_STOCHASTIC else None
         episode_steps = int(getattr(getattr(raw_env, "cfg", None), "episode_steps", 0) or 0)
         # Save BOTH streams: torch.manual_seed below seeds CPU *and* every CUDA device,
@@ -262,8 +306,12 @@ class BrainTrainer:
             state_i = states[offset : offset + scope] if states is not None else None
             action_i, outputs = agent.act(obs_i, state_i, timestep=timestep, timesteps=timesteps)
             # ★ MEAN vs SAMPLED ACTION AT TEST -- this decides whether the evaluation can
-            # express preference STRENGTH at all (added 2026-07-29).
-            # The default takes the Gaussian policy's MEAN, discarding the sample. With
+            # express preference STRENGTH at all (added 2026-07-29; default flipped to
+            # SAMPLED 2026-08-12, see eval_stochastic_enabled).
+            # NETT_EVAL_STOCHASTIC=0 takes the Gaussian policy's MEAN, discarding the sample.
+            # That is the same thing Unity calls `deterministic: true` -- "mean action" and
+            # "deterministic action selection" are ONE option, and the flag's polarity is
+            # inverted relative to Unity's key name. With
             # the fixed test start pose (motor.reset_deterministic) and a deterministic
             # env, that makes every episode of a condition a BIT-IDENTICAL REPLAY: the
             # readout is binary (which wall), not graded. A weak-but-real preference is

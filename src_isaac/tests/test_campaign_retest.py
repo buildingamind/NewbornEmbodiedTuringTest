@@ -67,10 +67,19 @@ def test_retest_records_the_eval_action_mode():
     ``NETT_EVAL_STOCHASTIC`` changes whether evaluation takes the policy mean or a
     sample, which changes what the resulting scores MEAN. Recording it in the timing
     JSON keeps a retest self-describing.
+
+    ⚠ IT MUST GO THROUGH ``eval_stochastic_enabled()``, not a second ``os.environ.get``
+    with its own default (tightened 2026-08-12, when the default flipped 0 -> 1). This
+    line previously hardcoded ``"0"``; left alone it would have recorded the exact
+    OPPOSITE of the protocol the retest actually ran under -- a self-describing file
+    confidently describing the wrong thing, which is worse than not recording it at all.
     """
     src = _main_source()
-    assert "NETT_EVAL_STOCHASTIC" in src, (
+    assert "eval_stochastic_enabled()" in src, (
         "campaign_retest must record the evaluation action mode with its results")
+    assert 'os.environ.get("NETT_EVAL_STOCHASTIC"' not in src, (
+        "campaign_retest must not re-parse NETT_EVAL_STOCHASTIC with its own default -- "
+        "it would drift from the accessor the trainer actually reads")
 
 
 @pytest.mark.parametrize("needle", ["analyze(", "st_mtime"])
