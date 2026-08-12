@@ -336,6 +336,10 @@ def main() -> int:
                      f"rollouts={_rollouts}", f"steps={os.environ.get('NETT_STEPS', '500')}",
                      f"{train_eps}ep",
                      "closeness-only", "fov=150", "2d-action", f"res={res}",
+                     # Provenance on the run itself, not only in campaign_timing.json:
+                     # scores under the two protocols do not pool, and a wandb view that
+                     # mixes them silently averages two different measurements.
+                     f"eval={'stochastic' if eval_stochastic else 'mean'}",
                      *( ["cltt"] if spec.get("reward") == "CLTT" else [] ),
                      *( ["vicreg"] if spec.get("aux") == "vicreg" else [] )],
         },
