@@ -79,8 +79,20 @@ class Compact3DCNN(HWCFeatureExtractor):
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         x = self._prepare_image(observations)  # (B, C*T, H, W)
         B, CT, H, W = x.shape
-        # Reshape to (B, C, T, H, W) for Conv3d
-        x = x.view(B, self.base_channels, self.num_frames, H, W)
+        # ⛔★★★★★ THIS WAS `x.view(B, base_channels, num_frames, H, W)` AND IT
+        # SCRAMBLED TIME INTO COLOUR. The framestack wrapper builds the channel axis
+        # with torch.cat (observation.py:96), so the layout is T-MAJOR:
+        #     [t-1 R, t-1 G, t-1 B, t R, t G, t B]
+        # A C-major view maps flat channel c -> (c // T, c % T), which pairs
+        #     colour0: (t-1 R, t-1 G)   <- BOTH FROM FRAME t-1, no time at all
+        #     colour1: (t-1 B, t   R)   <- spans time, but blue against red
+        #     colour2: (t   G, t   B)   <- BOTH FROM FRAME t, no time at all
+        # so TWO OF THREE channels handed the temporal kernel no temporal signal
+        # whatsoever. The parameter count is identical either way, which is why no
+        # capacity check could ever have seen it.
+        # T-major data must be viewed T-major and then transposed.
+        x = x.view(B, self.num_frames, self.base_channels, H, W)
+        x = x.permute(0, 2, 1, 3, 4).contiguous()
         x = self.conv3d(x).squeeze(2)          # (B, 32, H', W')
         x = self.cnn2d(x)
         return self.linear(x)

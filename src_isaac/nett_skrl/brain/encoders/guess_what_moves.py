@@ -121,8 +121,16 @@ class GuessWhatMoves(HWCFeatureExtractor):
         current_frame = x[:, -C:, :, :]       # (B, 3, H, W)
         what_feat = self.what_cnn(current_frame)
 
-        # Moves pathway: reshape to (B, C, T, H, W) and run 3D + 2D conv
-        x_3d = x.view(B, C, T, H, W)
+        # ⛔★★★★★ THIS WAS `x.view(B, C, T, H, W)` AND IT SCRAMBLED TIME INTO COLOUR.
+        # ★ THE PROOF IS FOUR LINES ABOVE, IN THIS SAME FUNCTION: line 121 takes the
+        # current frame as `x[:, -C:, :, :]`, which is correct ONLY for a T-MAJOR
+        # layout [t-1 RGB | t RGB] -- and that is indeed what framestack's torch.cat
+        # produces (observation.py:96). So the what-pathway read the tensor T-major
+        # and the moves-pathway read the SAME tensor C-major, four lines apart.
+        # A C-major view pairs (t-1 R, t-1 G) and (t G, t B) -- BOTH FROM ONE FRAME --
+        # leaving only (t-1 B, t R) spanning time, and that across different colours.
+        # The parameter count is identical either way; no capacity check could see it.
+        x_3d = x.view(B, T, C, H, W).permute(0, 2, 1, 3, 4).contiguous()
         moves_out = self.moves_3d(x_3d).squeeze(2)   # (B, 16, H', W')
         moves_feat = self.moves_2d(moves_out)
 
