@@ -20,7 +20,15 @@ requires-python = "==3.11.*"
 # constraints file or install the deps manually before `pip install -e .`.
 dependencies = [
     # "nett-isaac @ file:///${PROJECT_ROOT}/../NewbornEmbodiedTuringTest_Private/isaac_lab",
+    # ⛔ ADDED 2026-08-28. isaaclab was declared but isaacsim was NOT, and isaaclab imports it --
+    # so a clean install produced `import isaaclab -> ModuleNotFoundError: No module named
+    # 'isaacsim'`. Installing both editable packages gave a venv that looked complete and could not
+    # boot Kit. Needs the NVIDIA index (see [[tool.uv.index]] below, or --extra-index-url for pip).
+    "isaacsim[all,extscache]==5.1.0",
     "isaaclab",
+    # ⛔ ADDED 2026-08-28. nett_skrl imports matplotlib and it was in NEITHER dependency list, so
+    # `import nett_skrl` failed on a fresh install after both packages installed cleanly.
+    "matplotlib",
     "skrl>=2.0.0",
     "nvidia-ml-py",
     "opencv-python-headless",
@@ -86,3 +94,17 @@ markers = [
     "e2e_isaac: end-to-end test requiring GPU + Isaac Sim",
     "e2e_perf: performance/convergence test that reads/writes golden.json",
 ]
+
+[tool.uv]
+# ⛔ isaacsim's `all` extra declares `pywin32` with NO platform marker, though pywin32 has no
+# Linux wheel. pip silently skips it and installs anyway; uv resolves strictly and refuses the
+# whole tree with "unsatisfiable". This override restores the marker upstream omitted -- it does
+# not exclude anything that would have been installed on Linux, and all 25 isaacsim subpackages
+# resolve with it in place (verified 2026-08-28).
+override-dependencies = ["pywin32 ; sys_platform == 'win32'"]
+
+# isaacsim wheels live on NVIDIA's index, not PyPI.
+[[tool.uv.index]]
+name = "nvidia"
+url = "https://pypi.nvidia.com"
+explicit = false

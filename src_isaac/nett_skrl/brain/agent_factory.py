@@ -28,11 +28,57 @@ def _aux_loss_settings() -> tuple[str, float]:
     Returns ("none", 0.0) when disabled so the default RL path is unchanged.
     """
     kind = os.environ.get("NETT_AUX_LOSS", "none").strip().lower()
-    try:
-        weight = float(os.environ.get("NETT_AUX_WEIGHT", "0.0"))
-    except ValueError:
-        weight = 0.0
-    if kind == "none" or weight <= 0.0:
+    raw_weight = os.environ.get("NETT_AUX_WEIGHT", "0.0")
+
+    # ⛔★★★★★ THE RAISES LIVE HERE, NOT IN AuxLossPPO. seat:verifier found that the
+    # registry's zero-weight raise was UNREACHABLE FROM PRODUCTION: this function
+    # collapsed (kind, weight<=0) into ("none", 0.0), and the caller below only builds
+    # AuxLossPPO when kind != "none" -- so `NETT_AUX_LOSS=gwm NETT_AUX_WEIGHT=0`
+    # selected stock MetricsPPO and trained VANILLA PPO without raising or warning.
+    # ★ THE REGISTRY WAS WELL BUILT AND THE LAUNCHER WALKED AROUND THE DOOR.
+    if kind != "none":
+        try:
+            weight = float(raw_weight)
+        except ValueError:
+            # ⛔ WAS `weight = 0.0`. A TYPO IN NETT_AUX_WEIGHT SILENTLY DISABLED THE
+            # OBJECTIVE and the run completed as plain PPO logging aux=<kind>.
+            raise ValueError(
+                f"NETT_AUX_LOSS={kind!r} but NETT_AUX_WEIGHT={raw_weight!r} is not a "
+                f"number. Refusing to fall back to 0.0 -- that silently trains vanilla "
+                f"PPO while every log line names the objective."
+            ) from None
+        if weight <= 0.0:
+            if os.environ.get("NETT_AUX_ALLOW_ZERO", "").strip() not in ("1", "true", "yes"):
+                raise ValueError(
+                    f"NETT_AUX_LOSS={kind!r} with NETT_AUX_WEIGHT={weight}. A zero-weight "
+                    f"objective contributes nothing to the backward pass. Set a positive "
+                    f"weight, or NETT_AUX_ALLOW_ZERO=1 for a deliberate ablation."
+                )
+            logger.warning("aux %s DECLARED WITH WEIGHT 0; this run is plain PPO.", kind)
+            return "none", 0.0
+
+        # ⛔ F-3 (seat:verifier): NETT_AUX_BATCH=0 makes every aux loss return NaN with
+        # encoder |grad| = 0.000e+00 AND NO RAISE -- an empty mean is NaN forward and
+        # ZERO backward, so one scaled optimizer step leaves 0 of 14 params non-finite
+        # and the arm completes as vanilla PPO logging aux=<kind>. The NaN does not even
+        # kill the run loudly. `int(...) == 1` could not catch it because UNSET and
+        # SET-TO-ZERO both read as 0; this reads the RAW STRING so the two are distinct.
+        raw_batch = os.environ.get("NETT_AUX_BATCH")
+        if raw_batch is not None and raw_batch.strip() != "":
+            try:
+                nb = int(raw_batch)
+            except ValueError:
+                raise ValueError(f"NETT_AUX_BATCH={raw_batch!r} is not an integer.") from None
+            if nb < 2:
+                raise ValueError(
+                    f"NETT_AUX_BATCH={nb}. Every aux objective here is degenerate below 2: "
+                    f"at 0 an empty mean is NaN forward and ZERO backward (silent no-op); "
+                    f"at 1 a contrastive softmax is -log(1)=0 and a batch variance is 0 or "
+                    f"NaN. Use >= 2."
+                )
+        return kind, weight
+
+    if kind == "none":
         return "none", 0.0
     return kind, weight
 

@@ -15,6 +15,8 @@ and behavior is byte-for-byte identical to stock skrl PPO.
 
 from __future__ import annotations
 
+import os
+
 import itertools
 
 import torch
@@ -25,9 +27,40 @@ from skrl.agents.torch.ppo import PPO
 from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl import config, logger
 
-from ..skrl_patches import NETTBootstrapMixin, strict_update
+from ..skrl_patches import NETTBootstrapMixin, relaxed_determinism, strict_update
 
 from .simclr_aux import SimCLRAuxLoss
+
+
+def _build_simclr(encoder):
+    return SimCLRAuxLoss(encoder)
+
+
+def _build_vicreg(encoder):
+    from .vicreg_aux import VICRegAuxLoss
+    return VICRegAuxLoss(encoder)
+
+
+def _build_eoo(encoder):
+    from .eoo_aux import EoOAuxLoss
+    return EoOAuxLoss(encoder)
+
+
+def _build_gwm(encoder):
+    from .gwm_aux import GWMAuxLoss
+    return GWMAuxLoss(encoder)
+
+
+#: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
+#: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
+#: Builders import lazily so an unrelated import error in one loss cannot take down
+#: every arm that uses a different one.
+AUX_LOSSES = {
+    "simclr": _build_simclr,
+    "vicreg": _build_vicreg,
+    "eoo": _build_eoo,
+    "gwm": _build_gwm,
+}
 
 
 class AuxLossPPO(NETTBootstrapMixin, PPO):
@@ -48,26 +81,81 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         super().__init__(*args, **kwargs)
 
         self._aux = None
-        if self._aux_kind in ("simclr", "vicreg") and self._aux_weight > 0.0:
-            encoder = getattr(self.policy, "encoder", None)
-            if encoder is None:
-                logger.warning("AuxLossPPO: policy has no .encoder; aux loss disabled.")
-                return
-            if self._aux_kind == "vicreg":
-                from .vicreg_aux import VICRegAuxLoss
-                self._aux = VICRegAuxLoss(encoder)
-            else:
-                self._aux = SimCLRAuxLoss(encoder)
-            # Register the projection/expander head's params with the optimizer so
-            # they are trained alongside the policy/value networks.
-            if self.optimizer is not None:
-                self.optimizer.add_param_group(
-                    {"params": list(self._aux.head.parameters())}
-                )
-            self._aux_encoder = encoder
-            logger.info(
-                f"AuxLossPPO: {self._aux_kind} aux loss ENABLED (weight={self._aux_weight})."
+        if self._aux_kind == "none":
+            return
+
+        # ⛔★★★★★ THIS SELECTION USED TO BE `if kind in ("simclr", "vicreg")` WITH NO
+        # ELSE AND NO LOG LINE. Any other kind -- "cltt" among them -- fell through
+        # silently: `self._aux` stayed None, `update()` added 0.0, and the arm trained
+        # as VANILLA PPO for its whole run while every log line said aux=<kind>. That is
+        # a SILENT NO-OP AT THE SELECTION POINT, and it is the fifth distinct path by
+        # which this campaign has disabled an objective without saying so.
+        #
+        # An unknown kind now RAISES. A misspelled or unregistered loss must cost a
+        # startup error, never a GPU-night that scores like a scientific negative.
+        # To add a loss: one entry in AUX_LOSSES. There is no second place to edit.
+        if self._aux_kind not in AUX_LOSSES:
+            raise ValueError(
+                f"AuxLossPPO: unknown aux loss {self._aux_kind!r}. "
+                f"Registered: {sorted(AUX_LOSSES)}. Set NETT_AUX_LOSS to one of these, "
+                f"or to 'none'. Refusing to train with the objective silently absent."
             )
+
+        # ⚠ A DECLARED OBJECTIVE WITH ZERO WEIGHT IS THE SAME NO-OP WEARING A LABEL.
+        # `aux_loss * 0.0` contributes nothing to the backward pass, so the run is
+        # indistinguishable from plain PPO except in the log. Refuse it. An ablation
+        # that genuinely wants weight 0 must say so out loud via NETT_AUX_ALLOW_ZERO=1.
+        if self._aux_weight <= 0.0:
+            if os.environ.get("NETT_AUX_ALLOW_ZERO", "").strip() not in ("1", "true", "yes"):
+                raise ValueError(
+                    f"AuxLossPPO: aux loss {self._aux_kind!r} is declared but "
+                    f"aux_weight={self._aux_weight}. A zero-weight objective contributes "
+                    f"NOTHING to the backward pass -- this run would be plain PPO with a "
+                    f"misleading label. Set NETT_AUX_WEIGHT>0, or NETT_AUX_ALLOW_ZERO=1 "
+                    f"if a zero-weight ablation is genuinely intended."
+                )
+            logger.warning(
+                "AuxLossPPO: %s DECLARED WITH WEIGHT 0 and NETT_AUX_ALLOW_ZERO set. "
+                "This run is plain PPO; the aux objective contributes nothing.",
+                self._aux_kind,
+            )
+            return
+
+        # ⚠ A ONE-SAMPLE AUX BATCH IS A SILENT ZERO-GRADIENT PATH FOR THIS WHOLE
+        # FAMILY (raised by seat:insect from the MoTok port, where the VQ update is
+        # degenerate below batch 2). It is the same defect that made CLTT identically
+        # 0.0 for the entire campaign: at B=1 a contrastive softmax has one logit,
+        # -log(1) = 0; a batch variance is 0 or NaN; a per-slot mean equals its own
+        # sample. The objective still evaluates and still returns a number. Refuse it
+        # once, here, rather than in each loss.
+        aux_batch = int(os.environ.get("NETT_AUX_BATCH", "0") or 0)
+        if aux_batch == 1:
+            raise ValueError(
+                "AuxLossPPO: NETT_AUX_BATCH=1. Every aux objective in this package is "
+                "degenerate at batch 1 -- contrastive terms reduce to -log(1)=0, batch "
+                "variances to 0 or NaN, per-slot means to their own sample. The loss "
+                "would return a confident number and teach nothing. Use >=2."
+            )
+
+        encoder = getattr(self.policy, "encoder", None)
+        if encoder is None:
+            # ⚠ RAISE, do not warn-and-continue. The old code returned here, which
+            # produced the same silent vanilla-PPO run the registry above exists to stop.
+            raise ValueError(
+                f"AuxLossPPO: aux loss {self._aux_kind!r} requested but the policy has "
+                f"no .encoder to shape. Refusing to train with the objective absent."
+            )
+        self._aux = AUX_LOSSES[self._aux_kind](encoder)
+        # Register the projection/expander head's params with the optimizer so
+        # they are trained alongside the policy/value networks.
+        if self.optimizer is not None:
+            self.optimizer.add_param_group(
+                {"params": list(self._aux.head.parameters())}
+            )
+        self._aux_encoder = encoder
+        logger.info(
+            "AuxLossPPO: %s aux loss ENABLED (weight=%s).", self._aux_kind, self._aux_weight
+        )
 
     # The body below mirrors stock skrl PPO.update; the only change is the added
     # aux-loss term folded into the backward() of the existing optimizer step.
@@ -167,7 +255,39 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                     )
 
                 self.optimizer.zero_grad()
-                self.scaler.scale(policy_loss + entropy_loss + value_loss + aux_loss).backward()
+                # ⛔ SPLIT BACKWARD (owner ruling, 2026-08-28). This was ONE fused
+                # `.backward()` over all four losses, run entirely inside
+                # `strict_determinism()` (skrl_patches.strict_update wraps `update`). The
+                # motion aux losses warp with F.grid_sample, and
+                # `grid_sampler_2d_backward_cuda` has no deterministic kernel, so every
+                # EoO/GWM arm raised at its FIRST optimizer step and six of the eight
+                # priority arms could not run at all.
+                #
+                # Splitting is exact, not an approximation: gradients ACCUMULATE into
+                # `.grad`, and grad(a + b) == grad(a) + grad(b), so two backwards over the
+                # addends deposit the same gradients as one backward over the sum. The AMP
+                # scaler applies the same scale factor to both, so the scaled gradients sum
+                # identically too. `retain_graph=True` is required on the first because the
+                # encoder trunk is shared with the aux branch.
+                #
+                # What this buys: PPO-proper's backward stays STRICT -- a future
+                # nondeterministic op in the policy/value path still fails loud, which is
+                # the whole point of the guard. Only the auxiliary term's backward runs
+                # under the ambient warn-not-raise policy.
+                #
+                # NETT_AUX_STRICT=1 restores the old fused, fully-strict backward, so the
+                # pre-ruling behaviour remains reachable as a control.
+                _ppo_loss = policy_loss + entropy_loss + value_loss
+                if (
+                    torch.is_tensor(aux_loss)
+                    and aux_loss.requires_grad
+                    and os.environ.get("NETT_AUX_STRICT", "").strip() not in ("1", "true", "yes")
+                ):
+                    self.scaler.scale(_ppo_loss).backward(retain_graph=True)
+                    with relaxed_determinism():
+                        self.scaler.scale(aux_loss).backward()
+                else:
+                    self.scaler.scale(_ppo_loss + aux_loss).backward()
 
                 if config.torch.is_distributed:
                     self.policy.reduce_parameters()

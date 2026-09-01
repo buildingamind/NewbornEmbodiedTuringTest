@@ -7,6 +7,17 @@ import gymnasium as gym
 _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "dvs": ("nett_skrl.body.wrappers.dvs", "DVS"),
     "framestack": ("nett_skrl.body.wrappers.framestack", "FrameStack"),
+    # ⛔ THE MoTok ARM IS NOT AN (encoder, aux) ARM AND CANNOT BE EXPRESSED AS ONE.
+    # In Unity (trainParsing.py:338, seg_wrappers.py:213) MoTok holds its OWN model
+    # and OWN AdamW, and its mask MULTIPLIES THE OBSERVATION -- it hands the policy a
+    # segmented image rather than shaping the policy's representation. Behind the aux
+    # interface a faithful port would train a parallel network and the policy encoder
+    # would receive NOTHING, while the run logged aux=motok. This entry is the seat
+    # that lets the faithful arm exist at all.
+    # ⚠ ORDER MATTERS: body.py:53 applies wrappers in list order, innermost first, so
+    # this must precede "framestack" -- MoTok is SINGLE-FRAME (get_masks ignores
+    # frame_next), so it masks one frame and framestack then stacks masked frames.
+    "motok_seg": ("nett_skrl.body.wrappers.motok_seg", "MoTokSeg"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }

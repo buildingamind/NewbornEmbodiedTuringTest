@@ -52,7 +52,7 @@ import torch.nn as nn
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
-from .utils.pool import DeterministicAvgPool2d
+from .utils.pool import DeterministicAvgPool2d, pool_grid_for
 
 
 def _amp_dtype() -> torch.dtype | None:
@@ -107,18 +107,44 @@ class NatureCNN(HWCFeatureExtractor):
             nn.ReLU(),
         ]
         if spatial_pool:
-            # Pool the final conv map to a fixed 4x4 grid before flattening so the
-            # linear head's input size (and thus param count) is independent of
-            # input_resolution. At res=64 the conv map is already 4x4, so this is
-            # a no-op (validated behaviour preserved exactly); at res=256 it caps
-            # the flatten at 4*4*64=1024 instead of 28*28*64, keeping params
-            # <700k. A 4x4 grid still preserves coarse left/right spatial layout.
-            layers.append(DeterministicAvgPool2d((4, 4)))
+            # Pool the final conv map to a small grid before flattening so the linear
+            # head's input size (and thus param count) is independent of
+            # input_resolution: at res=256 it caps the flatten at ~16*conv_dim instead
+            # of 28*28*conv_dim, keeping params <700k, while still preserving coarse
+            # left/right spatial layout.
+            #
+            # ⛔ THE GRID WAS HARDCODED (4, 4) AND THAT MADE THIS ENCODER -- THE
+            # CAMPAIGN'S BASELINE -- UNCONSTRUCTIBLE AT THE REAL EYE. 128x80 gives a
+            # (6, 12) map and 6 % 4 != 0, so it raised before a single step; 128x128
+            # gives (12, 12) and builds, so every square probe returned a clean PASS.
+            # The comparator every other arm is read against could not be built.
+            self.pool_grid = self.pool_grid_for_layers(
+                layers, channels, height, width)
+            layers.append(DeterministicAvgPool2d(self.pool_grid))
+        else:
+            # ⚠ EXPOSED EVEN WHEN THERE IS NO POOL. A missing attribute makes an
+            # assertion return None, which reads as "no grid" and not as "this
+            # encoder does not pool" -- and a caller using getattr(..., None)
+            # would skip the check entirely rather than fail it.
+            self.pool_grid = None
         layers.append(nn.Flatten())
         self.cnn = nn.Sequential(*layers)
         with torch.no_grad():
             n_flatten = self.cnn(torch.zeros(1, channels, height, width)).shape[1]
         self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+
+    @staticmethod
+    def pool_grid_for_layers(layers, channels, height, width):
+        """Measure the conv stack's output map, then pick a grid that divides it.
+
+        MEASURED, not derived: a derived map goes silently wrong the moment a
+        stride or padding is edited, and its failure mode is a construction-time
+        raise on one sensor only -- i.e. the bug this replaces, again.
+        """
+        with torch.no_grad():
+            _, _, feat_h, feat_w = nn.Sequential(*layers)(
+                torch.zeros(1, channels, height, width)).shape
+        return pool_grid_for(feat_h, feat_w)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         x = self._prepare_image(observations)

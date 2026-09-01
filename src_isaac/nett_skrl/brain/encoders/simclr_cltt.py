@@ -13,16 +13,22 @@ contrastive loss between encoder projections of consecutive observations
 (observations vs. next_observations) and updates only the projection head
 (not the backbone, which the PPO actor-critic gradient already trains).
 
-Architecture (single-frame input, 64×64 RGB):
+Architecture (single-frame input; the pool grid ADAPTS to the sensor):
     Backbone     : Conv(3→32)→BN→ReLU → Conv(32→32)→BN→ReLU → Conv(32→64)→BN→ReLU
-                   → AdaptiveAvgPool(4,4) → Flatten → Linear(1024→features_dim) → ReLU
+                   → DeterministicAvgPool(grid) → Flatten → Linear(n_flat→features_dim) → ReLU
     Projector    : Linear(features_dim→64) → ReLU → Linear(64→64)   [not in RL path]
 
-Parameter budget (features_dim=128):
-    Backbone     :  ~61 K
-    Linear head  : ~131 K
-    Projector    :  ~12 K (auxiliary; excluded from RL output path)
-    Total encoder: ~204 K
+⚠ The grid was a hardcoded ``(4, 4)``, which was safe only while the sensor was
+square. Three stride-2 convs take 128→→→16 but 80→→→10, and 10 % 4 != 0, so at the
+128×80 campaign eye this encoder RAISED AT CONSTRUCTION -- before a single step, so
+a wave that queued the arm lost the slot rather than the run. It is now the divisor
+of each axis closest to 4 (ties to the larger), which reproduces the historical
+(4, 4)/n_flat=1024 exactly on a square sensor.
+
+Parameter budget (features_dim=128), per sensor:
+    128×128 -> map 16×16, grid (4, 4), n_flat 1024 : Linear head ~131 K, total ~204 K
+    128×80  -> map 10×16, grid (5, 4), n_flat 1280 : Linear head ~164 K, total ~237 K
+    Backbone  ~61 K · Projector ~12 K (auxiliary; excluded from RL output path)
 """
 
 from __future__ import annotations
@@ -34,7 +40,7 @@ import torch.nn.functional as F
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
-from .utils.pool import DeterministicAvgPool2d
+from .utils.pool import DeterministicAvgPool2d, pool_grid_for
 
 
 class SimCLRCLTT(HWCFeatureExtractor):
@@ -53,7 +59,7 @@ class SimCLRCLTT(HWCFeatureExtractor):
         # ``conv_dim`` (final conv channels) scales the flatten size and thus the
         # RL head Linear's params, tuning capacity WITHOUT changing features_dim.
         # Default 64 preserves the original architecture.
-        self.backbone = nn.Sequential(
+        conv_layers = [
             nn.Conv2d(channels, 32, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(32),
             nn.ReLU(),
@@ -63,7 +69,20 @@ class SimCLRCLTT(HWCFeatureExtractor):
             nn.Conv2d(32, conv_dim, kernel_size=3, stride=2, padding=1),
             nn.BatchNorm2d(conv_dim),
             nn.ReLU(),
-            DeterministicAvgPool2d((4, 4)),
+        ]
+        # MEASURE the map the convs actually produce; do not derive it. A derived
+        # grid goes silently wrong the moment a stride or padding is edited, and
+        # the failure mode is a construction-time raise on one sensor only.
+        with torch.no_grad():
+            _, _, feat_h, feat_w = nn.Sequential(*conv_layers)(
+                torch.zeros(1, channels, height, width)).shape
+        self.pool_grid = pool_grid_for(feat_h, feat_w)
+
+        # Kept FLAT -- conv_layers is splatted, not nested in its own Sequential --
+        # so state_dict keys stay backbone.0 .. backbone.10 exactly as before.
+        self.backbone = nn.Sequential(
+            *conv_layers,
+            DeterministicAvgPool2d(self.pool_grid),
             nn.Flatten(),
         )
         with torch.no_grad():

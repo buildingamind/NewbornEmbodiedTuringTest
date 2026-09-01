@@ -42,6 +42,50 @@ def strict_determinism():
         torch.use_deterministic_algorithms(True, warn_only=was_warn_only)
 
 
+@contextmanager
+def relaxed_determinism():
+    """Allow nondeterministic CUDA kernels for the duration of this block.
+
+    ⛔ WHY THIS EXISTS. ``strict_determinism`` (above) wraps the whole PPO update in
+    ``warn_only=False``, so ANY op in the learning path without a deterministic kernel
+    RAISES. The motion auxiliary losses (EoO, GWM) warp frames with ``F.grid_sample``, and
+    ``grid_sampler_2d_backward_cuda`` has no deterministic implementation -- so every
+    EoO/GWM arm dies at its FIRST optimizer step:
+
+        RuntimeError: grid_sampler_2d_backward_cuda does not have a deterministic
+        implementation, but you set 'torch.use_deterministic_algorithms(True)'
+
+    That is the guard working as designed, not a misconfiguration -- ``compact_vit.py:235``
+    records the identical death for a spatial-pooled ViT. But it makes six of the eight
+    priority arms unrunnable, so the OWNER RULED (2026-08-28) to exempt the auxiliary
+    backward ONLY, keeping PPO-proper strict.
+
+    ⚠ THE EXEMPTION IS A SCOPE, NOT A SWITCH. It restores the AMBIENT policy (warn-not-raise)
+    rather than disabling determinism, and it restores whatever was in force on entry --
+    so under the NETT_STRICT_DETERMINISM diagnostic this narrows to a no-op rather than
+    silently disarming the diagnostic, which is the same trap ``strict_determinism``'s own
+    docstring warns about.
+
+    ⚠ WHAT THE RESULTING RUNS MAY AND MAY NOT CLAIM: bitwise run-to-run reproducibility no
+    longer holds for the auxiliary gradient path of any arm that uses a nondeterministic
+    kernel there. PPO-proper's backward is untouched and still strict. Any reproducibility
+    statement about an EoO/GWM arm must carry that limit.
+    """
+    # ⛔ SAVE AND RESTORE BOTH FLAGS, not just warn_only. `strict_determinism` above restores
+    # with the first argument hardcoded True, so a caller whose ambient state had determinism
+    # DISABLED exits the context with it ENABLED -- a leak that is benign in production (task.py
+    # always enables it) but poisons any standalone probe, and makes the NEXT case in a probe
+    # loop fail with the PREVIOUS case's state. Reported by seat:lion, who lost a gwm result to
+    # exactly that leak and read it as a gwm defect. Mirroring the shape would inherit the bug.
+    was_enabled = torch.are_deterministic_algorithms_enabled()
+    was_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True, warn_only=True)
+    try:
+        yield
+    finally:
+        torch.use_deterministic_algorithms(was_enabled, warn_only=was_warn_only)
+
+
 def strict_update(update_fn):
     """Decorator: run a PPO ``update`` under :func:`strict_determinism`."""
 
