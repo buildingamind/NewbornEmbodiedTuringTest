@@ -19,6 +19,7 @@ summary.json in place.
 
 Usage:
   NETT_DEVICE=0 NETT_TEST_EPS=20 python examples/campaign_retest.py <run_dir>
+    (NETT_TEST_EPS = repeats per test ROW; see the note at the assignment below)
   <run_dir> = ~/nett_campaign/<exp>_<model>/<name>_offN_<ts>/
 """
 from __future__ import annotations
@@ -52,6 +53,18 @@ def main() -> int:
 
     # Test-only: train=0 -> _modes_from_episodes returns ['test'] -> test() loads
     # the latest checkpoint under <run_dir>/<cond>/wandb_runs/brain_i/checkpoints/.
+    #
+    # ⛔ NETT_TEST_EPS IS REPEATS PER TEST ROW -- not episodes, not episodes per
+    # condition. See campaign_train.py's env table for the derivation. On the
+    # parsing sheet a row IS a distinct stimulus configuration, so this knob adds
+    # REPLICATES and NEVER a new stimulus. Measured on the MoTok corpus: the
+    # intra-cluster correlation is 0.484 and the SE of a condition mean floors at
+    # 0.0960 (vs 0.1014 at 8 replicates), so <=5.3% is available from ANY episode
+    # count. ⛔ And the plain chi-square applied to the pooled episodes rejects a
+    # TRUE null 50.9% of the time at 8 replicates, rising to 99.6% at 280 --
+    # RAISING THIS KNOB MAKES THAT TEST MORE CONFIDENTLY WRONG. If you want
+    # precision, add distinct stimuli (spread brains across the sheet's 7 imprint
+    # conditions: 12 -> 72 configs, same GPU), not repeats.
     test_eps = int(os.environ.get("NETT_TEST_EPS", str(config.get("episodes", {}).get("test", 20))))
     config["episodes"] = {"train": 0, "test": test_eps}
     # offline wandb for unattended retest

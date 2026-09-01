@@ -137,6 +137,17 @@ level too deep produces 15 "expected source file missing" failures that look lik
 wiring rather than a bad path.
 Bypass: `NETT_SKIP_HOOKS=1 git push`; skip only e2e: `NETT_SKIP_E2E=1 git push`.
 
+⚠ **"e2e tests failed" now means tests actually ran and failed.** The hook used to print
+that for *any* non-timeout exit code, so a pytest that never ran a single test reported the
+same words as a genuine regression. Measured 2026-08-12: an interpreter without
+`pytest-xdist` rejected the `-n 8 --dist loadgroup` the hook adds on a multi-GPU host,
+exited 4 having run **zero** tests, and was reported as failing e2e — the reader goes
+looking through the diff for a broken test that does not exist. The hook now probes for
+`xdist` *before* passing `-n` (with the `pip install -e 'src_isaac[test]'` fix in the error,
+and `NETT_E2E_JOBS=1` to force the slow serial path), and separates pytest's rc 2/3/4/5
+into "the e2e tree did not run: …" — a **harness** problem. Note rc 5, *collected no tests*,
+is the silent-skip rot this hook exists to catch: it must never read as a pass.
+
 **Cost, measured 2026-07-29 on `lion` (8×A10, 64 cores): `4m32s` total** — 34 s unit suite,
 a few seconds of prerequisites, `3m48s` for the e2e tree. Serialised on one GPU that tree is
 **17m19s**, so the parallel form is ~4.6× faster. (It used to appear to take ~43 s only

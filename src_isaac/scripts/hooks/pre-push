@@ -201,6 +201,20 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
   # rounds. `loadgroup` distributes per TEST but honours @pytest.mark.xdist_group, which
   # test_outputs.py uses to keep its 4 tests (sharing one module-scoped training run) on a
   # single worker instead of rebuilding that fixture four times.
+  # ⚠ PROBE FOR xdist HERE, NOT IN $PROBE ABOVE. The interpreter probe deliberately does
+  # not require pytest-xdist, because a single-GPU host never passes `-n` and should not be
+  # rejected for lacking a plugin it will not use. But when E2E_JOBS > 1 we are about to
+  # pass `-n`, and a pytest without the plugin does not run the tree serially -- it exits 4
+  # with "unrecognized arguments: -n 8 --dist loadgroup" having run ZERO tests. That was
+  # then reported as "e2e tests failed" (measured 2026-08-12), which sent the reader hunting
+  # for a broken test that did not exist. Fail on the real cause instead.
+  if [ "$E2E_JOBS" -gt 1 ] && ! "$PY" -c 'import xdist' 2>/dev/null; then
+    echo "pre-push: BLOCKED -- $E2E_JOBS GPUs detected but pytest-xdist is missing from" >&2
+    echo "  $PY" >&2
+    echo "  Install the test extra:  $PY -m pip install -e '$SRC[test]'" >&2
+    echo "  Or force the (much slower, ~17 min) serial path:  NETT_E2E_JOBS=1 git push" >&2
+    exit 1
+  fi
   [ "$E2E_JOBS" -gt 1 ] && _jobs_args="-n $E2E_JOBS --dist loadgroup"
   echo "pre-push: e2e tree (real training runs; ${E2E_JOBS} gpu(s), kit_threads=${NETT_KIT_THREADS:-default}, cap ${E2E_TIMEOUT}s) ..."
   timeout "$E2E_TIMEOUT" "$PY" -u -m pytest tests/e2e -v -m "e2e_isaac and not e2e_perf" \
@@ -220,10 +234,27 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
       echo "    reap with SIGTERM first; a Kit process that is WEDGED should be" >&2
       echo "    diagnosed, not -9'd (repeated SIGKILL of wedged boots can leave the" >&2
       echo "    driver in a bad state across all GPUs)." >&2
-    else
+    elif [ "$_e2e_rc" -eq 1 ]; then
       grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush_e2e.log | head -15 >&2
       grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush_e2e.log | tail -1 >&2
       echo "pre-push: BLOCKED -- e2e tests failed" >&2
+    else
+      # ⚠ NOT A TEST FAILURE. pytest reserves 2=interrupted, 3=internal error, 4=bad
+      # command line, 5=nothing collected -- in every one of these the tree did not run, so
+      # saying "tests failed" points the reader at the diff instead of at the harness. A rc
+      # 4 from a missing pytest-xdist was misread exactly that way (2026-08-12); rc 5 means
+      # the e2e tree collected NOTHING, which is the silent-skip rot the hook exists to
+      # catch and must never be mistaken for a pass.
+      case "$_e2e_rc" in
+        2) _why="pytest was interrupted (SIGINT/SIGTERM)" ;;
+        3) _why="pytest hit an INTERNAL error" ;;
+        4) _why="pytest rejected the command line (missing plugin? bad marker?)" ;;
+        5) _why="pytest collected NO tests -- the e2e tree selected nothing" ;;
+        *) _why="pytest exited $_e2e_rc" ;;
+      esac
+      echo "pre-push: BLOCKED -- the e2e tree did not run: $_why" >&2
+      echo "  This is a HARNESS problem, not a failing test. First 15 lines:" >&2
+      head -15 /tmp/nett_repob_prepush_e2e.log >&2
     fi
     echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
     exit 1

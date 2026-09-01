@@ -12,7 +12,10 @@ Env knobs:
   NETT_GPUS          device pool (default 0..7)
   NETT_JOBS_PER_GPU  packing (default 2)
   NETT_STAGGER_SECS  launch spacing (default 12)
-  NETT_TEST_EPS      test episodes/condition (default from each run's config)
+  NETT_TEST_EPS      REPEATS PER TEST ROW (default from each run's config).
+                     NOT episodes/condition -- that reading is short by the row
+                     count of the design sheet (56x on the parsing sheet). See
+                     campaign_train.py's env table for the derivation.
   NETT_RETEST_DIR    scheduler state dir (default <root>/_retest)
   NETT_PYTHON        interpreter (default: the one running this launcher)
   NETT_ISAAC_LAB     repo A isaac_lab/source path (REQUIRED)

@@ -147,7 +147,15 @@ def score_group(group_dir: str, final_step: int) -> dict:
                     pass
                 break
     agg = {cond: {"mean": round(st.mean(v), 4),
-                  "std": round(st.pstdev(v), 4) if len(v) > 1 else 0.0,
+                  # ⚠ None, NOT 0.0, at a single brain. A spread of "0.0000" printed
+                  # beside a mean reads as PERFECT CONSISTENCY when it means WE HAVE
+                  # ONE SAMPLE -- and this campaign is about to run many arms at low n,
+                  # where that is the common case rather than the edge case. n_brains
+                  # is right there in the row, but a number that can be quoted out of
+                  # its row will be. Same family as torch/numpy's opposite variance
+                  # defaults: the degenerate case must not return the answer that
+                  # looks best.
+                  "std": round(st.pstdev(v), 4) if len(v) > 1 else None,
                   "n_brains": len(v), "n_episodes": per_cond_eps[cond]}
            for cond, v in sorted(per_cond.items())}
     return {"n_runs": n_runs, "unity_metric": agg,
@@ -196,7 +204,11 @@ def main() -> int:
             flag = ""
             if um and cond.lower() == "rest":
                 flag = "  <== IMPRINTING" + ("  >=Unity" if cd["mean"] >= um[0] - 0.05 else "  below")
-            print(f"{name:30} {cond:26} {cd['mean']:.3f}±{cd['std']:.3f} ({cd['n_brains']:d}b) "
+            # std is None at a single brain (see score_group) -- print it as "n/a"
+            # rather than 0.000, and NEVER let the format crash: a scoreboard that
+            # raises on its own degenerate row is a scoreboard nobody sees.
+            sd = f"{cd['std']:.3f}" if cd["std"] is not None else "  n/a"
+            print(f"{name:30} {cond:26} {cd['mean']:.3f}±{sd} ({cd['n_brains']:d}b) "
                   f"{cd['n_episodes']:6d}   {us:>14}{flag}")
     if a.json:
         Path(a.json).write_text(json.dumps(report, indent=2))
