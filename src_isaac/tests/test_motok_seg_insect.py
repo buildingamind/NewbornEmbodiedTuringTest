@@ -121,4 +121,26 @@ except ValueError: chk("bad NETT_SEG_FG_SLOT RAISES", True)
 os.environ.pop("NETT_SEG_FG_SLOT")
 
 print("\n" + ("FAILURES:\n  " + "\n  ".join(fails) if fails else "ALL CHECKS PASSED"))
-sys.exit(1 if fails else 0)
+
+
+def test_motok_seg_acceptance():
+    """pytest entry point. The checks above execute at import; this asserts their result.
+
+    ⛔⛔⛔ THIS MODULE USED TO END IN A BARE `sys.exit(...)` AT MODULE SCOPE, AND IT TOOK THE
+    WHOLE SUITE DOWN. pytest IMPORTS every `test_*.py` during COLLECTION, so the SystemExit
+    propagated out of collection and killed the session with INTERNALERROR before a single
+    test ran. The pre-push hook then reported "unit tests failed" and NAMED NOTHING, because
+    there were no test results to name -- 700+ unrelated tests never executed, and every push
+    from this repo was blocked.
+
+    ⚠ THE EXIT CODE WAS ZERO. `SystemExit: 0` -- the acceptance checks were PASSING the whole
+    time. A failing script would have been a failing test; a PASSING script still destroyed the
+    run. So the symptom was maximally misleading: a green script presenting as a red suite.
+    ⇒ A `test_*.py` that is also a runnable script must guard its exit behind __main__, and its
+      pass/fail must reach pytest as an ASSERTION, never as a process exit code.
+    """
+    assert not fails, ("MoTok segmentation acceptance failures:\n  " + "\n  ".join(fails))
+
+
+if __name__ == "__main__":
+    sys.exit(1 if fails else 0)

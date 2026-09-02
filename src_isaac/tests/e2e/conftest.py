@@ -268,13 +268,25 @@ def _isaac_missing() -> str | None:
     import torch as _t
     if not _t.cuda.is_available():
         return "CUDA not available"
+    # ⛔⛔⛔ `except Exception` DOES NOT CATCH `SystemExit` -- it inherits from BaseException.
+    # `isaacsim/__init__.py` bootstraps the Kit kernel AT IMPORT and, when that fails, calls
+    # `sys.exit(...)` rather than raising. Under pytest the bootstrap fails routinely ("reading
+    # from stdin while output is captured"), so the SystemExit sailed straight through this
+    # handler, out of `pytest_collection_modifyitems`, and killed the ENTIRE SESSION with
+    # INTERNALERROR -- 700+ unrelated unit tests never ran and the pre-push hook blocked every
+    # push from this repo, reporting "unit tests failed" while naming no test.
+    #
+    # ⇒ THIS FUNCTION'S WHOLE PURPOSE IS TO RETURN A SKIP REASON WHEN PREREQUISITES ARE
+    #   MISSING, AND A BOOTSTRAP THAT EXITS *IS* A MISSING PREREQUISITE. The probe was
+    #   defeating its own contract on the exact condition it was written for.
+    # `(Exception, SystemExit)` still lets KeyboardInterrupt through, which is what we want.
     try:
         import isaacsim  # noqa: F401
-    except Exception as e:
+    except (Exception, SystemExit) as e:
         return f"isaacsim import failed: {e}"
     try:
         import nett_isaac  # noqa: F401
-    except Exception as e:
+    except (Exception, SystemExit) as e:
         return f"nett_isaac import failed: {e}"
     if not DESIGN_SHEET_MINIMAL.exists():
         return f"missing design sheet: {DESIGN_SHEET_MINIMAL}"

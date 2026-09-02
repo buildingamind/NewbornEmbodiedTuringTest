@@ -124,6 +124,15 @@ VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # 682,675
 # so (5, 4) works (20 cells, the closest analogue to the old 4x4 = 16). Re-match embed_dim
 # with examples/count_params.py against what the ViT arm costs at THAT resolution, and treat
 # the result as a fresh baseline.
+# ⛔ ONE SOURCE FOR THE STACK DEPTH. The framestack wrapper's n_stack and every temporal
+# encoder's `num_frames` describe THE SAME QUANTITY from two different config surfaces, and
+# nothing checked that they agreed. While both were hardwired to 2 they could not disagree;
+# NETT_FRAMESTACK_N makes disagreement reachable, and a mismatch silently scrambles time
+# into colour WITHOUT changing the parameter count (see encoders/utils/temporal.py).
+# Deriving both from this one value is the fix; the encoders still raise if it is defeated.
+# ⚠ DEFAULT 2 -- every arm run before 2026-09-02 used 2, and this preserves that exactly.
+_FRAMESTACK_N = int(os.environ.get("NETT_FRAMESTACK_N", "2"))
+
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
 VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
@@ -133,15 +142,6 @@ VIVIT_CFG = {
     "embed_dim": 144, "depth": 3, "num_heads": 3, "mlp_ratio": 2.0,   # 144 -> ~699K
     "num_frames": _FRAMESTACK_N, "temporal_mode": "joint", "pool": "cls",
 }
-
-# ⛔ ONE SOURCE FOR THE STACK DEPTH. The framestack wrapper's n_stack and every temporal
-# encoder's `num_frames` describe THE SAME QUANTITY from two different config surfaces, and
-# nothing checked that they agreed. While both were hardwired to 2 they could not disagree;
-# NETT_FRAMESTACK_N makes disagreement reachable, and a mismatch silently scrambles time
-# into colour WITHOUT changing the parameter count (see encoders/utils/temporal.py).
-# Deriving both from this one value is the fix; the encoders still raise if it is defeated.
-# ⚠ DEFAULT 2 -- every arm run before 2026-09-02 used 2, and this preserves that exactly.
-_FRAMESTACK_N = int(os.environ.get("NETT_FRAMESTACK_N", "2"))
 
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
