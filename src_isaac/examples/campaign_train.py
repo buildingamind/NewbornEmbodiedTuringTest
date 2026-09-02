@@ -131,14 +131,28 @@ VIT_NOQK_SP_CFG = {**VIT_SP, "embed_dim": 156, "attn_mode": "uniform"} # 706,928
 VIVIT_CFG = {
     "trainable": True, "features_dim": 512, "patch_size": 16,
     "embed_dim": 144, "depth": 3, "num_heads": 3, "mlp_ratio": 2.0,   # 144 -> ~699K
-    "num_frames": 2, "temporal_mode": "joint", "pool": "cls",
+    "num_frames": _FRAMESTACK_N, "temporal_mode": "joint", "pool": "cls",
 }
+
+# ⛔ ONE SOURCE FOR THE STACK DEPTH. The framestack wrapper's n_stack and every temporal
+# encoder's `num_frames` describe THE SAME QUANTITY from two different config surfaces, and
+# nothing checked that they agreed. While both were hardwired to 2 they could not disagree;
+# NETT_FRAMESTACK_N makes disagreement reachable, and a mismatch silently scrambles time
+# into colour WITHOUT changing the parameter count (see encoders/utils/temporal.py).
+# Deriving both from this one value is the fix; the encoders still raise if it is defeated.
+# ⚠ DEFAULT 2 -- every arm run before 2026-09-02 used 2, and this preserves that exactly.
+_FRAMESTACK_N = int(os.environ.get("NETT_FRAMESTACK_N", "2"))
 
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
     "CNN":            dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=False),  # ~699K
-    "3DCNN":          dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": 2}, framestack=True),   # ~698K
-    "SimCLR-CLTT":    dict(encoder="simclr_cltt",     cfg={"trainable": True, "features_dim": 512, "conv_dim": 77},                  framestack=False, aux="cltt", aux_weight=1.0),  # ~702K
+    "3DCNN":          dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True),   # ~698K
+    "SimCLR-CLTT":    dict(encoder="simclr_cltt",     cfg={"trainable": True, "features_dim": 512, "conv_dim": 77},                  framestack=True,  aux="cltt", aux_weight=1.0),  # ~702K
+    # ⛔ framestack FLIPPED False->True 2026-09-02. CLTT's positive pair IS the temporal
+    # pair (obs_t, obs_t+1), and the ONLY place a pair exists is the stacked channel axis --
+    # there is no next_observations in the skrl PPO sample tuple. With framestack=False the
+    # loss had no second frame to contrast, so the arm was incoherent as declared. It could
+    # never have run either way: "cltt" was not registered in AUX_LOSSES until today.
     "ViT":            dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False),
     "ViT-NoQK":       dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_CFG),                                                        framestack=False),  # ~706K at 128x80
     "ViT-Mixer":      dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_CFG),                                                       framestack=False),  # ~683K at 128x80
@@ -147,11 +161,11 @@ MODELS: dict[str, dict] = {
     "ViT-Sp":         dict(encoder="compact_vit",     cfg=dict(VIT_SP_CFG),                                                          framestack=False),  # 696K at 128x128
     "ViT-Mixer-Sp":   dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_SP_CFG),                                                    framestack=False),  # 694K at 128x128
     "ViT-NoQK-Sp":    dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_SP_CFG),                                                     framestack=False),  # 707K at 128x128
-    "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="cltt", aux_weight=1.0),
+    "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True,  aux="cltt", aux_weight=1.0),  # framestack True for the same reason as SimCLR-CLTT
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
     "ViViT":          dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True),
     "ViViT+VICReg":   dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True,  aux="vicreg"),
-    "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": 2}, framestack=True),  # ~698K
+    "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
     # framing). Every one declares framestack=True: EoO and GWM need a temporal
@@ -172,10 +186,10 @@ MODELS: dict[str, dict] = {
     "CNN2F":          dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True),
     "CNN2F+EoO":      dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=True,  aux="eoo", aux_weight=1.0),
     "CNN2F+GWM":      dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=True,  aux="gwm", aux_weight=1.0),
-    "3DCNN+EoO":      dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": 2}, framestack=True,  aux="eoo", aux_weight=1.0),
-    "3DCNN+GWM":      dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": 2}, framestack=True,  aux="gwm", aux_weight=1.0),
-    "GWM+EoO":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": 2}, framestack=True,  aux="eoo", aux_weight=1.0),
-    "GWM+GWM":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": 2}, framestack=True,  aux="gwm", aux_weight=1.0),
+    "3DCNN+EoO":      dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="eoo", aux_weight=1.0),
+    "3DCNN+GWM":      dict(encoder="compact_3dcnn",   cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="gwm", aux_weight=1.0),
+    "GWM+EoO":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="eoo", aux_weight=1.0),
+    "GWM+GWM":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="gwm", aux_weight=1.0),
 
     # ── THE FAITHFUL MoTok ARM. ⛔ NOT an (encoder, aux) arm and it cannot be made
     # into one. In Unity MoTok holds its OWN model and OWN AdamW and its mask

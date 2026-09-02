@@ -41,6 +41,13 @@ def _build_vicreg(encoder):
     return VICRegAuxLoss(encoder)
 
 
+def _build_cltt(encoder):
+    """CLTT: temporal-contrastive NT-Xent. The positive pair is the framestack's own
+    (first, last) frame, so this REQUIRES framestack=True and refuses without it."""
+    from .cltt_aux import CLTTAuxLoss
+    return CLTTAuxLoss(encoder)
+
+
 def _build_eoo(encoder):
     from .eoo_aux import EoOAuxLoss
     return EoOAuxLoss(encoder)
@@ -57,6 +64,11 @@ def _build_gwm(encoder):
 #: every arm that uses a different one.
 AUX_LOSSES = {
     "simclr": _build_simclr,
+    # ⛔ 'cltt' was declared by two MODELS entries since 2026-08-28 and was NEVER here,
+    # so SimCLR-CLTT and ViT-CLTT raised at construction and could not be launched at
+    # all. The raise was correct -- it is why neither ever trained as silent vanilla
+    # PPO -- but the registry entry was simply missing. Added 2026-09-02.
+    "cltt": _build_cltt,
     "vicreg": _build_vicreg,
     "eoo": _build_eoo,
     "gwm": _build_gwm,

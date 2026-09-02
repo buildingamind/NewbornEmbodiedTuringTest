@@ -35,6 +35,7 @@ import torch
 import torch.nn as nn
 
 from ...body.observation import image_channels_hw
+from .utils.temporal import validate_framestack_depth
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.pool import DeterministicAvgPool2d
 
@@ -56,7 +57,8 @@ class GuessWhatMoves(HWCFeatureExtractor):
     ) -> None:
         super().__init__(observation_space, features_dim)
         total_channels, height, width = image_channels_hw(observation_space)
-        self.num_frames = int(num_frames)
+        self.num_frames = validate_framestack_depth(
+            total_channels, num_frames, type(self).__name__)
         self.base_channels = total_channels // self.num_frames   # 3 for RGB
 
         # --- What pathway: 2D CNN on the current frame ----------------------

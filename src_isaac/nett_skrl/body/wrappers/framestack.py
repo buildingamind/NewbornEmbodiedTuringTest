@@ -12,6 +12,7 @@ and properly resets per-environment frame buffers on episode completion.
 
 from __future__ import annotations
 
+import os
 from collections import deque
 
 import gymnasium as gym
@@ -28,9 +29,39 @@ class FrameStack(gym.Wrapper):
     (single-env) or (N, H, W, C) → (N, H, W, C*n_stack) (batched).
     """
 
-    def __init__(self, env: gym.Env, n_stack: int = 2) -> None:
+    #: Campaign default. EVERY arm run before 2026-09-02 used exactly this value:
+    #: ``campaign_train.py`` passes ``["framestack"]`` as a bare wrapper name with no
+    #: kwargs, so nothing ever overrode it. Keep it at 2 so that history stays readable.
+    DEFAULT_N_STACK = 2
+
+    @staticmethod
+    def _resolve_n_stack(n_stack: int | None) -> int:
+        """Explicit argument wins; otherwise ``NETT_FRAMESTACK_N``; otherwise 2.
+
+        ⛔ A stack depth that disagrees with an encoder's ``num_frames`` SILENTLY
+        SCRAMBLES TIME INTO COLOUR and leaves the parameter count untouched, so no
+        capacity check can see it. The temporal encoders now raise on a mismatch --
+        see ``compact_3dcnn.__init__``. Set the two from the same place.
+        """
+        if n_stack is not None:
+            return int(n_stack)
+        raw = os.environ.get("NETT_FRAMESTACK_N")
+        if raw is None or raw == "":
+            return FrameStack.DEFAULT_N_STACK
+        try:
+            n = int(raw)
+        except ValueError as exc:
+            raise ValueError(f"NETT_FRAMESTACK_N must be an integer; got {raw!r}.") from exc
+        if n < 2:
+            raise ValueError(
+                f"NETT_FRAMESTACK_N must be >= 2 (a 'stack' of one frame carries no time); "
+                f"got {n}. Use framestack=False on the arm instead."
+            )
+        return n
+
+    def __init__(self, env: gym.Env, n_stack: int | None = None) -> None:
         super().__init__(env)
-        self.n_stack = int(n_stack)
+        self.n_stack = self._resolve_n_stack(n_stack)
         self._frames: deque = deque(maxlen=self.n_stack)
         self._base_obs_space = env.observation_space
 
