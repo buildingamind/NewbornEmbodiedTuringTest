@@ -82,8 +82,8 @@ VIT_CFG = {
 # ── The QK-ablation arms (SIDE_LOCK_INVESTIGATION.md Phases 10-12). `attn_mode` swaps the
 # token-mixing operator only; embed_dim is re-matched to the ViT arm's 697,184 in each,
 # because an ablation that also deletes a third of the parameters proves nothing.
-VIT_NOQK_CFG = {**VIT_CFG, "embed_dim": 164, "attn_mode": "uniform"}   # 706,368 at 128x80 (+1.8%)
-VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # 682,675 at 128x80 (-1.6%)
+VIT_NOQK_CFG = {**VIT_CFG, "embed_dim": 164, "attn_mode": "uniform"}   # ENCODER 706,368 at 128x80 (+1.8% vs ViT enc 693,728); agent 707,909
+VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # ENCODER 682,675 at 128x80 (-1.6% vs ViT enc 693,728); agent 684,216
 # ⚠ THOSE TWO ARE CLS-POOLED AND ARE NOT VALID CONTROLS. They are kept because they still
 # BUILD and still match on parameters at the current eye -- but note the justification that
 # used to be here ("kept to reproduce the 2026-08-01/02 arms") IS NOW VOID: those arms ran at
@@ -143,6 +143,51 @@ VIVIT_CFG = {
     "num_frames": _FRAMESTACK_N, "temporal_mode": "joint", "pool": "cls",
 }
 
+# ── OWNER-REQUESTED DIRECTIONS, 2026-09-03. Queued, NOT launched.
+#
+# SIZE SERIES on the ViT2F body. ONLY `embed_dim` varies; every other field is ViT2F's and
+# framestack stays True, so the arms differ in PARAMETER COUNT ALONE. Counts MEASURED by
+# constructing the encoder at the LIVE eye (128x80) with the real channel count:
+#     embed_dim 108, 2 frames ->   511,597   (~500K target, +2.32%)
+#     embed_dim 144, 2 frames ->   805,861   (ViT2F exactly as it stands)
+#     embed_dim 164, 2 frames ->   996,221   (~1M target, -0.38%)
+# ⚠ embed_dim must be divisible by num_heads (4) or MultiheadAttention asserts.
+# ⚠ ViT2F IS NOT PARAMETER-MATCHED TO ViT: framestack doubles input channels, +110,592
+#   params (+15.9%) at identical cfg. This series is matched to ViT2F, not to ViT.
+# ⚠ examples/count_params.py will NOT reproduce these: it builds a SQUARE 128x128 obs and
+#   hardcodes 2 frames, a second copy of the stack depth that cannot track NETT_FRAMESTACK_N.
+#
+# ⛔⛔ TWO DEFINITIONS OF "params" LIVE IN THIS FILE. Verified against 4 saved checkpoints
+#   (final_agent.pt) on 2026-09-03 -- the built encoder reproduces the SAVED encoder exactly:
+#       ENCODER  = the compact_vit tower alone
+#       AGENT    = ENCODER + mean_layer(1024+2) + log_std(2) + value_head(512+1)
+#                = ENCODER + 1,541   (constant while features_dim=512 and the action dim is 2)
+#   The ViT-NoQK / ViT-Mixer / ViT-Sp comments below are ENCODER counts. Every count added
+#   for the size and 3F series is written as ENCODER/AGENT so the two are never compared.
+VIT_500K_CFG = {**VIT_CFG, "embed_dim": 108}   # enc 510,056 / agent 511,597 @ 128x80, 2 frames
+VIT_1M_CFG   = {**VIT_CFG, "embed_dim": 164}   # enc 994,680 / agent 996,221 @ 128x80, 2 frames
+# ── ViViT SIZE SERIES, owner-requested 2026-09-06. The 500K/1M ladder existed only on the
+#    ViT2F body; ViViT was never given one. Counts MEASURED by constructing CompactViViT at the
+#    LIVE eye (128x80) at the DEFAULT _FRAMESTACK_N=2, the same method and the same frame count
+#    as the two lines above. Reproduced independently on a second node to the digit.
+#    ⚠ embed_dim must stay divisible by num_heads=3 (ViT uses 4, ViViT uses 3).
+#        embed_dim 144 ->   694,016   (ViViT exactly as it stands, already run)
+#        embed_dim 177 ->   993,128   (-0.69%)  <- chosen
+#        embed_dim 180 -> 1,022,912   (+2.29%)
+#    ⛔ FRAME COUNT IS PROCESS-GLOBAL AND ENV-OVERRIDABLE HERE. At the default this arm is
+#      frame-matched to ViT2F-1M, so the matched-budget contrast falls straight out of the
+#      ladder -- but any launch that sets NETT_FRAMESTACK_N=3 for a 3F arm ALSO makes this one
+#      3-frame (+embed_dim params, one temporal pos-emb) with no raise. Do not co-launch.
+#    ⚠ A PEER NODE HARDCODES num_frames=2 with no _FRAMESTACK_N at all. Same value today, by a
+#      DIFFERENT MECHANISM -- so agreement now is not agreement under a launch that sets the var.
+VIVIT_1M_CFG = {**VIVIT_CFG, "embed_dim": 177}  # enc 993,128 @ 128x80, 2 frames -- size series
+#
+# THIRD-FRAME QUESTION. Adding a frame ALSO adds parameters, so "ViT3F" alone confounds the
+# two. Both arms are provided and the parameter-matched one is the one that answers it:
+#     embed_dim 144, 3 frames -> enc 914,912 / agent 916,453  frames AND +110,592 (CONFOUNDED)
+#     embed_dim 132, 3 frames -> enc 800,696 / agent 802,237  frames alone, size at ViT2F -0.45%
+VIT_3F_PM_CFG = {**VIT_CFG, "embed_dim": 132}  # enc 800,696 / agent 802,237 @ 128x80, 3 frames
+
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
     "CNN":            dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=False),  # ~699K
@@ -154,8 +199,9 @@ MODELS: dict[str, dict] = {
     # loss had no second frame to contrast, so the arm was incoherent as declared. It could
     # never have run either way: "cltt" was not registered in AUX_LOSSES until today.
     "ViT":            dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False),
-    "ViT-NoQK":       dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_CFG),                                                        framestack=False),  # ~706K at 128x80
-    "ViT-Mixer":      dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_CFG),                                                       framestack=False),  # ~683K at 128x80
+    "ViT2F":          dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True),   # framestack-matched no-aux CONTROL for ViT-CLTT; same split as CNN/CNN2F
+    "ViT-NoQK":       dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_CFG),                                                        framestack=False),  # ENCODER ~706,368 at 128x80
+    "ViT-Mixer":      dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_CFG),                                                       framestack=False),  # ENCODER ~682,675 at 128x80
     # ⚠ SQUARE-EYE ARCHIVE ONLY -- for probe_frozen_features.py to rebuild the 2026-08 n=56
     # encoders at RES=128 square. NOT launchable at the 128x80 eye (raises at construction).
     "ViT-Sp":         dict(encoder="compact_vit",     cfg=dict(VIT_SP_CFG),                                                          framestack=False),  # 696K at 128x128
@@ -163,8 +209,20 @@ MODELS: dict[str, dict] = {
     "ViT-NoQK-Sp":    dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_SP_CFG),                                                     framestack=False),  # 707K at 128x128
     "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True,  aux="cltt", aux_weight=1.0),  # framestack True for the same reason as SimCLR-CLTT
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
+    # ── owner-requested, 2026-09-03. Queued, NOT launched. See the block above the MODELS table.
+    "ViT2F-500K":     dict(encoder="compact_vit",     cfg=dict(VIT_500K_CFG),                                                        framestack=True),   # enc 510,056 / agent 511,597 -- size series
+    "ViT2F-1M":       dict(encoder="compact_vit",     cfg=dict(VIT_1M_CFG),                                                          framestack=True),   # enc 994,680 / agent 996,221 -- size series
+    # ⛔⛔ THE 3F ARMS ARE NOT SELF-SUFFICIENT. Stack depth is GLOBAL: _FRAMESTACK_N reads
+    # NETT_FRAMESTACK_N (default 2) and there is NO per-model field for it. Launching either
+    # entry without NETT_FRAMESTACK_N=3 silently yields a 2-FRAME run wearing a 3F label --
+    # compact_vit takes frames as CHANNELS and declares no num_frames, so nothing raises.
+    # The launcher must set it AND verify the resolved channel count in-band.
+    # ⚠ It is process-global: any other framestacked arm in the same launch also becomes 3F.
+    "ViT3F":          dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True),   # enc 914,912 / agent 916,453 @3F -- CONFOUNDED with size
+    "ViT3F-PM":       dict(encoder="compact_vit",     cfg=dict(VIT_3F_PM_CFG),                                                       framestack=True),   # enc 800,696 / agent 802,237 @3F -- param-matched to ViT2F
     "ViViT":          dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True),
     "ViViT+VICReg":   dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True,  aux="vicreg"),
+    "ViViT-1M":       dict(encoder="compact_vivit",   cfg=dict(VIVIT_1M_CFG),                                                     framestack=True),   # enc 993,128 -- size series
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
@@ -290,6 +348,36 @@ def _resolved_camera_fov() -> float:
             declared, float(_lens.DEFAULT_FOV_H_DEG), declared)
     return declared
 
+
+
+_ENV_TRUE = frozenset(("1", "true", "yes", "on"))
+_ENV_FALSE = frozenset(("", "0", "false", "no", "off"))
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Boolean env var that FAILS LOUD on anything it does not recognise.
+
+    ⛔ THE FIRST VERSION OF THIS WAS FAIL-OPEN -- ``not in ("", "0", "false", "no", "off")``
+    -- so ``0.0``, ``disabled``, ``none``, ``O``, ``2`` and the typo ``flase`` all read as
+    TRUE. seat:lion caught it in review. A deny-list makes every misspelling mean "on",
+    which is the silent-wrong-default failure this fleet has now hit three times in one
+    night from one side or the other.
+    ⭐ A bare allow-list would only move the silence to the other side: ``flase`` would
+    then silently mean OFF. So this raises instead. The variable is new, nothing legacy
+    sets it, and a typo'd flag should stop a launch rather than quietly pick either answer.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    v = raw.strip().lower()
+    if v in _ENV_TRUE:
+        return True
+    if v in _ENV_FALSE:
+        return False
+    raise ValueError(
+        f"{name}={raw!r} is not a recognised boolean. "
+        f"Use one of {sorted(_ENV_TRUE)} or {sorted(_ENV_FALSE)}."
+    )
 
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s: %(message)s")
@@ -563,6 +651,17 @@ def main() -> int:
             "reward_types": reward_types,
             "enable_neck_flexion": False,
             "enable_lateral_bending": False,
+            # TRAIN-PHASE TRAJECTORY LOGGING. repoA gates the per-step CSV on
+            # nett_env_cfg.train_step_logging (default False) because _log_step_batch is a
+            # per-step GPU->CPU handover; the result is that every train_*.csv on this fleet
+            # is HEADER-ONLY (measured: 34 of 34 on chicken, 38 of 40 on lion). That makes
+            # the agent's self-generated viewing geometry during imprinting UNMEASURABLE,
+            # which is currently the leading hypothesis for the cross-node pose difference:
+            # identical media, identical lens coefficients and flat acuity, but each node
+            # discriminates the objects at a different pose.
+            # ⛔ DEFAULT UNCHANGED. Absent the env var this is False, exactly as before, so
+            # no in-flight arm and no existing launcher changes behaviour. Opt in per launch.
+            "train_step_logging": _env_flag("NETT_TRAIN_STEP_LOGGING"),
         },
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each

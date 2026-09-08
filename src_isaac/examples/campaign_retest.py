@@ -73,12 +73,55 @@ def main() -> int:
     # Clear the PARTIAL test CSVs so the fresh full-test data is clean (an interrupted
     # run left incomplete episodes; the scorer filters those, but a clean slate avoids
     # any env_id/episode collision across the two test runs).
+    # ⛔⛔⛔ THE COMMENT ABOVE STATED A PRECONDITION THE CODE NEVER CHECKED. It says
+    # "PARTIAL" and the glob deleted EVERY test_*.csv, complete ones included.
+    # Measured on seat:insect 2026-09-05: MoTokSeg_off28_ship1 ran its test loop to
+    # 5000/5000, wedged AFTERWARDS in teardown, and had already written a COMPLETE,
+    # VALID test CSV. A later retest logged "cleared 1 old test csvs" and replaced it
+    # with a degenerate pose00-only set.
+    # ⇒ THE WEDGE DESTROYED NOTHING; THE RECOVERY DESTROYED THE DATA.
+    # Independently confirmed by seat:insect's roster header: with zero test CSVs left,
+    # guards.assert_complete_arm returns None = SKIP rather than a failure, so a complete
+    # arm that loses its certificates is INDISTINGUISHABLE from one that never reached
+    # test -- no raise, no warning, only a lower count.
+    #
+    # ⛔⛔ v1 OF THIS FIX WAS A GUARD THAT DEFAULTED OFF, WHICH IS NOT A GUARD. It read
+    #   _expect = int(os.environ.get("NETT_RETEST_EXPECT_ROWS", "0")) or None
+    #   if not _force and _expect is not None:
+    # With the variable UNSET -- the normal case, and the case in which the loss above
+    # actually happened -- _expect is None, the check is skipped, and the unconditional
+    # delete proceeds unchanged. It protected the corpus only for an operator who
+    # already knew to protect it. It also compared against an operator-supplied
+    # constant, when 560,000 is a *parsing* constant: a ViewInvariance arm is complete
+    # at 500,000 and would have been deleted as "partial" by the guard meant to save it.
+    #
+    # ⇒ v2 REMOVES THE CLASS INSTEAD OF CHECKING FOR IT: NEVER DELETE, RENAME.
+    # No threshold to get wrong, no environment variable to forget, no per-experiment
+    # row count to derive. The stated goal is met exactly -- the renamed file no longer
+    # matches test_*.csv, so the fresh run cannot collide on env_id/episode -- and the
+    # bytes survive. A DESIGN THAT CANNOT EXPRESS THE BAD OUTCOME BEATS A CHECK THAT
+    # DETECTS IT.
+    _stamp = datetime.utcnow().strftime("%Y%m%dT%H%M%SZ")
     cleared = 0
+    preserved = []
     for cond_dir in run_dir.iterdir():
         logs = cond_dir / "logs"
         if logs.is_dir():
-            for f in logs.glob("test_*.csv"):
-                f.unlink(); cleared += 1
+            for f in sorted(logs.glob("test_*.csv")):
+                dest = f.with_name(f"{f.name}.superseded_{_stamp}")
+                _n = 0
+                while dest.exists():          # never overwrite a previous rescue either
+                    _n += 1
+                    dest = f.with_name(f"{f.name}.superseded_{_stamp}.{_n}")
+                f.rename(dest)
+                cleared += 1
+                preserved.append(dest)
+    if preserved:
+        print(f"[retest] PRESERVED {len(preserved)} prior test CSV(s) by RENAME, not "
+              f"deleted. A teardown-window wedge leaves VALID artifacts on disk, so "
+              f"\"this arm wedged\" does not imply \"this arm's data is bad\":")
+        for _d in preserved:
+            print(f"[retest]   -> {_d}")
 
     device = int(os.environ.get("NETT_DEVICE", "0"))
     from nett_skrl import NETT
