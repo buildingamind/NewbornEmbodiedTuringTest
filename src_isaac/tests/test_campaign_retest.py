@@ -54,11 +54,21 @@ def test_retest_refuses_a_summary_older_than_its_data():
         "test_*.csv files it summarises, and fail loudly if it is not")
 
 
-def test_retest_clears_old_test_csvs_before_replaying():
-    """The pre-existing behaviour that made the stale summary so easy to miss."""
+def test_retest_moves_old_test_csvs_aside_without_deleting_them():
+    """The previous test CSVs must be moved out of the glob, never deleted.
+
+    A retest used to ``unlink()`` every ``test_*.csv``. On 2026-09-05 that destroyed a
+    COMPLETE, valid test CSV from an arm that had wedged in teardown after finishing its
+    test loop; the "recovery" was the data loss. The fresh run still must not collide on
+    env_id/episode, so the old files are renamed with a ``.superseded_<stamp>`` suffix,
+    which no longer matches ``test_*.csv``.
+    """
     src = _main_source()
-    assert "unlink()" in src and "test_*.csv" in src, (
-        "campaign_retest must clear the previous test CSVs before replaying")
+    assert "unlink()" not in src, (
+        "campaign_retest must not delete previous test CSVs; rename them instead")
+    assert "test_*.csv" in src and ".rename(" in src and "superseded_" in src, (
+        "campaign_retest must move previous test_*.csv files aside by rename with a "
+        "superseded_<stamp> suffix before replaying")
 
 
 def test_retest_records_the_eval_action_mode():
