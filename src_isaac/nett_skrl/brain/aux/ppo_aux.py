@@ -48,6 +48,11 @@ def _build_cltt(encoder):
     return CLTTAuxLoss(encoder)
 
 
+def _build_cltt_ref(encoder):
+    from .cltt_ref_aux import CLTTReferenceAuxLoss
+    return CLTTReferenceAuxLoss(encoder)
+
+
 def _build_eoo(encoder):
     from .eoo_aux import EoOAuxLoss
     return EoOAuxLoss(encoder)
@@ -69,6 +74,7 @@ AUX_LOSSES = {
     # all. The raise was correct -- it is why neither ever trained as silent vanilla
     # PPO -- but the registry entry was simply missing. Added 2026-09-02.
     "cltt": _build_cltt,
+    "cltt_ref": _build_cltt_ref,
     "vicreg": _build_vicreg,
     "eoo": _build_eoo,
     "gwm": _build_gwm,
@@ -158,6 +164,13 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                 f"no .encoder to shape. Refusing to train with the objective absent."
             )
         self._aux = AUX_LOSSES[self._aux_kind](encoder)
+        if getattr(self._aux, "needs_memory", False):
+            if self.memory is None:
+                raise ValueError(
+                    f"AuxLossPPO: aux loss {self._aux_kind!r} requires memory "
+                    "because it draws its own temporal windows."
+                )
+            self._aux.attach_memory(self.memory)
         # Register the projection/expander head's params with the optimizer so
         # they are trained alongside the policy/value networks.
         if self.optimizer is not None:

@@ -208,6 +208,9 @@ MODELS: dict[str, dict] = {
     "ViT-Mixer-Sp":   dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_SP_CFG),                                                    framestack=False),  # 694K at 128x128
     "ViT-NoQK-Sp":    dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_SP_CFG),                                                     framestack=False),  # 707K at 128x128
     "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True,  aux="cltt", aux_weight=1.0),  # framestack True for the same reason as SimCLR-CLTT
+    # Reference-faithful rebuild; cltt is retained unchanged as their paired incumbent.
+    "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "ViT-CLTT-Ref":    dict(encoder="compact_vit", cfg=dict(VIT_CFG),                                            framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
     # ── owner-requested, 2026-09-03. Queued, NOT launched. See the block above the MODELS table.
     "ViT2F-500K":     dict(encoder="compact_vit",     cfg=dict(VIT_500K_CFG),                                                        framestack=True),   # enc 510,056 / agent 511,597 -- size series
