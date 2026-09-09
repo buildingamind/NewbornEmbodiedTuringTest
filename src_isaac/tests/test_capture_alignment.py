@@ -128,3 +128,48 @@ def test_action_targets_empty_before_any_frame_is_kept():
     a = FrameAlignment(2, every=10, window=1)
     a.on_reset()
     assert a.action_targets() == []
+
+
+# --- completeness: the file must say whether it is a prefix -----------------
+#
+# ⛔ A SHORT CAPTURE IS WELL-FORMED, HAS A NON-ZERO PAIR COUNT, AND IS UNUSABLE.
+# The test schedule is ORDERED -- conditions grouped, target-left design rows
+# first -- so a capture that stops early covers some conditions and not others.
+# Measured 2026-08-11: `--episodes 2` ran 104 of 1040 episodes and produced 104
+# target-left episodes and 0 target-right. Nothing in the saved file said so.
+#
+# ⚠ A crash or kill is NOT this failure mode: the npz is written only after
+# brain.test() returns, so an interrupted capture leaves no file at all. The
+# cases that DO produce a misleading file are an --episodes that does not match
+# the source run, a schedule that ends early, and --max-frames.
+
+def _is_prefix(requested, seen, source, truncated_by_cap=False):
+    """Mirror of the driver's completeness rule (capture_observations.main)."""
+    return bool(
+        truncated_by_cap
+        or (source is not None and requested != source)
+        or seen < requested
+    )
+
+
+def test_matching_episode_count_is_not_a_prefix():
+    assert _is_prefix(requested=20, seen=20, source=20) is False
+
+
+def test_short_request_against_the_source_run_is_a_prefix():
+    """The 2026-08-11 measured failure: --episodes 2 against a 1040-episode run."""
+    assert _is_prefix(requested=2, seen=2, source=20) is True
+
+
+def test_schedule_ending_early_is_a_prefix_even_when_the_request_matched():
+    assert _is_prefix(requested=20, seen=13, source=20) is True
+
+
+def test_max_frames_truncation_is_a_prefix():
+    assert _is_prefix(requested=20, seen=20, source=20, truncated_by_cap=True) is True
+
+
+def test_unknown_source_count_still_catches_an_early_finish():
+    """A run config without a test count must not silently pass a short capture."""
+    assert _is_prefix(requested=20, seen=5, source=None) is True
+    assert _is_prefix(requested=20, seen=20, source=None) is False

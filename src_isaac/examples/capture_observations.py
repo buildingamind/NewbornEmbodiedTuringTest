@@ -59,6 +59,16 @@ plus ``window``, ``every`` and ``n_transition_pairs``. The driver PRINTS the usa
 pair count and warns loudly at zero, so a capture that cannot serve its purpose
 says so at the end of the run rather than at the start of the next project.
 
+★★ AND IT RECORDS WHETHER IT IS A PREFIX. ``episodes_requested``,
+``episodes_seen``, ``episodes_source`` and ``is_prefix`` are saved too, because a
+short capture is **well-formed, has a non-zero pair count, and is unusable** --
+the ordered schedule means it covers some conditions and not others, and nothing
+in the file used to say so. ⚠ A crash or kill is NOT this failure mode: the npz
+is written only after ``brain.test()`` returns, so an interrupted capture leaves
+no file at all. The cases that DO produce a misleading file are an ``--episodes``
+that does not match the source run, a schedule that ends early, and
+``--max-frames``. All three set ``is_prefix``.
+
 ⚠ ACTION ALIGNMENT. An action is attached to the frame it ACTS ON, never the frame
 it produces. Getting this backwards shifts every action by one step, does not crash,
 and trains a predictor on the action that FOLLOWED its target. The bookkeeping lives
@@ -179,6 +189,15 @@ def _load_config(run_dir: Path, episodes: int) -> dict:
     config["_resolved_test_num_envs"] = dict(config.get("resolved_test_num_envs") or {})
     for k in [k for k in list(config) if k.startswith("resolved_")]:
         config.pop(k, None)
+    # ★ RECORD THE SOURCE RUN'S TEST COUNT BEFORE OVERWRITING IT. Without this the
+    # capture cannot say whether `--episodes` matched the run it came from, and a
+    # SHORT capture is a biased PREFIX rather than a sample -- the test schedule is
+    # ORDERED, so conditions are grouped and target-left design rows come first.
+    # Measured 2026-08-11: `--episodes 2` ran 104 of 1040 episodes and produced 104
+    # target-left and 0 target-right. That file is well-formed, has a non-zero pair
+    # count, and is unusable; nothing in it said so until now.
+    _src = (config.get("episodes") or {}).get("test")
+    config["_source_test_episodes"] = int(_src) if _src is not None else None
     config["episodes"] = {"train": 0, "test": int(episodes)}
     config.setdefault("brain", {}).setdefault("wandb", {})["mode"] = "disabled"
     return config
@@ -326,6 +345,7 @@ def main() -> int:
     out_root.mkdir(parents=True, exist_ok=True)
 
     num_brains = int(config.get("num_brains", 1) or 1)
+    source_test_episodes = config.pop("_source_test_episodes", None)
     num_envs = int(config.pop("_resolved_test_num_envs", {}).get(condition)
                    or config.get("max_parallel_envs") or num_brains)
     if num_envs % num_brains:
@@ -411,17 +431,41 @@ def main() -> int:
     n_pairs = sum(1 for (e, ep, st) in present
                   if (e, ep, st + 1) in present and (e, ep, st) in act_at)
 
+    # ⚠ COMPLETENESS, RECORDED IN THE FILE ITSELF. `truncated_by_cap` already covers
+    # --max-frames. This covers the other way a capture ends up a biased prefix: an
+    # --episodes that does not match the source run's test count, or a schedule that
+    # ended before the requested count was reached. A consumer must be able to tell a
+    # complete capture from a plausible short one WITHOUT the launch command.
+    # ⚠ A crash or kill is NOT this failure mode: the npz is written only after
+    # brain.test() returns, so an interrupted capture leaves no file at all.
+    episodes_seen = int(keys[:, 1].max()) + 1 if len(keys) else 0
+    is_prefix = bool(
+        capture.truncated_by_cap
+        or (source_test_episodes is not None and args.episodes != source_test_episodes)
+        or episodes_seen < args.episodes
+    )
     dest = out_root / f"obs_{run_dir.name}_{condition}.npz"
     np.savez_compressed(dest, obs=obs, keys=keys,
                         actions=actions, action_keys=action_keys,
                         window=int(capture.window), every=int(capture.every),
                         n_transition_pairs=int(n_pairs),
+                        episodes_requested=int(args.episodes),
+                        episodes_seen=episodes_seen,
+                        episodes_source=(-1 if source_test_episodes is None
+                                         else int(source_test_episodes)),
+                        is_prefix=is_prefix,
                         truncated_by_cap=capture.truncated_by_cap,
                         run_dir=str(run_dir), condition=condition)
     print(f"[capture] {obs.shape} uint8 -> {dest}"
           + ("  ⚠ TRUNCATED BY --max-frames" if capture.truncated_by_cap else ""))
     print(f"[capture] actions {actions.shape}  window={capture.window} every={capture.every}")
     print(f"[capture] usable (obs_t, a_t, obs_t+1) transitions: {n_pairs}")
+    print(f"[capture] episodes requested={args.episodes} seen={episodes_seen} "
+          f"source_run={source_test_episodes if source_test_episodes is not None else '?'}")
+    if is_prefix:
+        print("[capture] ⛔ THIS CAPTURE IS A BIASED PREFIX, NOT A SAMPLE. The test schedule is "
+              "ORDERED (conditions grouped, target-left rows first), so a short capture covers "
+              "some conditions and not others. is_prefix=True is recorded in the npz.")
     if n_pairs == 0:
         print("[capture] ⚠ ZERO TRANSITION PAIRS -- this file cannot train any temporal or "
               "action-conditioned objective. Re-run with --window 2 or more.")
