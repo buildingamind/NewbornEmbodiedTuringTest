@@ -45,10 +45,113 @@ condition present. The side probe cannot even be defined on that set.
     NETT_DEVICE=0 PYTHONPATH=. python examples/capture_observations.py <run_dir> \
         --out ~/nett_obs_capture --episodes 4 --every 20 --max-frames 6000
 
+★★ FOR ANY TEMPORAL OR ACTION-CONDITIONED OBJECTIVE, PASS ``--window``. Added
+2026-09-09. The default ``--window 1`` is the original strided capture and keeps
+frames 0, 20, 40 ... -- **no two of them adjacent**, so ``(obs_t, a_t, obs_t+1)``
+exists NOWHERE in the file and SPR / TACO / any temporal loss has nothing to train
+on. It does not error; the file simply contains no transitions. ``--window 8``
+keeps 8 CONSECUTIVE frames at each sampling point instead:
+
+    ... --every 64 --window 8 --max-frames 6000     # 8-frame runs, 1 per 64 steps
+
+The saved npz now carries ``actions`` and ``action_keys`` beside ``obs``/``keys``,
+plus ``window``, ``every`` and ``n_transition_pairs``. The driver PRINTS the usable
+pair count and warns loudly at zero, so a capture that cannot serve its purpose
+says so at the end of the run rather than at the start of the next project.
+
+⚠ ACTION ALIGNMENT. An action is attached to the frame it ACTS ON, never the frame
+it produces. Getting this backwards shifts every action by one step, does not crash,
+and trains a predictor on the action that FOLLOWED its target. The bookkeeping lives
+in ``FrameAlignment`` at module level precisely so it can be unit-tested without
+booting Kit -- see ``tests/test_capture_alignment.py``. A transition never spans a
+reset.
+
+⚠ POSE IS NOT CAPTURED HERE, AND DOES NOT NEED TO BE. ``agent.x`` / ``agent.angle``
+join from the run's own ``test_*.csv`` on ``(env_id, episode, step)`` -- the same
+keys this file writes. That is how the transit mask (81.1% of steps are parked;
+``NETT_AUX_TRANSIT_MASK``) is reproduced offline against a replayed capture.
+
 ⚠ Do NOT set an outer CUDA_VISIBLE_DEVICES: `runtime/device.py::visible_device_scope`
 overwrites it from NETT_DEVICE, and an outer pin puts every agent on card 0.
 """
 from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# Pure per-env bookkeeping, module level and dependency-free ON PURPOSE.
+#
+# The Capture wrapper lives inside main() behind lazy torch/gym imports so that
+# nothing here can be reached before Kit is configured. That makes the wrapper
+# itself untestable without booting a simulator. The part that can be WRONG in a
+# way no reader would notice -- which frame an action is attached to -- is
+# therefore extracted here, where it can be tested with plain integers.
+#
+# ⚠ Why this matters more than usual: this driver has never completed a
+# full-schedule run (see the module docstring), and a one-step action
+# misalignment does not crash, does not look wrong in the file, and trains an
+# action-conditioned predictor on the action that FOLLOWED its target.
+# ---------------------------------------------------------------------------
+
+
+class FrameAlignment:
+    """Decides which frames to keep and which frame each action acts on.
+
+    Contract, per env, within one episode:
+      * frames are indexed 0, 1, 2 ... from the reset observation;
+      * a frame is kept iff ``(index % every) < window``;
+      * the action passed to ``step()`` acts on the LAST RECORDED frame, so it is
+        attached to that frame's key -- never to the frame the step produces.
+    """
+
+    def __init__(self, num_envs: int, every: int, window: int = 1) -> None:
+        self.num_envs = int(num_envs)
+        self.every = int(every)
+        self.window = max(1, int(window))
+        if self.window > self.every:
+            raise ValueError(
+                f"window {self.window} > every {self.every}: windows would overlap "
+                "and the capture would be a contiguous run, not a sample."
+            )
+        self._episode: dict[int, int] = {}
+        self._step: dict[int, int] = {}
+        self._last_key: dict[int, tuple[int, int, int] | None] = {}
+
+    # -- queries ------------------------------------------------------------
+    def steps(self) -> dict[int, int]:
+        return {e: self._step.get(e, 0) for e in range(self.num_envs)}
+
+    def wanted(self) -> list[int]:
+        return [e for e, s in self.steps().items() if (s % self.every) < self.window]
+
+    def key(self, env_id: int) -> tuple[int, int, int]:
+        return (env_id, self._episode.get(env_id, 0), self._step.get(env_id, 0))
+
+    def action_targets(self) -> list[tuple[int, tuple[int, int, int]]]:
+        """(env_id, frame_key) for every env whose last frame was kept."""
+        return [(e, k) for e, k in self._last_key.items() if k is not None]
+
+    # -- transitions --------------------------------------------------------
+    def begin_record(self) -> None:
+        """Default every env to 'last frame not kept' before a record pass."""
+        for e in range(self.num_envs):
+            self._last_key[e] = None
+
+    def mark_kept(self, env_id: int, key: tuple[int, int, int]) -> None:
+        self._last_key[env_id] = key
+
+    def advance(self) -> None:
+        for e in range(self.num_envs):
+            self._step[e] = self._step.get(e, 0) + 1
+
+    def on_done(self, env_id: int) -> None:
+        """A transition never spans a reset."""
+        self._episode[env_id] = self._episode.get(env_id, 0) + 1
+        self._step[env_id] = 0
+        self._last_key[env_id] = None
+
+    def on_reset(self) -> None:
+        self._step.clear()
+        self._last_key.clear()
+
 
 import argparse
 import os
@@ -86,7 +189,14 @@ def main() -> int:
     ap.add_argument("run_dir", type=Path)
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--episodes", type=int, default=4)
-    ap.add_argument("--every", type=int, default=20, help="keep 1 frame per N steps")
+    ap.add_argument("--every", type=int, default=20,
+                    help="start a keep-window every N steps")
+    ap.add_argument("--window", type=int, default=1,
+                    help="keep W CONSECUTIVE frames at each sampling point. "
+                         "W=1 (default) reproduces the original strided capture. "
+                         "W>=2 is REQUIRED for any temporal or action-conditioned "
+                         "objective: at W=1 no two kept frames are adjacent, so "
+                         "(obs_t, a_t, obs_t+1) exists nowhere in the file.")
     ap.add_argument("--max-frames", type=int, default=6000)
     ap.add_argument("--condition", default=None, help="defaults to the run's first")
     args = ap.parse_args()
@@ -109,15 +219,30 @@ def main() -> int:
     class Capture(gym.Wrapper):
         """Records the policy observation on every reset/step. Pass-through otherwise."""
 
-        def __init__(self, env, every: int, max_frames: int) -> None:
+        def __init__(self, env, every: int, max_frames: int, window: int = 1) -> None:
             super().__init__(env)
-            self.every, self.max_frames = int(every), int(max_frames)
+            self.max_frames = int(max_frames)
             self.num_envs = int(getattr(env, "num_envs", 1))
+            # ⛔ WINDOW EXISTS BECAUSE STRIDED SINGLE FRAMES CANNOT TRAIN A TEMPORAL
+            # LOSS. With `--every 20 --window 1` (the original behaviour) the capture
+            # keeps frames 0, 20, 40 ... and NEVER two consecutive frames, so
+            # (obs_t, a_t, obs_t+1) does not exist anywhere in the file. Every
+            # action-conditioned candidate -- SPR, TACO, the report's rank-1 design --
+            # needs exactly that triple. window=1 reproduces the old capture exactly.
+            self.align = FrameAlignment(self.num_envs, every, window)
             self.frames: list[np.ndarray] = []
             self.keys: list[tuple[int, int, int]] = []   # (env_id, episode, step)
-            self._episode: dict[int, int] = {}
-            self._step: dict[int, int] = {}
+            self.actions: list[np.ndarray] = []
+            self.action_keys: list[tuple[int, int, int]] = []
             self.truncated_by_cap = False
+
+        @property
+        def every(self) -> int:
+            return self.align.every
+
+        @property
+        def window(self) -> int:
+            return self.align.window
 
         @staticmethod
         def _chw_uint8(obs) -> np.ndarray:
@@ -134,38 +259,54 @@ def main() -> int:
         def _record(self, obs) -> None:
             # ⚠ TRANSFER ONLY WHEN A FRAME IS ACTUALLY KEPT. Calling _chw_uint8 every
             # step forces a GPU->CPU sync plus a full-batch copy (112x3x128x128 = 5.5 MB)
-            # on EVERY step even when `every` discards it -- measured 2026-08-12 as the
-            # reason a capture crawled. The step counters are per-env and cheap, so
+            # on EVERY step even when the stride discards it -- measured 2026-08-12 as
+            # the reason a capture crawled. The step counters are per-env and cheap, so
             # decide first, copy second.
-            steps = {env_id: self._step.get(env_id, 0) for env_id in range(self.num_envs)}
-            wanted = [e for e, s in steps.items() if s % self.every == 0]
+            wanted = self.align.wanted()
+            self.align.begin_record()
             if wanted and len(self.frames) < self.max_frames:
                 arr = self._chw_uint8(obs)
                 for env_id in wanted:
                     if len(self.frames) >= self.max_frames:
                         self.truncated_by_cap = True
                         break
+                    key = self.align.key(env_id)
                     self.frames.append(arr[env_id].copy())
-                    self.keys.append((env_id, self._episode.get(env_id, 0), steps[env_id]))
+                    self.keys.append(key)
+                    self.align.mark_kept(env_id, key)
             elif wanted:
                 self.truncated_by_cap = True
-            for env_id, s in steps.items():
-                self._step[env_id] = s + 1
+            self.align.advance()
 
-        def reset(self, **kwargs):
-            obs, info = self.env.reset(**kwargs)
-            self._step.clear()
-            self._record(obs)
-            return obs, info
+        def _record_action(self, action) -> None:
+            """Attach `action` to the frame it ACTS ON, not the frame it produces.
+
+            ⚠ THIS IS THE ALIGNMENT THE WHOLE FILE TURNS ON. At entry to step() the
+            action is being taken FROM the last recorded frame. Attaching it to the
+            resulting frame instead shifts every action by one step and trains an
+            action-conditioned predictor on the action that FOLLOWED its target --
+            an error that does not crash and is invisible in the saved file.
+            See FrameAlignment at module level, which is unit-tested.
+            """
+            targets = self.align.action_targets()
+            if not targets:
+                return
+            arr = (action.detach().cpu().numpy()
+                   if isinstance(action, torch.Tensor) else np.asarray(action))
+            arr = np.atleast_2d(arr)
+            for env_id, key in targets:
+                if env_id < arr.shape[0]:
+                    self.actions.append(arr[env_id].astype(np.float32, copy=True))
+                    self.action_keys.append(key)
 
         def step(self, action):
+            self._record_action(action)
             obs, reward, terminated, truncated, info = self.env.step(action)
             self._record(obs)
             done = np.asarray(
                 (torch.as_tensor(terminated) | torch.as_tensor(truncated)).cpu())
             for env_id in np.flatnonzero(np.atleast_1d(done)):
-                self._episode[int(env_id)] = self._episode.get(int(env_id), 0) + 1
-                self._step[int(env_id)] = 0
+                self.align.on_done(int(env_id))
             return obs, reward, terminated, truncated, info
 
     apply_torch_thread_limits()
@@ -249,7 +390,7 @@ def main() -> int:
     print(f"[capture] staged {staged} checkpoints into {cfg.path} (source untouched)")
 
     loaded = agent.body.embed(agent.env, run_config)      # boots Kit
-    capture = Capture(loaded, args.every, args.max_frames)
+    capture = Capture(loaded, args.every, args.max_frames, window=args.window)
     print(f"[capture] condition={condition} envs={run_config.num_envs} "
           f"episodes={args.episodes} every={args.every} cap={args.max_frames}")
     agent.brain.test(capture, run_config)
@@ -258,13 +399,35 @@ def main() -> int:
         raise SystemExit("[capture] no frames recorded -- the eval produced no steps")
     obs = np.stack(capture.frames)
     keys = np.array(capture.keys, dtype=np.int32)
+    actions = (np.stack(capture.actions) if capture.actions
+               else np.zeros((0, 0), dtype=np.float32))
+    action_keys = np.array(capture.action_keys, dtype=np.int32).reshape(-1, 3)
+
+    # Contiguity is the property the file is FOR, so report it rather than let a
+    # consumer discover its absence. A pair is usable iff frames (e, ep, s) and
+    # (e, ep, s+1) are both present AND an action is attached to the first.
+    present = {tuple(int(v) for v in k) for k in keys}
+    act_at = {tuple(int(v) for v in k) for k in action_keys}
+    n_pairs = sum(1 for (e, ep, st) in present
+                  if (e, ep, st + 1) in present and (e, ep, st) in act_at)
+
     dest = out_root / f"obs_{run_dir.name}_{condition}.npz"
     np.savez_compressed(dest, obs=obs, keys=keys,
+                        actions=actions, action_keys=action_keys,
+                        window=int(capture.window), every=int(capture.every),
+                        n_transition_pairs=int(n_pairs),
                         truncated_by_cap=capture.truncated_by_cap,
                         run_dir=str(run_dir), condition=condition)
     print(f"[capture] {obs.shape} uint8 -> {dest}"
           + ("  ⚠ TRUNCATED BY --max-frames" if capture.truncated_by_cap else ""))
+    print(f"[capture] actions {actions.shape}  window={capture.window} every={capture.every}")
+    print(f"[capture] usable (obs_t, a_t, obs_t+1) transitions: {n_pairs}")
+    if n_pairs == 0:
+        print("[capture] ⚠ ZERO TRANSITION PAIRS -- this file cannot train any temporal or "
+              "action-conditioned objective. Re-run with --window 2 or more.")
     print("[capture] join labels from the run's test CSV on (env_id, episode)")
+    print("[capture] agent.x / agent.angle join on (env_id, episode, step) from the same CSV; "
+          "that is how the transit mask is reproduced offline.")
 
     # ★ TEAR KIT DOWN. Without this the SimulationApp never exits: three such
     # processes were found on 2026-08-12 still holding GPU 0 up to two days after
