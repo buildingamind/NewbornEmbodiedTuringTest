@@ -212,6 +212,9 @@ MODELS: dict[str, dict] = {
     "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT-CLTT-Ref":    dict(encoder="compact_vit", cfg=dict(VIT_CFG),                                            framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
+    # Temporal-pair VICReg: identical objective and expander to `vicreg`; only the
+    # view construction differs (aug(t) vs aug(t+k), not two augs of one frame).
+    "ViT-VICReg-TT":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=False, aux="vicreg_tt", aux_weight=1.0),
     # ── owner-requested, 2026-09-03. Queued, NOT launched. See the block above the MODELS table.
     "ViT2F-500K":     dict(encoder="compact_vit",     cfg=dict(VIT_500K_CFG),                                                        framestack=True),   # enc 510,056 / agent 511,597 -- size series
     "ViT2F-1M":       dict(encoder="compact_vit",     cfg=dict(VIT_1M_CFG),                                                          framestack=True),   # enc 994,680 / agent 996,221 -- size series
@@ -225,6 +228,7 @@ MODELS: dict[str, dict] = {
     "ViT3F-PM":       dict(encoder="compact_vit",     cfg=dict(VIT_3F_PM_CFG),                                                       framestack=True),   # enc 800,696 / agent 802,237 @3F -- param-matched to ViT2F
     "ViViT":          dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True),
     "ViViT+VICReg":   dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True,  aux="vicreg"),
+    "ViViT-VICReg-TT": dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="vicreg_tt", aux_weight=1.0),
     "ViViT-1M":       dict(encoder="compact_vivit",   cfg=dict(VIVIT_1M_CFG),                                                     framestack=True),   # enc 993,128 -- size series
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 

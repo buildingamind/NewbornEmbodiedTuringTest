@@ -53,6 +53,11 @@ def _build_cltt_ref(encoder):
     return CLTTReferenceAuxLoss(encoder)
 
 
+def _build_vicreg_tt(encoder):
+    from .vicreg_tt_aux import VICRegTemporalAuxLoss
+    return VICRegTemporalAuxLoss(encoder)
+
+
 def _build_eoo(encoder):
     from .eoo_aux import EoOAuxLoss
     return EoOAuxLoss(encoder)
@@ -76,6 +81,7 @@ AUX_LOSSES = {
     "cltt": _build_cltt,
     "cltt_ref": _build_cltt_ref,
     "vicreg": _build_vicreg,
+    "vicreg_tt": _build_vicreg_tt,
     "eoo": _build_eoo,
     "gwm": _build_gwm,
 }
@@ -222,6 +228,13 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         cumulative_entropy_loss = 0
         cumulative_value_loss = 0
         cumulative_aux_loss = 0.0
+        # Per-term accumulator for aux losses that expose a decomposition via
+        # `last_terms`. Additive and optional: an aux without it logs nothing extra.
+        cumulative_aux_terms = [0.0, 0.0, 0.0]
+        aux_terms_seen = 0
+        cumulative_inv_temporal = 0.0
+        cumulative_inv_control = 0.0
+        inv_pairs_seen = 0
 
         for epoch in range(self.cfg.learning_epochs):
             kl_divergences = []
@@ -335,6 +348,17 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                 cumulative_policy_loss += policy_loss.item()
                 cumulative_value_loss += value_loss.item()
                 cumulative_aux_loss += float(aux_loss.detach())
+                _terms = getattr(self._aux, "last_terms", None)
+                if _terms is not None and len(_terms) == 3:
+                    for _i, _t in enumerate(_terms):
+                        cumulative_aux_terms[_i] += float(_t)
+                    aux_terms_seen += 1
+                _it = getattr(self._aux, "last_inv_temporal", None)
+                _ic = getattr(self._aux, "last_inv_control", None)
+                if _it is not None and _ic is not None:
+                    cumulative_inv_temporal += float(_it)
+                    cumulative_inv_control += float(_ic)
+                    inv_pairs_seen += 1
                 if self.cfg.entropy_loss_scale:
                     cumulative_entropy_loss += entropy_loss.item()
 
@@ -352,6 +376,27 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         self.track_data("Loss / Policy loss", cumulative_policy_loss / n)
         self.track_data("Loss / Value loss", cumulative_value_loss / n)
         self.track_data("Loss / Aux (SimCLR) loss", cumulative_aux_loss / n)
+        # UNWEIGHTED decomposition, when the aux exposes one. The invariance term is
+        # the only one a temporal objective's view construction can move: variance and
+        # covariance are computed per view and are indifferent to which frames the pair
+        # came from. If invariance is a rounding error beside the other two, a null
+        # result is about the COEFFICIENTS, not about the pairing -- so this is logged
+        # rather than argued about afterwards.
+        if aux_terms_seen:
+            for _name, _val in zip(
+                ("invariance", "variance", "covariance"), cumulative_aux_terms
+            ):
+                self.track_data(f"Loss / Aux term ({_name})", _val / aux_terms_seen)
+        # GATE A: the same invariance term against a second augmentation of the ANCHOR
+        # (the incumbent's construction) on the same batch. Their ratio isolates what
+        # the TIME OFFSET contributes, separately from what the coefficient weights it by.
+        if inv_pairs_seen:
+            _t = cumulative_inv_temporal / inv_pairs_seen
+            _c = cumulative_inv_control / inv_pairs_seen
+            self.track_data("Loss / Aux inv (temporal)", _t)
+            self.track_data("Loss / Aux inv (control)", _c)
+            if _c > 0:
+                self.track_data("Loss / Aux inv ratio", _t / _c)
         if self.cfg.entropy_loss_scale:
             self.track_data("Loss / Entropy loss", cumulative_entropy_loss / n)
         self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
