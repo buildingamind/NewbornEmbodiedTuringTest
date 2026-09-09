@@ -98,11 +98,90 @@ class VICRegTemporalAuxLoss(nn.Module):
         self.diag = _env_flag("NETT_AUX_VICREG_TT_DIAG")
         self.last_inv_temporal: float | None = None
         self.last_inv_control: float | None = None
+        # TRANSIT MASK, OFF unless asked for. See _select_window for why.
+        self.transit_mask = _env_flag("NETT_AUX_TRANSIT_MASK")
+        self.last_window_turn: float | None = None
         # Sum unweighted terms across offsets, matching the returned total loss.
         self.last_terms: tuple[float, float, float] | None = None
 
     def attach_memory(self, memory) -> None:
         self._memory = memory
+
+    def _select_window(self, memory, n_env: int, avail: int, batch: int):
+        """Choose (env, t0) for the contiguous window this update trains on.
+
+        Default: uniform, which is what Gate A measured. Under NETT_AUX_TRANSIT_MASK:
+        sample t0 with probability proportional to the window's mean |turn| command.
+
+        WHY THIS EXISTS, and why it is a SAMPLING fix rather than a loss change.
+        The agent is trained on a closeness reward, so it approaches the monitor and
+        stops: measured over 35 archived parsing arms, it reaches a collision boundary
+        3.23 from the screen at a median step 43 of 500 and **81.1% of scored steps are
+        parked** (range 59.9-89.8%). Parked, heading moves 3.5 deg per 8 steps (2.1 px
+        on-axis); in transit it moves ~26 deg (12.1 px, ViViT 20.4). Because this loss
+        draws ONE CONTIGUOUS SLAB of `batch` steps, simulating that sampler on the real
+        trajectories gives: **63.3% of updates draw a slab containing zero transit
+        steps**, median slab shift 2.4 px, and only 11.0% of updates draw a slab whose
+        shift clears the augmentation's ~26 px. So the temporal pair is two nearly
+        identical frames about four updates in five.
+
+        ⛔ This is the defect behind the Gate A withdrawal of this very candidate. That
+        gate read "8 steps of agent motion is ~2.6 px against a 41% zoom, so the
+        manipulation is ~0.05% of the objective" -- but 2.6 px was a MEDIAN OVER A
+        MIXTURE of a 2.1 px parked mode and a 12.1 px transit mode and describes
+        neither. The kill stands as scoped (that configuration could not test the
+        hypothesis) but is a sampling defect, not the offset and not the mechanism.
+        Full measurement: notes/researcher/the-parked-agent.md in the fleet workspace.
+
+        WHY |turn| AND NOT |move|, AND NOT A DISTANCE THRESHOLD.
+        - `turn` is actions[..., 0] and `move` is actions[..., 1] (motor_system.apply:107).
+          A parked agent still COMMANDS forward motion into a wall it cannot pass, so
+          |move| reports "moving" for exactly the steps this mask exists to exclude.
+          Rotation is never blocked, so |turn| does not have that failure mode.
+        - Heading is also the term that dominates the signal: translation at lag 8 is
+          0.46 against a chamber half-width of 33.15 (1.4%), rotation is ~26 deg.
+        - Weighted sampling, not a threshold, because the action->degrees gain is not
+          known here and any constant would be an uncalibrated magic number. Weighting
+          is scale-free and needs no calibration.
+
+        ⚠ This CHANGES THE INPUT DISTRIBUTION the auxiliary objective sees; it is not a
+        variance reduction. It answers "is there a channel at all", which is prior to
+        "does the mechanism work" -- the latter still needs an arm.
+        """
+        uniform_env = int(torch.randint(n_env, ()).item())
+        uniform_t0 = (
+            int(torch.randint(avail - batch + 1, ()).item())
+            if avail >= self.max_samples
+            else 0
+        )
+        if not self.transit_mask:
+            return uniform_env, uniform_t0
+        actions = memory.tensors.get("actions")
+        n_windows = avail - batch + 1
+        if actions is None or actions.ndim < 3 or actions.shape[-1] < 1 or n_windows < 1:
+            # No action channel to weight by (or no choice to make): stay uniform
+            # rather than fail. A silently-uniform mask would be undetectable, so
+            # say so once.
+            logger.warning(
+                "VICRegTemporalAuxLoss: NETT_AUX_TRANSIT_MASK set but no usable "
+                "'actions' tensor (%s); falling back to UNIFORM sampling.",
+                None if actions is None else tuple(actions.shape),
+            )
+            return uniform_env, uniform_t0
+        turn = actions[:avail, :n_env, 0].abs().float().cpu()      # (avail, n_env)
+        # Mean |turn| over every contiguous window, via cumulative sum.
+        csum = torch.cat([torch.zeros(1, turn.shape[1]), turn.cumsum(0)], dim=0)
+        win = (csum[batch:] - csum[:n_windows]) / float(batch)     # (n_windows, n_env)
+        weights = win.flatten().clamp_min(0.0)
+        total = float(weights.sum())
+        if not (total > 0.0) or not torch.isfinite(weights).all():
+            # A rollout with no commanded rotation anywhere: uniform is the honest
+            # answer, and a degenerate multinomial would raise.
+            return uniform_env, uniform_t0
+        flat = int(torch.multinomial(weights, 1).item())
+        t0, env = divmod(flat, win.shape[1])
+        self.last_window_turn = float(win[t0, env])
+        return int(env), int(t0)
 
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
         """Ignore the PPO minibatch; draw temporal windows from attached memory."""
@@ -125,8 +204,7 @@ class VICRegTemporalAuxLoss(nn.Module):
                 "VICReg variance/covariance terms are degenerate at B=1: "
                 "single-row variance is zero or NaN and covariance divides by B-1."
             )
-        env = torch.randint(raw.shape[1], ()).item()
-        t0 = torch.randint(avail - batch + 1, ()).item() if avail >= self.max_samples else 0
+        env, t0 = self._select_window(memory, raw.shape[1], avail, batch)
         device = next(encoder.parameters()).device
         with torch.no_grad():
             views = [

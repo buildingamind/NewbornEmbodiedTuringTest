@@ -416,3 +416,120 @@ def test_default_offset_is_aligned_to_the_live_stack_depth():
     """
     for live_T in (1, 2):
         assert 8 % live_T == 0
+
+
+# ---------------------------------------------------------------------------
+# TRANSIT MASK. The defect it addresses is a SAMPLING one: the loss draws a
+# single contiguous slab, the agent is parked for 81.1% of steps (35-arm
+# median), and 63.3% of updates therefore draw a slab with zero transit steps.
+# See _select_window's docstring and notes/researcher/the-parked-agent.md.
+# ---------------------------------------------------------------------------
+
+
+class _FakeMemory:
+    """Minimal stand-in exposing only what _select_window reads."""
+
+    def __init__(self, turn, n_env=None):
+        # turn: (T, n_env) tensor of |turn| commands
+        t, e = turn.shape
+        acts = torch.zeros(t, e, 2)
+        acts[..., 0] = turn
+        self.tensors = {"actions": acts}
+        self.memory_size = t
+        self.memory_index = t
+        self.filled = True
+
+
+def _loss_with_mask(monkeypatch, on):
+    monkeypatch.setenv("NETT_AUX_TRANSIT_MASK", "1" if on else "0")
+    return VICRegTemporalAuxLoss(IdentityEncoder())
+
+
+def test_transit_mask_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("NETT_AUX_TRANSIT_MASK", raising=False)
+    assert VICRegTemporalAuxLoss(IdentityEncoder()).transit_mask is False
+
+
+def test_transit_mask_goes_through_env_flag(monkeypatch):
+    """Every new boolean knob goes through _env_flag, so it must accept its spellings."""
+    for spelling in ("1", "true", "TRUE", "yes", "on"):
+        monkeypatch.setenv("NETT_AUX_TRANSIT_MASK", spelling)
+        assert VICRegTemporalAuxLoss(IdentityEncoder()).transit_mask is True, spelling
+    for spelling in ("0", "false", "no", "off", ""):
+        monkeypatch.setenv("NETT_AUX_TRANSIT_MASK", spelling)
+        assert VICRegTemporalAuxLoss(IdentityEncoder()).transit_mask is False, spelling
+
+
+def test_mask_off_samples_uniformly_over_windows(monkeypatch):
+    """Control: with the mask OFF the turn signal must not influence selection."""
+    loss = _loss_with_mask(monkeypatch, False)
+    turn = torch.zeros(200, 4)
+    turn[:10, 0] = 100.0  # a single overwhelmingly "moving" window
+    mem = _FakeMemory(turn)
+    picks = {loss._select_window(mem, 4, 192, 48)[1] for _ in range(200)}
+    assert len(picks) > 20, "mask OFF should still spread t0 across the rollout"
+
+
+def test_mask_on_concentrates_on_the_moving_window(monkeypatch):
+    loss = _loss_with_mask(monkeypatch, True)
+    turn = torch.zeros(200, 4)
+    turn[100:160, 2] = 1.0  # the ONLY commanded rotation, in env 2
+    mem = _FakeMemory(turn)
+    envs, t0s = zip(*(loss._select_window(mem, 4, 192, 48) for _ in range(200)))
+    assert set(envs) == {2}, "must pick the env that actually rotated"
+    # every window with nonzero weight overlaps [100, 160)
+    assert all(t + 48 > 100 and t < 160 for t in t0s), sorted(set(t0s))
+
+
+def test_mask_prefers_more_motion_monotonically(monkeypatch):
+    """A window with twice the |turn| must be sampled about twice as often."""
+    loss = _loss_with_mask(monkeypatch, True)
+    turn = torch.zeros(144, 1)
+    turn[:48] = 1.0
+    turn[96:144] = 2.0
+    mem = _FakeMemory(turn)
+    torch.manual_seed(0)
+    t0s = [loss._select_window(mem, 1, 144, 48)[1] for _ in range(4000)]
+    lo = sum(1 for t in t0s if t == 0)
+    hi = sum(1 for t in t0s if t == 96)
+    assert hi > lo, (lo, hi)
+
+
+def test_mask_falls_back_to_uniform_without_an_actions_tensor(monkeypatch):
+    """A silently-uniform mask would be undetectable, so absence must not raise."""
+    loss = _loss_with_mask(monkeypatch, True)
+    mem = _FakeMemory(torch.ones(200, 4))
+    del mem.tensors["actions"]
+    env, t0 = loss._select_window(mem, 4, 192, 48)
+    assert 0 <= env < 4 and 0 <= t0 <= 144
+
+
+def test_mask_falls_back_to_uniform_when_nothing_moved(monkeypatch):
+    """An all-zero rollout must not raise from a degenerate multinomial."""
+    loss = _loss_with_mask(monkeypatch, True)
+    mem = _FakeMemory(torch.zeros(200, 4))
+    env, t0 = loss._select_window(mem, 4, 192, 48)
+    assert 0 <= env < 4 and 0 <= t0 <= 144
+
+
+def test_mask_uses_turn_not_move(monkeypatch):
+    """|move| is confounded: a parked agent still commands forward into the wall.
+
+    actions[..., 0] is turn and actions[..., 1] is move (motor_system.apply:107).
+    A rollout whose ONLY signal is in the move channel must read as no signal.
+    """
+    loss = _loss_with_mask(monkeypatch, True)
+    mem = _FakeMemory(torch.zeros(200, 4))
+    mem.tensors["actions"][50:100, 1, 1] = 1.0  # move only, no turn
+    picks = {loss._select_window(mem, 4, 192, 48)[1] for _ in range(200)}
+    assert len(picks) > 20, "move-only rollout must fall back to uniform, not lock on"
+
+
+def test_selected_window_is_in_range_for_every_draw(monkeypatch):
+    loss = _loss_with_mask(monkeypatch, True)
+    turn = torch.rand(200, 4)
+    mem = _FakeMemory(turn)
+    for _ in range(300):
+        env, t0 = loss._select_window(mem, 4, 192, 48)
+        assert 0 <= env < 4, env
+        assert 0 <= t0 <= 192 - 48, t0
