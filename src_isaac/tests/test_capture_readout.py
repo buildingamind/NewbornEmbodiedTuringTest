@@ -96,7 +96,8 @@ def test_a_parked_episode_is_dropped_not_scored_as_a_coin_flip(tmp_path):
         row(0, 1, s, -20.0, "Novel Familiar", "1A_00.mov", "2B_00.mov", "right")
         for s in range(10)]
     csv = write_csv(tmp_path, rows)
-    keys = [(9, 0, s) for s in range(3)] + [(0, 1, s) for s in range(10)]
+    # env 0's only episode is global id 1, so the capture names it as local index 0.
+    keys = [(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(10)]
     _, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
     assert eps == [], "a one-sided episode cannot be scored"
     assert rep["episodes_total"] == 1 and rep["episodes_scorable"] == 0
@@ -105,12 +106,12 @@ def test_a_parked_episode_is_dropped_not_scored_as_a_coin_flip(tmp_path):
 
 def test_the_drop_is_reported_per_condition(tmp_path):
     """The exclusion is not uniform across conditions, so one total would hide it."""
-    rows = rest_rows(9, 0, 3, -20.0) + scorable_episode(0, 1) + [
-        row(1, 2, s, +20.0, "Both Familiar", "1A_00.mov", "2A_00.mov", "right")
+    rows = rest_rows(9, 0, 3, -20.0) + scorable_episode(0, 0) + [
+        row(1, 0, s, +20.0, "Both Familiar", "1A_00.mov", "2A_00.mov", "right")
         for s in range(6)]
     csv = write_csv(tmp_path, rows)
-    keys = ([(9, 0, s) for s in range(3)] + [(0, 1, s) for s in range(8)]
-            + [(1, 2, s) for s in range(6)])
+    keys = ([(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(8)]
+            + [(1, 0, s) for s in range(6)])
     _, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
     assert rep["episodes_scorable"] == 1
     assert rep["dropped_one_sided"] == {"Both Familiar": 1}
@@ -118,8 +119,8 @@ def test_the_drop_is_reported_per_condition(tmp_path):
 
 def test_rest_is_never_scored_as_a_test_episode(tmp_path):
     """Rest is the exposure set. Scoring it would fit and test on the same frames."""
-    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 1))
-    keys = [(0, 0, s) for s in range(4)] + [(1, 1, s) for s in range(8)]
+    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0))
+    keys = [(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
     _, eps, _ = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
     assert [c for c, _, _ in eps] == ["Novel Familiar"]
 
@@ -129,8 +130,9 @@ def test_episodes_are_keyed_on_env_AND_episode_not_episode_alone(tmp_path):
     one, so frames from different trials -- different monitors -- pool into one contest."""
     csv = write_csv(tmp_path, rest_rows(9, 0, 3, -20.0)
                     + scorable_episode(0, 3) + scorable_episode(1, 3))
-    keys = ([(9, 0, s) for s in range(3)] + [(0, 3, s) for s in range(8)]
-            + [(1, 3, s) for s in range(8)])
+    # Both envs' single episode is global id 3, so each is local index 0.
+    keys = ([(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(8)]
+            + [(1, 0, s) for s in range(8)])
     _, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
     assert rep["episodes_total"] == 2, "same episode id, different env, different trial"
     assert len(eps) == 2
@@ -140,15 +142,19 @@ def test_episodes_are_keyed_on_env_AND_episode_not_episode_alone(tmp_path):
 
 def test_a_capture_that_matches_nothing_refuses(tmp_path):
     """A capture joined to the wrong run's log yields an empty set, and an empty set
-    would otherwise flow through as 'no episodes to score' -- exit 0, nothing measured."""
+    would otherwise flow through as 'no episodes to score' -- exit 0, nothing measured.
+
+    Caught by the same RATE check that catches the 1.25% collision case: 0% is simply
+    its limit, and both have the identical fix (point at the capture's own log).
+    """
     csv = write_csv(tmp_path, rest_rows(0, 0, 3, -20.0))
-    with pytest.raises(SystemExit, match="NOT ONE"):
+    with pytest.raises(SystemExit, match="ONLY 0 of 1"):
         rh.build_capture_pairs(blob_for([(77, 77, 77)]), csv, verbose=False)
 
 
 def test_partial_join_is_counted_not_silently_dropped(tmp_path):
-    csv = write_csv(tmp_path, rest_rows(0, 0, 3, -20.0) + scorable_episode(1, 1))
-    keys = [(0, 0, s) for s in range(3)] + [(1, 1, s) for s in range(8)] + [(5, 5, 5)]
+    csv = write_csv(tmp_path, rest_rows(0, 0, 3, -20.0) + scorable_episode(1, 0))
+    keys = [(0, 0, s) for s in range(3)] + [(1, 0, s) for s in range(8)] + [(5, 5, 5)]
     _, _, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
     assert rep["unjoined"] == 1 and rep["joined"] == 11
 
@@ -236,3 +242,84 @@ def test_the_episode_count_travels_with_the_accuracy():
                 ("Novel Familiar", {"left": [6, 7], "right": [8, 9]}, "right")]
     (_, n), = rh.capture_readout(ToyEncoder(), obs, [0, 1], episodes).values()
     assert n == 2
+
+
+# --- the join RATE, and the collision that a zero-check cannot see -----------------------
+
+def test_a_tiny_join_built_from_key_collisions_is_refused(tmp_path):
+    """⛔ THE ONE THAT NEARLY SHIPPED. Joined against the SOURCE run's log instead of the
+    capture's own, a real 5,120-frame capture matched 64 frames -- 1.25%, every one of
+    them labelled Rest, all of them key COLLISIONS with a different execution. A
+    zero-check passes that, and those 56 frames become the imprinting memory.
+    """
+    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0))
+    keys = [(0, 0, s) for s in range(4)] + [(0, 900 + i, 0) for i in range(96)]
+    with pytest.raises(SystemExit, match="4.00%|ONLY 4 of 100"):
+        rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
+
+
+def test_a_complete_join_is_accepted(tmp_path):
+    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0))
+    keys = [(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
+    mem, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
+    assert rep["joined"] == rep["captured"] == 12 and len(eps) == 1
+
+
+def test_the_capture_s_own_log_is_preferred_over_the_source_run_s(tmp_path):
+    """A capture is a REPLAY with its own env/episode numbering; the source run's log
+    describes a different execution and is the wrong file even though it exists."""
+    src = tmp_path / "source_run"
+    (src / "fork-1" / "logs").mkdir(parents=True)
+    (src / "fork-1" / "logs" / "test_fork-1_0.csv").write_text(COLUMNS + "\n")
+    cap_dir = tmp_path / "capture_out"
+    own = cap_dir / "source_run" / "fork-1" / "logs"
+    own.mkdir(parents=True)
+    (own / "test_fork-1_0.csv").write_text(COLUMNS + "\n")
+    npz = cap_dir / "obs_source_run_fork-1.npz"
+    got = rh.default_test_csv(str(src), "fork-1", capture=npz)
+    assert got == own / "test_fork-1_0.csv", "must prefer the capture's own tree"
+
+
+def test_falling_back_to_the_source_run_says_so(tmp_path, capsys):
+    """The fallback is a near-certain wrong join, so it must never be silent."""
+    src = tmp_path / "source_run"
+    (src / "fork-1" / "logs").mkdir(parents=True)
+    (src / "fork-1" / "logs" / "test_fork-1_0.csv").write_text(COLUMNS + "\n")
+    cap_dir = tmp_path / "capture_out"
+    cap_dir.mkdir()
+    rh.default_test_csv(str(src), "fork-1", capture=cap_dir / "obs_x.npz")
+    assert "near-zero join" in capsys.readouterr().out
+
+
+# --- the local/global episode translation -----------------------------------------------
+
+def test_a_per_env_episode_counter_is_translated_to_the_log_s_global_ids(tmp_path):
+    """⛔ THE DEFECT THAT MADE THE DOCUMENTED JOIN A 1.25% JOIN. capture_observations
+    numbers episodes per env from 0 (`FrameAlignment.on_done`); the log numbers them
+    globally, so env 0's episodes are 0, 112, 224 ... Only local 0 coincides, and every
+    later episode silently fails to match.
+    """
+    rows = []
+    for local, gep in enumerate((0, 112, 224)):        # env 0's episodes, strided
+        rows += [row(0, gep, s, -20.0, "Rest", "2A_00.mov", "White.mov", "left")
+                 for s in range(3)]
+    csv = write_csv(tmp_path, rows)
+    assert rh.episode_index_map(csv) == {(0, 0): 0, (0, 1): 112, (0, 2): 224}
+    # A capture naming local episodes 0,1,2 must reach all three, not just the first.
+    keys = [(0, local, s) for local in range(3) for s in range(3)]
+    mem, _, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
+    assert rep["joined"] == 9, "all three episodes must join, not just local 0"
+    assert len(mem) == 9
+
+
+def test_the_untranslated_join_would_have_been_one_episode(tmp_path):
+    """The counterfactual, pinned: keyed on the raw local index against global ids, only
+    episode 0 matches -- which is what a 5,120-frame capture matching 64 frames was."""
+    rows = []
+    for gep in (0, 112, 224):
+        rows += [row(0, gep, s, -20.0, "Rest", "2A_00.mov", "White.mov", "left")
+                 for s in range(3)]
+    csv = write_csv(tmp_path, rows)
+    raw = rh.load_test_labels(csv)
+    hits = sum(1 for local in range(3) for s in range(3) if (0, local, s) in raw)
+    assert hits == 3, "untranslated, only local==global==0 matches: 1 episode of 3"

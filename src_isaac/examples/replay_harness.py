@@ -330,19 +330,46 @@ VIEW_X = 11.05
 #: Below this many frames on a side, the side's mean is one or two frames of a parked
 #: agent and the "contest" is noise. Reported, not silently applied.
 MIN_SIDE_FRAMES = 3
+#: Every captured frame's key exists in the log of the run that produced it, so a correct
+#: join is ~100%. Anything materially short of it identifies the wrong file.
+MIN_JOIN_RATE = 0.90
 REST_COND = "Rest"
 #: The blank screen Rest shows opposite the imprinted object.
 BLANK = "White.mov"
 
 
-def default_test_csv(run_dir: str, condition: str) -> Path:
-    """The per-step log a capture was taken from.
+def default_test_csv(run_dir: str, condition: str, capture: Path | None = None) -> Path:
+    """The per-step log whose keys match the capture's.
 
-    ⛔ NOT `analysis/test/test_preferences.csv`. That file is a per-episode SUMMARY with no
-    `agent.x`, and an awk survey in this campaign read it by position, found no such
-    column, and reported a silent 1.0000. The per-step log is the only file that can
-    answer "which monitor was this frame a view of".
+    ⛔ NOT THE SOURCE RUN'S LOG, WHICH IS THE OBVIOUS AND WRONG CHOICE. A capture is a
+    REPLAY: `capture_observations` re-runs the test phase into its own output tree with
+    its own env/episode numbering, and writes its own `test_*.csv` there. The original
+    run's log describes a different execution.
+
+    ⛔ MEASURED 2026-09-10: joined against the SOURCE run's log, a 5,120-frame capture
+    matched **64 frames -- 1.25%**, all of them `Rest`, which would have been adopted
+    silently as the exposure set.
+
+    ⚠ MY FIRST EXPLANATION OF THAT 64 WAS WRONG AND IS RECORDED HERE BECAUSE IT WAS
+    NEARLY SHIPPED AS A MEASURED FACT. I wrote that the capture's `env_id 0` keys had
+    COLLIDED with the source run's `env_id 0`. Then the capture's OWN log returned the
+    same 64. A cause that predicts a difference between two files, tested on only one of
+    them, explained nothing. The real cause is the episode numbering
+    (`episode_index_map`), and it applies to BOTH files equally. Pointing at the capture's
+    own log is still correct and still necessary; it is simply not sufficient, and it was
+    never the reason for the 64.
+
+    ⛔ NOT `analysis/test/test_preferences.csv` either. That file is a per-episode SUMMARY
+    with no `agent.x`, and an awk survey in this campaign read it by position, found no
+    such column, and reported a silent 1.0000.
     """
+    if capture is not None:
+        # The capture's own tree sits beside the npz, under the source run's NAME.
+        for cand in sorted(Path(capture).parent.glob(f"*/{condition}/logs/test_*.csv")):
+            return cand
+    print(f"⚠ no per-step log inside the capture's own output tree; falling back to the "
+          f"SOURCE run at {run_dir}. Expect a near-zero join: a capture is a replay with "
+          f"its own env/episode numbering.")
     base = Path(run_dir) / condition / "logs"
     exact = base / f"test_{condition}_0.csv"
     if exact.exists():
@@ -359,8 +386,13 @@ def default_test_csv(run_dir: str, condition: str) -> Path:
     return found[0]
 
 
-def load_test_labels(csv_path):
+def load_test_labels(csv_path, keep=None):
     """``(env_id, episode, step) -> row`` from a run's ``test_*.csv``.
+
+    ⚠ `keep`, when given, is the set of keys the caller actually needs, and rows outside
+    it are discarded as they stream past. These logs are large -- the capture replay's own
+    log is 4,480,001 rows / 580 MB against a 5,120-frame capture -- and materialising all
+    of it costs gigabytes to answer a question about 0.1% of it.
 
     ⛔ The key is verified unique rather than assumed: on the reference run it is unique
     across all 560,000 rows, but a duplicated key would make `dict` keep the LAST row
@@ -383,6 +415,8 @@ def load_test_labels(csv_path):
                 f"per-step log is fork-1/logs/test_*.csv.")
         for r in reader:
             k = (int(r["env_id"]), int(r["episode"]), int(r["step"]))
+            if keep is not None and k not in keep:
+                continue
             if k in rows:
                 dupes += 1
             rows[k] = r
@@ -390,6 +424,43 @@ def load_test_labels(csv_path):
         raise SystemExit(f"[replay] {dupes} duplicate (env_id, episode, step) keys in "
                          f"{csv_path}; the join would silently keep one row per key.")
     return rows
+
+
+def episode_index_map(csv_path) -> dict:
+    """``(env_id, LOCAL episode index) -> global episode id``, derived from the log.
+
+    ⛔ MEASURED 2026-09-10, AND THIS IS A REAL DEFECT IN THE DOCUMENTED JOIN.
+    `capture_observations.py` numbers episodes with a PER-ENV counter --
+    `FrameAlignment.on_done` does `self._episode[env_id] += 1` from 0 -- while the run log
+    numbers them GLOBALLY across envs. On the reference capture, env 0's episodes in the
+    log are `0, 112, 224, 336, ...` (stride = num_envs) and the capture recorded `0..79`.
+
+    ⇒ Exactly ONE episode per env coincides: local 0 == global env_id. A 5,120-frame
+    capture joined **64 frames, 1.25%** -- precisely the 64 frames of episode 0 -- and the
+    module docstring's instruction to "join labels from the run's test CSV on (env_id,
+    episode)" has never worked for any other episode. It went unnoticed because this
+    driver had never completed a full-schedule run.
+
+    ⚠ Derived from the log rather than computed as `local * num_envs + env_id`, so it does
+    not depend on the striding staying regular.
+    """
+    import csv as _csv
+
+    per_env: dict = {}
+    seen = set()
+    with open(csv_path, newline="") as fh:
+        reader = _csv.reader(fh)
+        header = next(reader)
+        i_env, i_ep = header.index("env_id"), header.index("episode")
+        for row in reader:
+            pair = (int(row[i_env]), int(row[i_ep]))
+            if pair in seen:
+                continue
+            seen.add(pair)
+            per_env.setdefault(pair[0], []).append(pair[1])
+    return {(env, i): ep
+            for env, eps in per_env.items()
+            for i, ep in enumerate(sorted(eps))}
 
 
 def _side_of(x: float) -> str | None:
@@ -410,20 +481,49 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
                     ``(cond, {"left": [idx...], "right": [idx...]}, correct)``.
     """
     keys = blob["keys"]
-    labels = load_test_labels(csv_path)
+    # The capture's episode field is a per-env counter; the log's is global. Translate
+    # before joining, or 99% of the capture silently fails to match.
+    ep_map = episode_index_map(csv_path)
+    translated, untranslatable = [], 0
+    for k in keys:
+        env, local, step = int(k[0]), int(k[1]), int(k[2])
+        gep = ep_map.get((env, local))
+        if gep is None:
+            untranslatable += 1
+            translated.append(None)
+        else:
+            translated.append((env, gep, step))
+    if untranslatable:
+        print(f"⚠ {untranslatable}/{len(keys)} captured frames name an episode index the "
+              f"log has no episode for (the capture ran longer than the log records).")
+    wanted = {t for t in translated if t is not None}
+    labels = load_test_labels(csv_path, keep=wanted)
 
     joined, unjoined = [], 0
-    for i, k in enumerate(keys):
-        row = labels.get((int(k[0]), int(k[1]), int(k[2])))
+    for i, t in enumerate(translated):
+        row = labels.get(t) if t is not None else None
         if row is None:
             unjoined += 1
             continue
         joined.append((i, row))
-    if not joined:
+    # ⛔ A RATE, NOT A ZERO CHECK. Refusing only at zero passed a 1.25% join built entirely
+    # from key COLLISIONS against another execution's log -- see default_test_csv. Every
+    # captured frame's key exists in the log of the run that produced it, so anything
+    # short of nearly total is the wrong file, not a partial capture.
+    rate = len(joined) / max(len(keys), 1)
+    if rate < MIN_JOIN_RATE:
         raise SystemExit(
-            f"[replay] NOT ONE of {len(keys)} captured frames joined to {csv_path}. "
-            f"The capture and the CSV are from different runs, or the capture's keys "
-            f"are (env, episode, step) of a different episode numbering.")
+            f"[replay] ONLY {len(joined)} of {len(keys)} captured frames ({rate:.2%}) "
+            f"joined to {csv_path}.\n"
+            f"  A capture's every frame is a step of the run that produced it, so a "
+            f"partial join means the WRONG LOG, not a partial capture.\n"
+            f"  ⛔ This is not a zero -- a partial join arrives looking like data. "
+            f"Measured: a 5,120-frame capture joined 64 frames, all labelled Rest, which "
+            f"would have become the exposure set.\n"
+            f"  Two independent causes produce this, and BOTH must be right:\n"
+            f"    1. the log must be the CAPTURE's own (a capture is a replay), and\n"
+            f"    2. the capture's per-env episode counter must be translated to the "
+            f"log's global episode ids -- see episode_index_map.")
 
     # --- the exposure set --------------------------------------------------------------
     memory_idx, rest_seen, rest_wrong_side = [], 0, 0
@@ -456,6 +556,26 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
         else:
             slot[side].append(i)
 
+    # --- the pooled fallback's groups, collected whether or not the contest is usable ---
+    imprint_clip = next((row[f"{_side_of(float(row['agent.x']))}.monitor"]
+                         for i, row in joined
+                         if row["test.cond"] == REST_COND
+                         and _side_of(float(row["agent.x"])) is not None
+                         and row[f"{_side_of(float(row['agent.x']))}.monitor"] != BLANK),
+                        None)
+    by_object = {"imprinted object": [], "other object": []}
+    if imprint_clip is not None:
+        want = object_token(imprint_clip)
+        for i, row in joined:
+            if row["test.cond"] == REST_COND:
+                continue
+            side = _side_of(float(row["agent.x"]))
+            if side is None:
+                continue
+            key = ("imprinted object" if object_token(row[f"{side}.monitor"]) == want
+                   else "other object")
+            by_object[key].append(i)
+
     episodes, dropped = [], {}
     for ep, slot in sorted(by_ep.items()):
         if min(len(slot["left"]), len(slot["right"])) < MIN_SIDE_FRAMES:
@@ -464,7 +584,8 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
         episodes.append((slot["cond"], {"left": slot["left"], "right": slot["right"]},
                          slot["correct"]))
 
-    report = {"captured": len(keys), "joined": len(joined), "unjoined": unjoined,
+    report = {"imprint_clip": imprint_clip, "by_object": by_object,
+              "captured": len(keys), "joined": len(joined), "unjoined": unjoined,
               "rest_frames": rest_seen, "memory_frames": len(memory_idx),
               "rest_blank_side": rest_wrong_side, "episodes_total": len(by_ep),
               "episodes_scorable": len(episodes), "dropped_one_sided": dropped}
@@ -492,6 +613,57 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
             f"is no imprinting rule to run -- this is not a score of 0.5, it is no score. "
             f"Recapture including Rest, or raise --episodes so Rest is reached.")
     return memory_idx, episodes, report
+
+
+def object_token(clip: str) -> str:
+    """The OBJECT half of a stimulus name. `2A_00.mov` -> `2`.
+
+    ⚠ Verified from DesignSheet_Parsing_mov.csv, not from the names: digit = OBJECT
+    (1 ship, 2 fork), letter = BACKGROUND (A desert, B forest, C beach). `Novel Familiar`
+    pairs `1A` against `2B`/`2C` with `2*` correct -- so it contrasts OBJECT binding
+    against BACKGROUND binding, and the object digit is the axis under test.
+    """
+    return clip[:1]
+
+
+def object_contrast(encoder, obs, memory_idx, by_object, chunk: int = 256) -> dict:
+    """Mean cosine to the exposure memory for frames viewing the imprinted object vs the
+    other object, POOLED ACROSS EPISODES.
+
+    ⛔ WHY THIS EXISTS ALONGSIDE THE PER-EPISODE CONTEST, WHICH IS THE PREFERRED
+    STATISTIC. The contest needs one episode to contain frames of BOTH monitors, and a
+    parked agent never supplies that: measured on the reference capture, all 70 test
+    episodes had every one of their 56 frames on a single side, so 0 of 70 were scorable.
+    Pooling asks a strictly weaker question -- does the representation place the imprinted
+    OBJECT nearer the memory, wherever it was seen -- and it survives an agent that never
+    crosses, because different episodes park at different monitors.
+
+    ⚠ IT IS NOT A PREFERENCE, AND MUST NEVER BE REPORTED AS ONE. Which frames exist is
+    decided by where the agent chose to stand, so the two groups are not balanced by
+    design and their sizes are a behavioural result, not a sample size. Report n for each
+    side and treat a large imbalance as a statement about the agent, not about the encoder.
+    """
+    import torch
+    import torch.nn.functional as F
+
+    encoder.eval()
+    with torch.no_grad():
+        def feats(idx):
+            out = []
+            for s in range(0, len(idx), chunk):
+                out.append(encoder.encode_prepared(
+                    encoder._prepare_image(torch.as_tensor(obs[list(idx[s:s + chunk])]))))
+            return torch.cat(out)
+
+        memory = F.normalize(feats(memory_idx).mean(0, keepdim=True), dim=-1)
+        out = {}
+        for label, idx in by_object.items():
+            if not idx:
+                continue
+            z = F.normalize(feats(idx), dim=-1)
+            out[label] = (float((z @ memory.T).mean()), len(idx))
+    encoder.train()
+    return out
 
 
 def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256) -> dict:
@@ -571,7 +743,8 @@ def main() -> int:
         obs = blob["obs"]
         stream = torch.as_tensor(obs[:, None])          # (T, 1, C, H, W)
         actions = torch.as_tensor(blob["actions"][:, None]) if len(blob["actions"]) else None
-        csv_path = args.test_csv or default_test_csv(str(blob["run_dir"]), str(blob["condition"]))
+        csv_path = args.test_csv or default_test_csv(
+            str(blob["run_dir"]), str(blob["condition"]), capture=args.capture)
         print(f"[replay] joining labels from {csv_path}")
         memory_idx, episodes, join_report = build_capture_pairs(blob, csv_path)
         train_frames, pairs = obs, []
