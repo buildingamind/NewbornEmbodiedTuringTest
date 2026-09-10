@@ -81,55 +81,73 @@ def test_middle_of_chamber_frames_are_evidence_about_neither_monitor(tmp_path):
 
 # --- the scored episodes ---------------------------------------------------------------
 
-def scorable_episode(env, ep, cond="Novel Familiar", n=4):
-    """An episode the agent crossed: n frames each side."""
-    return ([row(env, ep, s, -20.0, cond, "1A_00.mov", "2B_00.mov", "right")
-             for s in range(n)]
-            + [row(env, ep, n + s, +20.0, cond, "1A_00.mov", "2B_00.mov", "right")
-               for s in range(n)])
+def scorable_episode(env, ep, cond="Novel Familiar", n=4, correct="right"):
+    """An episode the agent crossed: n frames each side.
+
+    ⚠ `correct` matters: a corpus whose every episode shares one correct side cannot
+    distinguish a side-locked agent from a discriminating one, and build_capture_pairs
+    refuses it. Real captures from this driver are 100% target-left, which is why that
+    refusal exists -- so fixtures must be balanced deliberately, not by luck.
+    """
+    left, right = ("1A_00.mov", "2B_00.mov") if correct == "right" else ("2B_00.mov", "1A_00.mov")
+    return ([row(env, ep, s, -20.0, cond, left, right, correct) for s in range(n)]
+            + [row(env, ep, n + s, +20.0, cond, left, right, correct) for s in range(n)])
+
+
+def mirrored(env, ep, cond="Novel Familiar", n=4):
+    """The opposite-side partner, so a fixture corpus has a non-constant answer key."""
+    return scorable_episode(env, ep, cond=cond, n=n, correct="left")
 
 
 def test_a_parked_episode_is_dropped_not_scored_as_a_coin_flip(tmp_path):
     """⛔ THE CENTRAL EXCLUSION. The agent is parked ~80% of steps; an episode it never
     left has frames of one monitor and none of the other. There is no contest to run."""
-    rows = rest_rows(9, 0, 3, -20.0) + [
+    rows = (rest_rows(9, 0, 3, -20.0) + [
         row(0, 1, s, -20.0, "Novel Familiar", "1A_00.mov", "2B_00.mov", "right")
         for s in range(10)]
+        # a balanced partner, so the corpus is refused for PARKING and not for a
+        # constant answer key -- otherwise this test would pass for the wrong reason
+        + mirrored(3, 0))
     csv = write_csv(tmp_path, rows)
     # env 0's only episode is global id 1, so the capture names it as local index 0.
-    keys = [(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(10)]
+    keys = ([(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(10)]
+            + [(3, 0, s) for s in range(8)])
     _, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
-    assert eps == [], "a one-sided episode cannot be scored"
-    assert rep["episodes_total"] == 1 and rep["episodes_scorable"] == 0
-    assert rep["dropped_one_sided"] == {"Novel Familiar": 1}
+    assert [e[0] for e in eps] == ["Novel Familiar"], "only the crossing episode scores"
+    assert rep["episodes_total"] == 2 and rep["episodes_scorable"] == 1
+    assert rep["dropped_one_sided"] == {"Novel Familiar": 1}, "the parked one is dropped"
 
 
 def test_the_drop_is_reported_per_condition(tmp_path):
     """The exclusion is not uniform across conditions, so one total would hide it."""
-    rows = rest_rows(9, 0, 3, -20.0) + scorable_episode(0, 0) + [
+    rows = rest_rows(9, 0, 3, -20.0) + scorable_episode(0, 0) + mirrored(2, 0) + [
         row(1, 0, s, +20.0, "Both Familiar", "1A_00.mov", "2A_00.mov", "right")
         for s in range(6)]
     csv = write_csv(tmp_path, rows)
     keys = ([(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(8)]
-            + [(1, 0, s) for s in range(6)])
+            + [(2, 0, s) for s in range(8)] + [(1, 0, s) for s in range(6)])
     _, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
-    assert rep["episodes_scorable"] == 1
+    # Two crossing episodes score (the pair that balances the answer key); the parked
+    # Both Familiar one is dropped, and the drop is reported UNDER ITS OWN CONDITION.
+    assert rep["episodes_scorable"] == 2
     assert rep["dropped_one_sided"] == {"Both Familiar": 1}
 
 
 def test_rest_is_never_scored_as_a_test_episode(tmp_path):
     """Rest is the exposure set. Scoring it would fit and test on the same frames."""
-    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0))
-    keys = [(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
+    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0)
+                    + mirrored(2, 0))
+    keys = ([(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
+            + [(2, 0, s) for s in range(8)])
     _, eps, _ = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
-    assert [c for c, _, _ in eps] == ["Novel Familiar"]
+    assert [c for c, _, _ in eps] == ["Novel Familiar", "Novel Familiar"]
 
 
 def test_episodes_are_keyed_on_env_AND_episode_not_episode_alone(tmp_path):
     """⛔ `episode` restarts per env. Keying on it alone merges 112 envs' episode 3 into
     one, so frames from different trials -- different monitors -- pool into one contest."""
     csv = write_csv(tmp_path, rest_rows(9, 0, 3, -20.0)
-                    + scorable_episode(0, 3) + scorable_episode(1, 3))
+                    + scorable_episode(0, 3) + mirrored(1, 3))
     # Both envs' single episode is global id 3, so each is local index 0.
     keys = ([(9, 0, s) for s in range(3)] + [(0, 0, s) for s in range(8)]
             + [(1, 0, s) for s in range(8)])
@@ -153,10 +171,12 @@ def test_a_capture_that_matches_nothing_refuses(tmp_path):
 
 
 def test_partial_join_is_counted_not_silently_dropped(tmp_path):
-    csv = write_csv(tmp_path, rest_rows(0, 0, 3, -20.0) + scorable_episode(1, 0))
-    keys = [(0, 0, s) for s in range(3)] + [(1, 0, s) for s in range(8)] + [(5, 5, 5)]
+    csv = write_csv(tmp_path, rest_rows(0, 0, 3, -20.0) + scorable_episode(1, 0)
+                    + mirrored(2, 0))
+    keys = ([(0, 0, s) for s in range(3)] + [(1, 0, s) for s in range(8)]
+            + [(2, 0, s) for s in range(8)] + [(5, 5, 5)])
     _, _, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
-    assert rep["unjoined"] == 1 and rep["joined"] == 11
+    assert rep["unjoined"] == 1 and rep["joined"] == 19
 
 
 def test_a_summary_csv_is_refused_by_name_not_by_position(tmp_path):
@@ -259,10 +279,12 @@ def test_a_tiny_join_built_from_key_collisions_is_refused(tmp_path):
 
 
 def test_a_complete_join_is_accepted(tmp_path):
-    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0))
-    keys = [(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
+    csv = write_csv(tmp_path, rest_rows(0, 0, 4, -20.0) + scorable_episode(1, 0)
+                    + mirrored(2, 0))
+    keys = ([(0, 0, s) for s in range(4)] + [(1, 0, s) for s in range(8)]
+            + [(2, 0, s) for s in range(8)])
     mem, eps, rep = rh.build_capture_pairs(blob_for(keys), csv, verbose=False)
-    assert rep["joined"] == rep["captured"] == 12 and len(eps) == 1
+    assert rep["joined"] == rep["captured"] == 20 and len(eps) == 2
 
 
 def test_the_capture_s_own_log_is_preferred_over_the_source_run_s(tmp_path):

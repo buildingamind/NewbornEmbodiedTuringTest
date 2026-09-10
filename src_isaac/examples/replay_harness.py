@@ -576,6 +576,38 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
                    else "other object")
             by_object[key].append(i)
 
+    # ⛔ A CONSTANT ANSWER KEY IS NOT AN ANSWER KEY. The imprinting rule scores its choice
+    # against `correct.monitor`; if every scored episode has the SAME correct side, an
+    # agent that always picks that side scores 1.000 and one that always picks the other
+    # scores 0.000, and NEITHER number is about object familiarity. It is the side-lock
+    # score wearing a preference label -- exactly the statistic a non-policy attains.
+    #
+    # ⛔ MEASURED 2026-09-10, AND THIS IS NOT HYPOTHETICAL: every capture this driver has
+    # produced is 100% target-left. Two of them, at very different lengths:
+    #     --episodes 160 -> 80 ep/env, 4,480,000 rows, correct.monitor: left 100%, right 0
+    #     --episodes  20 -> 10 ep/env,   560,000 rows, correct.monitor: left 100%, right 0
+    # while the SOURCE RUN over the identical 560,000 rows is balanced 50/50. ⇒ The bias
+    # is NOT a prefix artefact and capturing more does not cure it: 8x the source
+    # schedule yielded zero target-right rows. `capture_observations`'s own docstring
+    # attributes this to an ordered schedule whose "target-left design rows come first",
+    # which predicts that a longer capture reaches the right-target rows. It does not.
+    sides = {row["correct.monitor"] for _, row in joined if row["test.cond"] != REST_COND}
+    # ⚠ `== 1`, not `< 2`: an EMPTY set means no scored rows at all, which the
+    # scorable-episode accounting below reports honestly. Only a corpus that scores
+    # something against ONE answer is the degenerate case.
+    if len(sides) == 1:
+        raise SystemExit(
+            f"[replay] REFUSING TO SCORE: every scored episode has correct.monitor="
+            f"{sides.pop() if sides else 'NONE'}.\n"
+            f"  With a constant answer key, a side-locked agent scores 1.000 and the "
+            f"readout measures WHICH SIDE the agent prefers, not whether it recognises "
+            f"the imprinted object.\n"
+            f"  ⛔ This is a property of every capture this driver has produced (both "
+            f"lengths measured 2026-09-10 are 100% target-left, against a balanced source "
+            f"run), so it is not fixed by capturing more episodes.\n"
+            f"  Fix the capture's schedule construction before any side-dependent readout "
+            f"is run on it.")
+
     episodes, dropped = [], {}
     for ep, slot in sorted(by_ep.items()):
         if min(len(slot["left"]), len(slot["right"])) < MIN_SIDE_FRAMES:
