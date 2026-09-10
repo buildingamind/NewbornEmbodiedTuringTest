@@ -40,6 +40,10 @@ Select via env:
   NETT_CHECKPOINT_FREQ  timesteps between agent_{step}.pt snapshots (default: unset =
                    NO periodic checkpointing; a crash loses the whole run)
   NETT_STEPS       steps_per_episode (default 500)
+  NETT_OUT_ROOT    campaign root (default ~/nett_campaign)
+  NETT_RUN_NAME    pin the run directory name instead of stamping it with the wall
+                   clock; REFUSES an existing directory. Only a resume needs this --
+                   see examples/gate_a_resume.py.
   NETT_TEST_EPS    REPEATS PER TEST ROW (default 20) -- NOT episodes, NOT
                    episodes/condition. design.py:14 returns {imprint_cond:
                    num_test_ROWS} and brain.py:161 does {k: v * episodes["test"]},
@@ -548,6 +552,28 @@ def main() -> int:
     # any glob that walks it. NETT_OUT_ROOT keeps them apart.
     _out_root = os.environ.get("NETT_OUT_ROOT", "~/nett_campaign")
     out = Path(f"{_out_root}/{exp}_{_slug(model)}").expanduser()
+
+    # NETT_RUN_NAME: pin the run directory instead of stamping it with the wall clock.
+    # ⛔ EXISTS FOR ONE REASON: a resume has to place checkpoints under
+    # <out>/<name>/<imprint>/wandb_runs/brain_i/checkpoints BEFORE training starts, and
+    # brain.py reads them there. With the name minted from datetime.now() inside this
+    # process, the only way to seed them is to guess the second or race the mkdir --
+    # and a resume that silently loses the race trains from RANDOM WEIGHTS while
+    # reporting success (load_latest_checkpoints logs and continues; nothing raises).
+    # See examples/gate_a_resume.py, its only caller.
+    # ⚠ Inert unless set, and it REFUSES an existing directory: run_dir.mkdir uses
+    # exist_ok=True, so a reused name would merge two runs' logs into one tree with no
+    # error and no way to tell them apart afterwards.
+    _forced_name = os.environ.get("NETT_RUN_NAME", "").strip()
+    if _forced_name:
+        name = _forced_name[:63]
+        if (out / name).exists():
+            raise SystemExit(
+                f"NETT_RUN_NAME={name!r} already exists under {out}. Refusing: the run "
+                f"directory is created with exist_ok=True, so continuing would merge this "
+                f"run's logs into that one silently. Choose another name or move it aside."
+            )
+        log.warning("NETT_RUN_NAME pins the run directory to %s (no wall-clock stamp)", name)
 
     # Resolved once: the tag list below cannot reference `brain` while `brain` is
     # still being constructed (self-reference -> UnboundLocalError).

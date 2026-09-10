@@ -58,6 +58,16 @@ class VICRegTemporalAuxLoss(nn.Module):
 
     needs_memory = True
 
+    #: Sentinels for ``last_window_turn``. Negative so they can never collide with a
+    #: real mean |turn|, which is an absolute value and therefore >= 0.
+    MASK_OFF = -1.0
+    MASK_NO_ACTIONS = -2.0
+    MASK_NO_MOTION = -3.0
+    #: No window has been selected yet. Distinct from MASK_OFF on purpose: "the knob
+    #: is off" and "the loss has not run" are different facts, and reading the first
+    #: where the second holds is how an inert component looks configured.
+    MASK_UNSET = -4.0
+
     def __init__(
         self,
         encoder: nn.Module,
@@ -87,6 +97,7 @@ class VICRegTemporalAuxLoss(nn.Module):
         self.crop_scale_min = float(crop_scale_min)
         self.jitter = float(jitter)
         self._memory = None
+        self._warned_no_motion = False
         self.num_frames: int | None = None
         # GATE A diagnostic, OFF unless asked for. Computes the invariance term a
         # SECOND time against another augmentation of the anchor -- i.e. exactly the
@@ -100,7 +111,19 @@ class VICRegTemporalAuxLoss(nn.Module):
         self.last_inv_control: float | None = None
         # TRANSIT MASK, OFF unless asked for. See _select_window for why.
         self.transit_mask = _env_flag("NETT_AUX_TRANSIT_MASK")
-        self.last_window_turn: float | None = None
+        # ⛔ EMITTED ON EVERY PATH, NOT ONLY THE ONE THAT WORKS. If this were set only
+        # where the mask succeeds, "mask engaged" and "mask silently fell through"
+        # would BOTH present as absent -- and absent reads as benign. A missing value
+        # and a fallback are the same observation unless the fallback writes something
+        # distinguishable, so each outcome writes its own number:
+        #   >= 0.0  the mask ran; the value is the selected window's mean |turn|
+        #   MASK_UNSET        no window selected yet (the loss has not run)
+        #   MASK_OFF          the knob is off (expected; not a fault)
+        #   MASK_NO_ACTIONS   set, but no usable actions tensor -- fell back to uniform
+        #   MASK_NO_MOTION    set, actions present, but ZERO commanded rotation anywhere
+        # The last is the one that would otherwise be invisible: it is the case where
+        # the mask is on, nothing is wrong, and it still samples uniformly.
+        self.last_window_turn: float = self.MASK_UNSET
         # Sum unweighted terms across offsets, matching the returned total loss.
         self.last_terms: tuple[float, float, float] | None = None
 
@@ -155,6 +178,7 @@ class VICRegTemporalAuxLoss(nn.Module):
             else 0
         )
         if not self.transit_mask:
+            self.last_window_turn = self.MASK_OFF
             return uniform_env, uniform_t0
         actions = memory.tensors.get("actions")
         n_windows = avail - batch + 1
@@ -167,6 +191,7 @@ class VICRegTemporalAuxLoss(nn.Module):
                 "'actions' tensor (%s); falling back to UNIFORM sampling.",
                 None if actions is None else tuple(actions.shape),
             )
+            self.last_window_turn = self.MASK_NO_ACTIONS
             return uniform_env, uniform_t0
         turn = actions[:avail, :n_env, 0].abs().float().cpu()      # (avail, n_env)
         # Mean |turn| over every contiguous window, via cumulative sum.
@@ -176,7 +201,18 @@ class VICRegTemporalAuxLoss(nn.Module):
         total = float(weights.sum())
         if not (total > 0.0) or not torch.isfinite(weights).all():
             # A rollout with no commanded rotation anywhere: uniform is the honest
-            # answer, and a degenerate multinomial would raise.
+            # answer, and a degenerate multinomial would raise. ⛔ This branch was
+            # previously SILENT -- no warning, no value -- so a mask that was on and
+            # sampling uniformly looked exactly like a mask that was working. It now
+            # says so once and writes its own sentinel.
+            if not self._warned_no_motion:
+                self._warned_no_motion = True
+                logger.warning(
+                    "VICRegTemporalAuxLoss: NETT_AUX_TRANSIT_MASK set and 'actions' "
+                    "usable, but the rollout carries ZERO commanded rotation -- "
+                    "falling back to UNIFORM sampling. The mask is on and inert."
+                )
+            self.last_window_turn = self.MASK_NO_MOTION
             return uniform_env, uniform_t0
         flat = int(torch.multinomial(weights, 1).item())
         t0, env = divmod(flat, win.shape[1])

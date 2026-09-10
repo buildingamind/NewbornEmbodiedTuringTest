@@ -1,5 +1,6 @@
 """CPU acceptance tests pinning temporal VICReg to its one-factor contrast."""
 
+import logging
 from pathlib import Path
 import subprocess
 import sys
@@ -18,7 +19,7 @@ sys.path.insert(0, str(_SRC / "examples"))
 
 from campaign_train import MODELS, VIT_CFG, VIVIT_CFG
 from nett_skrl.brain.aux import vicreg_aux, vicreg_tt_aux
-from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES, AuxLossPPO, PPO
+from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES, AuxLossPPO, PPO, track_transit_mask
 from nett_skrl.brain.aux.simclr_aux import _augment
 from nett_skrl.brain.aux.vicreg_aux import VICRegAuxLoss, VICRegExpander, vicreg_loss
 from nett_skrl.brain.aux.vicreg_tt_aux import VICRegTemporalAuxLoss, vicreg_terms
@@ -533,3 +534,137 @@ def test_selected_window_is_in_range_for_every_draw(monkeypatch):
         env, t0 = loss._select_window(mem, 4, 192, 48)
         assert 0 <= env < 4, env
         assert 0 <= t0 <= 192 - 48, t0
+
+
+# ---------------------------------------------------------------------------
+# last_window_turn is a READING, not a trace of the happy path.
+#
+# The mask has four outcomes and three of them sample uniformly. If only the
+# working one wrote a value, "the mask engaged" and "the mask fell through"
+# would both present to a reader as an absent series -- and an absent series
+# reads as benign. Each outcome therefore writes a distinguishable number.
+# ---------------------------------------------------------------------------
+
+
+def test_window_turn_starts_unset_not_off(monkeypatch):
+    """Before any window is drawn the state is UNSET, never OFF.
+
+    'The knob is off' and 'the loss has not run' are different facts. Reporting
+    the first where the second holds is how an inert component reads configured.
+    """
+    for on in (True, False):
+        loss = _loss_with_mask(monkeypatch, on)
+        assert loss.last_window_turn == loss.MASK_UNSET
+
+
+def test_sentinels_are_distinct_and_unreachable_by_a_real_window():
+    """Sentinels must not collide with a mean |turn|, which is >= 0 by construction."""
+    cls = VICRegTemporalAuxLoss
+    sentinels = (cls.MASK_OFF, cls.MASK_NO_ACTIONS, cls.MASK_NO_MOTION, cls.MASK_UNSET)
+    assert len(set(sentinels)) == 4
+    assert all(s < 0.0 for s in sentinels)
+
+
+def test_window_turn_reports_mask_off(monkeypatch):
+    loss = _loss_with_mask(monkeypatch, False)
+    loss._select_window(_FakeMemory(torch.rand(200, 4)), 4, 192, 48)
+    assert loss.last_window_turn == loss.MASK_OFF
+
+
+def test_window_turn_reports_a_missing_actions_tensor(monkeypatch):
+    loss = _loss_with_mask(monkeypatch, True)
+    mem = _FakeMemory(torch.ones(200, 4))
+    del mem.tensors["actions"]
+    loss._select_window(mem, 4, 192, 48)
+    assert loss.last_window_turn == loss.MASK_NO_ACTIONS
+
+
+def test_window_turn_reports_a_motionless_rollout(monkeypatch):
+    """The case that would otherwise be invisible: on, unbroken, and still uniform."""
+    loss = _loss_with_mask(monkeypatch, True)
+    loss._select_window(_FakeMemory(torch.zeros(200, 4)), 4, 192, 48)
+    assert loss.last_window_turn == loss.MASK_NO_MOTION
+
+
+def test_motionless_rollout_warns_once(monkeypatch, caplog):
+    loss = _loss_with_mask(monkeypatch, True)
+    mem = _FakeMemory(torch.zeros(200, 4))
+    with caplog.at_level(logging.WARNING):
+        for _ in range(5):
+            loss._select_window(mem, 4, 192, 48)
+    hits = [r for r in caplog.records if "ZERO commanded rotation" in r.getMessage()]
+    assert len(hits) == 1, [r.getMessage() for r in caplog.records]
+
+
+def test_window_turn_is_the_mean_turn_of_the_window_it_returned(monkeypatch):
+    """The engaged value must be the SELECTED window's statistic, not a global one."""
+    loss = _loss_with_mask(monkeypatch, True)
+    turn = torch.rand(200, 4)
+    mem = _FakeMemory(turn)
+    for _ in range(50):
+        env, t0 = loss._select_window(mem, 4, 192, 48)
+        expected = float(turn[t0 : t0 + 48, env].abs().mean())
+        assert loss.last_window_turn >= 0.0
+        assert abs(loss.last_window_turn - expected) < 1e-5
+
+
+def test_a_fallback_overwrites_a_previous_engaged_value(monkeypatch):
+    """A stale positive reading would say 'engaged' about an update that was not."""
+    loss = _loss_with_mask(monkeypatch, True)
+    loss._select_window(_FakeMemory(torch.rand(200, 4)), 4, 192, 48)
+    assert loss.last_window_turn >= 0.0
+    loss._select_window(_FakeMemory(torch.zeros(200, 4)), 4, 192, 48)
+    assert loss.last_window_turn == loss.MASK_NO_MOTION
+
+
+# ---------------------------------------------------------------------------
+# The readout side: a diagnostic with zero readers is not a diagnostic.
+# ---------------------------------------------------------------------------
+
+
+class _TrackingAgent:
+    def __init__(self):
+        self.tracked = {}
+
+    def track_data(self, tag, value):
+        self.tracked[tag] = value
+
+
+def test_transit_state_codes_map_one_to_one_onto_the_sentinels():
+    """Each sampler outcome must reach tensorboard as a DIFFERENT number."""
+    cls = VICRegTemporalAuxLoss
+    cases = {
+        0.37: 0.0,               # engaged
+        cls.MASK_OFF: 1.0,
+        cls.MASK_NO_ACTIONS: 2.0,
+        cls.MASK_NO_MOTION: 3.0,
+        cls.MASK_UNSET: 4.0,
+    }
+    seen = set()
+    for value, code in cases.items():
+        agent = _TrackingAgent()
+        track_transit_mask(agent, value, cumulative=0.0, seen=0)
+        assert agent.tracked["Loss / Aux transit state"] == code, value
+        seen.add(code)
+    assert len(seen) == len(cases)
+
+
+def test_transit_magnitude_averages_only_engaged_minibatches():
+    agent = _TrackingAgent()
+    track_transit_mask(agent, 0.4, cumulative=1.2, seen=4)
+    assert agent.tracked["Loss / Aux transit |turn|"] == pytest.approx(0.3)
+
+
+def test_transit_magnitude_is_absent_exactly_when_nothing_engaged():
+    """Absent must mean 'never engaged' -- and the STATE series still says why."""
+    agent = _TrackingAgent()
+    track_transit_mask(agent, VICRegTemporalAuxLoss.MASK_NO_MOTION, cumulative=0.0, seen=0)
+    assert "Loss / Aux transit |turn|" not in agent.tracked
+    assert agent.tracked["Loss / Aux transit state"] == 3.0
+
+
+def test_an_aux_without_the_attribute_logs_nothing():
+    """Additive: the other six aux losses must not gain a meaningless series."""
+    agent = _TrackingAgent()
+    track_transit_mask(agent, None, cumulative=0.0, seen=0)
+    assert agent.tracked == {}

@@ -87,6 +87,28 @@ AUX_LOSSES = {
 }
 
 
+def track_transit_mask(agent, last: float | None, cumulative: float, seen: int) -> None:
+    """Publish the transit-mask sampler's STATE, not only its successes.
+
+    The mask has four outcomes and three of them sample uniformly. If only the
+    working one wrote a scalar, an engaged mask and a mask that silently fell
+    back to uniform would both reach tensorboard as an absent series -- and an
+    absent series reads as benign. So the state is always emitted:
+
+        0 engaged   1 mask off   2 no actions tensor   3 no commanded rotation
+        4 never ran
+
+    ``Loss / Aux transit |turn|`` carries the magnitude, averaged over the
+    minibatches that actually engaged (never over a state code, which would
+    name nothing), and is absent exactly when the mask never engaged.
+    """
+    if last is None:
+        return
+    agent.track_data("Loss / Aux transit state", 0.0 if last >= 0.0 else -last)
+    if seen:
+        agent.track_data("Loss / Aux transit |turn|", cumulative / seen)
+
+
 class AuxLossPPO(NETTBootstrapMixin, PPO):
     """skrl PPO with an optional SimCLR auxiliary loss on the shared encoder.
 
@@ -235,6 +257,12 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         cumulative_inv_temporal = 0.0
         cumulative_inv_control = 0.0
         inv_pairs_seen = 0
+        # Transit-mask telemetry. `window_turn_last` keeps the LAST value rather than
+        # only an average because the sentinels are states, not magnitudes, and a mean
+        # over a state code names nothing.
+        cumulative_window_turn = 0.0
+        window_turns_seen = 0
+        window_turn_last: float | None = None
 
         for epoch in range(self.cfg.learning_epochs):
             kl_divergences = []
@@ -359,6 +387,12 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                     cumulative_inv_temporal += float(_it)
                     cumulative_inv_control += float(_ic)
                     inv_pairs_seen += 1
+                _wt = getattr(self._aux, "last_window_turn", None)
+                if _wt is not None:
+                    window_turn_last = float(_wt)
+                    if window_turn_last >= 0.0:
+                        cumulative_window_turn += window_turn_last
+                        window_turns_seen += 1
                 if self.cfg.entropy_loss_scale:
                     cumulative_entropy_loss += entropy_loss.item()
 
@@ -410,6 +444,7 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
             self.track_data("Loss / Aux inv (control)", _c)
             if _c > 0:
                 self.track_data("Loss / Aux inv ratio", _t / _c)
+        track_transit_mask(self, window_turn_last, cumulative_window_turn, window_turns_seen)
         if self.cfg.entropy_loss_scale:
             self.track_data("Loss / Entropy loss", cumulative_entropy_loss / n)
         self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
