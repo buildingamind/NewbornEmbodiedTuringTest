@@ -58,6 +58,14 @@ from skrl import logger
 from .simclr_aux import nt_xent
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    """Every new boolean knob goes through the same spellings (fleet convention)."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
+
+
 class CLTTReferenceProjectionHead(nn.Module):
     """Reference Linear -> BatchNorm -> ReLU -> bias-free Linear, L2-normalised."""
 
@@ -74,6 +82,63 @@ class CLTTReferenceProjectionHead(nn.Module):
         return F.normalize(self.net(x), dim=-1)
 
 
+
+
+def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float) -> dict:
+    """Is the contrastive task SOLVABLE, and is it solvable for the right reason?
+
+    ⛔ THE LOSS VALUE CANNOT ANSWER EITHER, AND cltt_ref HAS TWO OPPOSITE FAILURE MODES that
+    a falling loss is consistent with. Gate A killed `vicreg-tt+` because its temporal pair
+    moved the objective ~5% of what a plain augmentation did -- i.e. the pairing barely
+    reached the loss at all. `cltt_ref` has never been asked the analogous question, and the
+    vicreg_tt control does not transfer: that one compares the temporal positive against
+    ANOTHER AUGMENTATION of the anchor, and cltt_ref augments nothing (see the module
+    docstring -- the reference's --aug flag is inert and we follow its evident intent).
+
+    So this asks the two questions that are actually open here:
+
+    1. **TOO EASY.** Adjacent stacks off one env stream are nearly identical images. If
+       `pos_acc` is ~1.0 from the first update, the softmax is solved by low-level frame
+       similarity and the gradient carries no pressure toward anything about the object. A
+       loss near zero and an objective that teaches nothing look the same from outside.
+    2. **TOO HARD / ACTIVELY WRONG.** The module docstring already raises this: negatives are
+       near-in-time frames of the SAME two-object world, so NT-Xent pushes apart the same
+       object at a different viewpoint -- penalising the invariance under test. If `pos_acc`
+       sits at chance (1/(2B-1)) the pairing is unusable.
+
+    `shuffled_acc` is the null: the same embeddings scored against a DERANGED positive
+    assignment. `pos_acc` at or below it means the temporal offset carried no information --
+    the reading the vicreg-tt+ kill was really about, expressed for a contrastive objective.
+
+    ⚠ Every field is emitted on EVERY call. A diagnostic written only where it succeeds makes
+    "engaged" and "fell through" both present as absent, and absent reads as benign.
+    """
+    B = z1.shape[0]
+    z = torch.cat([z1, z2], dim=0)
+    sim = torch.mm(z, z.t()) / temperature
+    sim.fill_diagonal_(float("-inf"))
+    labels = (torch.arange(2 * B, device=z.device) + B) % (2 * B)
+    pred = sim.argmax(dim=1)
+    pos_acc = float((pred == labels).float().mean())
+    # Deranged null: shift the positive assignment by one within each half, so every row is
+    # scored against a DIFFERENT real embedding rather than against noise.
+    shifted = (labels + 1) % (2 * B)
+    shuffled_acc = float((pred == shifted).float().mean())
+    raw = sim * temperature
+    pos_sim = float(raw.gather(1, labels[:, None]).mean())
+    off = torch.ones_like(raw, dtype=torch.bool)
+    off.fill_diagonal_(False)
+    off.scatter_(1, labels[:, None], False)
+    neg_sim = float(raw[off].mean())
+    return {
+        "pos_acc": pos_acc,
+        "shuffled_acc": shuffled_acc,
+        "chance": 1.0 / (2 * B - 1),
+        "pos_sim": pos_sim,
+        "neg_sim": neg_sim,
+        "batch": B,
+    }
+
 class CLTTReferenceAuxLoss(nn.Module):
     """Sum temporal NT-Xent terms over contiguous windows from one rollout stream."""
 
@@ -81,6 +146,10 @@ class CLTTReferenceAuxLoss(nn.Module):
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
+        # GATE A control, OFF unless asked for. One extra similarity matrix per offset, no
+        # extra encoder forward -- it reuses embeddings the loss already computed.
+        self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
+        self.last_diag: dict | None = None
         offsets = os.environ.get("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
         try:
             self.offsets = tuple(int(k.strip()) for k in offsets.split(","))
@@ -145,7 +214,15 @@ class CLTTReferenceAuxLoss(nn.Module):
             )
 
         z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
-        return sum(
-            nt_xent(z_anchor, self.head(encoder.encode_prepared(view)), self.temperature)
-            for view in views[1:]
-        )
+        total, diags = 0.0, []
+        for view in views[1:]:
+            z_pos = self.head(encoder.encode_prepared(view))
+            total = total + nt_xent(z_anchor, z_pos, self.temperature)
+            if self.diag:
+                with torch.no_grad():
+                    diags.append(nt_xent_diagnostics(z_anchor, z_pos, self.temperature))
+        # Averaged over offsets, and emitted whether or not the diagnostic is on, so a reader
+        # can tell "off" from "on and degenerate". See nt_xent_diagnostics.
+        self.last_diag = ({k: sum(d[k] for d in diags) / len(diags) for k in diags[0]}
+                          if diags else None)
+        return total

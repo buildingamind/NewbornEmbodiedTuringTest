@@ -293,3 +293,69 @@ def test_measured_encoder_parameters_at_live_eye(name, cfg, expected):
     space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype=np.uint8)
     encoder = encoder_mapping[name](space, **cfg).cpu()
     assert sum(p.numel() for p in encoder.parameters()) == expected
+
+
+# ---------------------------------------------------------------------------
+# Gate A control for cltt_ref. The vicreg_tt control does NOT transfer: it scores the
+# temporal positive against another AUGMENTATION of the anchor, and cltt_ref augments
+# nothing. So this asks the two questions actually open here, both of which a falling
+# loss is consistent with.
+# ---------------------------------------------------------------------------
+
+from nett_skrl.brain.aux.cltt_ref_aux import nt_xent_diagnostics  # noqa: E402
+
+
+def _norm(x):
+    return torch.nn.functional.normalize(x, dim=-1)
+
+
+def test_a_trivially_solvable_task_reads_as_solved():
+    """TOO EASY: adjacent stacks off one env stream are near-identical images. If the
+    softmax is solved from update 1, the gradient carries no pressure toward the object --
+    and the loss is near zero either way."""
+    z = _norm(torch.randn(16, 8))
+    d = nt_xent_diagnostics(z, z + 1e-4 * torch.randn(16, 8), 0.2)
+    assert d["pos_acc"] > 0.95
+    assert d["pos_sim"] > d["neg_sim"]
+
+
+def test_an_uninformative_pairing_reads_at_chance():
+    """TOO HARD: if the temporal offset carries nothing, the positive is not findable."""
+    d = nt_xent_diagnostics(_norm(torch.randn(32, 8)), _norm(torch.randn(32, 8)), 0.2)
+    assert d["pos_acc"] < 0.2, d
+    assert d["chance"] == pytest.approx(1 / 63)
+
+
+def test_the_shuffled_null_is_the_comparator_not_zero():
+    """pos_acc at or below shuffled_acc means the pairing carried no information -- the
+    reading the vicreg-tt+ kill was really about, expressed for a contrastive objective."""
+    z = _norm(torch.randn(24, 8))
+    good = nt_xent_diagnostics(z, z + 1e-4 * torch.randn(24, 8), 0.2)
+    null = nt_xent_diagnostics(_norm(torch.randn(24, 8)), _norm(torch.randn(24, 8)), 0.2)
+    assert good["pos_acc"] > good["shuffled_acc"]
+    assert null["pos_acc"] <= null["shuffled_acc"] + 0.1
+
+
+def test_positive_and_negative_similarity_are_reported_untempered():
+    """Divided by temperature they are not comparable across a temperature change, and the
+    fleet has already been bitten by a statistic whose definition moved under its name."""
+    z1, z2 = _norm(torch.randn(8, 4)), _norm(torch.randn(8, 4))
+    a = nt_xent_diagnostics(z1, z2, 0.2)
+    b = nt_xent_diagnostics(z1, z2, 0.5)
+    assert a["pos_sim"] == pytest.approx(b["pos_sim"], abs=1e-5)
+    assert -1.001 <= a["pos_sim"] <= 1.001
+
+
+def test_the_batch_size_is_reported_beside_the_accuracy():
+    """chance is 1/(2B-1), so an accuracy without its B is not interpretable."""
+    d = nt_xent_diagnostics(_norm(torch.randn(10, 4)), _norm(torch.randn(10, 4)), 0.2)
+    assert d["batch"] == 10 and d["chance"] == pytest.approx(1 / 19)
+
+
+def test_the_diag_is_off_by_default_and_goes_through_env_flag(monkeypatch):
+    from nett_skrl.brain.aux.cltt_ref_aux import CLTTReferenceAuxLoss
+    monkeypatch.delenv("NETT_AUX_CLTT_REF_DIAG", raising=False)
+    assert CLTTReferenceAuxLoss(IdentityEncoder()).diag is False
+    for spelling in ("1", "true", "TRUE", "yes", "on"):
+        monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", spelling)
+        assert CLTTReferenceAuxLoss(IdentityEncoder()).diag is True, spelling
