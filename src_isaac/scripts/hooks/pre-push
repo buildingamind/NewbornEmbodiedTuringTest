@@ -225,17 +225,68 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
     exit 1
   fi
   [ "$E2E_JOBS" -gt 1 ] && _jobs_args="-n $E2E_JOBS --dist loadgroup"
-  # ⛔ THE PUSH'S SSH CONNECTION IS ALREADY OPEN AND WILL NOW SIT IDLE FOR THE WHOLE RUN. git
-  # contacts the remote for refs BEFORE running this hook, so a hook that genuinely works idles
-  # that socket for as long as the e2e takes and GitHub closes it: "Connection to github.com
-  # closed by remote host", git exits 141 (SIGPIPE) -- AFTER the tree passed. Measured 2026-09-09:
-  # `20 passed in 916.09s`, `pre-push: OK`, and nothing pushed. ⇒ Keepalives are required now that
-  # this phase is real; they were not while it took 1.8s.
-  if [ -z "${GIT_SSH_COMMAND:-}" ]; then
-    echo "pre-push: ⚠ this phase takes ~15+ min and the push's SSH socket is already open and idle." >&2
-    echo "  If the push dies with 'Connection ... closed by remote host' (exit 141) AFTER this" >&2
-    echo "  passes, re-run it with keepalives:" >&2
-    echo "      GIT_SSH_COMMAND='ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=30' git push ..." >&2
+  # ⛔ THE PUSH'S CONNECTION IS ALREADY OPEN AND WILL NOW SIT IDLE FOR THE WHOLE RUN. git contacts
+  # the remote for the ref advertisement BEFORE running this hook, so that socket idles for as long
+  # as the e2e takes. Measured 2026-09-09 on an ssh remote: `20 passed in 916.09s`, `pre-push: OK`,
+  # then "Connection to github.com closed by remote host" and git exited 141 (SIGPIPE) with NOTHING
+  # pushed. ⚠ Worst case is not 916s: NETT_UNIT_TIMEOUT (900) + NETT_E2E_TIMEOUT (5400) = 6300s of
+  # idle socket. That 5400 cap was itself chosen while this phase took 1.8s, so it was never a
+  # number about anything.
+  #
+  # ⛔⛔ TEST THE TRANSPORT, NOT THE KNOB. The first version of this advisory fired whenever
+  # GIT_SSH_COMMAND was unset. That is wrong in BOTH directions and was wrong on two of three nodes:
+  #   - the remote may be https, where git never spawns ssh at all and the ssh remedy is a NO-OP --
+  #     printing it there is worse than silence, because the reader applies it and dies anyway with
+  #     a green line above the corpse (both nodes' repoA `origin` is https);
+  #   - ~/.ssh/config may already set ServerAliveInterval, so the advice is redundant;
+  #   - GIT_SSH_COMMAND='ssh -v' suppresses the advisory while providing zero keepalive.
+  # `ssh -G <host>` is the RESOLVER: it reports the value that will actually be used, including
+  # -o overrides and ~/.ssh/config. Verified 2026-09-09: bare `ssh -G github.com` -> 0;
+  # `ssh -o ServerAliveInterval=60 -G github.com` -> 60. (lion's diagnosis.)
+  _rurl="${2:-${1:-}}"
+  case "$_rurl" in
+    ssh://*)                                  _rxport=ssh ;;
+    http://*|https://*)                       _rxport=http ;;
+    git://*|ftp://*|ftps://*|file://*|/*|.*|~*) _rxport=other ;;
+    */*:*)                                    _rxport=other ;;
+    *:*)                                      _rxport=ssh ;;
+    *)                                        _rxport=other ;;
+  esac
+  if [ "$_rxport" = ssh ]; then
+    case "$_rurl" in ssh://*) _rhost=${_rurl#ssh://}; _rhost=${_rhost%%/*} ;; *) _rhost=${_rurl%%:*} ;; esac
+    _rhost=${_rhost#*@}
+    case "$_rhost" in \[*\]*) _rhost=${_rhost#\[}; _rhost=${_rhost%%\]*} ;; *:*) _rhost=${_rhost%%:*} ;; esac
+    # ⛔ GIT'S SSH RESOLVER IS A CHAIN, NOT A VARIABLE: GIT_SSH_COMMAND -> core.sshCommand ->
+    # GIT_SSH -> ssh. Reading only the env var probes BARE SSH on any host that sets
+    # core.sshCommand -- a different program than the one git will run -- and then reports that
+    # other program's keepalive. (lion reproduced both branches with logging stub scripts.)
+    _sshcmd="${GIT_SSH_COMMAND:-$(git config --get core.sshCommand 2>/dev/null)}"
+    _sshcmd="${_sshcmd:-${GIT_SSH:-ssh}}"
+    # ⚠ GIT_SSH is where a non-OpenSSH client lives (plink has no -G), so a failed probe is the
+    # UNRESOLVED case and must advise, never be read as a zero. Captured without a pipeline so the
+    # status is the ssh probe's own and not awk's.
+    # unquoted on purpose: the command carries its own options and must word-split
+    _graw=$(${_sshcmd} -G "$_rhost" 2>/dev/null); _grc=$?
+    if [ "$_grc" -ne 0 ] || [ -z "$_graw" ]; then
+      _alive=""
+    else
+      _alive=$(printf '%s\n' "$_graw" | awk '/^serveraliveinterval /{print $2; exit}')
+    fi
+    if [ -z "$_alive" ] || [ "$_alive" = 0 ]; then
+      echo "pre-push: ⚠ ssh keepalives are OFF for $_rhost (serveraliveinterval ${_alive:-unresolved})," >&2
+      echo "  and this phase idles the push's socket for up to $((${NETT_UNIT_TIMEOUT:-900} + E2E_TIMEOUT))s." >&2
+      echo "  If the push dies with 'Connection ... closed by remote host' (exit 141) AFTER this" >&2
+      echo "  passes, re-run with:" >&2
+      echo "      GIT_SSH_COMMAND='ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=30' git push ..." >&2
+    fi
+  elif [ "$_rxport" = http ]; then
+    echo "pre-push: ⚠ remote is https, so the ssh keepalive remedy DOES NOT APPLY here." >&2
+    echo "  ⛔ UNTESTED either way: git-remote-https does the ref advertisement as a separate GET" >&2
+    echo "     and reopens for the POST, so it may not fail the way ssh does -- nobody has run it" >&2
+    echo "     long enough to find out. ⛔ AND THE REMEDY IS UNTESTED TOO: http.lowSpeedLimit /" >&2
+    echo "     http.lowSpeedTime are the first knobs to LOOK AT, not a verified cure -- nobody has" >&2
+    echo "     confirmed they help, and naming an unverified remedy without saying so is how the" >&2
+    echo "     ssh advisory above got shipped wrong. Do not assume this transport is safe." >&2
   fi
   echo "pre-push: e2e tree (real training runs; ${E2E_JOBS} gpu(s), kit_threads=${NETT_KIT_THREADS:-default}, cap ${E2E_TIMEOUT}s) ..."
   timeout "$E2E_TIMEOUT" "$PY" -u -m pytest tests/e2e -v -m "e2e_isaac and not e2e_perf" \
