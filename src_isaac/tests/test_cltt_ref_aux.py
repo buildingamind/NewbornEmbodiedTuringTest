@@ -144,7 +144,14 @@ def test_three_frame_default_offsets_refused_after_logging(monkeypatch):
         assert "share a literally identical frame" in message
         assert "multiples of T=3" in message
         assert len(messages) == 1
-        assert messages[0][1:] == ((2, 4), 3)
+        # ⛔ The batch must be in this line. Every level claim about NT-Xent depends on
+        # B (chance is 2*ln(2B-1)), and the line used to carry offsets and stack depth
+        # and not B -- which is how a read protocol got published against an assumed
+        # B=96 when the realised B was ~45.
+        assert messages[0][1:3] == ((2, 4), 3)
+        assert len(messages[0][1:]) > 2, "offsets and T alone leave the level unbacked"
+        fmt = messages[0][0] % messages[0][1:]
+        assert "batch B=" in fmt and "chance" in fmt
         assert not encoder.views  # Refuse before any backbone encoding.
 
 
@@ -239,7 +246,8 @@ def test_defaults_overrides_and_one_time_logging(monkeypatch):
     aux.compute(encoder, torch.empty(0))
     aux.compute(encoder, torch.empty(0))
     assert len(messages) == 1
-    assert messages[0][1:] == ((3, 6), 3)
+    assert messages[0][1:3] == ((3, 6), 3)
+    assert "batch B=" in (messages[0][0] % messages[0][1:])
 
 
 def test_incumbent_and_campaign_registry():

@@ -254,6 +254,16 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         # `last_terms`. Additive and optional: an aux without it logs nothing extra.
         cumulative_aux_terms = [0.0, 0.0, 0.0]
         aux_terms_seen = 0
+        # ⛔ GENERIC SCALAR CHANNEL, ADDED BECAUSE ITS ABSENCE MADE A DIAGNOSTIC INERT.
+        # `last_terms` above takes exactly three values and names them invariance /
+        # variance / covariance -- VICReg's decomposition and nothing else. cltt_ref's
+        # NT-Xent diagnostic therefore had nowhere to publish: it computed pos_acc,
+        # chance, pos_sim, neg_sim and the batch size into `self.last_diag`, and NOTHING
+        # IN THIS FILE EVER READ IT. The instrument ran, cost its compute, and reached no
+        # log, no tfevents and no reader -- a detector wired to no actuator. Any aux may
+        # now expose `last_scalars: dict[str, float]` and have it averaged and tracked.
+        cumulative_aux_scalars: dict = {}
+        aux_scalars_seen = 0
         cumulative_inv_temporal = 0.0
         cumulative_inv_control = 0.0
         inv_pairs_seen = 0
@@ -376,6 +386,12 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                 cumulative_policy_loss += policy_loss.item()
                 cumulative_value_loss += value_loss.item()
                 cumulative_aux_loss += float(aux_loss.detach())
+                _scalars = getattr(self._aux, "last_scalars", None)
+                if isinstance(_scalars, dict) and _scalars:
+                    for _k, _v in _scalars.items():
+                        cumulative_aux_scalars[_k] = (
+                            cumulative_aux_scalars.get(_k, 0.0) + float(_v))
+                    aux_scalars_seen += 1
                 _terms = getattr(self._aux, "last_terms", None)
                 if _terms is not None and len(_terms) == 3:
                     for _i, _t in enumerate(_terms):
@@ -429,6 +445,17 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         # came from. If invariance is a rounding error beside the other two, a null
         # result is about the COEFFICIENTS, not about the pairing -- so this is logged
         # rather than argued about afterwards.
+        if aux_scalars_seen:
+            # ⚠ Averaged over minibatches and emitted EVERY update, not once at startup.
+            # A quantity that varies across updates and is logged once is a number about
+            # update 1 wearing the name of a constant: cltt_ref's batch B is
+            # min(max_samples, t_max - max(offsets)), and t_max is the memory FILL INDEX
+            # until the buffer fills -- so B grows early in training. A protocol that
+            # reads chance = 2*ln(2B-1) once and compares later updates against it is
+            # comparing to a moving line. Measured 2026-09-10: assumed B=96, realised
+            # B≈45 at update 1.
+            for _k, _v in sorted(cumulative_aux_scalars.items()):
+                self.track_data(f"Loss / Aux {self._aux_kind} {_k}", _v / aux_scalars_seen)
         if aux_terms_seen:
             for _name, _val in zip(
                 ("invariance", "variance", "covariance"), cumulative_aux_terms

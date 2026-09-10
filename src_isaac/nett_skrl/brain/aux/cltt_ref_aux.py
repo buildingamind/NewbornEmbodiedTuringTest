@@ -45,6 +45,7 @@ signature is unchanged and the other four losses are untouched. The incumbent
 
 from __future__ import annotations
 
+import math
 import os
 
 import torch
@@ -150,6 +151,7 @@ class CLTTReferenceAuxLoss(nn.Module):
         # extra encoder forward -- it reuses embeddings the loss already computed.
         self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
         self.last_diag: dict | None = None
+        self.last_scalars: dict = {}
         offsets = os.environ.get("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
         try:
             self.offsets = tuple(int(k.strip()) for k in offsets.split(","))
@@ -200,9 +202,23 @@ class CLTTReferenceAuxLoss(nn.Module):
             ]
         if self.num_frames is None:
             self.num_frames = views[0].shape[1] // 3
+            # ⛔ THE BATCH BELONGS HERE. Every level claim about this objective depends on
+            # B -- NT-Xent chance is 2*ln(2B-1) summed over two offsets -- and this line
+            # used to emit the offsets and the stack depth and NOT the one parameter the
+            # level turns on. A read protocol was published against an assumed B=96 while
+            # the realised B at update 1 was ~45, because t_max is the memory FILL INDEX
+            # until the buffer fills. The ValueError below already formats these exact
+            # values, so the information existed in the file and was emitted only when the
+            # run DIED. ⚠ B is not constant, so this one-time line calibrates update 1
+            # only; the per-update series is published through `last_scalars`.
             logger.info(
-                "CLTTReferenceAuxLoss: offsets=%s, stack depth T=%s",
-                self.offsets, self.num_frames,
+                "CLTTReferenceAuxLoss: offsets=%s, stack depth T=%s, batch B=%s "
+                "(t_max=%s, avail=%s, NETT_AUX_BATCH=%s, memory filled=%s) -> "
+                "NT-Xent chance per offset ln(2B-1)=%.4f, summed over %s offsets=%.4f",
+                self.offsets, self.num_frames, batch, t_max, avail, self.max_samples,
+                bool(getattr(self._memory, "filled", False)),
+                math.log(2 * batch - 1), len(self.offsets),
+                len(self.offsets) * math.log(2 * batch - 1),
             )
         if any(k % self.num_frames for k in self.offsets):
             raise ValueError(
@@ -225,4 +241,14 @@ class CLTTReferenceAuxLoss(nn.Module):
         # can tell "off" from "on and degenerate". See nt_xent_diagnostics.
         self.last_diag = ({k: sum(d[k] for d in diags) / len(diags) for k in diags[0]}
                           if diags else None)
+        # ⛔ PUBLISH. `last_diag` alone reached no reader: nothing in ppo_aux read it, so
+        # the diagnostic ran and vanished. `last_scalars` is the channel ppo_aux tracks.
+        # B, t_max and avail go out ALWAYS -- not only when the diag is on -- because they
+        # are what makes any level claim about this loss checkable, and because they vary
+        # across updates while the startup log fires once.
+        self.last_scalars = {"B": float(batch), "t_max": float(t_max),
+                             "chance": float(len(self.offsets)
+                                             * math.log(2 * batch - 1))}
+        if self.last_diag:
+            self.last_scalars.update({k: float(v) for k, v in self.last_diag.items()})
         return total
