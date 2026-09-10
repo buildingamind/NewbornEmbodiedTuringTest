@@ -139,15 +139,64 @@ def build_encoder(model_name: str, obs_shape, seed: int):
     return enc
 
 
+def resolve_aux(aux_kind: str):
+    """Return the aux class named by `aux_kind`, from one of TWO namespaces.
+
+        "vicreg_tt"                       -> AUX_LOSSES, the LAUNCHER's registry
+        "path/to/mod.py:ClassName"        -> a SCREENING candidate, loaded by path
+
+    ⛔ THE SECOND NAMESPACE EXISTS SO SCREENING DOES NOT REQUIRE REGISTERING. `AUX_LOSSES`
+    is what `NETT_AUX_LOSS` resolves against, so putting a candidate there to let the
+    harness reach it ALSO makes it launchable by a queue row -- and a queue row could then
+    spend card-hours on a loss that nothing has screened, which is the exact ordering this
+    harness was built to prevent. Registration is the graduation event, not the entry fee:
+    a name in AUX_LOSSES means "this has been screened", and that only stays true if
+    unscreened candidates have somewhere else to live.
+
+    ⚠ A path-loaded candidate is deliberately NOT importable by the trainer. Promoting one
+    means moving the module into `nett_skrl/brain/aux/` and adding the registry entry --
+    a visible diff, in the repo the launcher reads, rather than a string in an invocation.
+    """
+    from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+
+    if ":" not in aux_kind:
+        if aux_kind not in AUX_LOSSES:
+            raise SystemExit(
+                f"[replay] unknown aux {aux_kind!r}. Registered: {sorted(AUX_LOSSES)}. "
+                f"For a candidate that is not registered yet, pass 'path/to/module.py:ClassName'."
+            )
+        return AUX_LOSSES[aux_kind], "registry"
+
+    import importlib.util
+
+    mod_path, _, cls_name = aux_kind.rpartition(":")
+    path = Path(mod_path).expanduser()
+    if not path.is_file():
+        raise SystemExit(f"[replay] no such candidate module: {path}")
+    spec = importlib.util.spec_from_file_location(f"_replay_candidate_{path.stem}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cls = getattr(module, cls_name, None)
+    if cls is None:
+        raise SystemExit(
+            f"[replay] {path} defines no {cls_name!r}; found: "
+            f"{[n for n in vars(module) if not n.startswith('_')]}"
+        )
+    # ⚠ Say it out loud on every run. A screening result quoted without this line reads
+    # like a result about a model the fleet can launch, and it is not one yet.
+    print(f"⚠ SCREENING CANDIDATE: {cls_name} loaded from {path} -- NOT in AUX_LOSSES, so no "
+          f"queue row can launch it. Promoting means moving the module into "
+          f"nett_skrl/brain/aux/ and registering it.")
+    return cls, str(path)
+
+
 def train_offline(encoder, aux_kind: str, obs, actions, steps: int, lr: float, seed: int):
     """Train encoder + aux on the fixed stream. No environment, no policy, no reward."""
     import torch
-    from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
 
     torch.manual_seed(seed)
-    aux = AUX_LOSSES[aux_kind](encoder) if aux_kind in AUX_LOSSES else None
-    if aux is None:
-        raise SystemExit(f"[replay] unknown aux {aux_kind!r}; registered: {sorted(AUX_LOSSES)}")
+    aux_cls, _origin = resolve_aux(aux_kind)
+    aux = aux_cls(encoder)
     mem = ReplayMemory(obs, actions)
     if hasattr(aux, "attach_memory"):
         aux.attach_memory(mem)
@@ -209,7 +258,9 @@ def load_fixture(model_name: str, width: int, height: int, depth: int, envs: int
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model", default="ViViT")
-    ap.add_argument("--aux", default="vicreg_tt")
+    ap.add_argument("--aux", default="vicreg_tt",
+                    help="a registered aux kind, or 'path/to/module.py:ClassName' for a "
+                         "candidate under screening that is deliberately not registered")
     ap.add_argument("--fixture", action="store_true",
                     help="decode stimulus clips instead of a capture. PLUMBING ONLY.")
     ap.add_argument("--capture", type=Path, default=None, help="an obs_*.npz from capture_observations")
