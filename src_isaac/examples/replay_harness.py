@@ -116,14 +116,52 @@ class ReplayMemory:
         self.filled = True
 
 
-def build_encoder(model_name: str, obs_shape, seed: int):
-    import gymnasium as gym
-    import torch
+def resolve_model(model_name: str) -> tuple[dict, str]:
+    """Return the encoder spec for `model_name`, from one of TWO namespaces.
+
+        "ViViT"                 -> MODELS, the launcher's arm registry
+        "compact_cnn"           -> a registry ENCODER with no MODELS entry: a screening
+                                   host, buildable here and not launchable by a queue row
+        "compact_cnn:{...json}" -> the same, with an explicit cfg
+
+    ⛔ SAME REASON AS `resolve_aux`, ON THE OTHER AXIS. A candidate loss needs a host to
+    run on, and the host that suits it may not be one the fleet has an arm for --
+    `compact_cnn` is in `encoder_mapping` but in no `MODELS` entry, and its pre-pool map is
+    640 positions against `nature_cnn`'s 72, which is the difference between a slot method
+    having something to compete over and not. Adding a MODELS entry to screen it would make
+    it launchable before anything had screened it. Registration is the graduation event.
+    """
+    import json
+
     from campaign_train import MODELS
     from nett_skrl.brain.registry import encoder_mapping
 
+    if model_name in MODELS:
+        return MODELS[model_name], "registry"
+    enc_name, _, cfg_json = model_name.partition(":")
+    if enc_name not in encoder_mapping:
+        raise SystemExit(
+            f"[replay] {model_name!r} is neither a MODELS entry {sorted(MODELS)} nor a "
+            f"registry encoder {sorted(encoder_mapping)}."
+        )
+    try:
+        cfg = json.loads(cfg_json) if cfg_json else {}
+    except json.JSONDecodeError as e:
+        raise SystemExit(f"[replay] cfg after ':' is not JSON: {e}")
+    print(f"⚠ SCREENING HOST: encoder {enc_name!r} cfg={cfg} -- NOT a MODELS entry, so no "
+          f"queue row can launch it. Any number below is about a model the fleet does not "
+          f"currently run.")
+    # framestack is a MODELS-level decision the caller makes via --framestack here.
+    return {"encoder": enc_name, "cfg": cfg, "framestack": None}, "screening"
+
+
+def build_encoder(model_name: str, obs_shape, seed: int):
+    import gymnasium as gym
+    import torch
+    from nett_skrl.brain.registry import encoder_mapping
+
     torch.manual_seed(seed)
-    spec = MODELS[model_name]
+    spec, _origin = resolve_model(model_name)
     space = gym.spaces.Box(low=0, high=255, shape=tuple(obs_shape), dtype=np.uint8)
     # ⛔ THE KEY IS `cfg`, NOT `encoder_kwargs`. Reading the wrong key does not raise --
     # it silently builds a DEFAULT-configured encoder, which is a different model from
@@ -135,6 +173,8 @@ def build_encoder(model_name: str, obs_shape, seed: int):
             f"[replay] MODELS[{model_name!r}] has no 'cfg'; refusing to build a "
             "default-configured encoder that would not be the model under test."
         )
+    # ⚠ A SCREENING HOST'S EMPTY cfg IS A DELIBERATE {}, NOT A MISSING KEY -- the guard
+    # above catches a MODELS entry that forgot its cfg, which is a different fault.
     enc = encoder_mapping[spec["encoder"]](space, **dict(cfg)).cpu()
     return enc
 
@@ -257,7 +297,9 @@ def load_fixture(model_name: str, width: int, height: int, depth: int, envs: int
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--model", default="ViViT")
+    ap.add_argument("--model", default="ViViT",
+                    help="a MODELS key, or a registry encoder name (optionally "
+                         "'name:{json cfg}') to screen a host the fleet has no arm for")
     ap.add_argument("--aux", default="vicreg_tt",
                     help="a registered aux kind, or 'path/to/module.py:ClassName' for a "
                          "candidate under screening that is deliberately not registered")
