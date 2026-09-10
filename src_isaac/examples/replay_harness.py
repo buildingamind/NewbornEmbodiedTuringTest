@@ -295,6 +295,239 @@ def load_fixture(model_name: str, width: int, height: int, depth: int, envs: int
     return stream, train, pairs, t
 
 
+# --------------------------------------------------------------------------------------
+# Capture-mode readout: the imprinting rule, run on the agent's OWN view.
+#
+# The rule is the fixture rule -- memory is the mean feature over exposure frames, and a
+# test episode is scored by which stimulus is closer to it in cosine. What changes is
+# where the exposure frames come from. A capture holds only `experiment.phase == test`,
+# so there are no rearing frames in it; the rearing CLIP is available from the stimulus
+# library, but its pixels are undistorted and the captured pixels carry the equisolid
+# lens, the chamber, and DLSS. A cosine across those two domains measures the domain.
+#
+# ⭐ THE EXPOSURE SET IS ALREADY IN THE CAPTURE, UNDER A CONDITION NOBODY SCORES. `Rest`
+# displays the imprinted object alone against a blank screen -- measured on
+# 3DCNN_parsing_fork-1_off0_0831_160636, every Rest row is `2A_00.mov` opposite
+# `White.mov`, 21,000 steps of it. Same lens, same chamber, same renderer as the scored
+# frames, and `Rest` is excluded from the parked-fraction denominator and from every
+# preference statistic, so using it fits nothing that is later reported.
+#
+# ⚠ WHAT THIS COSTS, STATED HERE BECAUSE IT DOES NOT SHOW UP IN THE OUTPUT NUMBER. The
+# agent's view is egocentric, so "frames of the left monitor" is not a segmentation, it
+# is a POSITION filter: frames where the agent stands on that side. That makes the
+# available frames a consequence of where the agent CHOSE to stand, and the agent is
+# parked ~80% of steps. An episode where it never crossed the chamber yields frames of
+# one monitor and none of the other, and no contest can be run on it. Those episodes are
+# EXCLUDED, and excluding them selects the less-parked episodes -- a biased subset, not a
+# sample. Every number this returns is reported with the episodes it kept and the ones it
+# could not score, because the exclusion is the largest thing about it.
+# --------------------------------------------------------------------------------------
+
+#: Outer third of the chamber (HALF_X 33.15 / 3). A frame counts as a view of a monitor
+#: only from that side's outer third; nearer the middle both screens are in the 300deg
+#: field and the frame is evidence about neither.
+VIEW_X = 11.05
+#: Below this many frames on a side, the side's mean is one or two frames of a parked
+#: agent and the "contest" is noise. Reported, not silently applied.
+MIN_SIDE_FRAMES = 3
+REST_COND = "Rest"
+#: The blank screen Rest shows opposite the imprinted object.
+BLANK = "White.mov"
+
+
+def default_test_csv(run_dir: str, condition: str) -> Path:
+    """The per-step log a capture was taken from.
+
+    ⛔ NOT `analysis/test/test_preferences.csv`. That file is a per-episode SUMMARY with no
+    `agent.x`, and an awk survey in this campaign read it by position, found no such
+    column, and reported a silent 1.0000. The per-step log is the only file that can
+    answer "which monitor was this frame a view of".
+    """
+    base = Path(run_dir) / condition / "logs"
+    exact = base / f"test_{condition}_0.csv"
+    if exact.exists():
+        return exact
+    found = sorted(base.glob("test_*.csv"))
+    if not found:
+        raise SystemExit(
+            f"[replay] no test_*.csv under {base}. Pass --test-csv explicitly. (If the "
+            f"only file you can find is analysis/test/test_preferences.csv, that is a "
+            f"per-episode summary and carries no agent.x -- it cannot drive this readout.)")
+    if len(found) > 1:
+        raise SystemExit(f"[replay] {len(found)} test logs under {base}: "
+                         f"{[p.name for p in found]}. Pass --test-csv to choose.")
+    return found[0]
+
+
+def load_test_labels(csv_path):
+    """``(env_id, episode, step) -> row`` from a run's ``test_*.csv``.
+
+    ⛔ The key is verified unique rather than assumed: on the reference run it is unique
+    across all 560,000 rows, but a duplicated key would make `dict` keep the LAST row
+    silently, and a positional read of a second schema is how an earlier analysis in this
+    campaign got every implied n wrong without any number looking wrong. Read by NAME.
+    """
+    import csv as _csv
+
+    need = ("env_id", "episode", "step", "agent.x", "test.cond",
+            "left.monitor", "right.monitor", "correct.monitor")
+    rows, dupes = {}, 0
+    with open(csv_path, newline="") as fh:
+        reader = _csv.DictReader(fh)
+        missing = [c for c in need if c not in (reader.fieldnames or [])]
+        if missing:
+            raise SystemExit(
+                f"[replay] {csv_path} is missing {missing}. Columns present: "
+                f"{reader.fieldnames}. This is the wrong CSV -- analysis/test/"
+                f"test_preferences.csv is a SUMMARY and carries no agent.x; the "
+                f"per-step log is fork-1/logs/test_*.csv.")
+        for r in reader:
+            k = (int(r["env_id"]), int(r["episode"]), int(r["step"]))
+            if k in rows:
+                dupes += 1
+            rows[k] = r
+    if dupes:
+        raise SystemExit(f"[replay] {dupes} duplicate (env_id, episode, step) keys in "
+                         f"{csv_path}; the join would silently keep one row per key.")
+    return rows
+
+
+def _side_of(x: float) -> str | None:
+    """Which monitor this position is a view of, or None for the ambiguous middle."""
+    if x >= VIEW_X:
+        return "right"
+    if x <= -VIEW_X:
+        return "left"
+    return None
+
+
+def build_capture_pairs(blob, csv_path, verbose: bool = True):
+    """Join a capture to its run's per-step log; return (memory_idx, episodes, report).
+
+    ``memory_idx``  frame indices of the exposure set: Rest frames taken from the side
+                    showing the imprinted object.
+    ``episodes``    one entry per scorable test episode:
+                    ``(cond, {"left": [idx...], "right": [idx...]}, correct)``.
+    """
+    keys = blob["keys"]
+    labels = load_test_labels(csv_path)
+
+    joined, unjoined = [], 0
+    for i, k in enumerate(keys):
+        row = labels.get((int(k[0]), int(k[1]), int(k[2])))
+        if row is None:
+            unjoined += 1
+            continue
+        joined.append((i, row))
+    if not joined:
+        raise SystemExit(
+            f"[replay] NOT ONE of {len(keys)} captured frames joined to {csv_path}. "
+            f"The capture and the CSV are from different runs, or the capture's keys "
+            f"are (env, episode, step) of a different episode numbering.")
+
+    # --- the exposure set --------------------------------------------------------------
+    memory_idx, rest_seen, rest_wrong_side = [], 0, 0
+    for i, row in joined:
+        if row["test.cond"] != REST_COND:
+            continue
+        rest_seen += 1
+        side = _side_of(float(row["agent.x"]))
+        if side is None:
+            continue
+        shown = row[f"{side}.monitor"]
+        # The imprinted object is whichever monitor is NOT blank during Rest.
+        if shown != BLANK:
+            memory_idx.append(i)
+        else:
+            rest_wrong_side += 1
+
+    # --- the scored episodes -----------------------------------------------------------
+    by_ep: dict = {}
+    for i, row in joined:
+        cond = row["test.cond"]
+        if cond == REST_COND:
+            continue
+        ep = (int(row["env_id"]), int(row["episode"]))
+        side = _side_of(float(row["agent.x"]))
+        slot = by_ep.setdefault(ep, {"cond": cond, "correct": row["correct.monitor"],
+                                     "left": [], "right": [], "middle": 0})
+        if side is None:
+            slot["middle"] += 1
+        else:
+            slot[side].append(i)
+
+    episodes, dropped = [], {}
+    for ep, slot in sorted(by_ep.items()):
+        if min(len(slot["left"]), len(slot["right"])) < MIN_SIDE_FRAMES:
+            dropped[slot["cond"]] = dropped.get(slot["cond"], 0) + 1
+            continue
+        episodes.append((slot["cond"], {"left": slot["left"], "right": slot["right"]},
+                         slot["correct"]))
+
+    report = {"captured": len(keys), "joined": len(joined), "unjoined": unjoined,
+              "rest_frames": rest_seen, "memory_frames": len(memory_idx),
+              "rest_blank_side": rest_wrong_side, "episodes_total": len(by_ep),
+              "episodes_scorable": len(episodes), "dropped_one_sided": dropped}
+
+    if verbose:
+        print(f"[replay] join: {len(joined)}/{len(keys)} frames matched the run log"
+              + (f"  ⚠ {unjoined} UNJOINED" if unjoined else ""))
+        print(f"[replay] exposure set: {len(memory_idx)} Rest frames viewing the "
+              f"imprinted object (of {rest_seen} Rest frames captured; "
+              f"{rest_wrong_side} viewed the blank)")
+        n_drop = sum(dropped.values())
+        print(f"[replay] scorable episodes: {len(episodes)}/{len(by_ep)}  "
+              f"({n_drop} dropped: fewer than {MIN_SIDE_FRAMES} frames on one side)")
+        if dropped:
+            print("[replay] ⚠ DROPPED BY CONDITION " + ", ".join(
+                f"{c}: {n}" for c, n in sorted(dropped.items())))
+            print("[replay] ⚠ THE DROP IS THE SELECTION. An episode is unscorable "
+                  "precisely when the agent never left one monitor, so what remains is "
+                  "the less-parked tail. These numbers describe THAT subset.")
+
+    if not memory_idx:
+        raise SystemExit(
+            f"[replay] the exposure set is EMPTY: {rest_seen} Rest frames captured, none "
+            f"taken from the side showing the imprinted object. Without a memory there "
+            f"is no imprinting rule to run -- this is not a score of 0.5, it is no score. "
+            f"Recapture including Rest, or raise --episodes so Rest is reached.")
+    return memory_idx, episodes, report
+
+
+def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256) -> dict:
+    """The imprinting rule on captured frames. Returns ``{cond: (acc, n_episodes)}``.
+
+    ⚠ Uses NO label from the episodes being scored. The memory is built from Rest, whose
+    monitor assignment is known the same way the rearing clip's identity is known in
+    fixture mode; `correct.monitor` is read only to grade a choice already made.
+    """
+    import torch
+    import torch.nn.functional as F
+
+    encoder.eval()
+    with torch.no_grad():
+        def feats(idx):
+            out = []
+            for s in range(0, len(idx), chunk):
+                batch = torch.as_tensor(obs[list(idx[s:s + chunk])])
+                out.append(encoder.encode_prepared(encoder._prepare_image(batch)))
+            return torch.cat(out)
+
+        memory = F.normalize(feats(memory_idx).mean(0, keepdim=True), dim=-1)
+
+        tally: dict = {}
+        for cond, sides, correct in episodes:
+            sim = {}
+            for side in ("left", "right"):
+                z = F.normalize(feats(sides[side]), dim=-1)
+                sim[side] = float((z @ memory.T).mean())
+            chosen = "left" if sim["left"] > sim["right"] else "right"
+            hit, n = tally.get(cond, (0, 0))
+            tally[cond] = (hit + int(chosen == correct), n + 1)
+    encoder.train()
+    return {c: (h / n, n) for c, (h, n) in tally.items()}
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--model", default="ViViT",
@@ -306,6 +539,9 @@ def main() -> int:
     ap.add_argument("--fixture", action="store_true",
                     help="decode stimulus clips instead of a capture. PLUMBING ONLY.")
     ap.add_argument("--capture", type=Path, default=None, help="an obs_*.npz from capture_observations")
+    ap.add_argument("--test-csv", type=Path, default=None,
+                    help="the run's per-step test log. Defaults to the capture's own "
+                         "run_dir/<condition>/logs/test_<condition>_0.csv")
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--steps", type=int, default=30)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -335,9 +571,10 @@ def main() -> int:
         obs = blob["obs"]
         stream = torch.as_tensor(obs[:, None])          # (T, 1, C, H, W)
         actions = torch.as_tensor(blob["actions"][:, None]) if len(blob["actions"]) else None
+        csv_path = args.test_csv or default_test_csv(str(blob["run_dir"]), str(blob["condition"]))
+        print(f"[replay] joining labels from {csv_path}")
+        memory_idx, episodes, join_report = build_capture_pairs(blob, csv_path)
         train_frames, pairs = obs, []
-        print("⚠ capture-mode readout needs the label join (env_id, episode) against the run's "
-              "test CSV; not implemented. Training runs; readout is fixture-only for now.")
 
     obs_shape = tuple(stream.shape[2:])
     results, baselines = {}, {}
@@ -349,9 +586,17 @@ def main() -> int:
         # tell that apart from learned object identity. Without this baseline the trained
         # number is uninterpretable: it would credit the objective for whatever raw pixels
         # already gave away. The quantity of interest is the DELTA.
-        before = familiarity_readout(enc, train_frames, pairs) if pairs else {}
+        def read_out(e):
+            if args.fixture:
+                return familiarity_readout(e, train_frames, pairs) if pairs else {}
+            # n_episodes is identical before and after -- the same episodes are scored by
+            # both encoders -- so it is carried in the label, not averaged as a number.
+            return {f"{c} (n={n})": acc for c, (acc, n) in
+                    capture_readout(e, obs, memory_idx, episodes).items()}
+
+        before = read_out(enc)
         aux, losses = train_offline(enc, args.aux, stream, actions, args.steps, args.lr, seed)
-        scored = familiarity_readout(enc, train_frames, pairs) if pairs else {}
+        scored = read_out(enc)
         for k, v in scored.items():
             results.setdefault(k, []).append(v)
             baselines.setdefault(k, []).append(before[k])

@@ -203,6 +203,39 @@ def _load_config(run_dir: Path, episodes: int) -> dict:
     return config
 
 
+def _warn_about_card_occupancy() -> None:
+    """Say, before Kit boots, that this job will make every card look BUSY.
+
+    ⛔ MEASURED 2026-09-10 on chicken. A capture pinned by NETT_DEVICE=0 put its work on
+    card 0 (11,274 MiB) and still held a 92 MiB context on cards 1, 2 and 3. That is
+    nothing in memory terms and total in scheduling terms: the workspace repo's
+    `tools/launch_arm.sh:168` reads
+    `if [ "$BUSY" -ne 0 ] || [ "$USED" -ge 1500 ]` -- an OR, so a card is refused on a
+    non-zero process count REGARDLESS of MiB. Verified by reading that line, not by
+    inference from the symptom. A single
+    unpinned-parent capture made all four cards unlaunchable and chicken sat idle behind
+    one diagnostic job.
+
+    ⇒ The cost of not pinning is not this job's card. It is every card.
+
+    ⚠ THIS ONLY WARNS. The obvious remedy -- an outer CUDA_VISIBLE_DEVICES -- is the thing
+    the module docstring tells you not to do, because `runtime/device.py::
+    visible_device_scope` overwrites it from NETT_DEVICE and an outer pin puts every agent
+    on card 0. That warning was written for the multi-task launcher, and this driver runs
+    exactly one task, so it may well be safe here -- but "may well be" is not a finding,
+    and testing it costs a 3.5-hour capture. Until someone spends that, the honest thing
+    is to tell the operator what the job is about to do to the fleet, not to change what
+    it does on an untested guess. See `notes/researcher/the-unstated-n.md`.
+    """
+    dev = os.environ.get("NETT_DEVICE", "0 (default)")
+    print(f"⚠ CARD OCCUPANCY: NETT_DEVICE={dev} pins the SIM, but this process still takes "
+          f"a small CUDA context on every visible card.\n"
+          f"  launch_arm.sh refuses any card with a non-zero process count regardless of "
+          f"MiB, so while this runs, NO ARM CAN LAUNCH ON THIS HOST.\n"
+          f"  If the fleet needs cards, run this when the host is otherwise idle, or "
+          f"accept that it blocks the queue for its full duration.")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("run_dir", type=Path)
@@ -219,6 +252,7 @@ def main() -> int:
     ap.add_argument("--max-frames", type=int, default=6000)
     ap.add_argument("--condition", default=None, help="defaults to the run's first")
     args = ap.parse_args()
+    _warn_about_card_occupancy()
 
     run_dir = args.run_dir.expanduser().resolve()
     config = _load_config(run_dir, args.episodes)
