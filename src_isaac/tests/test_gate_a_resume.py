@@ -192,3 +192,48 @@ def test_the_default_run_can_licence_the_kill_branch():
     the run that discovered it would already have been spent."""
     from gate_a_resume import build_parser
     assert build_parser().get_default("updates") >= 2
+
+
+# ---------------------------------------------------------------------------
+# 5. NETT_RUN_NAME's guard must not refuse the one caller it has
+# ---------------------------------------------------------------------------
+
+
+def _run_name_guard(tmp_path, name, build=None):
+    """Exercise campaign_train's NETT_RUN_NAME guard predicate in isolation."""
+    existing = tmp_path / name
+    if build:
+        build(existing)
+    output = [p for p in (existing / "campaign_timing.json", *existing.glob("*/logs"),
+                          *existing.glob("logs")) if p.exists()]
+    return output
+
+
+def test_a_seeded_directory_is_not_run_output(tmp_path):
+    """⛔ THE BUG THIS PINS COST A LAUNCH. gate_a_resume must create the run directory to
+    seed checkpoints into it, so a guard keyed on EXISTENCE refuses its own only client --
+    measured 2026-09-10, 2 seconds in."""
+    def seeded(root):
+        (root / "fork-1" / "wandb_runs" / "brain_1" / "checkpoints").mkdir(parents=True)
+        (root / "fork-1" / "wandb_runs" / "brain_1" / "checkpoints" / "final_agent.pt").touch()
+        (root / "resume_manifest.json").write_text("{}")
+    assert _run_name_guard(tmp_path, "gateA_x", seeded) == []
+
+
+def test_a_directory_holding_logs_is_refused(tmp_path):
+    """The real hazard: mkdir(exist_ok=True) would merge two runs' logs with no error."""
+    def used(root):
+        (root / "fork-1" / "logs").mkdir(parents=True)
+        (root / "fork-1" / "logs" / "test_fork-1_0.csv").touch()
+    assert _run_name_guard(tmp_path, "gateA_x", used)
+
+
+def test_a_finished_run_is_refused_by_its_timing_file(tmp_path):
+    def finished(root):
+        root.mkdir(parents=True)
+        (root / "campaign_timing.json").write_text("{}")
+    assert _run_name_guard(tmp_path, "gateA_x", finished)
+
+
+def test_an_absent_directory_is_allowed(tmp_path):
+    assert _run_name_guard(tmp_path, "never_used") == []

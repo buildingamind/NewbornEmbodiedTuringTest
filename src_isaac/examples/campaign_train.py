@@ -567,9 +567,20 @@ def main() -> int:
     _forced_name = os.environ.get("NETT_RUN_NAME", "").strip()
     if _forced_name:
         name = _forced_name[:63]
-        if (out / name).exists():
+        # ⛔ THE PREDICATE IS "HOLDS RUN OUTPUT", NOT "EXISTS", AND THE DIFFERENCE IS THE
+        # WHOLE POINT. The first version refused on mere existence and so refused the ONLY
+        # caller this knob has: gate_a_resume.py must create this directory to seed
+        # checkpoints into it before the run starts, so the guard fired on its own client
+        # 2 seconds in. Existence is not the hazard -- merging two runs' LOGS is -- and a
+        # guard whose predicate is not the thing it protects both blocks the legitimate case
+        # and leaves the illegitimate one reachable by any other route.
+        _existing = out / name
+        _output = [p for p in (_existing / "campaign_timing.json", *_existing.glob("*/logs"),
+                               *_existing.glob("logs")) if p.exists()]
+        if _output:
             raise SystemExit(
-                f"NETT_RUN_NAME={name!r} already exists under {out}. Refusing: the run "
+                f"NETT_RUN_NAME={name!r} already holds run output under {out}: "
+                f"{[str(p.relative_to(_existing)) for p in _output]}. Refusing: the run "
                 f"directory is created with exist_ok=True, so continuing would merge this "
                 f"run's logs into that one silently. Choose another name or move it aside."
             )

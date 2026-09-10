@@ -225,6 +225,21 @@ def main() -> int:
               file=sys.stderr)
         return 3
 
+    # --- preflight 0: can Kit even boot in this process's environment? -----------------
+    # ⛔ FAILS IN 0s HERE INSTEAD OF 9s AFTER ISAAC STARTS, AND SAYS WHY. Kit bootstraps at
+    # import and, with the licence unaccepted, calls input() for "Do you accept the EULA?".
+    # Under nohup/CI there is no stdin, so that raises EOFError, the bootstrap SystemExits,
+    # nett.py reports "Task validation failed (exit code 1)", and the actual cause is 40
+    # lines up a traceback about something else entirely. Measured 2026-09-10 -- it cost two
+    # launches. `scripts/hooks/pre-push` exports this variable for the same reason.
+    if not os.environ.get("OMNI_KIT_ACCEPT_EULA") and not sys.stdin.isatty():
+        print("⛔ OMNI_KIT_ACCEPT_EULA is unset and there is no tty to answer the licence "
+              "prompt on. Kit's import-time bootstrap will read stdin, get EOF, and exit -- "
+              "which surfaces as 'Task validation failed (exit code 1)' with the real cause "
+              "buried in a subprocess traceback. Re-invoke with OMNI_KIT_ACCEPT_EULA=YES.",
+              file=sys.stderr)
+        return 3
+
     ok, why = compatible(src_model, a.model)
     print(f"preflight: {why}")
     sys.stdout.flush()   # stderr is unbuffered: without this the refusal prints ABOVE the
