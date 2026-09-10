@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
 from campaign_train import MODELS  # noqa: E402
 from gate_a_resume import (  # noqa: E402
     RESUME_MODULES,
+    _verify_resume,
     SHAPE_FIELDS,
     compatible,
     seed_checkpoints,
@@ -237,3 +238,59 @@ def test_a_finished_run_is_refused_by_its_timing_file(tmp_path):
 
 def test_an_absent_directory_is_allowed(tmp_path):
     assert _run_name_guard(tmp_path, "never_used") == []
+
+
+# ---------------------------------------------------------------------------
+# 6. Verifying the resume landed -- by weights, not by a log line
+# ---------------------------------------------------------------------------
+
+
+def _resume_pair(tmp_path, brain, src_w, final_w):
+    src = tmp_path / f"src_{brain}.pt"
+    torch.save({"policy": {"w": src_w}}, src)
+    final = tmp_path / "run" / "wandb_runs" / f"brain_{brain}" / "checkpoints"
+    final.mkdir(parents=True, exist_ok=True)
+    torch.save({"policy": {"w": final_w}}, final / "final_agent.pt")
+    return {"brain": brain, "source": str(src)}
+
+
+def test_a_short_resume_verifies(tmp_path):
+    """4 PPO updates drift the policy slightly: measured cosine 0.990260 on the real run."""
+    base = torch.randn(5000)
+    man = [_resume_pair(tmp_path, 1, base, base + 0.02 * torch.randn(5000))]
+    ok, checked, _ = _verify_resume(man, tmp_path / "run")
+    assert (ok, checked) == (1, 1)
+
+
+def test_random_weights_are_caught(tmp_path):
+    """⛔ THE CASE THE LOG-COUNTING VERSION GOT BACKWARDS. A run that trained from a fresh
+    init is orthogonal to the checkpoint it was supposed to resume: measured -0.000727."""
+    man = [_resume_pair(tmp_path, 1, torch.randn(5000), torch.randn(5000))]
+    ok, checked, _ = _verify_resume(man, tmp_path / "run")
+    assert (ok, checked) == (0, 1)
+
+
+def test_the_floor_sits_between_the_two_by_orders_of_magnitude(tmp_path):
+    """0.5 is not a tuned threshold: the two populations are ~0.99 and ~0.000."""
+    base = torch.randn(20000)
+    resumed = float(torch.nn.functional.cosine_similarity(
+        base, base + 0.02 * torch.randn(20000), dim=0))
+    fresh = abs(float(torch.nn.functional.cosine_similarity(
+        base, torch.randn(20000), dim=0)))
+    assert resumed > 0.9 and fresh < 0.1, (resumed, fresh)
+
+
+def test_a_missing_final_checkpoint_is_not_counted_as_a_pass(tmp_path):
+    """A run that never wrote a final checkpoint must not read as 'verified'."""
+    src = tmp_path / "src.pt"
+    torch.save({"policy": {"w": torch.randn(10)}}, src)
+    ok, checked, note = _verify_resume([{"brain": 1, "source": str(src)}], tmp_path / "run")
+    assert (ok, checked) == (0, 0) and "no comparable" in note
+
+
+def test_every_brain_is_checked_not_just_the_first(tmp_path):
+    base = torch.randn(5000)
+    man = [_resume_pair(tmp_path, 1, base, base + 0.02 * torch.randn(5000)),
+           _resume_pair(tmp_path, 2, torch.randn(5000), torch.randn(5000))]
+    ok, checked, _ = _verify_resume(man, tmp_path / "run")
+    assert (ok, checked) == (1, 2), "a per-brain failure must not be averaged away"

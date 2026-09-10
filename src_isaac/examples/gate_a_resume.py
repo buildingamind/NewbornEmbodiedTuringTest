@@ -156,6 +156,51 @@ def seed_checkpoints(src: dict[int, Path], dest_cfg_path: Path, *, dry_run: bool
     return manifest
 
 
+
+def _verify_resume(manifest: list[dict], cfg_path: Path,
+                   floor: float = 0.5) -> tuple[int, int, str]:
+    """How many brains demonstrably started from their seeded checkpoint.
+
+    Compares each brain's FINAL policy against the SOURCE policy by cosine similarity over
+    the concatenated float tensors. A short resume drifts a little (0.99 after 4 updates);
+    a fresh init is orthogonal (~0.000). `floor` sits between those by three orders of
+    magnitude, so it is not a tuned number.
+
+    ⚠ This answers "did it start from that checkpoint", not "is the checkpoint the right
+    one" -- the preflight's architecture comparison is what answers the second.
+    """
+    import torch
+
+    ok, checked, sims = 0, 0, []
+    for entry in manifest:
+        src = Path(entry["source"])
+        final = (cfg_path / "wandb_runs" / f"brain_{entry['brain']}" / "checkpoints"
+                 / "final_agent.pt")
+        if not (src.is_file() and final.is_file()):
+            continue
+        try:
+            a = torch.load(src, map_location="cpu", weights_only=False)["policy"]
+            b = torch.load(final, map_location="cpu", weights_only=False)["policy"]
+            keys = [k for k in a if k in b and a[k].shape == b[k].shape
+                    and a[k].dtype.is_floating_point]
+            if not keys:
+                continue
+            av = torch.cat([a[k].flatten() for k in keys]).float()
+            bv = torch.cat([b[k].flatten() for k in keys]).float()
+            sim = float(torch.nn.functional.cosine_similarity(av, bv, dim=0))
+        except Exception as e:                       # a malformed checkpoint is not a pass
+            sims.append(float("nan"))
+            checked += 1
+            print(f"    brain {entry['brain']}: could not verify ({e})", file=sys.stderr)
+            continue
+        checked += 1
+        sims.append(sim)
+        ok += sim >= floor
+    if not checked:
+        return 0, 0, "no comparable checkpoint pairs found"
+    return ok, checked, (f"min {min(sims):.4f} max {max(sims):.4f}, floor {floor}")
+
+
 def train_eps_for(updates: int, envs_per_brain: int) -> int:
     """Episodes needed for `updates` PPO updates.
 
@@ -239,6 +284,26 @@ def main() -> int:
               "buried in a subprocess traceback. Re-invoke with OMNI_KIT_ACCEPT_EULA=YES.",
               file=sys.stderr)
         return 3
+
+    # --- preflight 0b: WHICH nett_skrl will the child import? --------------------------
+    # ⛔ THIS TOOL RUNS *ITS OWN* campaign_train.py AGAINST WHATEVER TREE THE VENV
+    # RESOLVES `nett_skrl` TO, AND THOSE ARE ROUTINELY DIFFERENT. Measured 2026-09-10: a
+    # run launched from a worktree executed that worktree's campaign_train.py and the MAIN
+    # CHECKOUT's nett_skrl (an editable install), which was 3 commits behind. The aux loss,
+    # the PPO update and every scalar the gate reads live in nett_skrl -- so the run
+    # measured code the operator was not looking at, and the only symptom was a tensorboard
+    # series that silently did not exist. `notes/researcher/` records this as
+    # "source version is a per-PHASE fact": a fresh subprocess re-imports the tree.
+    import nett_skrl as _ns
+    ns_root = Path(_ns.__file__).resolve().parent.parent
+    if ns_root != REPO:
+        print(f"⚠ SOURCE SPLIT. campaign_train.py comes from {REPO}\n"
+              f"                nett_skrl resolves to    {ns_root}\n"
+              f"   The aux loss, the PPO update and every scalar this gate reads live in "
+              f"nett_skrl, so the RESULT IS ABOUT {ns_root.name}, not about the tree you "
+              f"are editing. Set PYTHONPATH={REPO} to run your own, or accept that the "
+              f"verdict describes the installed tree.")
+    print(f"  nett_skrl    : {ns_root}")
 
     ok, why = compatible(src_model, a.model)
     print(f"preflight: {why}")
@@ -343,14 +408,25 @@ def main() -> int:
     # loader -- all of which read as a clean load. `load_latest_checkpoints` emits one
     # "train: brain_N loaded ..." per brain it actually restored, so the number of those
     # lines is a positive count with a known expected value.
-    text = log_path.read_text(errors="replace")
-    loaded = len(re.findall(r"train: brain_\d+ loaded ", text))
-    print(f"  checkpoints loaded: {loaded}/{len(manifest)} brains (counted in {log_path.name})")
-    if loaded != len(manifest):
-        print(f"⛔ {len(manifest) - loaded} brain(s) did NOT load a checkpoint. Whatever the "
-              f"gate reads next is partly or wholly about RANDOM WEIGHTS -- and the parked "
-              f"fraction cannot tell you that, because an untrained policy and an unparked "
-              f"one give the same number.", file=sys.stderr)
+    # ⛔ COUNTING A LOG LINE WAS ITSELF AN UNSTATED n, AND IT RETURNED A FALSE ALARM ON
+    # THE FIRST REAL RUN. `load_latest_checkpoints` logs "train: brain_N loaded ..." from a
+    # SPAWNED TRAIN SUBPROCESS whose logging never reaches this captured stdout, so the
+    # count was 0/7 on a run whose weights prove all 7 loaded. "Count the successes rather
+    # than scanning for the failure" was right and insufficient: a counter over a log that
+    # cannot carry the message is exactly as blind as an absence check.
+    #
+    # ⇒ ASK THE WEIGHTS, NOT THE LOG. After a short resume the trained policy is still a
+    # near neighbour of the checkpoint it started from; a random init is orthogonal to it.
+    # Measured on the same run: cosine 0.990260 to the source vs -0.000727 for a random
+    # draw. That gap is four orders of magnitude wide, so the threshold is not delicate.
+    loaded, checked, detail = _verify_resume(manifest, cfg_path)
+    print(f"  checkpoints loaded: {loaded}/{checked} brains verified BY WEIGHT "
+          f"(cosine to source; {detail})")
+    if checked and loaded != checked:
+        print(f"⛔ {checked - loaded} brain(s) did NOT resume from their checkpoint. Whatever "
+              f"the gate reads next is partly or wholly about RANDOM WEIGHTS -- and the "
+              f"parked fraction cannot tell you that, because an untrained policy and an "
+              f"unparked one give the same number.", file=sys.stderr)
 
     # --- hand the verdict to the gate ---------------------------------------------------
     gate = find_gate_a()
