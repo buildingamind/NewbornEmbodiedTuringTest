@@ -140,6 +140,15 @@ grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush.log | tai
 # auto-skipped for want of stimuli. That skip is what the prepare step below removes, so
 # this hook is now slow by design. NETT_SKIP_E2E=1 is the escape hatch.
 if [ -z "${NETT_SKIP_E2E:-}" ]; then
+  # ⛔ WITHOUT THIS THE WHOLE TREE SKIPS AND THE HOOK PRINTS OK. Importing isaacsim stops at
+  # an interactive "Do you accept the EULA? (Yes/No)" prompt; under pytest's capture that read
+  # fails, the e2e conftest catches it as "e2e prerequisites missing", and 23 tests SKIP in 1.8s
+  # with rc 0. Measured 2026-09-09 on chicken: 23 skipped in 1.78s -> `pre-push: OK`. With this
+  # set, the same tree boots Kit and runs (one test: 1 passed in 96s).
+  # ⚠ The fleet already knew: tools/launch_arm.sh:181 and tools/node_setup.sh:105 both export it,
+  # the latter with the comment "importing isaacsim without it stops at an interactive EULA
+  # prompt". Every ARM was fine; only this hook was missing it, so the gate never gated.
+  export OMNI_KIT_ACCEPT_EULA=YES
   # Build what the e2e tree needs from outside both repositories BEFORE running it: the
   # versioned USD assets are verified, and the frame cache (~/.cache/nett_frame_cache) is
   # compiled. Doing it here rather than letting the tests do it lazily is deliberate --
@@ -216,6 +225,18 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
     exit 1
   fi
   [ "$E2E_JOBS" -gt 1 ] && _jobs_args="-n $E2E_JOBS --dist loadgroup"
+  # ⛔ THE PUSH'S SSH CONNECTION IS ALREADY OPEN AND WILL NOW SIT IDLE FOR THE WHOLE RUN. git
+  # contacts the remote for refs BEFORE running this hook, so a hook that genuinely works idles
+  # that socket for as long as the e2e takes and GitHub closes it: "Connection to github.com
+  # closed by remote host", git exits 141 (SIGPIPE) -- AFTER the tree passed. Measured 2026-09-09:
+  # `20 passed in 916.09s`, `pre-push: OK`, and nothing pushed. ⇒ Keepalives are required now that
+  # this phase is real; they were not while it took 1.8s.
+  if [ -z "${GIT_SSH_COMMAND:-}" ]; then
+    echo "pre-push: ⚠ this phase takes ~15+ min and the push's SSH socket is already open and idle." >&2
+    echo "  If the push dies with 'Connection ... closed by remote host' (exit 141) AFTER this" >&2
+    echo "  passes, re-run it with keepalives:" >&2
+    echo "      GIT_SSH_COMMAND='ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=30' git push ..." >&2
+  fi
   echo "pre-push: e2e tree (real training runs; ${E2E_JOBS} gpu(s), kit_threads=${NETT_KIT_THREADS:-default}, cap ${E2E_TIMEOUT}s) ..."
   timeout "$E2E_TIMEOUT" "$PY" -u -m pytest tests/e2e -v -m "e2e_isaac and not e2e_perf" \
           -rs --tb=short $_jobs_args >/tmp/nett_repob_prepush_e2e.log 2>&1
@@ -259,7 +280,21 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
     echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
     exit 1
   fi
-  grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush_e2e.log | tail -1
+  _e2e_summary=$(grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush_e2e.log | tail -1)
+  echo "$_e2e_summary"
+  # ⛔ rc 0 IS NOT EVIDENCE THE TREE RAN. The rc ladder above catches "collected NOTHING" (rc 5)
+  # but a tree that collects 23 and SKIPS 23 exits 0, and that is the same rot wearing a pass:
+  # every skip reason here is an environment prerequisite, so an all-skip means the harness is
+  # broken, never that the code is fine. Require at least one test to have actually PASSED.
+  _e2e_passed=$(printf '%s' "$_e2e_summary" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
+  if [ -z "$_e2e_passed" ] || [ "$_e2e_passed" -eq 0 ]; then
+    echo "pre-push: BLOCKED -- the e2e tree exited 0 but NOTHING RAN: ${_e2e_summary:-<no summary line>}" >&2
+    echo "  Every test in this tree is a real training run, so zero passed means the harness" >&2
+    echo "  refused, not that the code is good. Skip reasons:" >&2
+    grep -E "^SKIPPED" /tmp/nett_repob_prepush_e2e.log | head -10 >&2
+    echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
+    exit 1
+  fi
 fi
 
 echo "pre-push: OK"
