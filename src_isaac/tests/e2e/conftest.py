@@ -258,6 +258,35 @@ def pytest_configure(config) -> None:
     )
 
 
+# ⛔ ONE OF THESE "MISSING PREREQUISITES" IS NOT MISSING ANYTHING. Kit bootstraps at import
+# and, with the licence unaccepted, blocks on an interactive "Do you accept the EULA?"
+# read -- which fails under pytest's capture. The probe above correctly declines to crash
+# the session over it, but the resulting line says "isaacsim import failed", the whole tree
+# skips, and pytest EXITS 0. Measured 2026-09-10: 21 skipped in 3.09s, rc=0, on a host where
+# every one of those tests passes. A gate that reports success without reaching its subject
+# is worse than one that fails, and this one is indistinguishable from a clean run unless
+# you count the tests.
+#
+# The signature is distinguishable, so the reason names the fix rather than the symptom. It
+# stays a SKIP and not an error on purpose: a developer with no Isaac Sim at all must still
+# be able to run the unit suite, and that is the case this auto-skip exists for.
+_EULA_SIGNATURES = ("accept the eula", "reading from stdin while output is captured",
+                    "bootstrap inner kit kernel")
+
+
+def _eula_hint(exc) -> str:
+    text = str(exc)
+    if any(sig in text.lower() for sig in _EULA_SIGNATURES) and not os.environ.get(
+            "OMNI_KIT_ACCEPT_EULA"):
+        return (f"{text}\n"
+                f"    ⇒ OMNI_KIT_ACCEPT_EULA is UNSET. Kit is blocking on the interactive "
+                f"licence prompt, which pytest's capture breaks -- Isaac Sim is installed and "
+                f"these tests would run. Re-invoke with OMNI_KIT_ACCEPT_EULA=YES (which is "
+                f"what scripts/hooks/pre-push exports). ⚠ WITHOUT IT THIS TREE SKIPS ITSELF "
+                f"GREEN: pytest exits 0 having executed nothing.")
+    return text
+
+
 # Auto-skip the whole e2e tree when its prerequisites are missing, so a
 # developer without Isaac Sim / GPU can still run the rest of the suite.
 def _isaac_missing() -> str | None:
@@ -283,7 +312,7 @@ def _isaac_missing() -> str | None:
     try:
         import isaacsim  # noqa: F401
     except (Exception, SystemExit) as e:
-        return f"isaacsim import failed: {e}"
+        return f"isaacsim import failed: {_eula_hint(e)}"
     try:
         import nett_isaac  # noqa: F401
     except (Exception, SystemExit) as e:
