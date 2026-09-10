@@ -375,7 +375,20 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
         n = self.cfg.learning_epochs * self.cfg.mini_batches
         self.track_data("Loss / Policy loss", cumulative_policy_loss / n)
         self.track_data("Loss / Value loss", cumulative_value_loss / n)
-        self.track_data("Loss / Aux (SimCLR) loss", cumulative_aux_loss / n)
+        # ⛔ THE KIND IS INTERPOLATED, NOT HARDCODED. This label was `Aux (SimCLR)` for every aux,
+        #    so 217 of 217 aux-carrying tfevents across the fleet read `SimCLR` regardless of what
+        #    actually ran (eoo 0 · gwm 0 · cltt 0 · vicreg 0, over 910 tfevents / 63 roots).
+        #    ⚠ It does NOT retroactively fix those files -- a tfevents records the label the code
+        #    held when it was written -- and `aux_effective.py` stays the authoritative path, since
+        #    it reads the trainer's own `AuxLossPPO: <kind> aux loss ENABLED` line, not tfevents.
+        #    ⚠ THE TAG IS LOWERCASE, and deliberately not prettified. `_aux_kind` is an AUX_LOSSES
+        #    key -- `simclr`, `cltt`, `vicreg`, `eoo`, `gwm` -- so a genuine SimCLR arm now writes
+        #    `Loss / Aux (simclr) loss`, NOT the old `(SimCLR)`. A display mapping here would put a
+        #    second hardcoded label in the file this change exists to de-hardcode. Consumers must
+        #    match case-insensitively: a full-string cased key goes QUIET on a post-boundary arm
+        #    rather than wrong, so a mixed corpus reads as "no such arms exist" (lion registered
+        #    this before the change landed, against `tools/tfevents_auxkey.py`).
+        self.track_data(f"Loss / Aux ({self._aux_kind}) loss", cumulative_aux_loss / n)
         # UNWEIGHTED decomposition, when the aux exposes one. The invariance term is
         # the only one a temporal objective's view construction can move: variance and
         # covariance are computed per view and are indifferent to which frames the pair
