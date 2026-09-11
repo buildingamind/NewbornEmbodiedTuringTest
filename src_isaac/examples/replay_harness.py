@@ -658,9 +658,24 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
         if min(len(slot["left"]), len(slot["right"])) < MIN_SIDE_FRAMES:
             dropped[slot["cond"]] = dropped.get(slot["cond"], 0) + 1
             continue
-        episodes.append((slot["cond"], {"left": slot["left"], "right": slot["right"]},
+        # ⭐ SPLIT `Both Unfamiliar` BY PAIRING, BECAUSE POOLING THEM IS A MEAN OVER A
+        # MIXTURE OF AN IDENTIFYING AND A CONFOUNDED CELL.
+        #   SAME bg   2B vs 1B, 2C vs 1C -- one background, equally absent from memory
+        #                                  (which is 2A), so background CANNOT decide and
+        #                                  the sides differ only in OBJECT. Identifying.
+        #   CROSS bg  2B vs 1C, 2C vs 1B -- the two sides differ in background as well,
+        #                                  so a background-matching encoder has a cue again.
+        # Measured 2026-09-11: the design is balanced 238/238, but SCORABILITY is not --
+        # 30 SAME vs 8 CROSS survive the parked-agent exclusion. Reporting the pooled
+        # `Both Unfamiliar` therefore weights the identifying cell 4x the confounded one
+        # by an accident of where the agent walked, and says neither number.
+        label = slot["cond"]
+        if label == "Both Unfamiliar":
+            same = slot["left_clip"][1:2] == slot["right_clip"][1:2]
+            label = f"Both Unfamiliar ({'same' if same else 'cross'} bg)"
+        episodes.append((label, {"left": slot["left"], "right": slot["right"]},
                          slot["correct"]))
-        cue_rows.append((slot["cond"], slot["left_clip"], slot["right_clip"],
+        cue_rows.append((label, slot["left_clip"], slot["right_clip"],
                          slot["correct"]))
 
     # ⛔ The confound check runs on the SCORABLE episodes only -- the ones the numbers
@@ -680,6 +695,11 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
                 print(f"[replay] cue check {cond}: exposure background is NEUTRAL on all "
                       f"{total} scorable episodes -- this cue does not decide them. That "
                       f"clears ONE named confound, not the class.")
+                if cond.endswith("(cross bg)"):
+                    print(f"[replay]   ⚠ and `cross bg` clears it only because neither side "
+                          f"carries the exposure background -- the two sides still differ "
+                          f"in background from EACH OTHER, a cue this check cannot see. "
+                          f"That is why the pairing is split out rather than pooled.")
             elif hits in (0, defined):
                 print(f"[replay] ⛔ {cond}: the exposure background alone answers "
                       f"{defined}/{total} scorable episodes, UNANIMOUSLY "
@@ -692,6 +712,11 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
                       f"{hits}/{defined} of {total} -- partially aligned.")
     report = {"imprint_clip": imprint_clip, "by_object": by_object,
               "cue_alignment": alignment,
+              # (cond, left_clip, right_clip, correct_side) for each SCORABLE episode.
+              # Exposed because every confound question so far has needed the clips of the
+              # episodes that were actually scored, and reconstructing that join outside
+              # this function got it wrong once (1024 of 143,360 frames matched).
+              "scored_rows": list(cue_rows),
               "captured": len(keys), "joined": len(joined), "unjoined": unjoined,
               "rest_frames": rest_seen, "memory_frames": len(memory_idx),
               "rest_blank_side": rest_wrong_side, "episodes_total": len(by_ep),
