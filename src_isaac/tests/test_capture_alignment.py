@@ -237,6 +237,7 @@ def test_single_env_is_still_reachable_when_it_is_the_truth():
 # spent 40 minutes of a card producing 4.2 GB of one pose and one side on 2026-09-11.
 # ---------------------------------------------------------------------------
 import csv as _csv  # noqa: E402
+import shutil  # noqa: E402
 
 from capture_observations import (  # noqa: E402
     _design_coverage, expected_episodes_per_env,
@@ -297,3 +298,28 @@ def test_a_log_with_the_wrong_schema_is_refused_rather_than_read_positionally(tm
         w.writerow(["env_id", "episode", "step", "monitor_a", "monitor_b"])
         w.writerow([0, 0, 0, "2A_00.mov", "1A_00.mov"])
     assert _design_coverage(odd) == (0, set())
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures" / "design_coverage"
+
+
+@pytest.mark.parametrize("name,rows,sides", [
+    ("grouped_8of56.csv", 8, {"left"}),
+    ("strided_56of56.csv", 56, {"left", "right"}),
+])
+def test_design_coverage_on_the_real_logs_of_both_2026_09_11_captures(
+        tmp_path, name, rows, sides):
+    """⭐ REAL BYTES, BOTH OUTCOMES. A regression test holding only the healthy log is a
+    test of the case that cannot fail, so the failing capture's own log is committed
+    beside it: same driver, same source run, same day, one env var apart.
+
+    ⚠ WHAT THE REDUCTION PRESERVES AND WHAT IT DOES NOT. Each fixture is the first row of
+    each distinct (cond, left, right, correct) tuple from a 560,001-row log -- so it
+    preserves the statistic under test exactly, and preserves NOTHING about visit counts,
+    episode lengths or step ordering. Do not compute anything else from these files. The
+    full-size originals are under ~/nett/scratch/chicken/capture/ (the failing one renamed
+    UNUSABLE_8of56rows_..., with a README saying what it reproduces).
+    """
+    d = tmp_path / "logs"; d.mkdir()
+    shutil.copy(FIXTURES / name, d / "test_fork-1_0.csv")
+    assert _design_coverage(d) == (rows, sides)

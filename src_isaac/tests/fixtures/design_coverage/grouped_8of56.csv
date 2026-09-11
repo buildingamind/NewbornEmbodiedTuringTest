@@ -1,0 +1,9 @@
+env_id,episode,step,agent.x,agent.y,agent.angle,head.flexion,head.lateral,left.monitor,right.monitor,correct.monitor,experiment.phase,imprint.cond,test.cond,brain_id
+0,0,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,White.mov,left,test,fork-1,Rest,0
+4,116,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1A_00.mov,left,test,fork-1,Both Familiar,0
+8,232,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1B_00.mov,left,test,fork-1,Imprinted Object Familiar,0
+12,348,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1C_00.mov,left,test,fork-1,Imprinted Object Familiar,0
+0,560,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1A_00.mov,left,test,fork-1,Novel Familiar,0
+4,676,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1B_00.mov,left,test,fork-1,Both Unfamiliar,0
+8,792,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1C_00.mov,left,test,fork-1,Both Unfamiliar,0
+12,908,0,0.0,-14.5,0.0,0.0,0.0,2C_00.mov,1A_00.mov,left,test,fork-1,Novel Familiar,0

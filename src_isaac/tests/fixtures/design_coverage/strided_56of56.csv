@@ -1,0 +1,57 @@
+env_id,episode,step,agent.x,agent.y,agent.angle,head.flexion,head.lateral,left.monitor,right.monitor,correct.monitor,experiment.phase,imprint.cond,test.cond,brain_id
+0,0,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,White.mov,left,test,fork-1,Rest,0
+1,1,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1A_00.mov,left,test,fork-1,Both Familiar,0
+2,2,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1B_00.mov,left,test,fork-1,Imprinted Object Familiar,0
+3,3,0,0.0,-14.5,0.0,0.0,0.0,2A_00.mov,1C_00.mov,left,test,fork-1,Imprinted Object Familiar,0
+4,4,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1A_00.mov,left,test,fork-1,Novel Familiar,0
+5,5,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1B_00.mov,left,test,fork-1,Both Unfamiliar,0
+6,6,0,0.0,-14.5,0.0,0.0,0.0,2B_00.mov,1C_00.mov,left,test,fork-1,Both Unfamiliar,0
+7,7,0,0.0,-14.5,0.0,0.0,0.0,2C_00.mov,1A_00.mov,left,test,fork-1,Novel Familiar,0
+8,8,0,0.0,-14.5,0.0,0.0,0.0,2C_00.mov,1B_00.mov,left,test,fork-1,Both Unfamiliar,0
+9,9,0,0.0,-14.5,0.0,0.0,0.0,2C_00.mov,1C_00.mov,left,test,fork-1,Both Unfamiliar,0
+10,10,0,0.0,-14.5,0.0,0.0,0.0,2A_30.mov,1A_30.mov,left,test,fork-1,Both Familiar,0
+11,11,0,0.0,-14.5,0.0,0.0,0.0,2A_30.mov,1B_30.mov,left,test,fork-1,Imprinted Object Familiar,0
+12,12,0,0.0,-14.5,0.0,0.0,0.0,2A_30.mov,1C_30.mov,left,test,fork-1,Imprinted Object Familiar,0
+13,13,0,0.0,-14.5,0.0,0.0,0.0,2B_30.mov,1A_30.mov,left,test,fork-1,Novel Familiar,0
+14,14,0,0.0,-14.5,0.0,0.0,0.0,2B_30.mov,1B_30.mov,left,test,fork-1,Both Unfamiliar,0
+15,15,0,0.0,-14.5,0.0,0.0,0.0,2B_30.mov,1C_30.mov,left,test,fork-1,Both Unfamiliar,0
+0,112,0,0.0,-14.5,0.0,0.0,0.0,2C_30.mov,1A_30.mov,left,test,fork-1,Novel Familiar,0
+1,113,0,0.0,-14.5,0.0,0.0,0.0,2C_30.mov,1B_30.mov,left,test,fork-1,Both Unfamiliar,0
+2,114,0,0.0,-14.5,0.0,0.0,0.0,2C_30.mov,1C_30.mov,left,test,fork-1,Both Unfamiliar,0
+3,115,0,0.0,-14.5,0.0,0.0,0.0,2A_60.mov,1A_60.mov,left,test,fork-1,Both Familiar,0
+4,116,0,0.0,-14.5,0.0,0.0,0.0,2A_60.mov,1B_60.mov,left,test,fork-1,Imprinted Object Familiar,0
+5,117,0,0.0,-14.5,0.0,0.0,0.0,2A_60.mov,1C_60.mov,left,test,fork-1,Imprinted Object Familiar,0
+6,118,0,0.0,-14.5,0.0,0.0,0.0,2B_60.mov,1A_60.mov,left,test,fork-1,Novel Familiar,0
+7,119,0,0.0,-14.5,0.0,0.0,0.0,2B_60.mov,1B_60.mov,left,test,fork-1,Both Unfamiliar,0
+8,120,0,0.0,-14.5,0.0,0.0,0.0,2B_60.mov,1C_60.mov,left,test,fork-1,Both Unfamiliar,0
+9,121,0,0.0,-14.5,0.0,0.0,0.0,2C_60.mov,1A_60.mov,left,test,fork-1,Novel Familiar,0
+10,122,0,0.0,-14.5,0.0,0.0,0.0,2C_60.mov,1B_60.mov,left,test,fork-1,Both Unfamiliar,0
+11,123,0,0.0,-14.5,0.0,0.0,0.0,2C_60.mov,1C_60.mov,left,test,fork-1,Both Unfamiliar,0
+12,124,0,0.0,-14.5,0.0,0.0,0.0,White.mov,2A_00.mov,right,test,fork-1,Rest,0
+13,125,0,0.0,-14.5,0.0,0.0,0.0,1A_00.mov,2A_00.mov,right,test,fork-1,Both Familiar,0
+14,126,0,0.0,-14.5,0.0,0.0,0.0,1B_00.mov,2A_00.mov,right,test,fork-1,Imprinted Object Familiar,0
+15,127,0,0.0,-14.5,0.0,0.0,0.0,1C_00.mov,2A_00.mov,right,test,fork-1,Imprinted Object Familiar,0
+0,224,0,0.0,-14.5,0.0,0.0,0.0,1A_00.mov,2B_00.mov,right,test,fork-1,Novel Familiar,0
+1,225,0,0.0,-14.5,0.0,0.0,0.0,1B_00.mov,2B_00.mov,right,test,fork-1,Both Unfamiliar,0
+2,226,0,0.0,-14.5,0.0,0.0,0.0,1C_00.mov,2B_00.mov,right,test,fork-1,Both Unfamiliar,0
+3,227,0,0.0,-14.5,0.0,0.0,0.0,1A_00.mov,2C_00.mov,right,test,fork-1,Novel Familiar,0
+4,228,0,0.0,-14.5,0.0,0.0,0.0,1B_00.mov,2C_00.mov,right,test,fork-1,Both Unfamiliar,0
+5,229,0,0.0,-14.5,0.0,0.0,0.0,1C_00.mov,2C_00.mov,right,test,fork-1,Both Unfamiliar,0
+6,230,0,0.0,-14.5,0.0,0.0,0.0,1A_30.mov,2A_30.mov,right,test,fork-1,Both Familiar,0
+7,231,0,0.0,-14.5,0.0,0.0,0.0,1B_30.mov,2A_30.mov,right,test,fork-1,Imprinted Object Familiar,0
+8,232,0,0.0,-14.5,0.0,0.0,0.0,1C_30.mov,2A_30.mov,right,test,fork-1,Imprinted Object Familiar,0
+9,233,0,0.0,-14.5,0.0,0.0,0.0,1A_30.mov,2B_30.mov,right,test,fork-1,Novel Familiar,0
+10,234,0,0.0,-14.5,0.0,0.0,0.0,1B_30.mov,2B_30.mov,right,test,fork-1,Both Unfamiliar,0
+11,235,0,0.0,-14.5,0.0,0.0,0.0,1C_30.mov,2B_30.mov,right,test,fork-1,Both Unfamiliar,0
+12,236,0,0.0,-14.5,0.0,0.0,0.0,1A_30.mov,2C_30.mov,right,test,fork-1,Novel Familiar,0
+13,237,0,0.0,-14.5,0.0,0.0,0.0,1B_30.mov,2C_30.mov,right,test,fork-1,Both Unfamiliar,0
+14,238,0,0.0,-14.5,0.0,0.0,0.0,1C_30.mov,2C_30.mov,right,test,fork-1,Both Unfamiliar,0
+15,239,0,0.0,-14.5,0.0,0.0,0.0,1A_60.mov,2A_60.mov,right,test,fork-1,Both Familiar,0
+0,336,0,0.0,-14.5,0.0,0.0,0.0,1B_60.mov,2A_60.mov,right,test,fork-1,Imprinted Object Familiar,0
+1,337,0,0.0,-14.5,0.0,0.0,0.0,1C_60.mov,2A_60.mov,right,test,fork-1,Imprinted Object Familiar,0
+2,338,0,0.0,-14.5,0.0,0.0,0.0,1A_60.mov,2B_60.mov,right,test,fork-1,Novel Familiar,0
+3,339,0,0.0,-14.5,0.0,0.0,0.0,1B_60.mov,2B_60.mov,right,test,fork-1,Both Unfamiliar,0
+4,340,0,0.0,-14.5,0.0,0.0,0.0,1C_60.mov,2B_60.mov,right,test,fork-1,Both Unfamiliar,0
+5,341,0,0.0,-14.5,0.0,0.0,0.0,1A_60.mov,2C_60.mov,right,test,fork-1,Novel Familiar,0
+6,342,0,0.0,-14.5,0.0,0.0,0.0,1B_60.mov,2C_60.mov,right,test,fork-1,Both Unfamiliar,0
+7,343,0,0.0,-14.5,0.0,0.0,0.0,1C_60.mov,2C_60.mov,right,test,fork-1,Both Unfamiliar,0
