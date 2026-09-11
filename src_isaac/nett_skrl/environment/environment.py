@@ -276,13 +276,16 @@ class Environment:
 
         from ..runtime.kit_preflight import eula_blocks_boot, _MESSAGE
 
-        # ⛔ THE CHOKEPOINT. Drivers check this earlier and fail in 0s, which is better;
-        # this catches the driver that FORGOT to, which is the case that has now cost
-        # three launches. See runtime/kit_preflight.py for what the failure looks like.
-        if eula_blocks_boot():
-            raise SystemExit(_MESSAGE)
-
         if self._sim_app is None:
+            # ⛔ THE CHOKEPOINT. Drivers check this earlier and fail in 0s, which is
+            # better; this catches the driver that FORGOT to, which is the case that has
+            # now cost three launches. See runtime/kit_preflight.py.
+            # ⚠ INSIDE the `is None` branch on purpose: this guards the BOOT, and a
+            # second load() against an already-running app boots nothing. Guarding the
+            # method instead made a re-entrant load fail on a licence it had already
+            # satisfied.
+            if eula_blocks_boot():
+                raise SystemExit(_MESSAGE)
             if self.render_mode:
                 import sys
                 flag = f"--/rtx/rendermode={self.render_mode}"

@@ -175,6 +175,12 @@ def test_configure_cfg_infers_private_asset_root(tmp_path):
 
 
 def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, monkeypatch):
+    # These tests fake AppLauncher, so they must also fake the environment a real
+    # boot needs: Environment.load refuses when OMNI_KIT_ACCEPT_EULA is unset and
+    # there is no tty, which is exactly pytest under CI. Set it HERE rather than in
+    # conftest -- a global setting would switch the guard off for the whole suite,
+    # and the guard exists because it was missing from one callsite already.
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
     assets = tmp_path / "assets"
     for rel in (
         "chick/robot_chick.usdc",
@@ -325,6 +331,12 @@ def test_task_config_mode_view_does_not_mutate_base(tmp_path):
 def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
     tmp_path, monkeypatch
 ):
+    # These tests fake AppLauncher, so they must also fake the environment a real
+    # boot needs: Environment.load refuses when OMNI_KIT_ACCEPT_EULA is unset and
+    # there is no tty, which is exactly pytest under CI. Set it HERE rather than in
+    # conftest -- a global setting would switch the guard off for the whole suite,
+    # and the guard exists because it was missing from one callsite already.
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
     assets = tmp_path / "assets"
     for rel in ("chick/robot_chick.usdc", "chamber/chamber.usdc"):
         path = assets / rel
@@ -399,6 +411,12 @@ def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
 
 
 def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
+    # These tests fake AppLauncher, so they must also fake the environment a real
+    # boot needs: Environment.load refuses when OMNI_KIT_ACCEPT_EULA is unset and
+    # there is no tty, which is exactly pytest under CI. Set it HERE rather than in
+    # conftest -- a global setting would switch the guard off for the whole suite,
+    # and the guard exists because it was missing from one callsite already.
+    monkeypatch.setenv("OMNI_KIT_ACCEPT_EULA", "YES")
     assets = tmp_path / "assets"
     for rel in ("chick/robot_chick.usdc", "chamber/chamber.usdc"):
         path = assets / rel
