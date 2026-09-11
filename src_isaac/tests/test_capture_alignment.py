@@ -173,3 +173,59 @@ def test_unknown_source_count_still_catches_an_early_finish():
     """A run config without a test count must not silently pass a short capture."""
     assert _is_prefix(requested=20, seen=5, source=None) is True
     assert _is_prefix(requested=20, seen=20, source=None) is False
+
+
+# ---------------------------------------------------------------------------
+# num_envs resolution. The capture of 2026-09-11 recorded env 0 and nothing else
+# because `getattr(env, "num_envs", 1)` missed on a gymnasium>=1.0 wrapper and the
+# DEFAULT won. These tests exist because that failure is invisible in the output
+# file: a 1-env capture and a 112-env capture that lost 111 envs are the same bytes.
+# ---------------------------------------------------------------------------
+import gymnasium as gymn  # noqa: E402
+import numpy as np  # noqa: E402
+
+from capture_observations import resolve_num_envs  # noqa: E402
+
+
+class _Base(gymn.Env):
+    observation_space = gymn.spaces.Box(0, 255, (4, 4, 3), dtype=np.uint8)
+    action_space = gymn.spaces.Discrete(2)
+
+    def __init__(self, num_envs=None):
+        if num_envs is not None:
+            self.num_envs = num_envs
+
+
+def test_gymnasium_wrapper_really_does_drop_attribute_forwarding():
+    """⛔ THE PREMISE OF THE BUG, ASSERTED RATHER THAN ASSUMED. If a future gymnasium
+    restores `__getattr__`, the old expression starts working and this test tells the
+    reader why the resolver looks over-built."""
+    assert "__getattr__" not in vars(gymn.Wrapper)
+    wrapped = gymn.Wrapper(_Base(num_envs=112))
+    assert getattr(wrapped, "num_envs", 1) == 1, "the silent default, reproduced"
+    assert resolve_num_envs(wrapped) == 112, "the resolver sees through the wrapper"
+
+
+def test_declared_count_is_used_and_cross_checked():
+    assert resolve_num_envs(gymn.Wrapper(_Base(num_envs=112)), 112) == 112
+    # Declared alone, on an env that cannot be asked, is accepted.
+    assert resolve_num_envs(gymn.Wrapper(_Base()), 112) == 112
+
+
+def test_a_disagreement_is_a_refusal_not_a_preference():
+    with pytest.raises(SystemExit, match="disagreement"):
+        resolve_num_envs(gymn.Wrapper(_Base(num_envs=112)), 1)
+    with pytest.raises(SystemExit, match="disagreement"):
+        resolve_num_envs(gymn.Wrapper(_Base(num_envs=1)), 112)
+
+
+def test_no_source_at_all_refuses_rather_than_defaulting_to_one():
+    """⛔ THE DEFAULT IS THE DEFECT. `1` is a legitimate value, so a default of 1 makes
+    'nobody knows' indistinguishable from 'one env' -- and the capture cannot tell."""
+    with pytest.raises(SystemExit, match="Refusing to default to 1"):
+        resolve_num_envs(gymn.Wrapper(_Base()), None)
+
+
+def test_single_env_is_still_reachable_when_it_is_the_truth():
+    assert resolve_num_envs(gymn.Wrapper(_Base(num_envs=1))) == 1
+    assert resolve_num_envs(gymn.Wrapper(_Base(num_envs=1)), 1) == 1

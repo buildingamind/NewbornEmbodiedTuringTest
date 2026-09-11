@@ -102,6 +102,55 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 
+def resolve_num_envs(env, declared=None) -> int:
+    """How many envs the capture will iterate -- resolved LOUDLY, never defaulted.
+
+    ⛔ MEASURED 2026-09-11, AND IT COST A WHOLE CAPTURE. This was
+    ``int(getattr(env, "num_envs", 1))``. ``gymnasium.Wrapper`` DROPPED attribute
+    forwarding in 1.0 (``"__getattr__" in vars(gym.Wrapper)`` is False on the 1.2.0 in
+    this venv), and the env handed to the wrapper is the terminal ``ChannelsFirst``
+    wrapper, so the lookup missed and **the default 1 won silently**. The capture then
+    recorded env 0 and nothing else: 10 episodes out of 1,120, **7 of the 56 design rows**,
+    and 0 scorable episodes for the readout -- from a 49-minute run whose own log holds
+    all 112 envs and all 56 rows.
+
+    ⛔ THE DEFAULT IS THE DEFECT, NOT THE LOOKUP. A missing attribute and a genuine
+    ``num_envs=1`` produced the same number and no message, so nothing downstream could
+    tell a single-env capture from a 112-env capture that lost 111 of them.
+
+    ⛔ AND THE RIGHT NUMBER WAS PRINTED ON THE NEXT LINE. The driver logged
+    ``envs={run_config.num_envs}`` -- 112 -- immediately after constructing a wrapper that
+    believed 1. A value printed BESIDE the computation is not the value used BY it, which
+    is why ``declared`` is now an ARGUMENT and the printed line reads it back from here.
+
+    Resolution order: the caller's declared count (from ``run_config``), cross-checked
+    against the env itself when the env can be asked; otherwise whatever the env reports.
+    A disagreement and a total absence are both refusals.
+    """
+    found = None
+    for probe in (lambda: env.get_wrapper_attr("num_envs"),
+                  lambda: env.unwrapped.num_envs,
+                  lambda: env.num_envs):
+        try:
+            found = int(probe())
+            break
+        except Exception:
+            continue
+    if declared is None and found is None:
+        raise SystemExit(
+            "[capture] cannot determine num_envs: the env exposes none and the caller "
+            "declared none. Refusing to default to 1 -- that default silently recorded "
+            "1/112 of a capture on 2026-09-11.")
+    if declared is None:
+        return found
+    declared = int(declared)
+    if found is not None and found != declared:
+        raise SystemExit(
+            f"[capture] num_envs disagreement: caller declared {declared}, env reports "
+            f"{found}. One of them describes a different run; refusing to guess.")
+    return declared
+
+
 class FrameAlignment:
     """Decides which frames to keep and which frame each action acts on.
 
@@ -272,10 +321,11 @@ def main() -> int:
     class Capture(gym.Wrapper):
         """Records the policy observation on every reset/step. Pass-through otherwise."""
 
-        def __init__(self, env, every: int, max_frames: int, window: int = 1) -> None:
+        def __init__(self, env, every: int, max_frames: int, window: int = 1,
+                     num_envs: int | None = None) -> None:
             super().__init__(env)
             self.max_frames = int(max_frames)
-            self.num_envs = int(getattr(env, "num_envs", 1))
+            self.num_envs = resolve_num_envs(env, num_envs)
             # ⛔ WINDOW EXISTS BECAUSE STRIDED SINGLE FRAMES CANNOT TRAIN A TEMPORAL
             # LOSS. With `--every 20 --window 1` (the original behaviour) the capture
             # keeps frames 0, 20, 40 ... and NEVER two consecutive frames, so
@@ -319,6 +369,16 @@ def main() -> int:
             self.align.begin_record()
             if wanted and len(self.frames) < self.max_frames:
                 arr = self._chw_uint8(obs)
+                # ⛔ THE THIRD SOURCE. `num_envs` now comes from the caller and is
+                # cross-checked against the env; this checks it against the only thing
+                # that cannot be wrong -- the tensor actually handed to the encoder. A
+                # capture that iterates fewer envs than the batch holds drops the rest
+                # with no error and no missing-data signature in the file.
+                if arr.shape[0] != self.num_envs:
+                    raise SystemExit(
+                        f"[capture] observation batch is {arr.shape[0]} but the capture "
+                        f"iterates {self.num_envs} envs. Recording would silently keep "
+                        f"{min(arr.shape[0], self.num_envs)} of them.")
                 for env_id in wanted:
                     if len(self.frames) >= self.max_frames:
                         self.truncated_by_cap = True
@@ -444,8 +504,11 @@ def main() -> int:
     print(f"[capture] staged {staged} checkpoints into {cfg.path} (source untouched)")
 
     loaded = agent.body.embed(agent.env, run_config)      # boots Kit
-    capture = Capture(loaded, args.every, args.max_frames, window=args.window)
-    print(f"[capture] condition={condition} envs={run_config.num_envs} "
+    capture = Capture(loaded, args.every, args.max_frames, window=args.window,
+                      num_envs=run_config.num_envs)
+    # ⚠ Read the count BACK OUT of the wrapper. Printing `run_config.num_envs` here is
+    # what made a 1-env capture look like a 112-env one for a whole run.
+    print(f"[capture] condition={condition} envs={capture.num_envs} "
           f"episodes={args.episodes} every={args.every} cap={args.max_frames}")
     agent.brain.test(capture, run_config)
 
