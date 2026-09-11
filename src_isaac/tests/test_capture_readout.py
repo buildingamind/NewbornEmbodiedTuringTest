@@ -345,3 +345,40 @@ def test_the_untranslated_join_would_have_been_one_episode(tmp_path):
     raw = rh.load_test_labels(csv)
     hits = sum(1 for local in range(3) for s in range(3) if (0, local, s) in raw)
     assert hits == 3, "untranslated, only local==global==0 matches: 1 episode of 3"
+
+
+# ---------------------------------------------------------------------------
+# Minimum detectable shift. Added because on 2026-09-11 I published "no imprinting
+# signal on the one cell where a signal would have meant something" from a cell whose
+# MDE was 0.256 -- it would have returned the same answer if imprinting were strong.
+# ---------------------------------------------------------------------------
+from replay_harness import minimum_detectable_shift  # noqa: E402
+
+
+def test_the_cell_that_produced_the_false_negative():
+    """⛔ THE EXACT CELL AND THE EXACT CLAIM. n=30, trained 0.4333, chance 0.500."""
+    mde = minimum_detectable_shift(30)
+    assert round(mde, 3) == 0.256
+    assert abs(0.4333 - 0.5) < mde, "the observed shift is INSIDE the noise floor"
+    # It separates chance only from these extremes:
+    assert round(0.5 + mde, 3) == 0.756 and round(0.5 - mde, 3) == 0.244
+
+
+def test_the_brain_level_mde_exceeds_the_parameter_range():
+    """⛔⛔ THE POINT THAT KILLS 'more episodes will fix it'. Episodes shrink the
+    within-brain term, which is not binding. At the corpus's ~2 effective policies the
+    detectable shift is wider than [0, 1] -- nothing is detectable at ANY effect size,
+    and it takes roughly 20 brains to bring it inside a usable range."""
+    assert minimum_detectable_shift(2) > 0.5     # 0.991
+    assert minimum_detectable_shift(4) > 0.5     # 0.700
+    assert minimum_detectable_shift(7) > 0.5     # 0.529 -- seven brains is STILL not enough
+    assert minimum_detectable_shift(20) < 0.35   # 0.313
+
+
+def test_more_units_is_monotonically_better_and_zero_is_infinite():
+    prev = float("inf")
+    for n in (1, 2, 5, 10, 50, 200):
+        m = minimum_detectable_shift(n)
+        assert m < prev
+        prev = m
+    assert minimum_detectable_shift(0) == float("inf"), "an empty cell detects nothing"

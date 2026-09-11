@@ -52,6 +52,8 @@ prints is labelled FIXTURE and is about the plumbing, never about a model.
 from __future__ import annotations
 
 import argparse
+import math
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -470,6 +472,34 @@ def _side_of(x: float) -> str | None:
     if x <= -VIEW_X:
         return "left"
     return None
+
+
+def minimum_detectable_shift(n_units: int, p: float = 0.5,
+                             alpha_z: float = 1.959963985,
+                             power_z: float = 0.841621234) -> float:
+    """Smallest departure from `p` this cell could detect at 80% power, alpha .05.
+
+    ⛔⛔⛔ PRINTED BESIDE EVERY CELL BECAUSE A NULL FROM AN UNDERPOWERED CELL READS
+    EXACTLY LIKE A NULL FROM AN ADEQUATE ONE. Measured 2026-09-11: I reported
+    "no imprinting signal on the one cell where a signal would have meant something"
+    from `Both Unfamiliar (same bg)`, n=30, trained 0.4333 against a chance of 0.500.
+    That cell's MDE is **0.256** -- it separates chance only from a score above 0.756
+    or below 0.244. It would have returned the same answer if imprinting were strong.
+    The correct status was UNINFORMATIVE, and I published it as NEGATIVE.
+
+    ⛔ AND THE EPISODE COUNT IS THE FLATTERING UNIT. The units that vary are brains,
+    and at this corpus's ~2 effective policies the MDE is **0.99** -- wider than the
+    parameter's entire range, so nothing is detectable at any effect size. Even 7
+    brains gives 0.529, still outside [0, 1] as a usable interval; it takes ~20 to
+    reach 0.313.
+
+    ⇒ More episodes cannot fix that. Episodes shrink the within-brain term, which is
+    not the binding one, and no episode count changes a brain that contributes a
+    structural zero. See the fleet note on the readout and the parked agent.
+    """
+    if n_units <= 0:
+        return float("inf")
+    return (alpha_z + power_z) * math.sqrt(p * (1.0 - p) / n_units)
 
 
 def exposure_cue_alignment(episodes, exposure_token):
@@ -917,9 +947,26 @@ def main() -> int:
             base = baselines[k]
             sd = float(np.std(vals, ddof=1)) if len(vals) > 1 else float("nan")
             bsd = float(np.std(base, ddof=1)) if len(base) > 1 else float("nan")
+            # ⚠ Taken from the LABEL, which is the number the reader sees. A second
+            # source for the same quantity is a second thing that can disagree with the
+            # printed one, and this file has already shipped one of those.
+            _m = re.search(r"\(n=(\d+)\)", k)
+            n_ep = int(_m.group(1)) if _m else 0
+            m = minimum_detectable_shift(n_ep)
+            obs = abs(np.mean(vals) - 0.5)
+            verdict = ("" if obs >= m else
+                       f"  ⛔ UNINFORMATIVE: |trained-0.5|={obs:.3f} < MDE -- this cell "
+                       f"cannot distinguish its result from chance in EITHER direction")
             print(f"  {k:24s} untrained {np.mean(base):.4f} (sd {bsd:.4f})  "
                   f"trained {np.mean(vals):.4f} (sd {sd:.4f})  "
-                  f"delta {np.mean(vals)-np.mean(base):+.4f}  n={len(vals)}")
+                  f"delta {np.mean(vals)-np.mean(base):+.4f}  seeds={len(vals)}  "
+                  f"episodes={n_ep}  MDE={m:.3f}{verdict}")
+        print("⛔ MDE IS THE SMALLEST SHIFT FROM 0.500 THIS CELL COULD DETECT (80% power, "
+              "alpha .05), AND IT IS COMPUTED ON EPISODES -- THE FLATTERING UNIT. The units "
+              "that VARY are brains. On a corpus where two brains supply ~93% of the "
+              "scorable episodes the effective n is ~2, whose MDE is 0.99 -- wider than the "
+              "parameter's whole range. A cell marked UNINFORMATIVE is not evidence of no "
+              "effect; it is not evidence about the effect at all.")
         print("⚠ READ THE DELTA, NOT THE TRAINED COLUMN. A random encoder separates images by "
               "luminance and colour alone; only the delta is attributable to the objective.")
         print("⚠ sd here is the (a) seed component ALONE -- the data is identical across seeds. "
