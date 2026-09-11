@@ -274,6 +274,14 @@ class Environment:
         """
         from isaaclab.app import AppLauncher
 
+        from ..runtime.kit_preflight import eula_blocks_boot, _MESSAGE
+
+        # ⛔ THE CHOKEPOINT. Drivers check this earlier and fail in 0s, which is better;
+        # this catches the driver that FORGOT to, which is the case that has now cost
+        # three launches. See runtime/kit_preflight.py for what the failure looks like.
+        if eula_blocks_boot():
+            raise SystemExit(_MESSAGE)
+
         if self._sim_app is None:
             if self.render_mode:
                 import sys

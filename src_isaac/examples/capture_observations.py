@@ -434,6 +434,12 @@ def main() -> int:
     base_body = _make_body(config.get("body"))
     base_env = Environment(**env_cfg)
 
+    # ⛔ Fail in 0s with the cause named, rather than minutes in with 'EOF when reading
+    # a line'. Cost a launch on 2026-09-11 -- the third for this one variable.
+    from nett_skrl.runtime.kit_preflight import require_eula_or_explain
+    if not require_eula_or_explain():
+        raise SystemExit(3)
+
     condition = args.condition or base_env.conditions[0]
     out_root = args.out.expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
