@@ -102,6 +102,57 @@ from __future__ import annotations
 # ---------------------------------------------------------------------------
 
 
+def expected_episodes_per_env(rows: int, episodes_per_row: int, num_envs: int) -> int:
+    """Episodes ONE env runs, from the two quantities the env is actually sized by.
+
+    ⛔ THE UNIT CONVERSION THAT WAS MISSING. `episodes.test` in the config is episodes
+    PER DESIGN ROW; `FrameAlignment.on_done` counts episodes PER ENV. environment.py:366
+    multiplies rows x episodes_per_row into the GLOBAL `test_total_episodes`, and the env
+    spreads that over `num_envs`. Comparing the per-env count against the per-row one
+    stamped `is_prefix=True` on a capture that had reproduced its source run step for
+    step -- 560,001 log rows in each -- and cost a peer a message asking why "only HALF
+    the schedule ran". Nothing had gone wrong; the comparison had two units.
+
+        56 rows x 20 per row = 1120 global / 112 envs = 10 per env
+    """
+    if rows <= 0 or episodes_per_row <= 0 or num_envs <= 0:
+        return 0
+    return (rows * episodes_per_row) // num_envs
+
+
+def _design_coverage(logs_dir):
+    """(distinct design rows reached, set of target sides) from a run's own test log.
+
+    ⛔ THE ROW AXIS HAS NO OTHER WITNESS. A capture whose test phase visited 8 of 56
+    design rows finishes cleanly, writes every frame it was asked for, and reports a
+    healthy transition count -- the truncation is invisible in the npz because the npz
+    has no column for it. The per-step log DOES, in `test.cond` + the two monitor clips,
+    so the coverage is read back out of the artefact the run itself wrote.
+
+    A design row is the (condition, left clip, right clip, correct side) tuple; `Rest`
+    is included because it is a row of the sheet like any other. Returns (0, set()) when
+    no log is found, so a caller can tell "not measured" from "measured as zero".
+    """
+    import csv as _csv
+    from pathlib import Path as _Path
+    logs = sorted(_Path(logs_dir).glob("test_*.csv"))
+    if not logs:
+        return 0, set()
+    rows, sides = set(), set()
+    with open(logs[0], newline="") as fh:
+        rdr = _csv.DictReader(fh)
+        need = {"test.cond", "left.monitor", "right.monitor", "correct.monitor"}
+        if not need.issubset(rdr.fieldnames or ()):
+            # Read by NAME or not at all -- a positional read of a second schema is how
+            # an earlier analysis in this campaign got every implied n wrong silently.
+            return 0, set()
+        for r in rdr:
+            rows.add((r["test.cond"], r["left.monitor"],
+                      r["right.monitor"], r["correct.monitor"]))
+            sides.add(r["correct.monitor"])
+    return len(rows), sides
+
+
 def resolve_num_envs(env, declared=None) -> int:
     """How many envs the capture will iterate -- resolved LOUDLY, never defaulted.
 
@@ -440,6 +491,32 @@ def main() -> int:
     if not require_eula_or_explain():
         raise SystemExit(3)
 
+    # ⛔⛔ THE ROW AXIS, SET HERE BECAUSE A LAUNCH LINE IS NOT A PLACE TO KEEP A
+    # REQUIREMENT. `NETTEnvCfg.test_group_by_row` defaults TRUE, and
+    # environment.py's `_set_if_present` overrides it only when this variable is SET --
+    # so an unset var means grouped. `launch_arm.sh:269` exports 0 for every launcher
+    # arm, which is why the declared default has never been the value that runs on this
+    # fleet; a direct invocation like this one has no launcher and inherits True.
+    #
+    # ⛔ MEASURED 2026-09-11, TWICE, ON THE SAME DAY. Capture A exported it and reached
+    # 56/56 design rows. Capture B -- same driver, same source run, launch line retyped
+    # -- did not, and reached 8 rows: pose `_00` only, target-left only, 560,000 log rows
+    # all saying `correct.monitor=left`. 40 minutes of a card.
+    #
+    # ⛔ AND NOTHING IN THE OUTPUT SAID SO. `is_prefix` compares the EPISODE axis; this
+    # truncation is on the ROW axis. Capture B finished, wrote 4.2 GB, reported a healthy
+    # n_transition_pairs and passed every self-check in this file.
+    if "NETT_TEST_GROUP_BY_ROW" not in os.environ:
+        os.environ["NETT_TEST_GROUP_BY_ROW"] = "0"
+        print("[capture] NETT_TEST_GROUP_BY_ROW was unset -> forcing 0 (strided). Grouped "
+              "ordering truncates the design to one pose and one side for a capture-length "
+              "run, and nothing downstream can detect it.")
+    elif os.environ["NETT_TEST_GROUP_BY_ROW"] not in ("0", "false", "False"):
+        print(f"[capture] ⛔ NETT_TEST_GROUP_BY_ROW="
+              f"{os.environ['NETT_TEST_GROUP_BY_ROW']!r} -- grouped ordering. This capture "
+              f"will cover a PREFIX of the design sheet (one pose, one target side) and "
+              f"will not say so anywhere in its output. Unset it or set it to 0.")
+
     condition = args.condition or base_env.conditions[0]
     out_root = args.out.expanduser().resolve()
     out_root.mkdir(parents=True, exist_ok=True)
@@ -478,6 +555,10 @@ def main() -> int:
     base_brain.calc_iterations(num_brains, base_env.iterations_per_test_episode,
                                episodes, steps_per_episode)
     base_brain.iterations_per_test_episode = base_env.iterations_per_test_episode
+    # The number of design rows for this condition -- the same quantity environment.py:366
+    # multiplies by episodes["test"] to get the GLOBAL episode budget. Kept in a named
+    # variable because two different per-unit counts are derived from it below.
+    num_test_rows = int(base_env.iterations_per_test_episode.get(condition, 0))
     base_brain.envs_per_brain = max(1, num_envs // max(1, num_brains))
     agent.body.adjust_to_agent(agent.env, num_brains=num_brains, num_envs=num_envs,
                                episode_steps=steps_per_episode)
@@ -541,12 +622,50 @@ def main() -> int:
     # complete capture from a plausible short one WITHOUT the launch command.
     # ⚠ A crash or kill is NOT this failure mode: the npz is written only after
     # brain.test() returns, so an interrupted capture leaves no file at all.
+    # ⛔ `episodes_seen` IS PER ENV AND `--episodes` IS PER DESIGN ROW. This comparison
+    # used to be `episodes_seen < args.episodes`, which compared 10 against 20 on a
+    # capture that had reproduced its source run STEP FOR STEP -- 560,001 log rows in
+    # both files -- and stamped it `is_prefix=True`. A peer then spent a message on "only
+    # HALF the schedule ran", correctly refusing to guess the cause.
+    #
+    # The conversion, from environment.py:366 where the env is told its own budget:
+    #
+    #     test_total_episodes = rows * episodes_test        (GLOBAL, all envs)
+    #     episodes_per_env    = test_total_episodes / num_envs
+    #
+    # so 56 rows x 20 = 1120 global / 112 envs = 10 per env. `episodes.test` is episodes
+    # PER DESIGN ROW; `FrameAlignment.on_done` counts episodes PER ENV. Two units, one
+    # name, and the wrong one was the alarm.
+    #
+    # ⚠ A FALSE `is_prefix` IS NOT HARMLESS. It is the only completeness signal a consumer
+    # has without the launch command, so crying wolf on a complete capture trains the next
+    # reader to discount the flag that will one day be true.
     episodes_seen = int(keys[:, 1].max()) + 1 if len(keys) else 0
+    expected_per_env = expected_episodes_per_env(num_test_rows, args.episodes, num_envs)
     is_prefix = bool(
         capture.truncated_by_cap
         or (source_test_episodes is not None and args.episodes != source_test_episodes)
-        or episodes_seen < args.episodes
+        or (expected_per_env and episodes_seen < expected_per_env)
     )
+    # ⛔⛔ THE OUTCOME CHECK ON THE ROW AXIS. Setting NETT_TEST_GROUP_BY_ROW is the INPUT;
+    # this is whether the design was actually covered. They can disagree -- a design sheet
+    # change, a scope bug in _episodes_per_row, an env var consumed by a different layer --
+    # and only this one is evidence. Read from the capture's OWN log, which is the file the
+    # readout joins against.
+    rows_visited, sides = _design_coverage(cfg.path / "logs")
+    if rows_visited:
+        print(f"[capture] design rows reached: {rows_visited}"
+              + (f" of {num_test_rows}" if num_test_rows else "")
+              + f"   target sides: {sorted(sides)}")
+        if num_test_rows and rows_visited < num_test_rows:
+            print(f"[capture] ⛔⛔ THE DESIGN WAS TRUNCATED ON THE ROW AXIS: {rows_visited} of "
+                  f"{num_test_rows} rows. is_prefix covers the EPISODE axis and will not "
+                  f"catch this. Almost always NETT_TEST_GROUP_BY_ROW; see the preflight above.")
+        if len(sides) < 2:
+            print(f"[capture] ⛔⛔ EVERY EPISODE HAS THE TARGET ON THE SAME SIDE ({sides}). "
+                  f"No preference readout can be scored on this corpus -- a side-locked "
+                  f"answer key makes every statistic a measurement of the agent's side bias.")
+
     dest = out_root / f"obs_{run_dir.name}_{condition}.npz"
     np.savez_compressed(dest, obs=obs, keys=keys,
                         actions=actions, action_keys=action_keys,
@@ -557,6 +676,9 @@ def main() -> int:
                         episodes_source=(-1 if source_test_episodes is None
                                          else int(source_test_episodes)),
                         is_prefix=is_prefix,
+                        design_rows_visited=int(rows_visited),
+                        design_rows_total=int(num_test_rows or 0),
+                        target_sides=int(len(sides)),
                         truncated_by_cap=capture.truncated_by_cap,
                         run_dir=str(run_dir), condition=condition)
     print(f"[capture] {obs.shape} uint8 -> {dest}"

@@ -229,3 +229,71 @@ def test_no_source_at_all_refuses_rather_than_defaulting_to_one():
 def test_single_env_is_still_reachable_when_it_is_the_truth():
     assert resolve_num_envs(gymn.Wrapper(_Base(num_envs=1))) == 1
     assert resolve_num_envs(gymn.Wrapper(_Base(num_envs=1)), 1) == 1
+
+
+# ---------------------------------------------------------------------------
+# The two axes a capture can be truncated on. `is_prefix` has only ever watched the
+# EPISODE axis; the ROW axis has no witness in the npz at all, which is how a capture
+# spent 40 minutes of a card producing 4.2 GB of one pose and one side on 2026-09-11.
+# ---------------------------------------------------------------------------
+import csv as _csv  # noqa: E402
+
+from capture_observations import (  # noqa: E402
+    _design_coverage, expected_episodes_per_env,
+)
+
+
+def test_the_episode_axis_conversion_is_per_env_not_per_row():
+    """⛔ THE FALSE ALARM, PINNED. 56 rows x 20 per row / 112 envs = 10 per env. The old
+    comparison read the 20 as a per-env count and called a complete capture a prefix."""
+    assert expected_episodes_per_env(56, 20, 112) == 10
+    assert expected_episodes_per_env(56, 20, 56) == 20, "one env per row -> they coincide"
+    assert expected_episodes_per_env(56, 40, 112) == 20
+
+
+def test_the_conversion_refuses_degenerate_inputs_rather_than_dividing():
+    for args in ((0, 20, 112), (56, 0, 112), (56, 20, 0), (-1, 20, 112)):
+        assert expected_episodes_per_env(*args) == 0, f"{args} must not produce a threshold"
+
+
+def _write_log(path, rows):
+    with open(path, "w", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["env_id", "episode", "step", "left.monitor", "right.monitor",
+                    "correct.monitor", "test.cond"])
+        for i, (cond, left, right, correct) in enumerate(rows):
+            w.writerow([0, i, 0, left, right, correct, cond])
+
+
+def test_design_coverage_separates_a_covered_sheet_from_a_truncated_one(tmp_path):
+    """⛔ BOTH CASES ARE REAL FILES FROM 2026-09-11, reduced. The grouped run wrote
+    560,000 log rows every one of which said correct.monitor=left."""
+    full = tmp_path / "full"; full.mkdir()
+    _write_log(full / "test_fork-1_0.csv", [
+        ("Both Familiar", f"2A_{p}.mov", f"1A_{p}.mov", side)
+        for p in ("00", "30", "60") for side in ("left", "right")])
+    assert _design_coverage(full) == (6, {"left", "right"})
+
+    trunc = tmp_path / "trunc"; trunc.mkdir()
+    _write_log(trunc / "test_fork-1_0.csv",
+               [("Both Familiar", "2A_00.mov", "1A_00.mov", "left")] * 40)
+    rows, sides = _design_coverage(trunc)
+    assert (rows, sides) == (1, {"left"}), "one pose, one side -- the failure, detected"
+
+
+def test_absence_is_reported_as_not_measured_not_as_zero_coverage(tmp_path):
+    """⚠ A caller must be able to tell 'no log found' from 'the log shows nothing', or an
+    unmeasured capture reads as a catastrophically truncated one."""
+    empty = tmp_path / "empty"; empty.mkdir()
+    assert _design_coverage(empty) == (0, set())
+
+
+def test_a_log_with_the_wrong_schema_is_refused_rather_than_read_positionally(tmp_path):
+    """⛔ Read by NAME or not at all: a positional read of a second schema is how an
+    earlier analysis in this campaign got every implied n wrong with nothing looking wrong."""
+    odd = tmp_path / "odd"; odd.mkdir()
+    with open(odd / "test_x_0.csv", "w", newline="") as fh:
+        w = _csv.writer(fh)
+        w.writerow(["env_id", "episode", "step", "monitor_a", "monitor_b"])
+        w.writerow([0, 0, 0, "2A_00.mov", "1A_00.mov"])
+    assert _design_coverage(odd) == (0, set())
