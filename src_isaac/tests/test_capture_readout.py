@@ -352,7 +352,9 @@ def test_the_untranslated_join_would_have_been_one_episode(tmp_path):
 # signal on the one cell where a signal would have meant something" from a cell whose
 # MDE was 0.256 -- it would have returned the same answer if imprinting were strong.
 # ---------------------------------------------------------------------------
-from replay_harness import minimum_detectable_shift  # noqa: E402
+from replay_harness import (  # noqa: E402
+    FLEET_BETWEEN_BRAIN_SD, minimum_detectable_shift,
+)
 
 
 def test_the_cell_that_produced_the_false_negative():
@@ -364,15 +366,44 @@ def test_the_cell_that_produced_the_false_negative():
     assert round(0.5 + mde, 3) == 0.756 and round(0.5 - mde, 3) == 0.244
 
 
-def test_the_brain_level_mde_exceeds_the_parameter_range():
-    """⛔⛔ THE POINT THAT KILLS 'more episodes will fix it'. Episodes shrink the
-    within-brain term, which is not binding. At the corpus's ~2 effective policies the
-    detectable shift is wider than [0, 1] -- nothing is detectable at ANY effect size,
-    and it takes roughly 20 brains to bring it inside a usable range."""
-    assert minimum_detectable_shift(2) > 0.5     # 0.991
-    assert minimum_detectable_shift(4) > 0.5     # 0.700
-    assert minimum_detectable_shift(7) > 0.5     # 0.529 -- seven brains is STILL not enough
-    assert minimum_detectable_shift(20) < 0.35   # 0.313
+def test_the_brain_level_mde_uses_the_MEASURED_spread_not_the_bernoulli_maximum():
+    """⛔⛔ THIS TEST PREVIOUSLY PINNED A CLAIM THAT WAS WRONG, AND PINNED IT IN THE
+    ALARMING DIRECTION. It asserted `minimum_detectable_shift(7) > 0.5` and read that as
+    "seven brains cannot detect this at any effect size". The function was right; the
+    INPUT was not. The default is the Bernoulli SD at p=0.5 = 0.5, the theoretical
+    maximum for a [0,1] variable, attained only if brains sat at 0 and 1 in equal
+    numbers.
+
+    The fleet measures it: results/parsing.csv, se x sqrt(n_brains) over 6369
+    arm-condition rows -> median 0.1006 pooled, 0.0567 for Both Unfamiliar. Five times
+    smaller, and the conclusion reverses -- seven brains is ample.
+
+    ⚠ A test that pins a number is not pinning a claim. This one asserted arithmetic I
+    had done correctly on an input I had never measured, and the green stayed green.
+    """
+    # the assumed maximum, which is what the old test enshrined
+    assert minimum_detectable_shift(7) > 0.5
+
+    # and the measured reality, which reverses it
+    assert round(minimum_detectable_shift(7, sd=FLEET_BETWEEN_BRAIN_SD), 3) == 0.107
+    assert round(minimum_detectable_shift(7, sd=0.0567), 3) == 0.060
+    assert minimum_detectable_shift(7, sd=FLEET_BETWEEN_BRAIN_SD) < 0.25, (
+        "seven brains is ADEQUATE at the fleet's measured between-brain spread")
+
+
+def test_the_cell_is_marginal_not_hopeless_at_the_measured_spread():
+    """⇒ WHERE THE OBSERVED RESULT ACTUALLY SITS. |0.4333 - 0.5| = 0.0667, against the
+    Both Unfamiliar between-brain sd of 0.0567:
+
+        k=4 moving brains -> MDE 0.079   observed INSIDE  -> uninformative
+        k=7 all brains    -> MDE 0.060   observed OUTSIDE -> would be detectable
+
+    So the binding constraint is not the arm size. It is that 3 of 7 brains contribute
+    zero scorable episodes."""
+    observed = abs(0.4333 - 0.5)
+    assert observed < minimum_detectable_shift(4, sd=0.0567), "uninformative as it stands"
+    assert observed > minimum_detectable_shift(7, sd=0.0567), (
+        "and detectable if the parked brains moved -- the fix is upstream, not more episodes")
 
 
 def test_more_units_is_monotonically_better_and_zero_is_infinite():

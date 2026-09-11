@@ -474,7 +474,21 @@ def _side_of(x: float) -> str | None:
     return None
 
 
-def minimum_detectable_shift(n_units: int, p: float = 0.5,
+#: Between-brain SD of `correct_pct`, MEASURED from the fleet's own results rather than
+#: assumed: `results/parsing.csv`, se x sqrt(n_brains) over 6369 arm-condition rows with
+#: n_brains >= 2. Median 0.1006 pooled; per condition -- Both Unfamiliar 0.0567,
+#: Both Familiar 0.1153, Novel Familiar 0.1244, Imprinted Object Familiar 0.1301.
+#: ⛔ NOT 0.5. The Bernoulli SD at p=0.5 is the THEORETICAL MAXIMUM for a [0,1] variable,
+#: attained only if brains sat at 0 and 1 in equal numbers, and using it at the brain
+#: level overstates the required effect ~5x. See minimum_detectable_shift.
+FLEET_BETWEEN_BRAIN_SD = 0.1006
+BETWEEN_BRAIN_SD_BY_CONDITION = {
+    "Both Unfamiliar": 0.0567, "Both Familiar": 0.1153,
+    "Novel Familiar": 0.1244, "Imprinted Object Familiar": 0.1301,
+}
+
+
+def minimum_detectable_shift(n_units: int, p: float = 0.5, sd: float | None = None,
                              alpha_z: float = 1.959963985,
                              power_z: float = 0.841621234) -> float:
     """Smallest departure from `p` this cell could detect at 80% power, alpha .05.
@@ -487,19 +501,39 @@ def minimum_detectable_shift(n_units: int, p: float = 0.5,
     or below 0.244. It would have returned the same answer if imprinting were strong.
     The correct status was UNINFORMATIVE, and I published it as NEGATIVE.
 
-    ⛔ AND THE EPISODE COUNT IS THE FLATTERING UNIT. The units that vary are brains,
-    and at this corpus's ~2 effective policies the MDE is **0.99** -- wider than the
-    parameter's entire range, so nothing is detectable at any effect size. Even 7
-    brains gives 0.529, still outside [0, 1] as a usable interval; it takes ~20 to
-    reach 0.313.
+    ⛔ AND THE EPISODE COUNT IS THE FLATTERING UNIT. The units that vary are brains.
+    But the VARIANCE at the brain level is not the episode-level Bernoulli variance,
+    and my first version of this said it was:
 
-    ⇒ More episodes cannot fix that. Episodes shrink the within-brain term, which is
-    not the binding one, and no episode count changes a brain that contributes a
-    structural zero. See the fleet note on the readout and the parked agent.
+    ⛔⛔ RETRACTED 2026-09-11, WITHIN THE HOUR OF PUBLISHING IT. I wrote "7 brains gives
+    0.529, outside [0,1] -- nothing detectable at any effect size". That used sd=0.5,
+    the Bernoulli SD at p=0.5, which is the THEORETICAL MAXIMUM for a variable bounded
+    in [0,1] -- attained only if brains sat at 0 and 1 in equal numbers. The fleet's
+    OWN results measure it: `results/parsing.csv`, se x sqrt(n_brains) over 6369
+    arm-condition rows, median **0.1006** pooled and **0.0567** for Both Unfamiliar.
+    Five times smaller, and the conclusion reverses:
+
+        sd      MDE@7 brains   MDE@4   MDE@2     brains for MDE<0.25
+        0.5000     0.529        0.700   0.991            32          <- what I published
+        0.1006     0.107        0.141   0.199             2          <- MEASURED, pooled
+        0.0567     0.060        0.079   0.112             1          <- MEASURED, this cell
+
+    ⇒ Seven brains is AMPLE, not inadequate. The binding constraint was never the arm
+    size; it is that 3 of 7 brains contributed zero scorable episodes. At the measured
+    sd the cell is MARGINAL rather than hopeless -- |0.4333-0.5| = 0.067 sits just
+    inside the k=4 threshold (0.079) and just OUTSIDE the k=7 one (0.060), so getting
+    the parked brains to move would make it detectable.
+
+    ⚠ An assumed maximum is the right conservative choice for a WARNING LABEL on a
+    cell. It is the wrong thing to report as the fleet's measured resolution, because
+    "run more brains" and "abandon the statistic" are different decisions.
+
+    ⚠ `p` sets the Bernoulli default (episode level); pass `sd` for unit-level work.
     """
     if n_units <= 0:
         return float("inf")
-    return (alpha_z + power_z) * math.sqrt(p * (1.0 - p) / n_units)
+    spread = math.sqrt(p * (1.0 - p)) if sd is None else float(sd)
+    return (alpha_z + power_z) * spread / math.sqrt(n_units)
 
 
 def exposure_cue_alignment(episodes, exposure_token):
