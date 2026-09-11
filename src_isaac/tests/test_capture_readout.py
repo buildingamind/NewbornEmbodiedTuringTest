@@ -443,3 +443,74 @@ def test_more_units_is_monotonically_better_and_zero_is_infinite():
         assert m < prev
         prev = m
     assert minimum_detectable_shift(0) == float("inf"), "an empty cell detects nothing"
+
+
+# ---------------------------------------------------------------------------
+# exposure_cue_alignment. ⛔ THIS FUNCTION SHIPPED WITH NO TEST AT ALL, and it is the
+# one that produced the night's headline finding -- "the readout measures the
+# background". Found 2026-09-11 by running a peer's audit method on my own suites: a
+# mutant swapping the OBJECT digit for the BACKGROUND letter passed all 28 tests.
+# The most load-bearing function of the session was the unverified one.
+# ---------------------------------------------------------------------------
+from replay_harness import exposure_cue_alignment  # noqa: E402
+
+EXPOSURE = "2A_00.mov"          # Rest shows the imprinted object in background A
+
+
+def test_the_cell_where_the_cue_is_unanimously_CORRECT():
+    """Imprinted Object Familiar: `2A` vs `1B`/`1C`. Background A is on the correct side
+    every time, so a background-matching encoder scores 1.000 with no training."""
+    eps = [("Imprinted Object Familiar", "2A_00.mov", "1B_00.mov", "left"),
+           ("Imprinted Object Familiar", "1C_30.mov", "2A_30.mov", "right"),
+           ("Imprinted Object Familiar", "2A_60.mov", "1C_60.mov", "left")]
+    assert exposure_cue_alignment(eps, EXPOSURE) == {
+        "Imprinted Object Familiar": (3, 3, 3)}
+
+
+def test_the_cell_where_the_cue_is_unanimously_WRONG():
+    """Novel Familiar: `2B`/`2C` vs `1A`. Background A is on the WRONG side every time --
+    which is why an untrained encoder scored 0.087, not 0.500."""
+    eps = [("Novel Familiar", "2B_00.mov", "1A_00.mov", "left"),
+           ("Novel Familiar", "1A_30.mov", "2C_30.mov", "right")]
+    assert exposure_cue_alignment(eps, EXPOSURE) == {"Novel Familiar": (2, 0, 2)}
+
+
+def test_the_two_ways_a_cue_is_NEUTRAL_are_not_the_same_situation():
+    """⚠ `defined == 0` covers two different worlds and the function must not conflate
+    them with 'the cue decided nothing useful':
+      absent both sides  -- Both Unfamiliar `2B` vs `1B`, no A anywhere
+      present both sides -- Both Familiar    `2A` vs `1A`, A on both
+    Both leave the cue unable to discriminate, which is the property under test."""
+    eps = [("Both Unfamiliar (same bg)", "2B_00.mov", "1B_00.mov", "left"),
+           ("Both Familiar", "2A_00.mov", "1A_00.mov", "left")]
+    got = exposure_cue_alignment(eps, EXPOSURE)
+    assert got["Both Unfamiliar (same bg)"] == (0, 0, 1), "A absent from both sides"
+    assert got["Both Familiar"] == (0, 0, 1), "A present on both sides"
+
+
+def test_it_reads_the_BACKGROUND_letter_and_not_the_OBJECT_digit():
+    """⛔ THE MUTANT THAT SURVIVED. `2A_00.mov` -- digit is the OBJECT, letter is the
+    BACKGROUND. Comparing the digit to `A` makes every cell undefined and silently
+    reports "no confound anywhere", which is the reassuring direction."""
+    eps = [("Imprinted Object Familiar", "2A_00.mov", "1B_00.mov", "left")]
+    assert exposure_cue_alignment(eps, EXPOSURE) == {"Imprinted Object Familiar": (1, 1, 1)}
+    # An exposure clip with the SAME object but a different background must flip the
+    # verdict -- impossible if the digit were being read.
+    assert exposure_cue_alignment(eps, "2B_00.mov") == {"Imprinted Object Familiar": (1, 0, 1)}
+
+
+def test_the_correct_side_decides_which_clip_is_the_target():
+    """A mirrored pair must give the mirrored answer, or the function is scoring position
+    rather than the answer key."""
+    left_correct = [("X", "2A_00.mov", "1B_00.mov", "left")]
+    right_correct = [("X", "2A_00.mov", "1B_00.mov", "right")]
+    assert exposure_cue_alignment(left_correct, EXPOSURE) == {"X": (1, 1, 1)}
+    assert exposure_cue_alignment(right_correct, EXPOSURE) == {"X": (1, 0, 1)}
+
+
+def test_an_empty_exposure_token_defines_nothing_rather_than_matching_everything():
+    """⚠ `""[1:2]` is `""`, and a naive comparison would then match any clip whose second
+    character is empty -- none, but the failure mode to guard is the opposite one: a
+    falsy token must not make the cue look universally decisive."""
+    eps = [("Imprinted Object Familiar", "2A_00.mov", "1B_00.mov", "left")]
+    assert exposure_cue_alignment(eps, "") == {"Imprinted Object Familiar": (0, 0, 1)}
