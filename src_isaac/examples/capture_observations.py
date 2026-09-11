@@ -487,6 +487,25 @@ def main() -> int:
 
     # ⛔ Fail in 0s with the cause named, rather than minutes in with 'EOF when reading
     # a line'. Cost a launch on 2026-09-11 -- the third for this one variable.
+    #
+    # ⚠ AND THIS DRIVER DELIBERATELY *REFUSES* HERE WHILE IT *SETS* NETT_TEST_GROUP_BY_ROW
+    # BELOW. That asymmetry is intentional and has been proposed as an inconsistency once
+    # already, so the reason is recorded rather than left to be re-litigated:
+    #
+    #   NETT_TEST_GROUP_BY_ROW is a CORRECTNESS requirement with exactly one right value
+    #   for a capture. Nobody's intent is expressed by it; leaving it to the launch line
+    #   cost 40 minutes of a card. The program should decide it.
+    #
+    #   OMNI_KIT_ACCEPT_EULA is a person ACCEPTING A LICENCE. `setdefault(..., "YES")`
+    #   would have this program accept NVIDIA's terms on behalf of whoever ran it, in a
+    #   context where they had not. That is not a default, it is an answer to a question
+    #   only a person can answer -- and the fleet has already answered it, in the two
+    #   places where a person set it up: launch_arm.sh and node_setup.sh.
+    #
+    # ⇒ The right fix for an inherited-shell dependency is not to inherit harder. It is to
+    # STOP LOUDLY AND NAME THE VARIABLE, which is what this does in 0s. A refusal that
+    # tells you the one thing to type is not the failure mode; the silent tty-less prompt
+    # it replaces was.
     from nett_skrl.runtime.kit_preflight import require_eula_or_explain
     if not require_eula_or_explain():
         raise SystemExit(3)

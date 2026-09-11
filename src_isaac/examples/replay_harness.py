@@ -472,6 +472,49 @@ def _side_of(x: float) -> str | None:
     return None
 
 
+def exposure_cue_alignment(episodes, exposure_token):
+    """Per condition, whether a LOW-LEVEL MATCH TO THE EXPOSURE CLIP answers the question.
+
+    ⛔⛔⛔ THE READOUT'S ANSWER KEY IS ALIGNED WITH A CUE THE ENCODER DOES NOT HAVE TO
+    LEARN, AND MEASURING IT WAS THE ONLY WAY TO SEE THAT. The exposure set is `Rest`,
+    which on this campaign's sheet is `2A_*` alone -- ONE object in ONE background. So
+    "closest to memory in cosine" is dominated by BACKGROUND, and the sheet puts the
+    background on the correct side in one condition and the wrong side in another:
+
+        Imprinted Object Familiar   2A vs 1B/1C   background A on the CORRECT side, 11/11
+        Novel Familiar              2B/2C vs 1A   background A on the WRONG side,    0/23
+        Both Unfamiliar             2B/2C vs 1B/1C   no A either side -> undefined
+        Both Familiar               2A vs 1A      A on BOTH sides -> the cue is NEUTRALISED
+
+    ⛔ MEASURED 2026-09-11 ON AN UNTRAINED (RANDOM) ENCODER: 1.000, 0.087, 0.40. The rule
+    above predicts 1.000, 0.000, chance -- three numbers, no free parameters, and it needs
+    no training. The trained deltas were +0.018, -0.015, +0.000.
+
+    ⛔ AND THE ONE CONDITION THAT NEUTRALISES THE CUE WAS EMPTY. `Both Familiar` scored
+    0 of 126 episodes: the agent never once crossed the chamber, max frames on the thinner
+    side **0**, against 199-212 in every other condition. So the cell that identifies the
+    effect is not merely underpowered, it is unreachable for this policy -- and no
+    threshold change recovers it, because the count is zero rather than small.
+
+    ⇒ Returns {condition: (n_where_cue_is_defined, n_where_cue_points_at_the_correct
+    answer, n_episodes)}. A condition whose cue is defined and unanimous is
+    NON-IDENTIFIABLE: the objective and the confound predict the same answer, so the
+    score is evidence about neither. See the fleet note on an aligned confound.
+    """
+    out = {}
+    bg = exposure_token[1:2] if exposure_token else ""
+    for cond, left_clip, right_clip, correct in episodes:
+        defined, hits, total = out.get(cond, (0, 0, 0))
+        tgt, non = ((left_clip, right_clip) if correct == "left"
+                    else (right_clip, left_clip))
+        a_t, a_n = (tgt[1:2] == bg), (non[1:2] == bg)
+        if a_t != a_n:
+            defined += 1
+            hits += int(a_t)
+        out[cond] = (defined, hits, total + 1)
+    return out
+
+
 def build_capture_pairs(blob, csv_path, verbose: bool = True):
     """Join a capture to its run's per-step log; return (memory_idx, episodes, report).
 
@@ -550,6 +593,8 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
         ep = (int(row["env_id"]), int(row["episode"]))
         side = _side_of(float(row["agent.x"]))
         slot = by_ep.setdefault(ep, {"cond": cond, "correct": row["correct.monitor"],
+                                     "left_clip": row["left.monitor"],
+                                     "right_clip": row["right.monitor"],
                                      "left": [], "right": [], "middle": 0})
         if side is None:
             slot["middle"] += 1
@@ -608,15 +653,45 @@ def build_capture_pairs(blob, csv_path, verbose: bool = True):
             f"  Fix the capture's schedule construction before any side-dependent readout "
             f"is run on it.")
 
-    episodes, dropped = [], {}
+    episodes, dropped, cue_rows = [], {}, []
     for ep, slot in sorted(by_ep.items()):
         if min(len(slot["left"]), len(slot["right"])) < MIN_SIDE_FRAMES:
             dropped[slot["cond"]] = dropped.get(slot["cond"], 0) + 1
             continue
         episodes.append((slot["cond"], {"left": slot["left"], "right": slot["right"]},
                          slot["correct"]))
+        cue_rows.append((slot["cond"], slot["left_clip"], slot["right_clip"],
+                         slot["correct"]))
 
+    # ⛔ The confound check runs on the SCORABLE episodes only -- the ones the numbers
+    # are actually computed from -- because alignment over the whole sheet says nothing
+    # about the subset that survived the parked-agent exclusion.
+    alignment = exposure_cue_alignment(cue_rows, imprint_clip or "")
+    if verbose:
+        for cond in sorted(alignment):
+            defined, hits, total = alignment[cond]
+            if not defined:
+                # ⚠ NEUTRAL ON *THIS* CUE IS NOT "IDENTIFIES THE OBJECT". This tests one
+                # named confound -- the exposure clip's background letter. A condition it
+                # clears may still be decided by another low-level cue nobody has named
+                # (luminance, a shared background between the two novel clips, pose). An
+                # instrument cannot test its own candidate set; this one has a candidate
+                # set of exactly one.
+                print(f"[replay] cue check {cond}: exposure background is NEUTRAL on all "
+                      f"{total} scorable episodes -- this cue does not decide them. That "
+                      f"clears ONE named confound, not the class.")
+            elif hits in (0, defined):
+                print(f"[replay] ⛔ {cond}: the exposure background alone answers "
+                      f"{defined}/{total} scorable episodes, UNANIMOUSLY "
+                      f"{'correct' if hits else 'WRONG'}. An untrained encoder scores "
+                      f"{float(bool(hits)):.3f} here without learning anything. The "
+                      f"objective and the confound predict the same answer -- this cell "
+                      f"is NON-IDENTIFIABLE, not merely noisy.")
+            else:
+                print(f"[replay] cue check {cond}: exposure background decides "
+                      f"{hits}/{defined} of {total} -- partially aligned.")
     report = {"imprint_clip": imprint_clip, "by_object": by_object,
+              "cue_alignment": alignment,
               "captured": len(keys), "joined": len(joined), "unjoined": unjoined,
               "rest_frames": rest_seen, "memory_frames": len(memory_idx),
               "rest_blank_side": rest_wrong_side, "episodes_total": len(by_ep),
