@@ -489,6 +489,7 @@ BETWEEN_BRAIN_SD_BY_CONDITION = {
 
 
 def minimum_detectable_shift(n_units: int, p: float = 0.5, sd: float | None = None,
+                             episodes_per_unit: float | None = None,
                              alpha_z: float = 1.959963985,
                              power_z: float = 0.841621234) -> float:
     """Smallest departure from `p` this cell could detect at 80% power, alpha .05.
@@ -518,11 +519,25 @@ def minimum_detectable_shift(n_units: int, p: float = 0.5, sd: float | None = No
         0.1006     0.107        0.141   0.199             2          <- MEASURED, pooled
         0.0567     0.060        0.079   0.112             1          <- MEASURED, this cell
 
-    ⇒ Seven brains is AMPLE, not inadequate. The binding constraint was never the arm
-    size; it is that 3 of 7 brains contributed zero scorable episodes. At the measured
-    sd the cell is MARGINAL rather than hopeless -- |0.4333-0.5| = 0.067 sits just
-    inside the k=4 threshold (0.079) and just OUTSIDE the k=7 one (0.060), so getting
-    the parked brains to move would make it detectable.
+    ⛔⛔ AND `sd` ALONE IS THE FLOOR, NOT THE RESOLUTION -- corrected again, same hour.
+    I then wrote "the cell is MARGINAL: detectable at k=7", by transplanting 0.0567
+    onto a cell whose per-brain scores rest on ~7.5 episodes. That drops the SAMPLING
+    term, which here is 0.183 -- **3.2x the between-brain SD** -- so it sets the
+    resolution almost by itself. Inverse-variance weighting the four moving brains at
+    their real allocation (~18, 10, 1.6, 0.4 episodes) gives SE 0.099, MDE **0.278**.
+    The observed 0.0667 is **0.24x** the resolution: firmly UNINFORMATIVE, not marginal.
+
+    ⇒ Both terms bind, in sequence, and neither lever alone is enough:
+
+        moving brains   scorable eps/brain needed   raw eps/brain @12.6%
+              4         IMPOSSIBLE (floor 0.079 > 0.067 at any episode count)
+              7                332                        2636
+             12                 70                         553
+             20                 31                         244
+
+    Four brains is unreachable at ANY episode count because the between-brain floor
+    alone exceeds the effect. Seven becomes possible but wants ~2600 raw episodes per
+    brain. So the ask is BOTH -- unpark the brains AND run the condition deeper.
 
     ⚠ An assumed maximum is the right conservative choice for a WARNING LABEL on a
     cell. It is the wrong thing to report as the fleet's measured resolution, because
@@ -533,6 +548,18 @@ def minimum_detectable_shift(n_units: int, p: float = 0.5, sd: float | None = No
     if n_units <= 0:
         return float("inf")
     spread = math.sqrt(p * (1.0 - p)) if sd is None else float(sd)
+    if episodes_per_unit:
+        # ⛔⛔ THE TERM I DROPPED, AND IT DOMINATES. A between-unit SD measured from the
+        # fleet corpus describes spread among per-brain scores each estimated from MANY
+        # episodes -- so it is nearly pure between-brain variance and carries NO sampling
+        # term. Transplanting it onto a cell whose per-brain scores rest on ~7 episodes
+        # omits the term that is currently 3.2x larger:
+        #     eps/brain  within SE  total sd  MDE@4
+        #       7.5        0.183      0.191   0.268   <- this cell
+        #      20          0.112      0.125   0.176
+        #     200          0.035      0.067   0.094
+        # ⇒ `sd` alone is the FLOOR as episodes -> infinity, not the resolution today.
+        spread = math.sqrt(spread ** 2 + p * (1.0 - p) / float(episodes_per_unit))
     return (alpha_z + power_z) * spread / math.sqrt(n_units)
 
 

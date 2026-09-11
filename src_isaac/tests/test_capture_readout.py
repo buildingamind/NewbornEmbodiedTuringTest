@@ -391,19 +391,49 @@ def test_the_brain_level_mde_uses_the_MEASURED_spread_not_the_bernoulli_maximum(
         "seven brains is ADEQUATE at the fleet's measured between-brain spread")
 
 
-def test_the_cell_is_marginal_not_hopeless_at_the_measured_spread():
-    """⇒ WHERE THE OBSERVED RESULT ACTUALLY SITS. |0.4333 - 0.5| = 0.0667, against the
-    Both Unfamiliar between-brain sd of 0.0567:
+def test_the_between_unit_sd_is_a_FLOOR_not_the_resolution():
+    """⛔⛔ THE SECOND RETRACTION IN THE SAME HOUR, AND IT REVERSES THE FIRST ONE'S
+    OPTIMISM. Having measured the between-brain sd at 0.0567 I wrote "the cell is
+    marginal -- detectable at k=7". That transplanted a PURE between-brain spread onto a
+    cell whose per-brain scores rest on ~7.5 episodes each, dropping the sampling term:
 
-        k=4 moving brains -> MDE 0.079   observed INSIDE  -> uninformative
-        k=7 all brains    -> MDE 0.060   observed OUTSIDE -> would be detectable
+        eps/brain   within SE   total sd   MDE@4
+            7.5       0.183      0.191     0.268   <- this cell, 3.2x the between term
+           20         0.112      0.125     0.176
+          200         0.035      0.067     0.094
 
-    So the binding constraint is not the arm size. It is that 3 of 7 brains contribute
-    zero scorable episodes."""
+    A between-unit sd measured from a corpus of well-estimated per-unit scores carries NO
+    sampling term. It is the floor as episodes -> infinity, never the resolution today.
+    """
+    floor = minimum_detectable_shift(4, sd=0.0567)
+    real = minimum_detectable_shift(4, sd=0.0567, episodes_per_unit=7.5)
+    assert round(floor, 4) == 0.0794, "the floor alone, which is what I published"
+    assert round(real, 4) == 0.2678, "the resolution with the sampling term restored"
+    assert real > 3 * floor, "the omitted term dominates, it does not merely adjust"
+    # and the within term must vanish in the limit, or it is not a variance decomposition
+    assert abs(minimum_detectable_shift(4, sd=0.0567, episodes_per_unit=10**7) - floor) < 1e-4
+
+
+def test_the_observed_effect_is_uninformative_under_the_REAL_resolution():
+    """⇒ The UNINFORMATIVE label survives its third distinct justification. Not "the
+    design is too coarse" (withdrawn), not "three of seven brains contribute zero" (true
+    but not the binding term) -- but "per-brain scores here rest on ~7 episodes each"."""
     observed = abs(0.4333 - 0.5)
-    assert observed < minimum_detectable_shift(4, sd=0.0567), "uninformative as it stands"
-    assert observed > minimum_detectable_shift(7, sd=0.0567), (
-        "and detectable if the parked brains moved -- the fix is upstream, not more episodes")
+    assert observed < minimum_detectable_shift(4, sd=0.0567, episodes_per_unit=7.5)
+    assert observed / minimum_detectable_shift(4, sd=0.0567, episodes_per_unit=7.5) < 0.3
+
+
+def test_four_moving_brains_is_unreachable_at_any_episode_count():
+    """⛔ THE FLOOR IS THE PART THAT NO AMOUNT OF DATA MOVES. At k=4 the between-brain
+    floor (0.0794) already exceeds the observed effect (0.0667), so more episodes cannot
+    reach it -- seven brains can, but wants ~332 scorable episodes each (~2600 raw at a
+    12.6% scorable rate). Both levers are needed; neither alone suffices."""
+    observed = abs(0.4333 - 0.5)
+    assert minimum_detectable_shift(4, sd=0.0567) > observed, "unreachable at k=4"
+    assert minimum_detectable_shift(7, sd=0.0567) < observed, "reachable at k=7 in the limit"
+    assert minimum_detectable_shift(7, sd=0.0567, episodes_per_unit=332) <= observed * 1.01
+    assert minimum_detectable_shift(7, sd=0.0567, episodes_per_unit=20) > observed, (
+        "but not at this corpus's depth")
 
 
 def test_more_units_is_monotonically_better_and_zero_is_infinite():
