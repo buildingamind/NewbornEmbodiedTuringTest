@@ -178,10 +178,39 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
   # gpu (PYTEST_XDIST_WORKER -> device index), so the wall clock becomes tests/GPUs rounds.
   # ⚠ ONE WORKER PER GPU, NOT MORE. Two Kit processes on one card contend for the same
   # Vulkan/RTX queue and VRAM does not scale linearly, so over-subscribing loses time.
+  # ⛔⛔ COUNT THE CARDS THE WORKERS WILL ACTUALLY USE, NOT THE CARDS THE HOST HAS.
+  # `nvidia-smi --query-gpu=index` IGNORES CUDA_VISIBLE_DEVICES; torch honours it. The device
+  # map in tests/e2e/conftest.py::_e2e_device is `int(worker[2:]) % torch.cuda.device_count()`,
+  # so counting with nvidia-smi and mapping with torch disagree the moment anyone masks:
+  #     CUDA_VISIBLE_DEVICES=4,5,6,7   nvidia-smi -> 8 jobs,  torch -> 4 devices
+  #     => 8 workers % 4 devices = TWO Kit processes per card, which the note above forbids.
+  # Measured on chicken 2026-09-13 (4-card node, masked to 2): 4 jobs over 2 devices. ⇒ THE
+  # MASK, WHICH IS THE OBVIOUS WAY TO KEEP THIS HOOK OFF RUNNING ARMS, SILENTLY CONVERTS A
+  # COLLISION INTO AN OVER-SUBSCRIPTION. Deriving the job count from the SAME source as the
+  # device map makes `CUDA_VISIBLE_DEVICES=...` sufficient on its own -- no second knob to
+  # remember, which is the failure mode a warning would have left in place. (lion found it.)
   E2E_JOBS="${NETT_E2E_JOBS:-}"
+  _visible="$("$PY" -c 'import torch;print(torch.cuda.device_count())' 2>/dev/null)"
+  case "$_visible" in ''|*[!0-9]*) _visible="" ;; esac
   if [ -z "$E2E_JOBS" ]; then
-    E2E_JOBS="$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | wc -l)"
+    if [ -n "$_visible" ] && [ "$_visible" -ge 1 ]; then
+      E2E_JOBS="$_visible"
+    else
+      # torch unavailable: fall back, but say so -- this is the path that cannot see a mask.
+      E2E_JOBS="$(nvidia-smi --query-gpu=index --format=csv,noheader 2>/dev/null | wc -l)"
+      echo "pre-push: ⚠ torch device count unavailable; job count came from nvidia-smi, which" >&2
+      echo "pre-push:   does NOT honour CUDA_VISIBLE_DEVICES. Set NETT_E2E_JOBS if you masked." >&2
+    fi
     [ "$E2E_JOBS" -lt 1 ] 2>/dev/null && E2E_JOBS=1
+  fi
+  # ⛔ AND REFUSE AN EXPLICIT OVER-SUBSCRIPTION RATHER THAN SILENTLY HALVING THROUGHPUT.
+  # An operator who sets NETT_E2E_JOBS above the visible count gets two Kit processes on a
+  # card; the run still "passes", just slower and with contention that reads as flakiness.
+  if [ -n "$_visible" ] && [ "$_visible" -ge 1 ] && [ "$E2E_JOBS" -gt "$_visible" ]; then
+    echo "pre-push: ⛔ NETT_E2E_JOBS=$E2E_JOBS exceeds the $_visible visible GPU(s)." >&2
+    echo "pre-push:    conftest maps worker gwN to card N % $_visible, so $E2E_JOBS workers would put" >&2
+    echo "pre-push:    more than one Kit process on a card. Lower it, or widen CUDA_VISIBLE_DEVICES." >&2
+    exit 1
   fi
   # ⚠ EACH CELL MUST GET A CPU BUDGET OR THE PARALLEL RUN IS SLOWER THAN THE SERIAL ONE.
   # Kit's carb pool, torch's intra-op pool and the process pool each size themselves to
