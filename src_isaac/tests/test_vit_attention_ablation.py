@@ -335,6 +335,56 @@ def test_square_eye_archive_arms_still_rebuild_for_offline_reanalysis(arm):
     assert abs(n - 697_184) / 697_184 < 0.02, f"{arm}: {n:,} drifted from the ~697K match"
 
 
+@pytest.mark.parametrize("arm", ["ViT-Sp-Rect", "ViT-Mixer-Sp-Rect", "ViT-NoQK-Sp-Rect"])
+def test_rect_spatial_arms_train_at_the_live_eye_and_stay_parameter_matched(arm):
+    """★ THE LIVE-EYE HALF OF THE SPATIAL LINE. The archive half is the test above.
+
+    ⛔ THESE EXIST BECAUSE EDITING THE ARCHIVE CONFIGS IN PLACE WOULD HAVE CLOSED AN OPEN
+    EXPERIMENT. The obvious fix to "-Sp does not build at 80x128" is to change spatial_grid and
+    embed_dim where they sit -- which revives training and breaks the n=56 checkpoint rebuild that
+    test_square_eye_archive_arms_still_rebuild_for_offline_reanalysis protects. One config cannot
+    serve two eyes, so the line is split: archive keeps its labels, the live eye gets these.
+
+    Both halves are asserted, and BOTH are needed: a suite that only checked the archive would go
+    green on a fix that never runs, and one that only checked these would go green on a fix that
+    silently deletes the archive path.
+    """
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
+    from campaign_train import MODELS
+    cfg = {k: v for k, v in MODELS[arm]["cfg"].items() if k != "trainable"}
+    live = gym.spaces.Box(low=0, high=255, shape=(80, 128, 3), dtype=np.uint8)
+    enc = CompactViT(live, **cfg).eval()
+    with torch.no_grad():
+        out = enc(torch.randint(0, 255, (2, 80, 128, 3), dtype=torch.uint8))
+    assert out.shape == (2, 512) and torch.isfinite(out).all()
+
+    # ⚠ PARAMETER MATCH IS THE POINT, NOT A NICETY. A grid-only fix builds and runs and sits
+    # +3..+6% over baseline, which makes any ablation result attributable to capacity instead of
+    # to the ablation. Baseline measured at the SAME eye, not carried from the square one.
+    base = CompactViT(live, features_dim=512, patch_size=16, embed_dim=144, depth=3, num_heads=4)
+    nb = sum(p.numel() for p in base.parameters())
+    n = sum(p.numel() for p in enc.parameters())
+    assert abs(n - nb) / nb < 0.02, f"{arm}: {n:,} vs baseline {nb:,} -- not parameter-matched"
+
+
+def test_the_archive_spatial_configs_are_not_silently_usable_at_the_live_eye():
+    """⛔ THE ARCHIVE LABELS MUST KEEP RAISING AT 80x128, loudly, at construction.
+
+    If someone ever "helpfully" makes spatial_grid=4 fall back to adaptive pooling, the archive
+    arms would start training at the live eye with a NONDETERMINISTIC backward and a name that
+    claims to be the archived configuration. The raise is the feature.
+    """
+    import sys
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "examples"))
+    from campaign_train import MODELS
+    live = gym.spaces.Box(low=0, high=255, shape=(80, 128, 3), dtype=np.uint8)
+    for arm in ("ViT-Sp", "ViT-Mixer-Sp", "ViT-NoQK-Sp"):
+        cfg = {k: v for k, v in MODELS[arm]["cfg"].items() if k != "trainable"}
+        with pytest.raises(ValueError, match="does not divide"):
+            CompactViT(live, **cfg)
+
+
 def test_an_unknown_attn_mode_is_rejected_loudly():
     """A typo must not silently fall back to a mode -- the arm's identity is the result."""
     with pytest.raises(ValueError, match="uniform.*mixer|mixer.*uniform"):

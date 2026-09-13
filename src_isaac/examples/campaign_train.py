@@ -141,6 +141,32 @@ VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim":
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
 VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
 VIT_NOQK_SP_CFG = {**VIT_SP, "embed_dim": 156, "attn_mode": "uniform"} # 706,928 at 128x128
+
+# ⭐ THE SPATIAL LINE AT THE LIVE EYE -- ADDED 2026-09-13, owner-authorised, ADDITIVE ON PURPOSE.
+# ⛔ THE THREE CONFIGS ABOVE ARE NOT DEAD AND MUST NOT BE EDITED. They are how
+# examples/probe_frozen_features.py rebuilds the archived SQUARE-eye arms at RES=128 to load the
+# n=56 checkpoints that are on disk; Phases 14/15 came through that path, and the open QK question
+# (per-agent coupling, p ~ 0.006 on the n already saved) still runs through it. Changing them in
+# place revives training and silently closes that experiment --
+# tests/test_vit_attention_ablation.py::test_square_eye_archive_arms_still_rebuild_for_offline_reanalysis
+# exists to catch exactly that, and it caught it. ⇒ New eye, new labels; the archive keeps its own.
+#
+# WHY BOTH VALUES MOVE, and why either alone is wrong:
+#   1. GRID. The pool divides the TOKEN grid, not the image. 80x128 at patch 16 gives 5x8 tokens
+#      and `spatial_grid=4` does not divide 5, so construction raises. ⛔ NO SQUARE GRID EXISTS
+#      HERE: 5 and 8 are coprime, so the only square divisor is 1 -- a global average, which is
+#      exactly the CLS collapse this readout exists to avoid. (5, 4) is forced, and is the nearest
+#      analogue to the archive's 4x4: 20 cells against 16.
+#   2. WIDTHS. The archive embed_dims were matched to parameter count at 128x128. Carried to
+#      80x128 unchanged they give 725,504 / 715,395 / 735,952 against the ViT baseline of 693,728
+#      -- +4.58% / +3.12% / +6.09%. ⛔ A GRID-ONLY FIX WOULD RUN AND BE SILENTLY NON-COMPARABLE,
+#      which is worse than not running: the matched-parameter design is the whole basis for
+#      attributing a difference to the ABLATION rather than to capacity.
+# Measured at the live 80x128 eye (insect, reproduced independently before the edit):
+VIT_SP_RECT = {**VIT_CFG, "pool": "spatial", "spatial_grid": (5, 4), "spatial_reduce_dim": 16}
+VIT_SP_RECT_CFG = {**VIT_SP_RECT, "embed_dim": 132}                             # 696,328 (+0.37%)
+VIT_MIXER_SP_RECT_CFG = {**VIT_SP_RECT, "embed_dim": 148, "attn_mode": "mixer"} # 690,371 (-0.48%)
+VIT_NOQK_SP_RECT_CFG = {**VIT_SP_RECT, "embed_dim": 148, "attn_mode": "uniform"}# 685,328 (-1.21%)
 VIVIT_CFG = {
     "trainable": True, "features_dim": 512, "patch_size": 16,
     "embed_dim": 144, "depth": 3, "num_heads": 3, "mlp_ratio": 2.0,   # 144 -> ~699K
@@ -211,6 +237,12 @@ MODELS: dict[str, dict] = {
     "ViT-Sp":         dict(encoder="compact_vit",     cfg=dict(VIT_SP_CFG),                                                          framestack=False),  # 696K at 128x128
     "ViT-Mixer-Sp":   dict(encoder="compact_vit",     cfg=dict(VIT_MIXER_SP_CFG),                                                    framestack=False),  # 694K at 128x128
     "ViT-NoQK-Sp":    dict(encoder="compact_vit",     cfg=dict(VIT_NOQK_SP_CFG),                                                     framestack=False),  # 707K at 128x128
+    # ⚠ THE THREE BELOW ARE THE ONLY -Sp MODELS THAT TRAIN AT THE LIVE 80x128 EYE. The three above
+    # are ARCHIVE-ONLY: they exist so the saved square-eye checkpoints keep rebuilding, and they
+    # raise at construction on a non-square eye. Do not "fix" them -- see the block above.
+    "ViT-Sp-Rect":      dict(encoder="compact_vit", cfg=dict(VIT_SP_RECT_CFG),       framestack=False),  # 696K at 80x128
+    "ViT-Mixer-Sp-Rect":dict(encoder="compact_vit", cfg=dict(VIT_MIXER_SP_RECT_CFG), framestack=False),  # 690K at 80x128
+    "ViT-NoQK-Sp-Rect": dict(encoder="compact_vit", cfg=dict(VIT_NOQK_SP_RECT_CFG),  framestack=False),  # 685K at 80x128
     "ViT-CLTT":       dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=True,  aux="cltt", aux_weight=1.0),  # framestack True for the same reason as SimCLR-CLTT
     # Reference-faithful rebuild; cltt is retained unchanged as their paired incumbent.
     "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
