@@ -40,7 +40,9 @@ def cpu_defaults(monkeypatch):
 
 class FakeMemory:
     def __init__(self, raw, *, filled=True, memory_index=0):
-        self.tensors = {"observations": raw}
+        self.tensors = {"observations": raw,
+                        "terminated": torch.zeros(*raw.shape[:2], 1, dtype=torch.bool),
+                        "truncated": torch.zeros(*raw.shape[:2], 1, dtype=torch.bool)}
         self.memory_size = raw.shape[0]
         self.filled = filled
         self.memory_index = memory_index
@@ -102,7 +104,7 @@ def test_reference_head_geometry():
 
 @pytest.mark.parametrize(
     "filled,memory_index,batch,start,expected_batch,expected_highs",
-    [(True, 1, 4, 8, 4, [3, 9]), (False, 9, 4, 1, 4, [3, 2]),
+    [(True, 0, 4, 8, 4, [3, 9]), (False, 9, 4, 1, 4, [3, 2]),
      (False, 7, 96, 0, 3, [3]), (False, 8, 4, 0, 4, [3, 1])],
 )
 def test_one_stream_contiguous_windows_without_whole_buffer_transfer(
@@ -367,3 +369,114 @@ def test_the_diag_is_off_by_default_and_goes_through_env_flag(monkeypatch):
     for spelling in ("1", "true", "TRUE", "yes", "on"):
         monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", spelling)
         assert CLTTReferenceAuxLoss(IdentityEncoder()).diag is True, spelling
+
+
+@pytest.mark.parametrize("kind", ["cltt_ref", "vicreg_tt"])
+def test_sampler_refuses_window_spanning_reset(monkeypatch, kind):
+    """Every candidate crosses a reset, so neither sampler may encode a pair."""
+    from nett_skrl.brain.aux.vicreg_tt_aux import VICRegTemporalAuxLoss
+
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "4")
+    monkeypatch.setenv("NETT_AUX_VICREG_TT_OFFSETS", "4")
+    monkeypatch.setattr("nett_skrl.brain.aux.vicreg_tt_aux._augment", lambda view, **kw: view)
+    encoder = IdentityEncoder()
+    memory = identity_memory(t_max=6, num_envs=1)
+    memory.tensors["terminated"] = torch.zeros(6, 1, 1, dtype=torch.bool)
+    memory.tensors["truncated"] = torch.zeros(6, 1, 1, dtype=torch.bool)
+    memory.tensors["terminated"][2] = True
+    cls = CLTTReferenceAuxLoss if kind == "cltt_ref" else VICRegTemporalAuxLoss
+    aux = cls(encoder)
+    aux.attach_memory(memory)
+    with pytest.raises(ValueError, match="episode"):
+        aux.compute(encoder, torch.empty(0))
+    assert encoder.views == []
+
+
+@pytest.mark.parametrize("signal", ["terminated", "truncated", "keys"])
+def test_episode_window_helper_checks_interior_and_allows_done_endpoint(signal):
+    from nett_skrl.brain.aux.cltt_ref_aux import episode_window_starts
+
+    memory = identity_memory(t_max=10, num_envs=2)
+    if signal == "keys":
+        keys = torch.zeros(10, 2, 2, dtype=torch.long)
+        keys[:, :, 0] = torch.arange(2)
+        keys[4:7, 0, 1] = 1  # endpoints can match while the interior is another episode
+        memory.tensors = {"observations": memory.tensors["observations"], "keys": keys}
+    else:
+        memory.tensors[signal][3, 0] = True
+        memory.tensors[signal][6, 0] = True
+    valid = episode_window_starts(memory, (2, 4))
+    assert not valid[:, 0].any()
+    assert valid[:, 1].all()
+    valid = episode_window_starts(memory, (2,))
+    assert valid[1, 0]  # ends AT the last observation of the episode
+    assert not valid[2, 0]  # crosses the outgoing transition at t=3
+    assert valid[4, 0]  # starts immediately after the reset
+
+
+@pytest.mark.parametrize("missing", ["terminated", "truncated"])
+def test_episode_window_helper_requires_both_done_signals(missing):
+    from nett_skrl.brain.aux.cltt_ref_aux import episode_window_starts
+
+    memory = identity_memory()
+    del memory.tensors[missing]
+    memory.get_tensor_by_name = lambda name: memory.tensors[name]
+    with pytest.raises(ValueError, match=f"missing '{missing}'"):
+        episode_window_starts(memory, (2, 4))
+
+
+def test_episode_window_helper_supports_getter_and_rollout_ring_seam():
+    from nett_skrl.brain.aux.cltt_ref_aux import episode_window_starts
+
+    memory = identity_memory(t_max=10, num_envs=1, memory_index=5)
+    tensors = memory.tensors
+    memory.tensors = {"observations": tensors["observations"]}
+    memory.get_tensor_by_name = lambda name: tensors[name]
+    valid = episode_window_starts(memory, (2,))[:, 0]
+    assert valid.tolist() == [True, True, True, False, False, True, True, True]
+
+
+@pytest.mark.parametrize("kind", ["cltt_ref", "vicreg_tt"])
+@pytest.mark.parametrize("mask", [False, True])
+def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask):
+    from nett_skrl.brain.aux import vicreg_tt_aux
+
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2")
+    monkeypatch.setenv("NETT_AUX_VICREG_TT_OFFSETS", "2")
+    monkeypatch.setenv("NETT_AUX_TRANSIT_MASK", str(int(mask)))
+    monkeypatch.setattr(vicreg_tt_aux, "_augment", lambda view, **kw: view)
+    encoder = IdentityEncoder()
+    memory = identity_memory(t_max=12, num_envs=1)
+    memory.tensors["truncated"][5] = True
+    # Weight is concentrated at the reset: mask weighting must still exclude it.
+    memory.tensors["actions"] = torch.zeros(12, 1, 2)
+    memory.tensors["actions"][4:6, 0, 0] = 100
+    cls = CLTTReferenceAuxLoss if kind == "cltt_ref" else vicreg_tt_aux.VICRegTemporalAuxLoss
+    aux = cls(encoder)
+    aux.attach_memory(memory)
+    for _ in range(8):
+        encoder.views.clear()
+        assert torch.isfinite(aux.compute(encoder, torch.empty(0)))
+        anchor, positive = [view[:, 0].long() // 1000 for view in encoder.views]
+        assert len(anchor) == 4
+        assert torch.equal(positive - anchor, torch.full_like(anchor, 2))
+        assert torch.equal(anchor // 6, positive // 6)
+
+
+@pytest.mark.parametrize("kind", ["cltt_ref", "vicreg_tt"])
+def test_offline_temporal_losses_keep_internal_window_batches(monkeypatch, kind):
+    import replay_harness as rh
+    from nett_skrl.brain.aux import vicreg_tt_aux
+
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2")
+    monkeypatch.setenv("NETT_AUX_VICREG_TT_OFFSETS", "2")
+    monkeypatch.setattr(vicreg_tt_aux, "_augment", lambda view, **kw: view)
+    encoder = IdentityEncoder()
+    obs = identity_memory(t_max=12, num_envs=2).tensors["observations"]
+    keys = torch.stack((torch.arange(2).expand(12, -1),
+                        (torch.arange(12) // 6)[:, None].expand(-1, 2),
+                        (torch.arange(12) % 6)[:, None].expand(-1, 2)), dim=-1)
+    aux, losses = rh.train_offline(encoder, kind, obs, None, 2, 3e-4, 17, batch=2, keys=keys)
+    assert len(losses) == 2 and all(np.isfinite(losses))
+    assert all(len(view) == 4 for view in encoder.views)  # internal safe slab, not CLI batch=2
+    assert torch.equal(aux._memory.tensors["keys"], keys)

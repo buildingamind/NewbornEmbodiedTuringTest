@@ -105,9 +105,13 @@ class ReplayMemory:
     sampling here would test a replica and tell us nothing about the original.
     """
 
-    def __init__(self, obs, actions=None) -> None:
+    def __init__(self, obs, actions=None, keys=None) -> None:
         import torch
         self.tensors = {"observations": obs}
+        if keys is not None:
+            if tuple(keys.shape[:2]) != tuple(obs.shape[:2]):
+                raise ValueError("Replay keys must align with observations (T, env)")
+            self.tensors["keys"] = torch.as_tensor(keys)
         if actions is not None:
             self.tensors["actions"] = actions
         else:
@@ -116,6 +120,33 @@ class ReplayMemory:
         self.memory_size = int(obs.shape[0])
         self.memory_index = int(obs.shape[0])
         self.filled = True
+
+
+def reshape_capture_stream(obs, keys, actions=None):
+    """Build one ordered time column per env, dropping unmatched tail rows."""
+    import torch
+
+    keys = np.asarray(keys)
+    if keys.shape != (len(obs), 3) or not len(keys):
+        raise ValueError("Replay capture requires nonempty keys shaped (N, 3): env, episode, step")
+    if len(np.unique(keys, axis=0)) != len(keys):
+        raise ValueError("Replay capture keys contain duplicate (env, episode, step) rows")
+    envs = np.unique(keys[:, 0])
+    columns = []
+    for env in envs:
+        rows = np.flatnonzero(keys[:, 0] == env)
+        order = np.lexsort((keys[rows, 2], keys[rows, 1]))
+        columns.append(rows[order])
+    length = min(map(len, columns))
+    rows = np.stack([column[:length] for column in columns], axis=1)
+    dropped = len(obs) - rows.size
+    print(f"[replay] stream T={length}, num_envs={len(envs)}; dropped {dropped} incomplete tail rows")
+    stream_actions = None
+    if actions is not None and len(actions):
+        if len(actions) != len(obs):
+            raise ValueError("Replay actions must align with capture rows")
+        stream_actions = torch.as_tensor(actions[rows])
+    return torch.as_tensor(obs[rows]), stream_actions, torch.as_tensor(keys[rows])
 
 
 def resolve_model(model_name: str) -> tuple[dict, str]:
@@ -232,22 +263,34 @@ def resolve_aux(aux_kind: str):
     return cls, str(path)
 
 
-def train_offline(encoder, aux_kind: str, obs, actions, steps: int, lr: float, seed: int):
+def train_offline(encoder, aux_kind: str, obs, actions, steps: int, lr: float, seed: int,
+                  batch: int = 64, keys=None):
     """Train encoder + aux on the fixed stream. No environment, no policy, no reward."""
     import torch
 
     torch.manual_seed(seed)
     aux_cls, _origin = resolve_aux(aux_kind)
     aux = aux_cls(encoder)
-    mem = ReplayMemory(obs, actions)
+    mem = ReplayMemory(obs, actions, keys)
     if hasattr(aux, "attach_memory"):
         aux.attach_memory(mem)
-    params = list(encoder.parameters()) + list(aux.parameters())
+    params = list(encoder.parameters()) + list(aux.head.parameters())
+    assert len(params) == len({id(p) for p in params}), "Optimizer parameters contain duplicates"
+    corpus = obs.flatten(0, 1)
+    batch_size = min(batch, len(corpus))
+    if batch_size < 2:
+        raise ValueError("Offline training requires --batch >= 2 and at least two corpus rows")
+    rng = np.random.default_rng(seed)
     opt = torch.optim.Adam(params, lr=lr)
     losses = []
     for _ in range(steps):
         opt.zero_grad(set_to_none=True)
-        loss = aux.compute(encoder, obs[0])
+        if hasattr(aux, "attach_memory"):
+            loss = aux.compute(encoder, obs[0])
+        else:
+            indices = torch.as_tensor(rng.choice(len(corpus), batch_size, replace=False),
+                                      device=corpus.device)
+            loss = aux.compute(encoder, corpus[indices])
         loss.backward()
         opt.step()
         losses.append(float(loss.detach()))
@@ -1023,6 +1066,7 @@ def main() -> int:
                          "cached per-episode outcomes. 'none' (untrained) is always included.")
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--steps", type=int, default=30)
+    ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--width", type=int, default=128)
     ap.add_argument("--height", type=int, default=80)
@@ -1040,6 +1084,10 @@ def main() -> int:
         stream, train_frames, pairs, t = load_fixture(
             args.model, args.width, args.height, args.framestack)
         actions = None
+        # Fixture columns are copies of one uninterrupted clip, each one episode.
+        keys = torch.stack((torch.arange(stream.shape[1]).expand(t, -1),
+                            torch.zeros(t, stream.shape[1], dtype=torch.long),
+                            torch.arange(t)[:, None].expand(-1, stream.shape[1])), dim=-1)
     else:
         blob = np.load(args.capture, allow_pickle=False)
         if int(blob.get("n_transition_pairs", 0)) == 0:
@@ -1048,8 +1096,7 @@ def main() -> int:
             print("⚠ capture is flagged is_prefix: an ORDERED schedule cut short covers some "
                   "conditions and not others. Treat every number below as provisional.")
         obs = blob["obs"]
-        stream = torch.as_tensor(obs[:, None])          # (T, 1, C, H, W)
-        actions = torch.as_tensor(blob["actions"][:, None]) if len(blob["actions"]) else None
+        stream, actions, keys = reshape_capture_stream(obs, blob["keys"], blob.get("actions"))
         csv_path = args.test_csv or default_test_csv(
             str(blob["run_dir"]), str(blob["condition"]), capture=args.capture)
         print(f"[replay] joining labels from {csv_path}")
@@ -1075,7 +1122,7 @@ def main() -> int:
                     capture_readout(e, obs, memory_idx, episodes).items()}
 
         before = read_out(enc)
-        aux, losses = train_offline(enc, args.aux, stream, actions, args.steps, args.lr, seed)
+        aux, losses = train_offline(enc, args.aux, stream, actions, args.steps, args.lr, seed, batch=args.batch, keys=keys)
         scored = read_out(enc)
         for k, v in scored.items():
             results.setdefault(k, []).append(v)
@@ -1110,7 +1157,7 @@ def main() -> int:
                     _losses = None
                     if name != "none":
                         _, _losses = train_offline(enc, name, stream, actions,
-                                                   args.steps, args.lr, seed)
+                                                   args.steps, args.lr, seed, batch=args.batch, keys=keys)
                     _w1 = _t.cat([q.detach().flatten() for q in enc.parameters()])
                     _dw = float((_w1 - _w0).norm())
                     # ⛔⛔ A CANDIDATE THAT DID NOT TRAIN AND A CANDIDATE THAT DID NOT HELP
@@ -1179,7 +1226,7 @@ def main() -> int:
         agg: dict = {}
         for seed in range(args.seeds):
             enc_a = build_encoder(args.model, obs_shape, seed)
-            train_offline(enc_a, args.aux, stream, actions, args.steps, args.lr, seed)
+            train_offline(enc_a, args.aux, stream, actions, args.steps, args.lr, seed, batch=args.batch, keys=keys)
             acc_a, hits_a = capture_readout(enc_a, obs, memory_idx, episodes,
                                             per_episode_out=True)
             # ⛔ SAME SEED, SAME ARCHITECTURE, SAME DATA. The only thing that differs is
@@ -1187,7 +1234,7 @@ def main() -> int:
             # difference attributable to the seed is not a difference between candidates.
             enc_b = build_encoder(args.model, obs_shape, seed)
             if args.compare != "none":
-                train_offline(enc_b, args.compare, stream, actions, args.steps, args.lr, seed)
+                train_offline(enc_b, args.compare, stream, actions, args.steps, args.lr, seed, batch=args.batch, keys=keys)
             acc_b, hits_b = capture_readout(enc_b, obs, memory_idx, episodes,
                                             per_episode_out=True)
             # ⚠ PRINT BOTH MARGINS BESIDE THE DISCORDANCE. They are not redundant: equal

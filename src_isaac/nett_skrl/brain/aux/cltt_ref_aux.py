@@ -140,6 +140,83 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float) 
         "batch": B,
     }
 
+def episode_window_starts(memory, offsets):
+    """Return a (start, env) validity mask for the WHOLE inclusive window.
+
+    Done flags describe the transition OUT of an observation, so a done at the
+    endpoint is allowed; one before it is not. Replay supplies (env, episode,
+    step) keys instead. Never infer continuity from the environment axis alone.
+    """
+    t_max = memory.memory_size if memory.filled else memory.memory_index
+    tensors = memory.tensors
+    keys = tensors.get("keys")
+    if keys is not None:
+        keys = torch.as_tensor(keys[:t_max]).cpu()
+        if keys.ndim != 3 or keys.shape[0] != t_max or keys.shape[-1] not in (2, 3):
+            raise ValueError("Episode windows require keys shaped (T, env, 2 or 3)")
+        boundary = (keys[1:, :, :2] != keys[:-1, :, :2]).any(-1)
+        if keys.shape[-1] == 3:
+            boundary |= keys[1:, :, 2] != keys[:-1, :, 2] + 1
+    else:
+        signals = []
+        for name in ("terminated", "truncated"):
+            signal = tensors.get(name)
+            if signal is None and hasattr(memory, "get_tensor_by_name"):
+                try:
+                    signal = memory.get_tensor_by_name(name)
+                except (KeyError, ValueError, AttributeError):
+                    pass
+            if signal is None:
+                raise ValueError(
+                    f"Episode windows require replay 'keys' or both 'terminated' "
+                    f"and 'truncated'; missing '{name}' boundary signal"
+                )
+            signal = torch.as_tensor(signal[:t_max]).bool().cpu()
+            if signal.ndim == 3 and signal.shape[-1] == 1:
+                signal = signal.squeeze(-1)
+            if signal.ndim != 2 or signal.shape[0] != t_max:
+                raise ValueError(f"Episode boundary signal '{name}' must have shape (T, env[, 1])")
+            signals.append(signal)
+        if signals[0].shape != signals[1].shape:
+            raise ValueError("Episode boundary signals terminated/truncated must have matching shapes")
+        boundary = (signals[0] | signals[1])[:-1]
+    # A filled circular rollout can have a chronological seam at its write index.
+    seam = int(getattr(memory, "memory_index", 0))
+    if memory.filled and 0 < seam < t_max:
+        boundary[seam - 1] = True
+    width = max(offsets)
+    if width < 0:
+        raise ValueError("Episode window offsets must be nonnegative")
+    prefix = torch.cat([torch.zeros(1, boundary.shape[1], dtype=torch.long),
+                        boundary.long().cumsum(0)])
+    avail = max(0, t_max - width)
+    return (prefix[width:width + avail] - prefix[:avail]) == 0
+
+
+def episode_window_batch(memory, offsets, max_samples):
+    """Largest usable contiguous batch and its safe (start, env) mask."""
+    valid = episode_window_starts(memory, offsets)
+    if not valid.numel():
+        raise ValueError("No episode-contiguous temporal window with B_eff >= 2")
+    times = torch.arange(1, len(valid) + 1)[:, None].expand_as(valid)
+    last_invalid = torch.where(valid, 0, times).cummax(0).values
+    batch = min(max_samples, int((times - last_invalid).max()))
+    if batch < 2:
+        raise ValueError("No episode-contiguous temporal window with B_eff >= 2")
+    # Every anchor in a slab must be valid, including intervening observations.
+    starts = episode_window_starts(memory, (max(offsets) + batch - 1,))
+    return batch, starts
+
+
+def draw_episode_window(starts, *, draw_single_start=True):
+    """Uniform environment, then uniform safe start within that environment."""
+    envs = starts.any(0).nonzero().flatten()
+    env = int(envs[int(torch.randint(len(envs), ()).item())])
+    times = starts[:, env].nonzero().flatten()
+    pick = int(torch.randint(len(times), ()).item()) if draw_single_start or len(times) > 1 else 0
+    return env, int(times[pick])
+
+
 class CLTTReferenceAuxLoss(nn.Module):
     """Sum temporal NT-Xent terms over contiguous windows from one rollout stream."""
 
@@ -192,8 +269,8 @@ class CLTTReferenceAuxLoss(nn.Module):
                 f"(t_max={t_max}, offsets={self.offsets}, NETT_AUX_BATCH={self.max_samples}). "
                 "A contrastive softmax at B=1 is -log(1)=0 and teaches nothing."
             )
-        env = torch.randint(raw.shape[1], ()).item()
-        t0 = torch.randint(avail - batch + 1, ()).item() if avail >= self.max_samples else 0
+        batch, starts = episode_window_batch(memory, self.offsets, batch)
+        env, t0 = draw_episode_window(starts, draw_single_start=avail >= self.max_samples)
         device = next(encoder.parameters()).device
         with torch.no_grad():
             views = [

@@ -32,6 +32,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from skrl import logger
 
+from .cltt_ref_aux import episode_window_batch, episode_window_starts, draw_episode_window
 from .simclr_aux import _augment
 from .vicreg_aux import VICRegExpander, _off_diagonal, vicreg_loss
 
@@ -171,12 +172,12 @@ class VICRegTemporalAuxLoss(nn.Module):
         variance reduction. It answers "is there a channel at all", which is prior to
         "does the mechanism work" -- the latter still needs an arm.
         """
-        uniform_env = int(torch.randint(n_env, ()).item())
-        uniform_t0 = (
-            int(torch.randint(avail - batch + 1, ()).item())
-            if avail >= self.max_samples
-            else 0
-        )
+        starts = episode_window_starts(memory, (max(self.offsets) + batch - 1,))
+        starts = starts[:avail - batch + 1, :n_env]
+        if not starts.any():
+            raise ValueError("No episode-contiguous temporal window for selected batch")
+        uniform_env, uniform_t0 = draw_episode_window(
+            starts, draw_single_start=avail >= self.max_samples)
         if not self.transit_mask:
             self.last_window_turn = self.MASK_OFF
             return uniform_env, uniform_t0
@@ -197,7 +198,7 @@ class VICRegTemporalAuxLoss(nn.Module):
         # Mean |turn| over every contiguous window, via cumulative sum.
         csum = torch.cat([torch.zeros(1, turn.shape[1]), turn.cumsum(0)], dim=0)
         win = (csum[batch:] - csum[:n_windows]) / float(batch)     # (n_windows, n_env)
-        weights = win.flatten().clamp_min(0.0)
+        weights = win.masked_fill(~starts, 0.0).flatten().clamp_min(0.0)
         total = float(weights.sum())
         if not (total > 0.0) or not torch.isfinite(weights).all():
             # A rollout with no commanded rotation anywhere: uniform is the honest
@@ -240,6 +241,7 @@ class VICRegTemporalAuxLoss(nn.Module):
                 "VICReg variance/covariance terms are degenerate at B=1: "
                 "single-row variance is zero or NaN and covariance divides by B-1."
             )
+        batch, _starts = episode_window_batch(memory, self.offsets, batch)
         env, t0 = self._select_window(memory, raw.shape[1], avail, batch)
         device = next(encoder.parameters()).device
         with torch.no_grad():

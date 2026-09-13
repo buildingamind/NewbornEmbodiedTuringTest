@@ -127,3 +127,102 @@ def test_build_encoder_applies_the_registry_cfg():
     """ViViT at the live eye is 694,016 parameters; a default build was 509,312."""
     enc = rh.build_encoder("ViViT", (80, 128, 6), seed=0)
     assert sum(p.numel() for p in enc.parameters()) == 694_016
+
+
+def test_capture_stream_temporal_neighbours_and_ragged_tail(monkeypatch, tmp_path):
+    """Exercise main's actual capture plumbing, including its memory metadata."""
+    import torch
+
+    keys = np.array([(env, 0, step) for step in range(5) for env in (7, 19)] + [(7, 0, 5)])
+    obs = np.arange(len(keys), dtype=np.float32).reshape(-1, 1, 1, 1)
+    actions = np.arange(len(keys) * 2).reshape(-1, 2)
+    capture = tmp_path / "capture.npz"
+    np.savez(capture, obs=obs, keys=keys, actions=actions,
+             n_transition_pairs=8, run_dir="unused", condition="unused")
+    monkeypatch.setattr(sys, "argv", ["replay", "--capture", str(capture),
+                                     "--test-csv", str(tmp_path / "test.csv"), "--seeds", "1"])
+    monkeypatch.setattr(rh, "build_capture_pairs", lambda *a: ([], [], {}))
+    monkeypatch.setattr(rh, "capture_readout", lambda *a: {})
+    monkeypatch.setattr(rh, "build_encoder", lambda *a: torch.nn.Linear(1, 1))
+    calls = []
+
+    def train(encoder, aux_kind, stream, stream_actions, *args, **kwargs):
+        row_ids = stream[..., 0, 0, 0].numpy().astype(int)
+        layout = keys[row_ids]
+        assert np.all(layout[1:, :, 0] == layout[:-1, :, 0]), "temporal neighbours switch env"
+        assert np.all(np.diff(layout[..., 2], axis=0) == 1), "temporal step is not +1"
+        assert tuple(stream.shape[:2]) == (5, 2)
+        np.testing.assert_array_equal(stream_actions, actions[row_ids])
+        np.testing.assert_array_equal(kwargs["keys"], layout)
+        calls.append(True)
+        return None, [1.0]
+
+    monkeypatch.setattr(rh, "train_offline", train)
+    rh.main()
+    assert calls == [True]
+
+
+def test_capture_layout_sorts_each_environment_and_preserves_gaps(capsys):
+    import torch
+    from nett_skrl.brain.aux.cltt_ref_aux import episode_window_starts
+
+    keys = np.array([(8, 2, 0), (3, 0, 3), (8, 1, 1), (3, 0, 0),
+                     (8, 1, 0), (3, 0, 1), (8, 2, 1)])
+    obs = np.arange(len(keys)).reshape(-1, 1, 1, 1)
+    stream, actions, layout = rh.reshape_capture_stream(obs, keys)
+    assert stream.shape[:2] == (3, 2) and actions is None
+    assert "dropped 1 incomplete tail rows" in capsys.readouterr().out
+    np.testing.assert_array_equal(layout[:, 0], [(3, 0, 0), (3, 0, 1), (3, 0, 3)])
+    np.testing.assert_array_equal(layout[:, 1], [(8, 1, 0), (8, 1, 1), (8, 2, 0)])
+    valid = episode_window_starts(rh.ReplayMemory(stream, keys=layout), (1,))
+    assert torch.equal(valid, torch.tensor([[True, True], [False, False]]))
+
+
+@pytest.mark.parametrize("kind", ["vicreg", "cltt", "simclr", "gwm", "eoo", "motok"])
+def test_offline_batches_train_corpus_and_register_only_head(monkeypatch, kind):
+    import torch
+
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        monkeypatch.delenv("NETT_AUX_BATCH", raising=False)
+        encoder = rh.build_encoder('compact_cnn:{"features_dim":16}', (6, 16, 16), 4)
+        generator = torch.Generator().manual_seed(21)
+        obs = torch.randint(0, 256, (8, 2, 6, 16, 16), dtype=torch.uint8, generator=generator)
+        if kind == "motok":
+            # MoTok is a screening candidate, deliberately outside AUX_LOSSES.
+            from nett_skrl.brain.aux.motok_aux import MoTokAuxLoss
+            monkeypatch.setattr(rh, "resolve_aux", lambda name: (MoTokAuxLoss, "screening"))
+        factory, _ = rh.resolve_aux(kind)
+        cls = type(factory(encoder))
+        compute = cls.compute
+        batches = []
+
+        def record(self, enc, batch):
+            assert batch.shape == (4, 6, 16, 16)
+            assert len(torch.unique(batch.flatten(1), dim=0)) == 4
+            batches.append(batch.clone())
+            return compute(self, enc, batch)
+
+        monkeypatch.setattr(cls, "compute", record)
+        adam = torch.optim.Adam
+        registered = []
+        initial_params = []
+
+        def optimizer(params, **kwargs):
+            registered.extend(params)
+            initial_params.extend(p.detach().clone() for p in params)
+            assert len(params) == len({id(p) for p in params})
+            return adam(params, **kwargs)
+
+        monkeypatch.setattr(torch.optim, "Adam", optimizer)
+        before = [p.detach().clone() for p in encoder.parameters()]
+        aux, losses = rh.train_offline(encoder, kind, obs, None, 2, 3e-4, 4, batch=4)
+        assert set(map(id, registered)) == set(map(id, encoder.parameters())) | set(map(id, aux.head.parameters()))
+        assert all(np.isfinite(loss) and loss > 0 for loss in losses)
+        assert any(not torch.equal(a, b) for a, b in zip(initial_params, registered))
+        if kind in ("vicreg", "cltt", "simclr"):
+            assert any(not torch.equal(a, b) for a, b in zip(before, encoder.parameters()))
+        assert not torch.equal(batches[0], batches[1])
+    finally:
+        torch.set_num_threads(threads)

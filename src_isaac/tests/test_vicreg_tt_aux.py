@@ -45,7 +45,9 @@ def cpu_defaults(monkeypatch):
 
 class FakeMemory:
     def __init__(self, raw, *, filled=True, memory_index=0):
-        self.tensors = {"observations": raw}
+        self.tensors = {"observations": raw,
+                        "terminated": torch.zeros(*raw.shape[:2], 1, dtype=torch.bool),
+                        "truncated": torch.zeros(*raw.shape[:2], 1, dtype=torch.bool)}
         self.memory_size = raw.shape[0]
         self.filled = filled
         self.memory_index = memory_index
@@ -137,7 +139,7 @@ def test_defaults_and_coefficient_overrides_match_incumbent(monkeypatch):
 
 @pytest.mark.parametrize(
     "filled,memory_index,batch,start,expected_batch,expected_highs",
-    [(True, 1, 4, 8, 4, [3, 11]), (False, 9, 4, 1, 4, [3, 4]),
+    [(True, 0, 4, 8, 4, [3, 11]), (False, 9, 4, 1, 4, [3, 4]),
      (False, 7, 48, 0, 5, [3]), (False, 6, 4, 0, 4, [3, 1])],
 )
 def test_temporal_contiguous_one_stream_without_whole_buffer_transfer(
@@ -435,7 +437,9 @@ class _FakeMemory:
         t, e = turn.shape
         acts = torch.zeros(t, e, 2)
         acts[..., 0] = turn
-        self.tensors = {"actions": acts}
+        self.tensors = {"actions": acts,
+                        "terminated": torch.zeros(t, e, 1, dtype=torch.bool),
+                        "truncated": torch.zeros(t, e, 1, dtype=torch.bool)}
         self.memory_size = t
         self.memory_index = t
         self.filled = True
@@ -488,7 +492,7 @@ def test_mask_prefers_more_motion_monotonically(monkeypatch):
     turn = torch.zeros(144, 1)
     turn[:48] = 1.0
     turn[96:144] = 2.0
-    mem = _FakeMemory(turn)
+    mem = _FakeMemory(torch.cat([turn, torch.zeros(8, 1)]))
     torch.manual_seed(0)
     t0s = [loss._select_window(mem, 1, 144, 48)[1] for _ in range(4000)]
     lo = sum(1 for t in t0s if t == 0)
