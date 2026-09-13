@@ -889,8 +889,81 @@ def object_contrast(encoder, obs, memory_idx, by_object, chunk: int = 256) -> di
     return out
 
 
-def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256) -> dict:
+def exact_sign_p(n_a: int, n_b: int) -> float:
+    """Two-sided exact sign test on discordant pairs. Concordant pairs carry no signal."""
+    d = n_a + n_b
+    if d == 0:
+        return 1.0
+    k = min(n_a, n_b)
+    tail = sum(math.comb(d, i) for i in range(0, k + 1)) / (2 ** d)
+    return min(1.0, 2 * tail)
+
+
+def paired_discordance(hits_a, hits_b):
+    """Per cell: how often two candidates DISAGREE, and whether the split is one-sided.
+
+    ⭐⭐ THIS IS THE ESTIMAND THE HARNESS WAS BUILT FOR, AND I SPENT A SESSION COMPUTING
+    THE OTHER ONE. The module docstring says every candidate is "paired on byte-identical
+    data"; the question is "does A beat B", not "is A above chance". Those have different
+    power because the corpus's own noise -- which brains were parked, which episodes
+    happened to be scorable, how many frames each side got -- is COMMON to both
+    candidates and cancels in the difference. Scoring each candidate against chance puts
+    all of it back in.
+
+    ⛔ CONCORDANT PAIRS CARRY NO SIGNAL, so `n` is the wrong denominator here too: what
+    powers the test is `d = a_only + b_only`. On 30 episodes an 8-way unanimous split is
+    p=0.008 while a 2-way one cannot reach significance at any margin. ⇒ **If two
+    candidates agree on nearly every episode the harness cannot rank them, however many
+    episodes are added** -- the binding quantity is disagreement, not sample size.
+
+    ⚠ And this is the FOURTH power derivation in this campaign; the first three were each
+    wrong in a new way (wrong unit, assumed-maximum SD, dropped sampling term). The
+    assumption here is stated so it can be shot at: it holds only if the two candidates
+    are scored on the SAME episode list in the SAME order, which is why
+    `capture_readout(per_episode_out=True)` guarantees the ordering rather than leaving
+    it to the caller.
+    """
+    if len(hits_a) != len(hits_b):
+        raise ValueError(
+            f"paired comparison needs aligned lists: got {len(hits_a)} and {len(hits_b)} "
+            f"-- an unaligned pairing silently compares different episodes")
+    out: dict = {}
+    for i, ((cond_a, a), (cond_b, b)) in enumerate(zip(hits_a, hits_b)):
+        # ⛔ VERIFY THE ALIGNMENT, DO NOT ASSUME IT. Each entry carries its own condition,
+        # so the pairing can be CHECKED rather than trusted to the caller passing the same
+        # episode list twice. The first version of this took bare booleans positionally
+        # and `a and not b` truthy-tested the (cond, hit) TUPLE instead -- every pair
+        # scored as concordant, and the function reported d=0 on a corpus where the two
+        # candidates demonstrably differed by an episode. It looked exactly like the
+        # interesting negative result.
+        if cond_a != cond_b:
+            raise ValueError(
+                f"paired comparison misaligned at index {i}: {cond_a!r} vs {cond_b!r}. "
+                f"The two runs did not score the same episodes in the same order.")
+        agree, a_only, b_only, n = out.get(cond_a, (0, 0, 0, 0))
+        if bool(a) and not bool(b):
+            a_only += 1
+        elif bool(b) and not bool(a):
+            b_only += 1
+        else:
+            agree += 1
+        out[cond_a] = (agree, a_only, b_only, n + 1)
+    return {c: {"n": n, "concordant": agree, "discordant": a_only + b_only,
+                "a_only": a_only, "b_only": b_only, "p": exact_sign_p(a_only, b_only)}
+            for c, (agree, a_only, b_only, n) in out.items()}
+
+
+def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256,
+                    per_episode_out: bool = False):
     """The imprinting rule on captured frames. Returns ``{cond: (acc, n_episodes)}``.
+
+    ⭐ `per_episode_out` additionally returns the per-episode hit/miss list, IN THE ORDER
+    `episodes` was given. That ordering is the whole point: it is what makes two
+    candidates comparable EPISODE BY EPISODE rather than only in the margin, and the
+    paired comparison is what this harness exists for. A marginal difference between two
+    candidates carries the corpus's own noise -- which brain was parked, which episodes
+    happened to be scorable -- and a paired one does not, because both candidates saw the
+    same episodes, the same frames and the same brains.
 
     ⚠ Uses NO label from the episodes being scored. The memory is built from Rest, whose
     monitor assignment is known the same way the rearing clip's identity is known in
@@ -911,6 +984,7 @@ def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256) -> dic
         memory = F.normalize(feats(memory_idx).mean(0, keepdim=True), dim=-1)
 
         tally: dict = {}
+        per_episode: list = []
         for cond, sides, correct in episodes:
             sim = {}
             for side in ("left", "right"):
@@ -919,8 +993,10 @@ def capture_readout(encoder, obs, memory_idx, episodes, chunk: int = 256) -> dic
             chosen = "left" if sim["left"] > sim["right"] else "right"
             hit, n = tally.get(cond, (0, 0))
             tally[cond] = (hit + int(chosen == correct), n + 1)
+            per_episode.append((cond, chosen == correct))
     encoder.train()
-    return {c: (h / n, n) for c, (h, n) in tally.items()}
+    out = {c: (h / n, n) for c, (h, n) in tally.items()}
+    return (out, per_episode) if per_episode_out else out
 
 
 def main() -> int:
@@ -937,6 +1013,10 @@ def main() -> int:
     ap.add_argument("--test-csv", type=Path, default=None,
                     help="the run's per-step test log. Defaults to the capture's own "
                          "run_dir/<condition>/logs/test_<condition>_0.csv")
+    ap.add_argument("--compare", default=None, metavar="AUX_B",
+                    help="Run --aux and AUX_B on the SAME episodes and report the paired "
+                         "(discordant-pair) comparison, which is what this harness is for. "
+                         "Use 'none' for an untrained-vs-trained paired contrast.")
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--steps", type=int, default=30)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -1001,6 +1081,68 @@ def main() -> int:
         for k in scored:
             print(f"           {k:24s} untrained {before[k]:.3f} -> trained {scored[k]:.3f} "
                   f"(delta {scored[k]-before[k]:+.3f})")
+
+    if args.compare and not args.fixture:
+        print(f"\n[replay] PAIRED COMPARISON on identical episodes: "
+              f"A={args.aux}  vs  B={args.compare}")
+        print("[replay] ⭐ This is the estimand the harness exists for. Corpus noise -- "
+              "which brains were parked, which episodes were scorable -- is COMMON to both "
+              "candidates and cancels here; scoring each against chance puts it all back.")
+        agg: dict = {}
+        for seed in range(args.seeds):
+            enc_a = build_encoder(args.model, obs_shape, seed)
+            train_offline(enc_a, args.aux, stream, actions, args.steps, args.lr, seed)
+            acc_a, hits_a = capture_readout(enc_a, obs, memory_idx, episodes,
+                                            per_episode_out=True)
+            # ⛔ SAME SEED, SAME ARCHITECTURE, SAME DATA. The only thing that differs is
+            # the objective -- otherwise the discordance measures initialisation, and a
+            # difference attributable to the seed is not a difference between candidates.
+            enc_b = build_encoder(args.model, obs_shape, seed)
+            if args.compare != "none":
+                train_offline(enc_b, args.compare, stream, actions, args.steps, args.lr, seed)
+            acc_b, hits_b = capture_readout(enc_b, obs, memory_idx, episodes,
+                                            per_episode_out=True)
+            # ⚠ PRINT BOTH MARGINS BESIDE THE DISCORDANCE. They are not redundant: equal
+            # margins with d>0 means the candidates disagree in offsetting directions,
+            # and UNEQUAL margins with d==0 is impossible -- so the pair is also a
+            # consistency check on the pairing itself.
+            for cond, st in paired_discordance(hits_a, hits_b).items():
+                cur = agg.setdefault(cond, {"n": 0, "a_only": 0, "b_only": 0, "seeds": 0})
+                cur["n"] = st["n"]
+                cur["a_only"] += st["a_only"]
+                cur["b_only"] += st["b_only"]
+                cur["seeds"] += 1
+            _st = paired_discordance(hits_a, hits_b)
+            print(f"[replay]   seed {seed}: " + "  ".join(
+                f"{c}: A={acc_a[c][0]:.3f} B={acc_b[c][0]:.3f} d={_st[c]['discordant']}/"
+                f"{_st[c]['n']}" for c in sorted(_st)))
+            for c in sorted(_st):
+                if abs(acc_a[c][0] - acc_b[c][0]) > 1e-12 and _st[c]["discordant"] == 0:
+                    raise SystemExit(
+                        f"[replay] ⛔ INCONSISTENT PAIRING in {c}: margins differ "
+                        f"({acc_a[c][0]:.4f} vs {acc_b[c][0]:.4f}) but ZERO discordant "
+                        f"pairs. Two encoders cannot score differently while agreeing on "
+                        f"every episode -- the hit lists are not aligned to the same "
+                        f"episodes. Refusing to report a paired statistic from an "
+                        f"unaligned pairing.")
+        print(f"\n[replay] pooled over {args.seeds} seeds:")
+        for cond in sorted(agg):
+            a, b, n = agg[cond]["a_only"], agg[cond]["b_only"], agg[cond]["n"]
+            d = a + b
+            pv = exact_sign_p(a, b)
+            note = ("" if d else
+                    "  ⛔ ZERO DISCORDANT PAIRS -- the two candidates made the IDENTICAL "
+                    "choice on every episode. No episode count can rank them here; the "
+                    "binding quantity is disagreement, not sample size.")
+            if 0 < d < 6:
+                note = (f"  ⛔ d={d} CANNOT REACH p<.05 AT ANY MARGIN (a unanimous d=5 is "
+                        f"p={exact_sign_p(5, 0):.3f}); this cell cannot rank candidates.")
+            print(f"  {cond:32s} n={n:3d}  discordant={d:3d}  "
+                  f"A-only={a:3d} B-only={b:3d}  exact p={pv:.4f}{note}")
+        print("[replay] ⚠ Pooling discordant pairs across seeds treats seeds as "
+              "independent trials of the SAME contrast. That is the intended reading -- "
+              "the data is byte-identical and only the init differs -- but it is an "
+              "assumption, not a measurement.")
 
     if results:
         print(f"\n[replay] over {args.seeds} seeds ({'FIXTURE' if args.fixture else 'capture'}):")

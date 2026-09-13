@@ -514,3 +514,70 @@ def test_an_empty_exposure_token_defines_nothing_rather_than_matching_everything
     falsy token must not make the cue look universally decisive."""
     eps = [("Imprinted Object Familiar", "2A_00.mov", "1B_00.mov", "left")]
     assert exposure_cue_alignment(eps, "") == {"Imprinted Object Familiar": (0, 0, 1)}
+
+
+# ---------------------------------------------------------------------------
+# paired_discordance. ⛔ The first version took bare booleans positionally while
+# capture_readout hands back (cond, hit) TUPLES, so `a and not b` truthy-tested the
+# tuple and every pair scored concordant. It reported d=0 on a corpus where the two
+# candidates provably differed by an episode -- and d=0 is exactly the interesting
+# negative result ("the harness cannot rank candidates"), so the bug was disguised as
+# the finding. Caught only by a consistency guard comparing the two margins.
+# ---------------------------------------------------------------------------
+from replay_harness import exact_sign_p, paired_discordance  # noqa: E402
+
+
+def _h(cond, *hits):
+    return [(cond, bool(x)) for x in hits]
+
+
+def test_the_tuple_truthiness_bug():
+    """⛔ THE REGRESSION. Entries are (cond, hit) pairs; a truthy test on the pair itself
+    is always True, which collapses every comparison into 'concordant'."""
+    a = _h("C", 1, 1, 0, 0)
+    b = _h("C", 1, 0, 1, 0)
+    st = paired_discordance(a, b)["C"]
+    assert st == {"n": 4, "concordant": 2, "discordant": 2,
+                  "a_only": 1, "b_only": 1, "p": 1.0}
+
+
+def test_a_margin_difference_forces_at_least_one_discordant_pair():
+    """⛔ THE INVARIANT THAT CAUGHT IT, asserted directly: two candidates cannot score
+    differently while agreeing on every episode. Any implementation that can report
+    unequal margins with d==0 is broken, whatever else it gets right."""
+    a = _h("C", 1, 1, 1, 0)      # 3/4
+    b = _h("C", 1, 1, 0, 0)      # 2/4
+    st = paired_discordance(a, b)["C"]
+    assert sum(h for _, h in a) != sum(h for _, h in b)
+    assert st["discordant"] >= 1, "unequal margins with zero discordance is impossible"
+
+
+def test_misalignment_is_refused_rather_than_silently_paired():
+    """A pairing that lines up different episodes produces a plausible number from
+    unrelated comparisons. Each entry carries its own condition so this is CHECKED."""
+    with pytest.raises(ValueError, match="misaligned at index 1"):
+        paired_discordance(_h("C", 1, 1), [("C", True), ("D", False)])
+    with pytest.raises(ValueError, match="aligned lists"):
+        paired_discordance(_h("C", 1, 1), _h("C", 1))
+
+
+def test_concordant_pairs_carry_no_signal():
+    """⭐ THE POWER FACT THE CELL TURNS ON: adding episodes the candidates AGREE on
+    changes n and leaves the test exactly where it was. `n` is not the denominator."""
+    base = paired_discordance(_h("C", 1, 1, 1, 0, 0, 0), _h("C", 0, 0, 0, 1, 1, 1))["C"]
+    padded = paired_discordance(_h("C", 1, 1, 1, 0, 0, 0) + _h("C", *([1] * 50)),
+                                _h("C", 0, 0, 0, 1, 1, 1) + _h("C", *([1] * 50)))["C"]
+    assert padded["n"] == base["n"] + 50
+    assert padded["p"] == base["p"], "50 agreeing episodes bought nothing"
+    assert padded["discordant"] == base["discordant"] == 6
+
+
+@pytest.mark.parametrize("d,minority_for_sig", [(28, 8), (11, 1), (10, 1), (7, 0), (3, None)])
+def test_the_disagreement_floor(d, minority_for_sig):
+    """⛔ Below d=6 a cell cannot reach p<.05 at ANY split, so it cannot rank candidates
+    however many episodes are added. Measured on the real corpus: the target cell ran
+    d=11/7/10 across three seeds -- above the floor -- while Novel Familiar ran d=3 and
+    the two saturated cells ran d=0."""
+    best = max((k for k in range(0, d // 2 + 1) if exact_sign_p(d - k, k) < 0.05),
+               default=None)
+    assert best == minority_for_sig
