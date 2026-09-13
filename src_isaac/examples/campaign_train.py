@@ -247,6 +247,9 @@ MODELS: dict[str, dict] = {
     # Reference-faithful rebuild; cltt is retained unchanged as their paired incumbent.
     "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT-CLTT-Ref":    dict(encoder="compact_vit", cfg=dict(VIT_CFG),                                            framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # Schneider's single-frame temporal positives come from attached rollout memory.
+    "SimCLR-CLTT-Schneider": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=False, aux="cltt_schneider", aux_weight=1.0),
+    "ViT-CLTT-Schneider":    dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=False, aux="cltt_schneider", aux_weight=1.0),
     "ViT+VICReg":     dict(encoder="compact_vit",     cfg=dict(VIT_CFG),                                                             framestack=False, aux="vicreg"),
     # Temporal-pair VICReg: identical objective and expander to `vicreg`; only the
     # view construction differs (aug(t) vs aug(t+k), not two augs of one frame).

@@ -110,6 +110,8 @@ def test_reference_head_geometry():
 def test_one_stream_contiguous_windows_without_whole_buffer_transfer(
     monkeypatch, filled, memory_index, batch, start, expected_batch, expected_highs,
 ):
+    # Pin this sampler regression's original geometry independently of loss defaults.
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
     monkeypatch.setenv("NETT_AUX_BATCH", str(batch))
     draws = [2, start] if len(expected_highs) == 2 else [2]
     calls = fixed_draws(monkeypatch, draws)
@@ -131,30 +133,24 @@ def test_one_stream_contiguous_windows_without_whole_buffer_transfer(
         assert torch.equal(view, view[:, :1].expand_as(view))
 
 
-def test_three_frame_default_offsets_refused_after_logging(monkeypatch):
+def test_three_frame_default_offsets_accepted_with_one_time_logging(monkeypatch):
     encoder = IdentityEncoder(channels=9)
     aux = CLTTReferenceAuxLoss(encoder)
     aux.attach_memory(identity_memory(channels=9))
     messages = []
     monkeypatch.setattr("nett_skrl.brain.aux.cltt_ref_aux.logger.info", lambda *args: messages.append(args))
-    # A caught refusal must not let a later call bypass the bound; log only once.
     for _ in range(2):
-        with pytest.raises(ValueError) as error:
-            aux.compute(encoder, torch.empty(0))
-        message = str(error.value)
-        assert "T=3" in message and "offsets=(2, 4)" in message
-        assert "share a literally identical frame" in message
-        assert "multiples of T=3" in message
+        assert torch.isfinite(aux.compute(encoder, torch.empty(0)))
         assert len(messages) == 1
         # ⛔ The batch must be in this line. Every level claim about NT-Xent depends on
         # B (chance is 2*ln(2B-1)), and the line used to carry offsets and stack depth
         # and not B -- which is how a read protocol got published against an assumed
         # B=96 when the realised B was ~45.
-        assert messages[0][1:3] == ((2, 4), 3)
+        assert messages[0][1:3] == ((1, 2), 3)
         assert len(messages[0][1:]) > 2, "offsets and T alone leave the level unbacked"
         fmt = messages[0][0] % messages[0][1:]
         assert "batch B=" in fmt and "chance" in fmt
-        assert not encoder.views  # Refuse before any backbone encoding.
+    assert len(encoder.views) == 6
 
 
 @pytest.mark.parametrize("channels,offsets", [(9, "3,6"), (3, "1,2")])
@@ -191,6 +187,7 @@ def test_backbone_receives_nonzero_gradients(monkeypatch):
 
 
 def test_both_offsets_are_summed(monkeypatch):
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
     monkeypatch.setenv("NETT_AUX_BATCH", "4")
     encoder = IdentityEncoder()
     aux = CLTTReferenceAuxLoss(encoder)
@@ -211,7 +208,7 @@ def test_both_offsets_are_summed(monkeypatch):
     assert not torch.isclose(one_loss, two_loss)
 
 
-@pytest.mark.parametrize("t_max", [0, 4, 5])
+@pytest.mark.parametrize("t_max", [0, 2, 3])
 def test_too_few_anchors_raises(t_max):
     encoder = IdentityEncoder()
     aux = CLTTReferenceAuxLoss(encoder)
@@ -237,7 +234,7 @@ def test_invalid_offsets_raise(monkeypatch, offsets):
 def test_defaults_overrides_and_one_time_logging(monkeypatch):
     encoder = IdentityEncoder(channels=9)
     aux = CLTTReferenceAuxLoss(encoder)
-    assert aux.max_samples == 96 and aux.temperature == 0.5
+    assert aux.max_samples == 512 and aux.temperature == 0.5
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "3, 6")
     monkeypatch.setenv("NETT_AUX_CLTT_REF_TEMP", "0.7")
     aux = CLTTReferenceAuxLoss(encoder)
@@ -480,3 +477,62 @@ def test_offline_temporal_losses_keep_internal_window_batches(monkeypatch, kind)
     assert len(losses) == 2 and all(np.isfinite(losses))
     assert all(len(view) == 4 for view in encoder.views)  # internal safe slab, not CLI batch=2
     assert torch.equal(aux._memory.tensors["keys"], keys)
+
+
+# ── Strided-capture gaps ──────────────────────────────────────────────────────
+# REGRESSION: the step-advance term of the boundary mask had ZERO coverage until
+# 2026-09-13. Disabling it left the whole suite green, and the only thing that
+# caught the real defect was an end-to-end run on an actual capture.
+#
+# ⛔ THE FIXTURE MUST BE LONG. cltt_ref/vicreg_tt still carry a count guard
+# (`avail = t_max - max(offsets); if batch < 2: raise`) ABOVE the contiguity
+# check. A short gapped capture is refused by the COUNT guard, so the contiguity
+# path never runs and the test passes while proving nothing. These captures are
+# long enough that the count guard cannot fire: the only thing that can refuse
+# them is adjacency.
+
+def strided_keys(t_max, num_envs, *, window=8, every=32):
+    """(env, episode, step) for a capture that records `window` contiguous frames
+    every `every` steps -- the real shape of chicken's captures."""
+    step = torch.empty(t_max, dtype=torch.long)
+    for i in range(t_max):
+        burst, within = divmod(i, window)
+        step[i] = burst * every + within
+    keys = torch.zeros(t_max, num_envs, 3, dtype=torch.long)
+    keys[:, :, 0] = torch.arange(num_envs)[None, :]
+    keys[:, :, 2] = step[:, None]
+    return keys
+
+
+def test_capture_gap_refused_even_when_env_and_episode_are_constant():
+    """A 25-step gap with env and episode UNCHANGED must still break the window.
+
+    An identity-only boundary mask sees one env and one episode here and calls
+    the whole capture contiguous. Only the step-advance term can refuse it.
+    """
+    from nett_skrl.brain.aux.cltt_ref_aux import (
+        episode_window_batch, episode_window_starts)
+    memory = identity_memory(t_max=128, num_envs=2)
+    memory.tensors = {"observations": memory.tensors["observations"],
+                      "keys": strided_keys(128, 2)}
+    # Count guard cannot fire: avail = 128 - 8 = 120, far above 2.
+    assert 128 - 8 >= 2
+    valid = episode_window_starts(memory, (8,))
+    assert not valid.any(), (
+        "offset 8 needs 9 adjacent frames; an 8-frame burst cannot supply them"
+    )
+    with pytest.raises(ValueError, match="episode-contiguous"):
+        episode_window_batch(memory, (8,), 64)
+
+
+def test_capture_gap_allows_windows_that_fit_inside_one_burst():
+    """The refusal must be geometric, not blanket: offsets that fit still work."""
+    from nett_skrl.brain.aux.cltt_ref_aux import (
+        episode_window_batch, episode_window_starts)
+    memory = identity_memory(t_max=128, num_envs=2)
+    memory.tensors = {"observations": memory.tensors["observations"],
+                      "keys": strided_keys(128, 2)}
+    valid = episode_window_starts(memory, (4,))
+    assert valid.any(), "a 5-frame span fits inside an 8-frame burst"
+    batch, _starts = episode_window_batch(memory, (4,), 64)
+    assert batch == 4, f"8-frame burst with offset 4 admits batch 4, got {batch}"

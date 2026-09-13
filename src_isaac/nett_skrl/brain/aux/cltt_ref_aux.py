@@ -7,24 +7,36 @@ nt_xent(z1, z2) + nt_xent(z1, z3). We retain one-stream contiguous negatives,
 backbone gradients, the Linear(512,512)->BatchNorm->ReLU->Linear(512,128,bias=False)
 L2-normalised projector, and the effective CLI temperature 0.5.
 
-DELIBERATE DEPARTURES -- DO NOT "FIX" THESE BACK TO THE REFERENCE.
-NETT_AUX_BATCH defaults to 96, not 512: the reference trains offline without PPO;
-512 anchors x 3 views x 160 minibatch steps per update is prohibitive here.
-NETT_AUX_CLTT_REF_OFFSETS defaults to "2,4": with a 2-frame framestack,
-stack(t)=[f(t-1),f(t)] and stack(t+1)=[f(t),f(t+1)] SHARE a frame, so offset 1
-lets the encoder match on a literally identical frame. Offsets that are multiples
-of the stack depth give disjoint frame sets. We use whole, temporally offset
-stacks and log the realised offsets and discovered stack depth T once, then
-refuse offsets that are not multiples of T to prevent shared-frame shortcuts.
+NETT_AUX_BATCH now defaults to 512 and NETT_AUX_CLTT_REF_OFFSETS to "1,2",
+matching training_jobs/train_simclr.sh and models/simclr.py shared_step(v0).
+Old logs used 96 anchors and offsets (2,4) on whole stacks. Each view now uses
+only the observation's CURRENT RGB frame. For a host encoder requiring T slots,
+we repeat that frame across those slots, avoiding overlapping-stack shortcuts
+without replacing the supplied encoder. This static-input adapter is a host
+departure, especially for motion encoders, which see no within-view motion.
 
-TWO REFERENCE DEFECTS. The shipped job's --aug False is INERT: train_simclr.py
+Other host departures: the encoder/preprocessing, PPO optimizer, learning rate,
+schedule and update count remain host-controlled, rather than the reference's
+offline ResNet training. The unchanged reset-aware sampler draws a random safe
+contiguous slab, rather than walking the offline dataloader sequentially; short
+episodes/buffers reduce B below 512 and last_scalars reports the effective B.
+Episode boundaries and rollout ring seams are never crossed.
+
+TWO REFERENCE DEFECTS. The shipped job's --aug False ENABLES augmentation: train_simclr.py
 declares --aug with type=bool, so bool("False") is True and the
 ``if args.aug is True:`` branch applies SimCLRTrainDataTransform. We follow the
 script's evident intent (NO augmentation), which differs from what the reference
 binary actually ran. Also, its ``neg - math.e`` self-subtraction is wrong at
 T=0.5: self-similarity contributes exp(1/T)=exp(2)=7.3891, but subtracting only
 2.7183 leaves 4.67 in every denominator. Our unchanged nt_xent masks the diagonal
-exactly instead of preserving this defect.
+exactly instead of preserving this defect. These corrections prevent numerical
+reproduction of the reference binary. Temperature 0.5 is already faithful to
+add_model_specific_args (the constructor's unused default is 0.1).
+
+Verified sources (main):
+https://github.com/buildingamind/ChicksAndDNNs_ViewInvariance/blob/main/models/simclr.py
+https://github.com/buildingamind/ChicksAndDNNs_ViewInvariance/blob/main/train_simclr.py
+https://github.com/buildingamind/ChicksAndDNNs_ViewInvariance/blob/main/training_jobs/train_simclr.sh
 
 THE NEGATIVES MAY BE THE PROBLEM, NOT THE FIX. Drawing a CONTIGUOUS block off one env stream makes
 every negative a near-in-time frame of the SAME two-object world. The fleet's viewpoint plan v14
@@ -57,6 +69,7 @@ from skrl import logger
 # exp(1/T), equal to e only at T=1. At its T=0.5, exp(2)=7.3891 minus 2.7183
 # leaves 4.67 of self-similarity per row. Our nt_xent masks the diagonal exactly.
 from .simclr_aux import nt_xent
+from .cltt_views import current_frame_stack
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -229,7 +242,7 @@ class CLTTReferenceAuxLoss(nn.Module):
         self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
         self.last_diag: dict | None = None
         self.last_scalars: dict = {}
-        offsets = os.environ.get("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
+        offsets = os.environ.get("NETT_AUX_CLTT_REF_OFFSETS", "1,2")
         try:
             self.offsets = tuple(int(k.strip()) for k in offsets.split(","))
             if not self.offsets or any(k <= 0 for k in self.offsets):
@@ -239,7 +252,7 @@ class CLTTReferenceAuxLoss(nn.Module):
                 "NETT_AUX_CLTT_REF_OFFSETS must be a comma-separated list of "
                 f"at least one positive integer; got {offsets!r}."
             ) from exc
-        self.max_samples = int(os.environ.get("NETT_AUX_BATCH", "96"))
+        self.max_samples = int(os.environ.get("NETT_AUX_BATCH", "512"))
         self.temperature = float(os.environ.get("NETT_AUX_CLTT_REF_TEMP", "0.5"))
         self.head = CLTTReferenceProjectionHead(int(encoder.features_dim))
         self.head.to(next(encoder.parameters()).device)
@@ -297,14 +310,7 @@ class CLTTReferenceAuxLoss(nn.Module):
                 math.log(2 * batch - 1), len(self.offsets),
                 len(self.offsets) * math.log(2 * batch - 1),
             )
-        if any(k % self.num_frames for k in self.offsets):
-            raise ValueError(
-                f"CLTTReferenceAuxLoss: realised stack depth T={self.num_frames}, "
-                f"offsets={self.offsets}. Offsets not aligned to the stack depth "
-                "can make positive views share a literally identical frame, "
-                "allowing a shared-frame matching shortcut. Choose "
-                f"NETT_AUX_CLTT_REF_OFFSETS that are multiples of T={self.num_frames}."
-            )
+        views = [current_frame_stack(view) for view in views]
 
         z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []

@@ -5,7 +5,11 @@ the view construction changes to aug(t) and aug(t+k). Draw contiguous windows
 from one rollout stream just as cltt_ref does. The default single offset keeps
 the objective strictly two-view; explicitly configured extra offsets are summed.
 
-WHY THE DEFAULT OFFSET IS 8 AND NOT cltt_ref's 2. This loss is only different
+The variance scale correction in vicreg_aux also applies to this loss and its
+diagnostics: the effective variance weight moves from 60 to 30 in upstream
+units, with coefficients still 3/30/10. Covariance remains summed, not halved.
+
+WHY THE DEFAULT OFFSET IS 8 AND NOT cltt_ref's FORMER 2. This loss is only different
 from ``vicreg`` to the extent that t and t+k actually show different viewpoints,
 so the offset was measured rather than inherited. From agent.angle in an existing
 parsing test log (ViViT+VICReg fork-1 off0, 448 episodes, within-episode, wrapped
@@ -44,7 +48,7 @@ def vicreg_terms(
     inv = F.mse_loss(z1, z2)
     std1 = torch.sqrt(z1.var(dim=0) + eps)
     std2 = torch.sqrt(z2.var(dim=0) + eps)
-    var = torch.mean(F.relu(1.0 - std1)) + torch.mean(F.relu(1.0 - std2))
+    var = torch.mean(F.relu(1.0 - std1)) / 2 + torch.mean(F.relu(1.0 - std2)) / 2
     B, D = z1.shape
     z1c = z1 - z1.mean(dim=0)
     z2c = z2 - z2.mean(dim=0)

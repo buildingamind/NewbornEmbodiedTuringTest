@@ -18,6 +18,12 @@ var=30, cov=10 — variance-heavy anti-collapse + decorrelation, light attractio
 tunable via NETT_VICREG_{INV,VAR,COV}. Same plug-in interface as
 :class:`SimCLRAuxLoss` (``compute(encoder, observations)`` returns a scalar;
 ``.head`` params should be added to the optimizer). Selected via NETT_AUX_LOSS=vicreg.
+
+Variance scale correction: each view's hinge is divided by two, matching
+facebookresearch/vicreg/main_vicreg.py. With the unchanged 3/30/10 coefficients,
+the effective variance weight moves from 60 to 30 in upstream units; old logs
+therefore use a different scale. Upstream SUMS covariance over both views
+WITHOUT halving: this variance/covariance asymmetry is intentional.
 """
 
 from __future__ import annotations
@@ -58,7 +64,7 @@ def vicreg_loss(z1, z2, inv_coeff, var_coeff, cov_coeff, eps: float = 1e-4):
     # variance (anti-collapse: keep each dim's std >= 1)
     std1 = torch.sqrt(z1.var(dim=0) + eps)
     std2 = torch.sqrt(z2.var(dim=0) + eps)
-    var = torch.mean(F.relu(1.0 - std1)) + torch.mean(F.relu(1.0 - std2))
+    var = torch.mean(F.relu(1.0 - std1)) / 2 + torch.mean(F.relu(1.0 - std2)) / 2
     # covariance (decorrelate dims)
     B, D = z1.shape
     z1c = z1 - z1.mean(dim=0)

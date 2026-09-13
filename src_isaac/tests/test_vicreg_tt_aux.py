@@ -352,12 +352,11 @@ def test_incumbent_still_augments_same_prepared_tensor_twice(monkeypatch):
     assert len(calls) == 2 and calls[0] is calls[1] is prepared
 
 
-def test_incumbent_file_byte_identical_to_base():
-    """vicreg_tt is a ONE-FACTOR change: the incumbent it is measured against must not move.
+def test_incumbent_matches_base_except_documented_variance_correction():
+    """Allow only the authorized variance fix and module documentation to change.
 
-    Two scored arms (ViT+VICReg, ViViT+VICReg) carry the `vicreg` label. If this file
-    drifts, every published number under that label silently changes definition and the
-    vicreg-tt+ contrast stops identifying the view construction.
+    The old bake-off was retracted. Both VICReg variants now use the faithful
+    variance scale, while all other incumbent implementation stays unchanged.
 
     SKIPS rather than errors when origin/feat/isaac is not fetched (a shallow or
     remote-less clone). A skip is honest about not having checked; a hard error here would
@@ -373,12 +372,12 @@ def test_incumbent_file_byte_identical_to_base():
             "origin/feat/isaac not available in this clone, so the incumbent could not be "
             f"compared against its base: {baseline.stderr.decode(errors='replace').strip()}"
         )
-    assert (_SRC.parent / relative).read_bytes() == baseline.stdout
-    result = subprocess.run(
-        ["git", "diff", "--stat", "origin/feat/isaac", "--", relative],
-        cwd=_SRC.parent, check=True, capture_output=True,
-    )
-    assert result.stdout == b""
+    old = "var = torch.mean(F.relu(1.0 - std1)) + torch.mean(F.relu(1.0 - std2))"
+    corrected = "var = torch.mean(F.relu(1.0 - std1)) / 2 + torch.mean(F.relu(1.0 - std2)) / 2"
+    expected = baseline.stdout.decode().replace(old, corrected)
+    current = (_SRC.parent / relative).read_text()
+    # Ignore only the module docstring; compare every implementation byte.
+    assert current.split('"""', 2)[2] == expected.split('"""', 2)[2]
 
 
 @pytest.mark.parametrize(
