@@ -1017,6 +1017,10 @@ def main() -> int:
                     help="Run --aux and AUX_B on the SAME episodes and report the paired "
                          "(discordant-pair) comparison, which is what this harness is for. "
                          "Use 'none' for an untrained-vs-trained paired contrast.")
+    ap.add_argument("--bakeoff", default=None, metavar="LIST",
+                    help="Comma list of aux names, or 'all' for the whole registry. Trains "
+                         "each ONCE per seed and derives every pairwise comparison from the "
+                         "cached per-episode outcomes. 'none' (untrained) is always included.")
     ap.add_argument("--seeds", type=int, default=3)
     ap.add_argument("--steps", type=int, default=30)
     ap.add_argument("--lr", type=float, default=3e-4)
@@ -1081,6 +1085,90 @@ def main() -> int:
         for k in scored:
             print(f"           {k:24s} untrained {before[k]:.3f} -> trained {scored[k]:.3f} "
                   f"(delta {scored[k]-before[k]:+.3f})")
+
+    if args.bakeoff and not args.fixture:
+        from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+        names = (sorted(AUX_LOSSES) if args.bakeoff == "all"
+                 else [n.strip() for n in args.bakeoff.split(",") if n.strip()])
+        names = ["none"] + [n for n in names if n != "none"]
+        # ⭐ TRAIN ONCE PER (candidate, seed), NOT ONCE PER PAIR. Every pairwise
+        # comparison is derived from cached per-episode outcomes, which costs
+        # len(names) trainings instead of len(names)^2 -- and, more importantly,
+        # GUARANTEES every pair was scored on the identical episode list. Re-running a
+        # pair independently would leave that as an assumption.
+        hits: dict = {}
+        margins: dict = {}
+        failed: dict = {}
+        weight_delta: dict = {}
+        loss_delta: dict = {}
+        for seed in range(args.seeds):
+            for name in names:
+                try:
+                    import torch as _t
+                    enc = build_encoder(args.model, obs_shape, seed)
+                    _w0 = _t.cat([q.detach().flatten().clone() for q in enc.parameters()])
+                    _losses = None
+                    if name != "none":
+                        _, _losses = train_offline(enc, name, stream, actions,
+                                                   args.steps, args.lr, seed)
+                    _w1 = _t.cat([q.detach().flatten() for q in enc.parameters()])
+                    _dw = float((_w1 - _w0).norm())
+                    # ⛔⛔ A CANDIDATE THAT DID NOT TRAIN AND A CANDIDATE THAT DID NOT HELP
+                    # PRODUCE THE SAME ROW. Both score identically to `none` with zero
+                    # discordant pairs, and the second is a finding while the first is a
+                    # broken run. Measured here rather than assumed: the encoder's weights
+                    # must actually have moved.
+                    if name != "none" and _dw < 1e-9:
+                        failed.setdefault(name, f"weights unchanged after {args.steps} "
+                                                f"steps (||dW||={_dw:.2e}) -- did not train")
+                        continue
+                    weight_delta.setdefault(name, []).append(_dw)
+                    if _losses:
+                        loss_delta.setdefault(name, []).append(_losses[0] - _losses[-1])
+                    acc, per_ep = capture_readout(enc, obs, memory_idx, episodes,
+                                                  per_episode_out=True)
+                except Exception as exc:                      # noqa: BLE001
+                    # ⚠ A candidate that cannot run is NOT a candidate that scored badly.
+                    # Recorded by name and excluded, never folded into the ranking as a
+                    # loss -- an absent number and a bad number are different facts.
+                    failed.setdefault(name, str(exc)[:120])
+                    continue
+                hits.setdefault(name, []).extend(per_ep)
+                for c, (a, n) in acc.items():
+                    margins.setdefault(name, {}).setdefault(c, []).append(a)
+            print(f"[replay] bakeoff seed {seed}: "
+                  f"{sum(1 for n in names if n in hits)}/{len(names)} candidates scored")
+        ran = [n for n in names if n in hits]
+        if failed:
+            print(f"[replay] ⛔ DID NOT RUN (excluded, not ranked): "
+                  + "; ".join(f"{k}: {v}" for k, v in failed.items()))
+
+        print(f"\n[replay] training actually happened -- ||dW|| and loss drop per candidate:")
+        for n in ran:
+            wd = weight_delta.get(n, [0.0])
+            ld = loss_delta.get(n)
+            print(f"  {n:14s} ||dW||={sum(wd)/len(wd):.6f}"
+                  + (f"   loss {sum(ld)/len(ld):+.4f}" if ld else "   (untrained control)"))
+        cells = sorted({c for _, per in hits.items() for c, _ in per})
+        for cell in cells:
+            print(f"\n[replay] ===== {cell} =====")
+            print(f"  {'candidate':14s} {'mean acc':>9}   pairwise vs each other "
+                  f"(A-only/B-only, exact p)")
+            for a in ran:
+                acc = margins[a][cell]
+                row = []
+                for b in ran:
+                    if a == b:
+                        continue
+                    ha = [(c, h) for c, h in hits[a] if c == cell]
+                    hb = [(c, h) for c, h in hits[b] if c == cell]
+                    st = paired_discordance(ha, hb)[cell]
+                    mark = "*" if st["p"] < 0.05 else " "
+                    row.append(f"{b}:{st['a_only']}/{st['b_only']} p={st['p']:.3f}{mark}")
+                print(f"  {a:14s} {sum(acc)/len(acc):9.4f}   " + "  ".join(row))
+        print("\n[replay] * = exact sign test p<.05 on discordant pairs. A cell whose "
+              "candidates all show d<6 cannot rank them at ANY episode count -- read the "
+              "discordant counts before the p values.")
 
     if args.compare and not args.fixture:
         print(f"\n[replay] PAIRED COMPARISON on identical episodes: "
