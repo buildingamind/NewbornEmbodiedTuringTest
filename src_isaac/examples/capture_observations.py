@@ -59,6 +59,34 @@ plus ``window``, ``every`` and ``n_transition_pairs``. The driver PRINTS the usa
 pair count and warns loudly at zero, so a capture that cannot serve its purpose
 says so at the end of the run rather than at the start of the next project.
 
+⛔ AND ``n_transition_pairs`` IS NOT THE CHECK YOU WANT IF YOUR LOSS USES AN
+OFFSET > 1. Measured 2026-09-13. It counts PAIRS, not RUN LENGTH, so it is
+satisfied identically by ``--window 2`` and ``--window 1000``. It answers "do
+adjacent frames exist at all", which is the offset-1 question and the one that
+mattered on 2026-09-09. It says NOTHING about whether the runs are long enough
+for the offsets a loss actually uses.
+
+A loss drawing temporal windows needs ``window >= batch + max(offset)``
+CONTIGUOUS frames. The capture that prompted this note is ``--every 32
+--window 8``: 8-frame bursts separated by 25-step gaps, reporting 125,440
+transition pairs and passing every check in this file. On it:
+
+    vicreg_tt   offsets=(8,)   needs B+8   IMPOSSIBLE at any batch -- short by 1
+    cltt_ref    offsets=(1,2)  needs B+2   max batch 6
+    schneider   offsets=(1,)   needs B+1   max batch 7
+
+The inversion worth remembering: a BIGGER capture satisfies the pair count by a
+wider margin and buys no extra run length. 143,360 rows and 1,280 rows are both
+100% unusable at offset 8.
+
+★ KNOWN AND ACCEPTED, not fixed: the fleet is proceeding on the 8-frame window
+deliberately, holding batch at 6 so every candidate sees the same batch, and
+recording that the resulting bake-off is bounded by the corpus rather than by
+the losses. Screening at the offsets the arms actually train on needs a
+recapture at ``--window 72`` (batch 64 at offset 8). Until then, do not read a
+temporal loss's replay score as an estimate of its arm behaviour: it was scored
+at an offset and a batch neither of which it will ever run at.
+
 ★★ AND IT RECORDS WHETHER IT IS A PREFIX. ``episodes_requested``,
 ``episodes_seen``, ``episodes_source`` and ``is_prefix`` are saved too, because a
 short capture is **well-formed, has a non-zero pair count, and is unusable** --
