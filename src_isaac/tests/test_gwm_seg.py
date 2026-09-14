@@ -258,9 +258,15 @@ def test_frame_pairs_reuse_framestack_episode_resets():
 
 def test_ventral_matches_read_only_reference():
     from nett_skrl.brain.aux.dual_stream import SmallCNNVentral
-    reference = Path("/home/zlaborde/.claude/uploads/934895bd-06a3-4110-a59a-6243fbfa121d/b46532c0-model.py")
+    # Same vendored tree test_dual_stream_aux.py compares against. It must NOT be a
+    # session-scoped upload path: that exists on exactly one machine for one session,
+    # so the skip below would silently switch this parity check off everywhere else.
+    reference = Path(
+        "/home/zlaborde/code/isaac/NETT_Global_Workspace/archive/2026-08_campaign"
+        "/scripts/gwm/model.py"
+    )
     if not reference.exists():
-        pytest.skip("Owner's read-only model reference is not installed")
+        pytest.skip("Read-only vendored reference not installed on this machine")
     # Compile the read-only source directly; do not create a __pycache__ there.
     namespace = {}
     exec(compile(reference.read_text(), str(reference), "exec"), namespace)
