@@ -73,6 +73,16 @@ def _build_gwm(encoder):
     return GWMAuxLoss(encoder)
 
 
+def _build_eoo_dual(encoder):
+    from .eoo_dual_aux import EoODualAuxLoss
+    return EoODualAuxLoss(encoder)
+
+
+def _build_gwm_dual(encoder):
+    from .gwm_dual_aux import GWMDualAuxLoss
+    return GWMDualAuxLoss(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -90,6 +100,8 @@ AUX_LOSSES = {
     "vicreg_tt": _build_vicreg_tt,
     "eoo": _build_eoo,
     "gwm": _build_gwm,
+    "eoo_dual": _build_eoo_dual,
+    "gwm_dual": _build_gwm_dual,
 }
 
 
@@ -198,6 +210,15 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                 f"no .encoder to shape. Refusing to train with the objective absent."
             )
         self._aux = AUX_LOSSES[self._aux_kind](encoder)
+        if self._aux_kind in ("eoo_dual", "gwm_dual"):
+            # The host is already in the policy checkpoint. Persist its ventral
+            # decoder and the separate video dorsal with PPO as well.
+            self.checkpoint_modules["aux_head"] = self._aux.head
+            logger.warning(
+                "AuxLossPPO: %s parameter counts (including host): %s; "
+                "objectness trains the host encoder; dorsal is aux-only.",
+                self._aux_kind, self._aux.parameter_counts,
+            )
         if getattr(self._aux, "needs_memory", False):
             if self.memory is None:
                 raise ValueError(

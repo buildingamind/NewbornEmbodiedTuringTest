@@ -75,7 +75,11 @@ def _amp_dtype() -> torch.dtype | None:
 
 
 class NatureCNN(HWCFeatureExtractor):
-    """Three-layer CNN with optional deterministic spatial pooling."""
+    """Three-layer CNN with optional deterministic spatial pooling.
+
+    ``input_frames`` selects the last N RGB frames from a channel stack and
+    builds conv1 for 3*N channels. None preserves the full-input architecture.
+    """
 
     def __init__(
         self,
@@ -83,10 +87,17 @@ class NatureCNN(HWCFeatureExtractor):
         features_dim: int = 512,
         conv_dim: int = 64,
         spatial_pool: bool = True,
+        input_frames: int | None = None,
         **_,
     ):
         super().__init__(observation_space, features_dim)
         channels, height, width = image_channels_hw(observation_space)
+        if input_frames is not None:
+            if type(input_frames) is not int or input_frames < 1:
+                raise ValueError("NatureCNN input_frames must be a positive integer")
+            self._validate_frame_channels(channels, input_frames)
+            channels = 3 * input_frames
+        self.input_frames = input_frames
         if not isinstance(spatial_pool, bool):
             raise TypeError(
                 "NatureCNN spatial_pool must be a bool, got "
@@ -146,8 +157,36 @@ class NatureCNN(HWCFeatureExtractor):
                 torch.zeros(1, channels, height, width)).shape
         return pool_grid_for(feat_h, feat_w)
 
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+    @staticmethod
+    def _validate_frame_channels(channels, input_frames):
+        if channels % 3 or channels < 3 * input_frames:
+            raise ValueError(
+                f"NatureCNN input_frames={input_frames} requires RGB channels "
+                f"in multiples of 3 and at least {3 * input_frames}; got {channels}"
+            )
+
+    def _prepare_frames(self, observations):
         x = self._prepare_image(observations)
+        if self.input_frames is not None:
+            self._validate_frame_channels(x.shape[1], self.input_frames)
+            x = x[:, -3 * self.input_frames:].contiguous()
+        return x
+
+    def encode_spatial(self, observations: torch.Tensor) -> torch.Tensor:
+        """Conv features before spatial pooling and flattening.
+
+        Keep the existing Sequential and checkpoint keys; find the readout by
+        type so pooled and unpooled configurations use the same conv stack.
+        """
+        x = self._prepare_frames(observations)
+        for layer in self.cnn:
+            if isinstance(layer, (DeterministicAvgPool2d, nn.Flatten)):
+                break
+            x = layer(x)
+        return x
+
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        x = self._prepare_frames(observations)
         amp = _amp_dtype()
         if amp is not None and x.is_cuda:
             # Run the (dominant) conv stack + projection in bf16/fp16 on the tensor

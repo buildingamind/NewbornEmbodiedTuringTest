@@ -1,9 +1,10 @@
 """EoO (Emergence of Objectness) auxiliary loss — self-supervised optical flow.
 
 Reference implementation: ``scripts/eoo/losses.py::unflow_loss`` and
-``scripts/eoo/train.py:197``. There the dorsal stream predicts a mask ``M`` and a
-forward/backward flow pair from ``(frame_t, frame_t1)``, and the loss warps
-``frame_t`` by the flow and compares it against ``frame_t1``.
+``scripts/eoo/train.py:197``. There a single-frame ventral stream predicts mask
+``M`` and a separate frame-pair dorsal stream predicts a forward/backward flow
+pair from ``(frame_t, frame_t1)``. The loss warps ``frame_t`` by the flow and
+compares it against ``frame_t1``.
 
 ★ THE POINT, AND WHY EoO BELONGS HERE RATHER THAN AS A REWARD: the supervision is
 THE NEXT FRAME ITSELF. Nothing external labels anything. An earlier reading of EoO
@@ -188,42 +189,19 @@ class EoOAuxLoss(nn.Module):
                                    mode="bilinear", align_corners=False)
         warped = warp(small_prev, flow)
 
-        # ⛔★★★★★ THE PHOTOMETRIC TERM IS NO LONGER GATED BY THE MASK.
-        # seat:verifier measured the failure this creates: THE MASK DOES NOT COLLAPSE,
-        # IT EVADES. corr(post-warp residual, mask) = -0.9511; the mask sat at 0.9988
-        # on static background and 0.3321 on the moving square; max|flow| reached
-        # 0.0089 against a 2.00-cell target -- AND THE LOSS IMPROVED 5.6x WHILE THAT
-        # HAPPENED. The objective's cheapest descent direction was to DELETE THE MOVING
-        # OBJECT FROM ITS OWN SUPERVISION.
-        # My guard was `(1 - mask).mean()`, a MEAN, so it priced a GLOBAL collapse --
-        # the failure my own comment named -- and was structurally blind to a
-        # SPATIALLY CONCENTRATED one. Masking off the ~4% of the frame that had any
-        # motion cost 2.6e-4 and bought the entire photometric residual.
-        # ✅ Fixed by removing the channel, not by pricing it. An ungated photometric
-        # term cannot be evaded at any mask weight. seat:verifier's own control points
-        # here: GWM's flow reached 2.14 against the same 2.00 target precisely BECAUSE
-        # it has no mask gating its photometric term.
-        # ⚠ The mask is now DIAGNOSTIC ONLY -- reported in `.last`, trained by the
-        # collapse regulariser alone. RE-GATING THE PHOTOMETRIC TERM RE-OPENS THE
-        # EVASION CHANNEL; if a future occlusion mask is wanted, supervise it against a
-        # DETACHED residual, never let it multiply the term that trains the flow.
+        # LEGACY EQUATION: preserve this ungated reconstruction for corpus
+        # reproducibility. It does not supervise objectness: only the regularizer
+        # below trains the mask, with an all-foreground optimum. `eoo_dual`
+        # restores the reference's normalized mask-weighted reconstruction using
+        # separate spatial streams. This legacy arm must not be called objectness.
         photo = _charbonnier(warped - small_curr).mean()
         smooth = smoothness(flow, small_curr)
-        # ⚠ Without this the mask collapses to 0 and switches the photometric term
-        # off entirely -- the degenerate optimum, and it would look like success.
+        # This frame-independent term is NOT constant: its mask derivative is
+        # negative everywhere, so it drives foreground saturation.
         mask_reg = (1.0 - mask).mean()
 
-        # ⚠★★★ THE TOTAL IS A POOR PROGRESS SIGNAL AND THE COMPONENTS ARE NOT.
-        # seat:insect measured this loss flooring at 0.005500 on an IDENTICAL frame
-        # pair, exactly accounted for: photo 0.000500 + smooth 0.0 + mask_reg 0.005000.
-        # mask_reg = w_mask * (1-mask).mean() is FRAME-INDEPENDENT -- a constant, not a
-        # signal -- and charbonnier(0) = eps = 1e-3, so a PERFECT warp cannot reach
-        # zero. About half of the converged 0.0103 is that constant. Read `.last` and
-        # watch the photometric term; the total will look stalled while it improves.
-        # ⚠ flow_absmax is the diagnostic that matters. seat:verifier's evading run
-        # showed a falling loss with max|flow| = 0.0089 against a 2.00 target: A
-        # FALLING LOSS ON THIS OBJECTIVE IS NOT EVIDENCE THAT THE FLOW IS LEARNING.
-        # Report flow_absmax against the true displacement of the stimulus.
+        # Report components separately: Charbonnier has an epsilon floor and
+        # mask_reg decreases as the mask approaches one, regardless of objects.
         self.last = {"photo": float(photo.detach()), "smooth": float(smooth.detach()),
                      "mask_reg": float(mask_reg.detach()),
                      "mask_mean": float(mask.detach().mean()),

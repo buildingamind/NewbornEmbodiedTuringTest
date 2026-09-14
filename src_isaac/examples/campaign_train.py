@@ -295,6 +295,12 @@ MODELS: dict[str, dict] = {
     "GWM+EoO":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="eoo", aux_weight=1.0),
     "GWM+GWM":        dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True,  aux="gwm", aux_weight=1.0),
 
+    # Policy sees the last RGB frame; the stack supplies the aux-only video pair.
+    # Objectness shapes the host encoder, so CNN is the single-frame control.
+    # Combined budget exceeds ~700K at the real eye; see docs/dual_stream_aux.md.
+    "CNN+EoO-Dual": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "input_frames": 1}, framestack=True, aux="eoo_dual", aux_weight=1.0),
+    "CNN+GWM-Dual": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "input_frames": 1}, framestack=True, aux="gwm_dual", aux_weight=1.0),
+
     # ── THE FAITHFUL MoTok ARM. ⛔ NOT an (encoder, aux) arm and it cannot be made
     # into one. In Unity MoTok holds its OWN model and OWN AdamW and its mask
     # MULTIPLIES THE OBSERVATION (seg_wrappers.py:213) -- it hands the policy a

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import gymnasium as gym
+import torch
 import torch.nn as nn
 
 
@@ -24,6 +25,19 @@ class NETTFeatureExtractor(nn.Module):
         # (B, C*T, H, W) float image through the encoder's own forward() without
         # re-applying the HWC->CHW permute or the /255 normalization.
         self._skip_prepare: bool = False
+
+    def encode_spatial(self, observations) -> torch.Tensor:
+        """Return the unpooled spatial feature map (B, C, H, W)."""
+        raise NotImplementedError(f"{type(self).__name__} does not implement encode_spatial")
+
+    def encode_spatial_prepared(self, prepared_image) -> torch.Tensor:
+        """Encode a normalized BCHW image without preparing it a second time."""
+        prev = self._skip_prepare
+        self._skip_prepare = True
+        try:
+            return self.encode_spatial(prepared_image)
+        finally:
+            self._skip_prepare = prev
 
     def encode_prepared(self, prepared_image):
         """Run ``forward`` on an already-prepared (B, C*T, H, W) float image.

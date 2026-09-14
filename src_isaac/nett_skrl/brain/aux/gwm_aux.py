@@ -1,41 +1,19 @@
-"""GWM (Guess What Moves) auxiliary loss — motion-coherence segmentation.
+"""Legacy GWM motion-coherence auxiliary loss, retained for corpus reproducibility.
 
-⛔★★★★★ THIS DELIBERATELY DOES NOT REIMPLEMENT THE REFERENCE LOSS, AND THE REASON
-IS A VERIFIED FINDING IN THIS CAMPAIGN
-(``from-orchestrator/2026-08-25T1607Z_..._the-GWM-flow-loss-optimises-its-own-supervision...md``):
+The vendored EoO/GWM references have separately parameterized, jointly trainable
+ventral and dorsal streams. Flow is NOT a fixed external target: EoO weights its
+photometric error by the trainable mask (eoo/losses.py, w_fwd = occ_fwd * M), and
+eoo/train.py backpropagates both streams together. Vendored GWM also optimizes
+its dorsal stream through quadratic flow reconstruction. Separate parameters
+prevent shared-trunk coupling; they do not freeze the target.
 
-    In the reference (karazijal/guess-what-moves, BMVC 2022) flow is a FIXED
-    EXTERNAL TARGET that the masks cannot influence. In the vendored variant it is
-    a FREE VARIABLE optimised by the same loss that consumes it -- and the code
-    declares that coupling as INTENT, two lines above it.
-
-    A TRIVIAL JOINT OPTIMUM THEREFORE EXISTS: the dorsal stream emits any globally
-    smooth field -- constant, or zero -- the masks reconstruct it exactly, the loss
-    goes to 0, AND NO SEGMENTATION IS LEARNED.
-
-★ Same family as the CLTT zero-loss: an objective whose global optimum is reachable
-WITHOUT DOING THE TASK. Neither was visible in the paper; both needed the code.
-
-THE FIX, and it is one call
----------------------------
-The flow field is trained ONLY by a photometric warping term -- grounded in the
-actual next frame, which no branch can alter -- and the mask branch consumes
-``flow.detach()``. That single detach restores exactly the property the reference
-had and the variant lost: THE MASK CANNOT INFLUENCE ITS OWN SUPERVISION.
-
-⚠ Without the detach this file would score, train, and converge, and its loss curve
-would look BETTER than the correct version's, because zero is easy to reach.
-
-The objective
--------------
-"Guess what moves": partition the frame so that motion is COHERENT WITHIN each
-slot. Two slots (fg/bg), matching MoTok's ``gwm_num_queries=2``. Per slot we take
-the slot-weighted mean flow and penalise the slot-weighted variance around it. A
-mask that separates a moving object from a differently-moving background lowers
-this; a mask that mixes them cannot.
-
-See ``eoo_aux.py`` for where the temporal pair comes from and why the T-major
-channel order is not optional.
+This legacy implementation instead trains photometric flow from flat host
+features and fits slotwise constant motion to flow.detach(). That detach is a
+local design choice, not restoration of a property of these references. Mask
+refinement is detached from a projection still shared with the flow pathway.
+The coarse dense decoder and equations below remain unchanged for old arms;
+`gwm_dual` provides independently trainable spatial streams and the vendored
+quadratic reconstruction objective.
 """
 
 from __future__ import annotations
@@ -62,18 +40,9 @@ class GWMHead(nn.Module):
         self.max_disp = max(min(self.grid_h, self.grid_w) / 2.0, 1.0)
         self.slots = int(slots)
         self.project = nn.Linear(in_dim, hidden * self.grid_h * self.grid_w)
-        # ⛔★★★★★ TWO TRUNKS, NOT ONE. seat:verifier measured that a single shared
-        # trunk makes the detach a lie: with the loss set to `coh` alone, |grad| on
-        # flow_out was 0.000e+00 -- the detach does exactly what a detach does -- but
-        # refine 9.49e-06, project 8.83e-06, ENCODER 6.78e-06. flow and mask came off
-        # ONE trunk, so the coherence term trained THREE OF THE FOUR STAGES THAT
-        # PRODUCE FLOW.
-        # ★ THE DETACH SEVERED THE STEP, NOT THE LOOP. The reference's property is
-        # that flow is a tensor NO PARAMETER OF THE MODEL PRODUCES; mine was weakened
-        # to a ONE-STEP LAG while the docstring claimed the strong version. On
-        # verifier's stimulus the degenerate optimum was not visited, so it was A FALSE
-        # DOCSTRING ON CODE THAT WORKS -- the kind that survives longest, because the
-        # docstring is the reason nobody looks again.
+        # Legacy branches share this dense projection. Detaching the mask input
+        # below isolates its backward path but the projection still changes when
+        # flow/host training updates it. The dual variant has separate encoders.
         self.refine = nn.Sequential(
             nn.Conv2d(hidden, hidden, 3, padding=1), nn.ReLU(inplace=True),
             nn.Conv2d(hidden, hidden, 3, padding=1), nn.ReLU(inplace=True),
