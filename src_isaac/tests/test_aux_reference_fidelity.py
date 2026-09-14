@@ -227,3 +227,105 @@ def test_schneider_registration_and_memory_contract(monkeypatch):
     assert groups[0]["params"] == list(agent._aux.head.parameters())
     for prefix in ("SimCLR", "ViT"):
         assert MODELS[prefix + "-CLTT-Schneider"]["aux"] == "cltt_schneider"
+
+
+# --- SimCLR colour distortion: the measured shortcut, and what must stay absent -----
+
+
+def _colour_only_top1(x, seed, **kw):
+    """Identify the positive pair using per-channel mean+std ALONE -- no spatial content.
+
+    This is the audit's protocol. If two views of the same frame are findable from 12
+    colour numbers, NT-Xent can be minimised without reference to content.
+    """
+    from nett_skrl.brain.aux.simclr_aux import _augment
+
+    torch.manual_seed(seed)
+    v1, v2 = _augment(x, **kw), _augment(x, **kw)
+    desc = lambda v: torch.cat([v.mean(dim=(2, 3)), v.std(dim=(2, 3))], dim=1)
+    d1, d2 = desc(v1), desc(v2)
+    d1 = (d1 - d1.mean(0)) / (d1.std(0) + 1e-8)
+    d2 = (d2 - d2.mean(0)) / (d2.std(0) + 1e-8)
+    return float((torch.cdist(d1, d2).argmin(1) == torch.arange(len(x))).float().mean())
+
+
+def test_colour_distortion_closes_the_colour_shortcut():
+    """⛔ THE POINT OF THE FIX, PINNED AS A MEASUREMENT AND NOT AS A CALL.
+
+    SimCLR Sec 3 Fig 5: crop ALONE is solvable from colour histograms. Asserting that
+    _augment 'calls a gain' would pass on an implementation that changed nothing; this
+    asserts the leak is SMALLER, which is the property the fix exists for.
+    """
+    torch.manual_seed(0)
+    # Each sample gets its own colour signature, which is exactly what the shortcut reads.
+    base = torch.rand(48, 3, 1, 1) * torch.ones(48, 3, 16, 24)
+    x = torch.cat([base, base], dim=1).clamp(0, 1)          # 2-frame stack
+
+    pre = sum(_colour_only_top1(x, s, colour_gain=0.0, grayscale_p=0.0) for s in range(3)) / 3
+    post = sum(_colour_only_top1(x, s) for s in range(3)) / 3
+    assert post < pre, f"colour distortion must reduce the colour-only leak: {pre:.3f} -> {post:.3f}"
+
+
+def test_colour_ops_keep_rgb_together_across_a_frame_stack():
+    """A 6-channel stack is TWO RGB frames, not six independent planes.
+
+    Distorting planes independently would desynchronise the two frames of one stack and
+    hand the temporal objective a difference that is not motion.
+    """
+    from nett_skrl.brain.aux.simclr_aux import _augment
+
+    torch.manual_seed(3)
+    frame = torch.rand(4, 3, 12, 16)
+    x = torch.cat([frame, frame], dim=1)                     # both frames identical
+    out = _augment(x, scale_min=1.0, jitter=0.0)             # no crop, no brightness/contrast
+    assert torch.allclose(out[:, :3], out[:, 3:], atol=1e-6), (
+        "identical frames in one stack must receive the identical colour transform"
+    )
+
+
+def test_colour_ops_are_skipped_when_channels_are_not_whole_rgb_frames():
+    """A channel count that is not a multiple of 3 has no defined R/G/B grouping.
+
+    Guessing one would distort a non-colour channel, so the colour ops must no-op rather
+    than reinterpret the stack.
+    """
+    from nett_skrl.brain.aux.simclr_aux import _augment
+
+    torch.manual_seed(4)
+    x = torch.rand(2, 4, 8, 8)
+    before = x.clone()
+    out = _augment(x, scale_min=1.0, jitter=0.0)
+    assert torch.allclose(out, before, atol=1e-6), "4-channel input must pass colour ops untouched"
+
+
+def test_horizontal_flip_is_still_absent():
+    """⛔ DELIBERATE DEVIATION FROM THE PAPER. The imprinting test is a left/right
+    two-alternative choice, so a flip destroys the label. 'Match the reference recipe'
+    would break the task. This pins the absence so nobody restores it for fidelity."""
+    from nett_skrl.brain.aux import simclr_aux
+
+    # Look for the OPERATION, not the word -- this function's own docstring explains at
+    # length why the flip is absent, so a substring check on "flip" fails on the
+    # documentation that exists to protect it.
+    import ast, inspect
+
+    tree = ast.parse(inspect.getsource(simclr_aux._augment).lstrip())
+    calls = {
+        ast.unparse(n.func)
+        for n in ast.walk(tree)
+        if isinstance(n, ast.Call) and isinstance(n.func, (ast.Name, ast.Attribute))
+    }
+    assert not any("flip" in c.lower() for c in calls), (
+        f"horizontal flip must not be added to _augment; found {sorted(calls)}"
+    )
+
+
+def test_colour_distortion_can_be_disabled_to_reproduce_a_pre_fix_arm(monkeypatch):
+    from nett_skrl.brain.aux.simclr_aux import _augment
+
+    monkeypatch.setenv("NETT_SIMCLR_NO_COLOUR_JITTER", "1")
+    torch.manual_seed(5)
+    frame = torch.rand(2, 3, 8, 8)
+    x = torch.cat([frame, frame], dim=1)
+    out = _augment(x, scale_min=1.0, jitter=0.0)
+    assert torch.allclose(out, x, atol=1e-6), "the opt-out must restore exactly the pre-fix pipeline"

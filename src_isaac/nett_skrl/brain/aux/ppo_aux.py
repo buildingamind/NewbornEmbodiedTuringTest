@@ -27,7 +27,13 @@ from skrl.agents.torch.ppo import PPO
 from skrl.resources.schedulers.torch import KLAdaptiveLR
 from skrl import config, logger
 
-from ..skrl_patches import NETTBootstrapMixin, relaxed_determinism, strict_update
+from ..skrl_patches import (
+    NETTBootstrapMixin,
+    NETTSharedEncoderMixin,
+    relaxed_determinism,
+    strict_update,
+    unique_parameters,
+)
 
 from .simclr_aux import SimCLRAuxLoss
 
@@ -127,7 +133,7 @@ def track_transit_mask(agent, last: float | None, cumulative: float, seen: int) 
         agent.track_data("Loss / Aux transit |turn|", cumulative / seen)
 
 
-class AuxLossPPO(NETTBootstrapMixin, PPO):
+class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     """skrl PPO with an optional SimCLR auxiliary loss on the shared encoder.
 
     Extra config (read from the PPO_CFG-style cfg object or set post-construction):
@@ -405,7 +411,14 @@ class AuxLossPPO(NETTBootstrapMixin, PPO):
                         params = itertools.chain(
                             self.policy.parameters(), self.value.parameters(), self._aux.head.parameters()
                         )
-                    nn.utils.clip_grad_norm_(params, self.cfg.grad_norm_clip)
+                    # ⛔ unique_parameters, NOT the raw chain. With shared_encoder=True the
+                    # encoder tensors are the SAME objects in policy and value -- and the aux
+                    # head projects off that encoder, so the chain can repeat them a THIRD
+                    # time. clip_grad_norm_ both counts a repeated grad's norm again AND
+                    # calls g.mul_(coef) again, so the encoder received coef**N while the
+                    # heads received coef. Measured inflation of the reported norm:
+                    # sqrt(1+f) = 1.3712 at f = 0.8802 (PPO, features_dim=64).
+                    nn.utils.clip_grad_norm_(unique_parameters(params), self.cfg.grad_norm_clip)
 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()

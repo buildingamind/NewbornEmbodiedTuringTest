@@ -9,6 +9,7 @@ as a mixin here makes it reproducible and version-checkable.
 from __future__ import annotations
 
 import functools
+import logging
 from contextlib import contextmanager
 
 import torch
@@ -84,6 +85,125 @@ def relaxed_determinism():
         yield
     finally:
         torch.use_deterministic_algorithms(was_enabled, warn_only=was_warn_only)
+
+
+def unique_parameters(parameters):
+    """Yield each distinct parameter tensor once, in first-seen order.
+
+    ``itertools.chain(policy.parameters(), value.parameters())`` repeats every
+    tensor the two models SHARE. ``nn.Module.parameters()`` de-duplicates within
+    one module, never across two, so a shared encoder appears twice.
+    """
+    seen, out = set(), []
+    for p in parameters:
+        if id(p) not in seen:
+            seen.add(id(p))
+            out.append(p)
+    return out
+
+
+@contextmanager
+def deduplicated_grad_clip():
+    """Make ``nn.utils.clip_grad_norm_`` ignore repeated parameter objects.
+
+    ⛔ WHY A PATCH AND NOT AN EDIT. The offending call is INSIDE upstream skrl
+    (``skrl/agents/torch/ppo/ppo.py``, the ``self.policy is not self.value``
+    branch of ``_update``), so there is no override seam narrower than copying
+    the whole method -- which would pin us to one skrl version. Patching the
+    function skrl looks up at CALL time is version-independent: skrl does
+    ``from torch import nn`` and then ``nn.utils.clip_grad_norm_(...)``, which
+    resolves the attribute on each call.
+
+    ⚠ This is NOT an in-place edit of site-packages. The previous time-limit
+    bootstrap fix was, and a reinstall silently dropped it -- see this module's
+    docstring. The patch lives here, is restored on exit, and is covered by tests.
+    """
+    original = torch.nn.utils.clip_grad_norm_
+
+    @functools.wraps(original)
+    def clip(parameters, *args, **kwargs):
+        if isinstance(parameters, torch.Tensor):
+            return original(parameters, *args, **kwargs)
+        return original(unique_parameters(parameters), *args, **kwargs)
+
+    torch.nn.utils.clip_grad_norm_ = clip
+    try:
+        yield
+    finally:
+        torch.nn.utils.clip_grad_norm_ = original
+
+
+def deduped_clip_update(update_fn):
+    """Decorator: run a PPO ``update`` under :func:`deduplicated_grad_clip`."""
+
+    @functools.wraps(update_fn)
+    def wrapper(self, *args, **kwargs):
+        with deduplicated_grad_clip():
+            return update_fn(self, *args, **kwargs)
+
+    return wrapper
+
+
+class NETTSharedEncoderMixin:
+    """Remove the duplicated shared encoder from skrl's optimizer.
+
+    ⛔ THE DEFECT, MEASURED 2026-09-14 ON THE REAL AGENT (PPO, shared_encoder=True,
+    features_dim=64): skrl builds the optimizer from
+    ``itertools.chain(self.policy.parameters(), self.value.parameters())``. With
+    ``cfg.shared_encoder=True`` the encoder is the SAME object in both models, so the
+    optimizer holds 29 parameters of which only 21 are distinct -- the 8 encoder
+    tensors appear twice. torch warns at construction ("optimizer contains a parameter
+    group with duplicate parameters") and that warning was never acted on.
+
+    ⚠ A DUPLICATED PARAMETER IS STEPPED TWICE PER ``optimizer.step()``. Measured:
+    after 3 updates a duplicated parameter has moved EXACTLY 2x as far as a deduped
+    one, and its Adam step counter reads 6 rather than 3. So the shared encoder ran at
+    twice the heads' effective learning rate, on a double-advanced bias-correction
+    schedule.
+
+    ⚠ THIS IS A SECOND DEFECT, DISTINCT FROM THE GRAD-CLIP DOUBLE COUNT, and the
+    standing "Adam is scale-invariant to a constant rescaling" argument does NOT cover
+    it: two sequential Adam updates with the momentum state advanced twice is not a
+    rescaling of one gradient.
+
+    The de-duplication MUTATES ``param_groups`` in place rather than rebuilding the
+    optimizer, so the learning-rate scheduler and ``checkpoint_modules["optimizer"]``
+    keep pointing at the same object.
+
+    ⚠ RESUMING A PRE-FIX CHECKPOINT WILL RAISE, deliberately. Its optimizer state
+    carries the pre-fix parameter count, and torch refuses a group-size mismatch. That
+    is the correct behaviour -- silently accepting it would resume a run under
+    different optimisation than it started with -- but it means a pre-fix run cannot be
+    continued by post-fix code, only re-run or left as it is.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._nett_deduped_parameters = self._dedupe_optimizer_parameters()
+
+    def _dedupe_optimizer_parameters(self) -> int:
+        # Duck-typed, not isinstance: skrl agents are constructed with stand-in
+        # optimizers in several tests, and a mixin that crashes on a test double would
+        # make the double the thing under test.
+        groups = getattr(getattr(self, "optimizer", None), "param_groups", None)
+        if not groups:
+            return 0
+        seen, removed = set(), 0
+        for group in groups:
+            kept = []
+            for p in group["params"]:
+                if id(p) in seen:
+                    removed += 1
+                    continue
+                seen.add(id(p))
+                kept.append(p)
+            group["params"] = kept
+        if removed:
+            logging.getLogger("nett.brain.skrl_patches").info(
+                "shared encoder: dropped %d duplicate parameter tensor(s) from the "
+                "optimizer; they would each have been stepped twice per update", removed,
+            )
+        return removed
 
 
 def strict_update(update_fn):

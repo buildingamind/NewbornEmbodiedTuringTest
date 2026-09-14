@@ -9,6 +9,7 @@ encoder below mirrors that preprocessing so the delegation is exercised.
 
 from __future__ import annotations
 
+import itertools
 import gymnasium as gym
 import numpy as np
 import pytest
@@ -989,3 +990,104 @@ def test_target_side_oracle_actions_steer_toward_target_monitors():
     assert actions[0, 0] > 0.0
     assert actions[1, 0] < 0.0
     assert torch.all(actions[:, 1] > 0.0)
+
+
+# --- the shared encoder must appear ONCE in the optimizer and ONCE in the clip ------
+#
+# Both defects come from the same aliasing: with cfg.shared_encoder=True the encoder is
+# the SAME object in policy and value, and skrl chains the two parameter iterators.
+# nn.Module.parameters() de-duplicates within one module, never across two.
+
+
+def _shared_encoder_agent(shared: bool):
+    brain = Brain(
+        algorithm="PPO",
+        encoder_cfg={"features_dim": 64},
+        algorithm_cfg=_tiny_algorithm_cfg("PPO"),
+        model={"shared_encoder": shared},
+    )
+    return _build_agents(brain, _FakeSkrlEnv(), torch.device("cpu"))[0]
+
+
+@pytest.mark.parametrize("shared", [True, False])
+def test_optimizer_holds_each_parameter_once(shared):
+    """A duplicated parameter is STEPPED TWICE per optimizer.step().
+
+    Measured: after 3 updates a duplicated parameter has moved exactly 2x as far as a
+    de-duplicated one and its Adam step counter reads 6 rather than 3. So the shared
+    encoder ran at twice the heads' effective learning rate on a double-advanced
+    bias-correction schedule. The shared=False arm proves the fix is a no-op when
+    there is nothing to de-duplicate, rather than passing by deleting parameters.
+    """
+    agent = _shared_encoder_agent(shared)
+    params = [p for g in agent.optimizer.param_groups for p in g["params"]]
+    assert len(params) == len({id(p) for p in params}), (
+        "the optimizer holds a parameter twice; it will be stepped twice per update"
+    )
+    removed = getattr(agent, "_nett_deduped_parameters", None)
+    if shared:
+        n_encoder = sum(1 for _ in agent.models["policy"].encoder.parameters())
+        assert removed == n_encoder, f"expected the {n_encoder} encoder tensors removed, got {removed}"
+    else:
+        assert removed == 0, "nothing is aliased without a shared encoder, so nothing may be dropped"
+
+
+def test_adam_steps_a_duplicated_parameter_twice():
+    """Pins the CONSEQUENCE, so the de-duplication above cannot be 'simplified' away.
+
+    ⛔ This is why 'Adam is scale-invariant to a constant rescaling' does NOT bound
+    this defect: two sequential Adam updates with the momentum state advanced twice is
+    not a rescaling of one gradient.
+    """
+    def run(duplicated):
+        torch.manual_seed(0)
+        p = torch.nn.Parameter(torch.zeros(3))
+        opt = torch.optim.Adam([p, p] if duplicated else [p], lr=0.1)
+        for _ in range(3):
+            opt.zero_grad()
+            p.grad = torch.ones(3)
+            opt.step()
+        return p.detach().abs().mean().item(), float(opt.state[p]["step"])
+
+    once, step_once = run(False)
+    twice, step_twice = run(True)
+    assert twice == pytest.approx(2 * once, rel=1e-3), "a duplicated parameter must move twice as far"
+    assert step_twice == pytest.approx(2 * step_once), "its Adam step counter double-increments"
+
+
+def test_grad_clip_scales_shared_encoder_and_heads_equally():
+    """clip_grad_norm_ applies g.mul_(coef) once PER OCCURRENCE, so an aliased encoder
+    received coef**2 while the heads received coef -- a silent per-parameter-group
+    learning-rate difference that no config records."""
+    from nett_skrl.brain.skrl_patches import deduplicated_grad_clip
+
+    encoder = torch.nn.Conv2d(3, 8, 3)
+
+    class _Head(torch.nn.Module):
+        def __init__(self, shared):
+            super().__init__()
+            self.encoder = shared
+            self.mlp = torch.nn.Linear(8, 4)
+
+    policy, value = _Head(encoder), _Head(encoder)
+    chain = lambda: itertools.chain(policy.parameters(), value.parameters())
+
+    def scale_factors(dedupe):
+        for p in {id(p): p for p in chain()}.values():
+            p.grad = torch.ones_like(p)
+        if dedupe:
+            with deduplicated_grad_clip():
+                torch.nn.utils.clip_grad_norm_(chain(), 0.01)
+        else:
+            torch.nn.utils.clip_grad_norm_(chain(), 0.01)
+        return encoder.weight.grad.flatten()[0].item(), policy.mlp.weight.grad.flatten()[0].item()
+
+    enc_raw, head_raw = scale_factors(False)
+    assert enc_raw == pytest.approx(head_raw ** 2, rel=1e-3), (
+        "expected the defect: encoder scaled by coef**2 where the head got coef"
+    )
+    enc_fixed, head_fixed = scale_factors(True)
+    assert enc_fixed == pytest.approx(head_fixed, rel=1e-9), "encoder and head must share one coef"
+    assert torch.nn.utils.clip_grad_norm_.__module__.startswith("torch"), (
+        "the patch must be restored on exit; leaking it would silently change every later clip"
+    )

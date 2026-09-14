@@ -51,7 +51,25 @@ class SimCLRProjectionHead(nn.Module):
         return F.normalize(self.net(x), dim=-1)
 
 
-def _augment(img: torch.Tensor, *, scale_min: float = 0.5, jitter: float = 0.2) -> torch.Tensor:
+def _env_flag(name: str, default: bool = False) -> bool:
+    """True for 1/true/yes/on, case-insensitively. Unset or empty falls back to default.
+
+    Spelled out rather than ``bool(os.environ.get(name))``, which reads ``FLAG=0`` as ON.
+    """
+    raw = os.environ.get(name, "").strip().lower()
+    if not raw:
+        return default
+    return raw in {"1", "true", "yes", "on"}
+
+
+def _augment(
+    img: torch.Tensor,
+    *,
+    scale_min: float = 0.5,
+    jitter: float = 0.2,
+    colour_gain: float = 0.4,
+    grayscale_p: float = 0.2,
+) -> torch.Tensor:
     """Create one augmented view of a normalized (B, C, H, W) image on its device.
 
     Augmentations (all per-sample, all differentiable-safe GPU tensor ops):
@@ -60,8 +78,38 @@ def _augment(img: torch.Tensor, *, scale_min: float = 0.5, jitter: float = 0.2) 
       - brightness jitter: multiply by a per-sample factor ~U(1-jitter, 1+jitter).
       - contrast jitter: scale deviation from the per-sample mean by ~U(1-jitter,
         1+jitter).
+      - per-RGB-channel gain: an INDEPENDENT per-sample factor per colour channel.
+      - random grayscale: with probability ``grayscale_p``, replace the sample by its
+        luminance.
     The C dimension here is the encoder's C*T channel stack; treating it as a
-    single image is intentional (frames share the same crop/jitter).
+    single image is intentional (frames share the same crop/jitter). The two colour
+    operations reshape that stack into (T, 3) so a frame's R, G and B move together
+    and every frame in the stack receives the SAME colour transform.
+
+    ⛔ THE COLOUR OPERATIONS CLOSE A MEASURED SHORTCUT, they are not cosmetic. SimCLR
+    Sec 3 Fig 5: crop ALONE is solvable from colour histograms, and crop + colour
+    distortion is the pairing that carries the result. Measured on 128 real captured
+    NETT frames, describing each view by per-channel mean and std alone -- 12 numbers,
+    zero spatial content -- and asking whether that identifies the positive pair out
+    of 128 (5 seeds, chance 0.8%):
+
+        brightness + contrast only ............ 16.4% top-1  (21x chance)
+        + per-RGB gain and random grayscale .... 3.4% top-1  (4.3x chance)
+
+    ⚠ State the size honestly: 84% of pairs were NOT identified by colour even before,
+    so this was a genuine shortcut and not a trivially solved pretext task. It does not
+    establish that any trained encoder in fact exploited it.
+
+    ⛔ HORIZONTAL FLIP IS DELIBERATELY STILL ABSENT and must stay absent, though the
+    paper prescribes it: the imprinting test is a left/right two-alternative choice, so
+    a flip destroys task-relevant information. "Match the reference recipe" would break
+    the task here.
+
+    ⚠ Colour invariance is the right trade for parsing and viewinvariance, which is
+    where every SimCLR arm runs (341 and 60 arms; ZERO in binding, checked 2026-09-14).
+    If a SimCLR arm is ever pointed at the binding experiment, revisit this first --
+    binding scores 1color / 2color / shape&color conditions, and an encoder trained to
+    ignore hue is being asked to discriminate on the axis it was taught to discard.
     """
     B, C, H, W = img.shape
     device = img.device
@@ -90,6 +138,32 @@ def _augment(img: torch.Tensor, *, scale_min: float = 0.5, jitter: float = 0.2) 
     contrast = torch.empty(B, 1, 1, 1, device=device, dtype=dtype).uniform_(1 - jitter, 1 + jitter)
     mean = out.mean(dim=(2, 3), keepdim=True)
     out = (out - mean) * contrast + mean
+
+    # ---- colour distortion: per-RGB gain + random grayscale ---------------
+    # Skipped, not guessed at, when the stack is not whole RGB frames: a channel count
+    # that is not a multiple of 3 has no defined R/G/B grouping, and silently treating
+    # e.g. a 4-channel stack as RGB would distort a non-colour channel.
+    if not _env_flag("NETT_SIMCLR_NO_COLOUR_JITTER") and C % 3 == 0:
+        frames = out.view(B, C // 3, 3, H, W)
+
+        # Independent gain PER COLOUR CHANNEL (shared across frames in the stack), which
+        # is what moves the per-channel mean/std that the shortcut reads. A single
+        # brightness factor -- the previous behaviour -- scales all three together and
+        # leaves their RATIO, i.e. the leaking statistic, untouched.
+        gain = torch.empty(B, 1, 3, 1, 1, device=device, dtype=dtype).uniform_(
+            1 - colour_gain, 1 + colour_gain
+        )
+        frames = frames * gain
+
+        if grayscale_p > 0:
+            # ITU-R BT.601 luma, the same weights torchvision's Grayscale uses.
+            luma = (
+                frames[:, :, 0] * 0.299 + frames[:, :, 1] * 0.587 + frames[:, :, 2] * 0.114
+            ).unsqueeze(2)
+            take = (torch.rand(B, 1, 1, 1, 1, device=device) < grayscale_p).to(dtype)
+            frames = take * luma.expand_as(frames) + (1.0 - take) * frames
+
+        out = frames.view(B, C, H, W)
 
     return out.clamp(0.0, 1.0)
 

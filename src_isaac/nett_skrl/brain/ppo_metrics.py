@@ -26,7 +26,12 @@ import torch
 from skrl.agents.torch.ppo import PPO
 from skrl.agents.torch.ppo import ppo as _skrl_ppo_mod
 
-from .skrl_patches import NETTBootstrapMixin, strict_update
+from .skrl_patches import (
+    NETTBootstrapMixin,
+    NETTSharedEncoderMixin,
+    deduped_clip_update,
+    strict_update,
+)
 
 # ---------------------------------------------------------------------------
 # Time-limit (partial-episode) bootstrapping — env-gated by NETT_DIAG_PEB.
@@ -202,14 +207,17 @@ def track_ppo_health_metrics(agent: PPO) -> None:
         pass
 
 
-class MetricsPPO(NETTBootstrapMixin, PPO):
+class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     """skrl PPO that also logs the SB3/Unity-parity health metrics.
 
     Behaviourally identical to ``skrl.agents.torch.ppo.PPO`` — it only adds
     tensorboard/wandb scalars after each update.
     """
 
+    # deduped_clip_update is required here and not in AuxLossPPO: this class inherits
+    # skrl's _update verbatim, and the offending clip_grad_norm_ call is inside it.
     @strict_update
+    @deduped_clip_update
     def update(self, *, timestep: int, timesteps: int) -> None:
         # Optional entropy-coefficient annealing (env-gated; default = no change).
         # Constant high entropy inflates the policy std without bound on long runs
