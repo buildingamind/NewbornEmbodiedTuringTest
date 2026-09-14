@@ -121,9 +121,36 @@ fi
 
 cd "$SRC" || exit 1
 
+# --- how many workers to spread the unit suite over --------------------------------
+# The unit suite is WAIT-bound, not CPU-bound: ~80 CPU-seconds of real work spread over
+# 168s of wall clock, the rest spent waiting out watchdog timeouts and process death.
+# That parallelises almost perfectly -- but ONLY with threads pinned, which
+# tests/conftest.py::_pin_math_threads does. Measured 2026-09-14 on chicken (96 cores):
+#
+#     serial, unpinned  168.2s      -n 8, unpinned  228.8s   <-- SLOWER THAN SERIAL
+#     serial, pinned    166.4s      -n 8, pinned     55.5s
+#     (-n 16 pinned: 50.0s -- diminishing; one 20s test floors the critical path)
+#
+# 8 is deliberately not `auto`: `auto` means one worker per logical core (96 here), which
+# buys nothing past the 20s floor and multiplies per-worker interpreter startup.
+UNIT_JOBS="${NETT_UNIT_JOBS:-8}"
+_ucores=$(nproc 2>/dev/null || echo 1)
+[ "$UNIT_JOBS" -gt "$_ucores" ] && UNIT_JOBS="$_ucores"
+
+# ⚠ PROBE FOR xdist, exactly as the e2e block does, and DEGRADE rather than block. A
+# pytest without the plugin does not run serially when handed `-n` -- it exits 4 with
+# "unrecognized arguments" having run ZERO tests. The unit suite is only slower without
+# xdist, never wrong, so a host missing it should still be able to push.
+_unit_jobs_args=""
+if [ "$UNIT_JOBS" -gt 1 ] && "$PY" -c 'import xdist' 2>/dev/null; then
+  _unit_jobs_args="-n $UNIT_JOBS"
+else
+  UNIT_JOBS=1
+fi
+
 # -u here too: same buffering trap as the e2e block below, just cheaper to hit.
-echo "pre-push: unit suite ..."
-if ! timeout "${NETT_UNIT_TIMEOUT:-900}" "$PY" -u -m pytest tests -q \
+echo "pre-push: unit suite (${UNIT_JOBS} worker(s)) ..."
+if ! timeout "${NETT_UNIT_TIMEOUT:-900}" "$PY" -u -m pytest tests -q $_unit_jobs_args \
         >/tmp/nett_repob_prepush.log 2>&1; then
   grep -E "^(FAILED|ERROR)" /tmp/nett_repob_prepush.log | head -15 >&2
   grep -E "[0-9]+ (passed|failed|error)" /tmp/nett_repob_prepush.log | tail -1 >&2

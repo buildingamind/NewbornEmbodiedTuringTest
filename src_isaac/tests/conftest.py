@@ -9,11 +9,51 @@ Nothing in here imports Isaac Sim or touches a GPU.
 
 from __future__ import annotations
 
+import os
+import sys
 from pathlib import Path
 
 import pytest
 
-from fault_injection import ProcessOrchard, crashed_run_artifacts
+
+def _pin_math_threads() -> None:
+    """Pin BLAS/OpenMP to one thread per process, before torch builds its pool.
+
+    ⚠ THIS IS WHAT MAKES ``-n`` USABLE ON THIS SUITE. Measured 2026-09-14 on
+    chicken (96 cores), 1131 tests:
+
+        serial, unpinned      168.2s wall / 300m32s CPU
+        -n 8,   unpinned      228.8s wall   <-- SLOWER THAN SERIAL
+        serial, pinned        166.4s wall /   1m20s CPU
+        -n 8,   pinned         55.5s wall
+
+    The suite does ~80 CPU-seconds of real work; the rest is waiting on
+    watchdog timeouts and process death. Unpinned, every worker defaults to
+    one OpenMP thread per core, so 8 workers oversubscribe 96 cores by 8x and
+    spend their time in contention -- the same failure the e2e block of
+    scripts/hooks/pre-push avoids with NETT_KIT_THREADS=cores/jobs.
+
+    Pinning costs nothing serially (166.4s vs 168.2s, inside run-to-run noise),
+    so it is unconditional rather than gated on whether -n was passed.
+    ``setdefault`` leaves an explicit operator setting alone.
+    """
+    for var in (
+        "OMP_NUM_THREADS",
+        "MKL_NUM_THREADS",
+        "OPENBLAS_NUM_THREADS",
+        "NUMEXPR_NUM_THREADS",
+    ):
+        os.environ.setdefault(var, "1")
+    # Only if torch is already up: the env vars govern a later import, and
+    # importing torch here just to pin it would cost more than it saves.
+    torch = sys.modules.get("torch")
+    if torch is not None:
+        torch.set_num_threads(1)
+
+
+_pin_math_threads()
+
+from fault_injection import ProcessOrchard, crashed_run_artifacts  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
