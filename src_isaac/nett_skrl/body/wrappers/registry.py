@@ -18,6 +18,8 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # this must precede "framestack" -- MoTok is SINGLE-FRAME (get_masks ignores
     # frame_next), so it masks one frame and framestack then stacks masked frames.
     "motok_seg": ("nett_skrl.body.wrappers.motok_seg", "MoTokSeg"),
+    # Frame-pair perception model: unlike MoTok, this goes AFTER framestack.
+    "gwm_seg": ("nett_skrl.body.wrappers.gwm_seg", "GwmSeg"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }

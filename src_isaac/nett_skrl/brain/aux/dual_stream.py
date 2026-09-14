@@ -29,6 +29,34 @@ def _conv2d_block(in_ch: int, out_ch: int, stride: int = 1) -> nn.Sequential:
     )
 
 
+class SmallCNNVentral(nn.Module):
+    """Standalone reference GWM encoder-decoder, initialized from scratch.
+
+    The segmentation observation wrapper owns this whole stream; unlike the
+    auxiliary head below, it shares no encoder or parameters with the policy.
+    """
+
+    def __init__(self, num_out_channels: int = 2):
+        super().__init__()
+        self.enc1 = _conv2d_block(3, 32, stride=2)
+        self.enc2 = _conv2d_block(32, 64, stride=2)
+        self.enc3 = _conv2d_block(64, 128, stride=2)
+        self.dec3 = _conv2d_block(128, 64)
+        self.dec2 = _conv2d_block(64, 32)
+        self.dec1 = _conv2d_block(32, 16)
+        self.head = nn.Conv2d(16, num_out_channels, 1)
+
+    def forward(self, x: th.Tensor) -> th.Tensor:
+        output_size = x.shape[2:]
+        x = self.enc3(self.enc2(self.enc1(x)))
+        for block in (self.dec3, self.dec2, self.dec1):
+            x = block(F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=False))
+        logits = self.head(x)
+        if logits.shape[2:] != output_size:
+            logits = F.interpolate(logits, size=output_size, mode="bilinear", align_corners=False)
+        return logits
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Ventral decoder: host spatial features → segmentation logits
 # ─────────────────────────────────────────────────────────────────────────────

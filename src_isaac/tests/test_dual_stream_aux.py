@@ -168,6 +168,26 @@ def test_joint_objective_has_gradients_to_masks_and_flow(kind):
     assert all(torch.isfinite(g).all() and g.abs().sum() > 0 for g in grads)
 
 
+def _moving_pair(batch, h, w, *, device, shift=2):
+    """A square that TRANSLATES between the two stacked frames.
+
+    ⛔ DO NOT USE torch.rand HERE. Independent noise in the two frames has no
+    coherent motion to explain, so EoO's occlusion gate legitimately closes
+    (measured: ON-fraction 0.094 -> 0.009 -> 0.0000 over three steps) and the
+    photometric term becomes 0/(0+1e-7) -- exactly zero in value AND gradient.
+    The old fixture asserted the aux gradient was non-zero on that input and
+    passed on CPU only by numerical luck (9.92e-07) while failing on CUDA at
+    exactly 0.0. A guard that fires for a reason unrelated to the property it
+    protects is not a guard.
+    """
+    x = torch.rand(batch, 6, h, w, device=device) * 0.15
+    for b in range(batch):
+        r, c = 4 + b, 5 + b
+        x[b, :3, r : r + 8, c : c + 8] = 0.9
+        x[b, 3:, r + shift : r + 8 + shift, c + shift : c + 8 + shift] = 0.9
+    return x.clamp(0, 1).permute(0, 2, 3, 1).contiguous()
+
+
 @pytest.mark.parametrize("kind", ["eoo_dual", "gwm_dual"])
 def test_split_backward_optimizer_step(kind):
     from nett_skrl.brain.skrl_patches import strict_determinism, relaxed_determinism
@@ -181,7 +201,7 @@ def test_split_backward_optimizer_step(kind):
     with strict_determinism():
         for step in range(3):
             opt.zero_grad()
-            obs = torch.rand(2, 24, 32, 6, device=device)
+            obs = _moving_pair(2, 24, 32, device=device, shift=step + 1)
             loss = aux.compute(host, obs)
             # A real policy readout and a separate auxiliary encoder invocation.
             host(obs).square().mean().backward(retain_graph=True)

@@ -14,7 +14,7 @@ from skrl.trainers.torch import SequentialTrainer
 from tqdm import tqdm
 
 from ..recording import RecordingCfg, RunRecorder
-from .env_wrappers import IntrinsicRewardEnvWrapper
+from .env_wrappers import IntrinsicRewardEnvWrapper, SegmentationStatsEnvWrapper
 
 def eval_stochastic_enabled() -> bool:
     """Whether test-time actions are SAMPLED from the policy rather than its MEAN.
@@ -198,7 +198,7 @@ class BrainTrainer:
             for agent in self.agents:
                 agent._nett_timestep_offset = int(initial_timestep)
         trainer = SequentialTrainer(
-            env=env,
+            env=SegmentationStatsEnvWrapper.wrap(env, self.agents),
             agents=self.agents if len(self.agents) > 1 else self.agents[0],
             scopes=list(self.scopes) if len(self.agents) > 1 else None,
             cfg={

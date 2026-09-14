@@ -76,9 +76,9 @@ from __future__ import annotations
 import logging
 import os
 
-import gymnasium as gym
-import numpy as np
 import torch
+
+from .segmentation import SegmentationObservationWrapper
 
 logger = logging.getLogger("nett.body.motok_seg")
 
@@ -111,17 +111,10 @@ def permutation_invariant_iou(masks: torch.Tensor, gt: torch.Tensor) -> tuple[fl
     return float(best.mean()), int(b)
 
 
-class MoTokSeg(gym.ObservationWrapper):
-    """Multiply the observation by a learned foreground mask (see module docstring).
+class MoTokSeg(SegmentationObservationWrapper):
+    """Multiply observations by a separately trained MoTok foreground mask."""
 
-    The observation space is UNCHANGED — masking is elementwise and preserves
-    shape and dtype, exactly as ``GwmSegWrapper`` did.
-    """
-
-    def __init__(self, env: gym.Env) -> None:
-        super().__init__(env)
-        self.observation_space = env.observation_space   # masking preserves shape
-
+    def _configure(self) -> None:
         kind = os.environ.get("NETT_SEG_MODEL", "motok").strip().lower()
         if kind != "motok":
             raise ValueError(
@@ -133,34 +126,7 @@ class MoTokSeg(gym.ObservationWrapper):
         self.num_queries = int(os.environ.get("NETT_SEG_QUERIES", "2"))
         self.upsample = int(os.environ.get("NETT_SEG_UPSAMPLE", "0"))
         self.vq_coef = float(os.environ.get("NETT_SEG_VQ_COEF", "0.1"))
-        self.lr = float(os.environ.get("NETT_SEG_LR", "1e-4"))
-        self.wd = float(os.environ.get("NETT_SEG_WD", "1e-4"))
-        self.batch = int(os.environ.get("NETT_SEG_BATCH", "8"))
-        self.train_every = int(os.environ.get("NETT_SEG_TRAIN_EVERY", "64"))
-        self.buffer_cap = int(os.environ.get("NETT_SEG_BUFFER", "256"))
 
-        fg = os.environ.get("NETT_SEG_FG_SLOT", "auto").strip().lower()
-        if fg not in ("auto",) and not fg.isdigit():
-            raise ValueError(f"NETT_SEG_FG_SLOT={fg!r} must be 'auto' or a slot index.")
-        self.fg_slot = fg
-
-        dev = os.environ.get("NETT_SEG_DEVICE") or ("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device(dev)
-
-        self._model = None
-        self._optim = None
-        self._buf: list[torch.Tensor] = []
-        self._seen = 0
-        # ⛔ ALWAYS EMITTED, including when nothing has trained yet. A statistic
-        # that vanishes exactly when its condition occurs cannot be gated on.
-        self.last_stats: dict[str, float] = {
-            "seg/train_steps": 0.0,
-            "seg/loss": float("nan"),
-            "seg/fg_slot": -1.0,
-            "seg/fg_area": float("nan"),
-        }
-
-    # ------------------------------------------------------------------
     def _ensure(self, in_ch: int) -> None:
         if self._model is not None:
             return
@@ -182,137 +148,9 @@ class MoTokSeg(gym.ObservationWrapper):
             self.device, self.num_queries, self.lr, self.wd, self.train_every,
         )
 
-    @staticmethod
-    def _to_bchw(a: np.ndarray) -> tuple[torch.Tensor, bool]:
-        """HWC or NHWC uint8 -> (B,C,H,W) float[0,1]. Returns (tensor, was_batched)."""
-        if a.ndim == 3:
-            t = torch.from_numpy(np.ascontiguousarray(a)).permute(2, 0, 1).unsqueeze(0)
-            return t.float().div_(255.0), False
-        if a.ndim == 4:
-            t = torch.from_numpy(np.ascontiguousarray(a)).permute(0, 3, 1, 2)
-            return t.float().div_(255.0), True
-        raise ValueError(f"MoTokSeg expects HWC or NHWC, got shape {a.shape}")
-
-    def _pick_fg(self, masks: torch.Tensor) -> int:
-        """Which slot is foreground.
-
-        ``auto`` = the slot with the SMALLER mean area, on the stated assumption
-        that the object occupies less of the frame than the background. ⚠ That
-        assumption is a rule, not a fact — it is recorded in ``last_stats`` every
-        step so a reader can check it rather than inherit it.
-        """
-        if self.fg_slot != "auto":
-            return int(self.fg_slot)
-        areas = masks.mean(dim=(0, 2, 3))          # (K,)
-        return int(torch.argmin(areas).item())
-
-    # ------------------------------------------------------------------
-    def train_step(self) -> float | None:
-        """One reconstruction+VQ step. PUBLIC so a runner can drive the cadence.
-
-        Loss matches ``trainParsing.py:371`` exactly:
-        ``F.mse_loss(recon, frame) + vq_coef * commit``.
-        """
+    def _loss(self, batch: torch.Tensor) -> torch.Tensor:
+        """Reference reconstruction + VQ objective (trainParsing.py:371)."""
         import torch.nn.functional as F
 
-        if self._model is None or len(self._buf) < max(2, self.batch):
-            return None
-        idx = torch.randperm(len(self._buf))[: self.batch]
-        batch = torch.cat([self._buf[i] for i in idx.tolist()], dim=0).to(self.device)
-
-        # ⛔⛔⛔ `enable_grad` IS LOAD-BEARING AND ITS ABSENCE WAS THE ARM'S BLOCKER.
-        # This runs on the ROLLOUT path: skrl's sequential trainer wraps the whole
-        # interaction block -- `agent.act` AND `self.env.step(actions)` -- in
-        # `torch.no_grad()` (skrl/trainers/torch/sequential.py:90, stepping at :108).
-        # `train_step` is reached from `_mask_one` inside that block, so without this
-        # `loss.backward()` raises
-        #     RuntimeError: element 0 of tensors does not require grad and does not have a grad_fn
-        # at iteration 62 -- the step where `_seen` first reaches `train_every`, which is
-        # why the arm always died at exactly 62/62500 on every node that tried it.
-        # ⚠ THIS DOES NOT WEAKEN THE GRADIENT ISOLATION, and that is the property to check:
-        #   1. `get_masks` keeps its OWN `torch.no_grad()` above, and the `masks.requires_grad`
-        #      guard is untouched and still raises.
-        #   2. The observation this wrapper returns is cast to uint8 numpy before it leaves,
-        #      which severs any graph regardless of the ambient mode.
-        #   3. The scope here is the SEGMENTER's own optimiser only -- the policy shares no
-        #      parameter with it, so PPO's return still cannot reach the segmenter.
-        # skrl uses `no_grad`, NOT `inference_mode`, so the buffered frames are ordinary
-        # tensors and are legal autograd inputs here. Under `inference_mode` they would not
-        # be, and the fix would have to clone at capture instead.
-        with torch.enable_grad():
-            self._model.train()
-            self._optim.zero_grad(set_to_none=True)
-            recon, commit = self._model.reconstruct(batch)
-            loss = F.mse_loss(recon, batch) + self.vq_coef * commit
-            if not torch.isfinite(loss):
-                self._model.eval()
-                logger.warning("motok_seg: non-finite loss, step skipped")
-                return None
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(self._model.parameters(), max_norm=1.0)
-            self._optim.step()
-        self._model.eval()
-        # ⛔ The reference asserts this rather than trusting it (trainParsing.py:384):
-        # GroupNorm at batch=1 is unstable in train() mode and masking runs at B=1.
-        if self._model.training:
-            raise RuntimeError("motok_seg: model.eval() did not take effect after training.")
-        self.last_stats["seg/train_steps"] += 1.0
-        self.last_stats["seg/loss"] = float(loss.item())
-        return float(loss.item())
-
-    # ------------------------------------------------------------------
-    def observation(self, obs):
-        if isinstance(obs, dict):
-            return {k: self._mask_one(v) if k == "policy" else v for k, v in obs.items()}
-        return self._mask_one(obs)
-
-    def _mask_one(self, obs):
-        arr = obs.detach().cpu().numpy() if isinstance(obs, torch.Tensor) else np.asarray(obs)
-        x, batched = self._to_bchw(arr)
-        c = x.shape[1]
-
-        # Framestack-after-segmentation: mask each frame independently. Exactly
-        # equivalent to running this BEFORE framestack (see module docstring).
-        if c > 3 and c % 3 == 0:
-            frames = [x[:, i : i + 3] for i in range(0, c, 3)]
-        else:
-            frames = [x]
-
-        self._ensure(frames[0].shape[1])
-        out = []
-        for f in frames:
-            fd = f.to(self.device)
-            with torch.no_grad():
-                masks = self._model.get_masks(fd)                 # (B,K,H,W)
-            # ⛔ THE ISOLATION GUARD, kept from seg_wrappers.py:190. If this ever
-            # fires, PPO's return could backpropagate into the segmenter and this
-            # arm would silently become an aux-loss arm.
-            if masks.requires_grad:
-                raise RuntimeError(
-                    "MoTokSeg: mask carries requires_grad=True. The segmenter "
-                    "must stay isolated from the policy gradient — that isolation "
-                    "is what makes this the 'segmented image' hypothesis rather "
-                    "than an auxiliary loss."
-                )
-            slot = self._pick_fg(masks)
-            m = masks[:, slot : slot + 1]
-            self.last_stats["seg/fg_slot"] = float(slot)
-            self.last_stats["seg/fg_area"] = float(m.mean().item())
-            out.append((fd * m).clamp(0.0, 1.0).cpu())
-
-            if len(self._buf) < self.buffer_cap:
-                self._buf.append(f.cpu())
-            else:
-                self._buf[self._seen % self.buffer_cap] = f.cpu()
-
-        self._seen += 1
-        if self.train_every > 0 and self._seen % self.train_every == 0:
-            self.train_step()
-
-        y = torch.cat(out, dim=1)
-        y = (y * 255.0).round().clamp(0, 255).to(torch.uint8)
-        y = y.permute(0, 2, 3, 1)                                  # back to NHWC
-        if not batched:
-            y = y[0]
-        res = y.numpy()
-        return torch.from_numpy(res) if isinstance(obs, torch.Tensor) else res
+        recon, commit = self._model.reconstruct(batch)
+        return F.mse_loss(recon, batch) + self.vq_coef * commit

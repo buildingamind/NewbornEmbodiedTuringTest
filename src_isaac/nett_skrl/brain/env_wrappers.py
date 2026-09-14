@@ -10,6 +10,45 @@ from __future__ import annotations
 import torch
 
 
+class SegmentationStatsEnvWrapper:
+    """Forward perception diagnostics through each run's skrl scalar writer.
+
+    Body segmenters sit below the skrl adapter and own their optimization;
+    tracking their scalar snapshots here introduces no policy gradient path.
+    The body model spans the vectorized environment, so its aggregate stats
+    are the same for every agent sharing that environment.
+    """
+
+    def __init__(self, env, agents, sources):
+        self._env = env
+        self._agents = agents
+        self._sources = sources
+
+    @classmethod
+    def wrap(cls, env, agents):
+        from ..body.wrappers.segmentation import SegmentationObservationWrapper
+
+        sources = []
+        current, seen = env, set()
+        while current is not None and id(current) not in seen:
+            seen.add(id(current))
+            if isinstance(current, SegmentationObservationWrapper):
+                sources.append(current)
+            current = getattr(current, "_env", None) or getattr(current, "env", None)
+        return cls(env, agents, sources) if sources else env
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def step(self, actions):
+        result = self._env.step(actions)
+        for source in self._sources:
+            for tag, value in source.last_stats.items():
+                for agent in self._agents:
+                    agent.track_data(tag, value)
+        return result
+
+
 class IntrinsicRewardEnvWrapper:
     """Reward-shaping wrapper used before skrl records transitions.
 

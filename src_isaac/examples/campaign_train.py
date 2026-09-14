@@ -320,6 +320,18 @@ MODELS: dict[str, dict] = {
     # flip and returns a plausible mean over noise.
     "MoTok-Seg":      dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=False, seg="motok_seg"),
     "MoTok-Seg2F":    dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=True,  seg="motok_seg"),
+    # Separate perception optimizer; mask multiplies the observation, no aux.
+    # The honest control is CNN2F, which sees the same two-frame stack.
+    # ★ THE SLOT-COUNT SERIES. The imprinting scene has 2 regions (chamber + object)
+    # but the PARSING TEST has 3 (chamber + two monitors), so a segmenter frozen on a
+    # binary habit cannot represent the scene it is tested on. Motion also separates
+    # more than 2 groups even during imprinting, since parallax moves near and far
+    # surfaces at different rates. At K>2 the mask rule switches to suppressing only
+    # the background slot -- keeping ONE slot could delete one of the two test
+    # alternatives outright. Read on Novel Familiar and Both Unfamiliar.
+    "CNN2F+GWM-Seg":    dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=2),
+    "CNN2F+GWM-Seg-Q3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=3),
+    "CNN2F+GWM-Seg-Q5": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=5),
 }
 
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
@@ -334,6 +346,13 @@ EXPERIMENTS: dict[str, tuple[str, str, str]] = {
     "viewinvariance": (f"{_HERE}/orch_sheets/DesignSheet_ViewInvariance_mov.csv",
                        f"{VIDEOS}/viewinvariance/videos", "Fork_Front"),
 }
+
+
+def segmentation_wrappers(spec: dict) -> list[str]:
+    """Body order is innermost first; only pair-based segmenters go last."""
+    seg = [spec["seg"]] if spec.get("seg") else []
+    stack = ["framestack"] if spec["framestack"] else []
+    return stack + seg if spec.get("seg_after") else seg + stack
 
 
 def _slug(s: str) -> str:
@@ -523,6 +542,15 @@ def main() -> int:
             f"used in this campaign -- express the objective as an auxiliary loss "
             f'(\'"aux": <kind>\') so it shapes the encoder instead of the reward.'
         )
+
+    # The seg wrapper reads its slot count from the environment, and the launcher
+    # builds body wrappers with the env ALONE -- so the arm's choice has to be
+    # exported here or every arm silently runs the default. POP when unset: a stale
+    # NETT_SEG_QUERIES from a shared shell would otherwise decide the arm.
+    if spec.get("seg_queries") is not None:
+        os.environ["NETT_SEG_QUERIES"] = str(spec["seg_queries"])
+    else:
+        os.environ.pop("NETT_SEG_QUERIES", None)
 
     aux_kind = spec.get("aux")
     if aux_kind:
@@ -751,11 +779,8 @@ def main() -> int:
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each
         # wrapping the previous, so index 0 is INNERMOST and sees the raw frame.
-        # A segmentation wrapper must mask BEFORE framestack: MoTok is single-frame,
-        # so it masks one frame and framestack then stacks the masked frames. The
-        # reverse order would hand a single-frame segmenter a 6-channel tensor.
-        "body": {"wrappers": ([spec["seg"]] if spec.get("seg") else [])
-                             + (["framestack"] if spec["framestack"] else [])},
+        # MoTok masks BEFORE framestack; GWM needs the raw pair AFTER framestack.
+        "body": {"wrappers": segmentation_wrappers(spec)},
         "num_brains": brains,
         "brain_id_offset": offset,
         "episodes": {"train": train_eps, "test": int(os.environ.get("NETT_TEST_EPS", "20"))},
