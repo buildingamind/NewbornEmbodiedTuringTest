@@ -136,7 +136,7 @@ def test_a_pose_confounded_split_would_be_caught(mod, monkeypatch):
 
 # --- the task-shaped (side) probe ------------------------------------------
 
-def test_side_probe_classes_hold_identical_content_in_exchanged_positions(mod):
+def test_side_probe_classes_hold_identical_content_in_exchanged_positions(side_probe):
     """★ THE INVARIANT THAT MAKES THE SIDE PROBE MEAN ANYTHING.
 
     Each frame contributes BOTH orderings, so the two classes carry the same two
@@ -144,26 +144,34 @@ def test_side_probe_classes_hold_identical_content_in_exchanged_positions(mod):
     therefore matched by construction and only POSITION distinguishes the classes.
     If this ever stops holding, a "side" accuracy could be read off object identity.
     """
-    tr_x, tr_y, te_x, te_y = mod.build_side_probe_set(_video_cache(mod))
+    tr_x, tr_y, te_x, te_y = side_probe
     for x, y in ((tr_x, tr_y), (te_x, te_y)):
         assert (y == 0).sum() == (y == 1).sum()
         # identical content per class => identical mean luminance, to rounding
         assert abs(x[y == 0].mean() - x[y == 1].mean()) < 0.5
 
 
-def test_side_probe_splits_are_disjoint_and_nonempty(mod):
-    tr_x, tr_y, te_x, te_y = mod.build_side_probe_set(_video_cache(mod))
+def test_side_probe_splits_are_disjoint_and_nonempty(side_probe):
+    tr_x, tr_y, te_x, te_y = side_probe
     assert len(tr_y) > 20 and len(te_y) > 20
     assert len(tr_x) == len(tr_y) and len(te_x) == len(te_y)
 
 
-def _video_cache(mod):
-    """Real clips -- the side probe composites two of them, so synthetic stand-ins
-    would not exercise the informative-frame selection it depends on."""
+@pytest.fixture(scope="module")
+def side_probe(mod):
+    """The built side-probe set, decoded ONCE for the whole module.
+
+    Real clips -- the side probe composites two of them, so synthetic stand-ins
+    would not exercise the informative-frame selection it depends on. Decoding
+    them is the expensive part of this file: both consumers used to call this
+    and build_side_probe_set independently, 4.7s each. They only READ the
+    arrays, and both asserted on properties of any valid build rather than on a
+    particular draw, so one shared build covers both.
+    """
     if not mod.VIDEO_DIR.exists():
         pytest.skip(f"stimulus clips not present at {mod.VIDEO_DIR}")
     neg, (pos,) = mod.STIMULI["binding"][0][0], mod.STIMULI["binding"][1]
-    return {c: mod.load_clip(c) for c in (neg, pos)}
+    return mod.build_side_probe_set({c: mod.load_clip(c) for c in (neg, pos)})
 
 
 # --- bug 3: the difficulty axis --------------------------------------------
