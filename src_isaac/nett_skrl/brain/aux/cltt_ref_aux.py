@@ -275,14 +275,22 @@ class CLTTReferenceAuxLoss(nn.Module):
         raw = memory.tensors["observations"]
         t_max = memory.memory_size if memory.filled else memory.memory_index
         avail = t_max - max(self.offsets)
+        # Upper bound only. The AUTHORITY on whether a window exists is
+        # episode_window_batch below, which tests ADJACENCY. A count-based
+        # refusal here would fire exactly on short captures and so would
+        # shadow the contiguity check out of its own test domain -- and it
+        # would blame max_samples/t_max for what is really a gap or a reset.
         batch = min(self.max_samples, avail)
-        if batch < 2:
+        try:
+            batch, starts = episode_window_batch(memory, self.offsets, batch)
+        except ValueError as exc:
+            # Re-raise with the loss-specific reason. The helper knows about
+            # ADJACENCY; only this class knows why B>=2 matters to it.
             raise ValueError(
-                f"CLTTReferenceAuxLoss needs B_eff >= 2, got {batch} "
-                f"(t_max={t_max}, offsets={self.offsets}, NETT_AUX_BATCH={self.max_samples}). "
+                f"{exc} (t_max={t_max}, offsets={self.offsets}, "
+                f"NETT_AUX_BATCH={self.max_samples}). "
                 "A contrastive softmax at B=1 is -log(1)=0 and teaches nothing."
-            )
-        batch, starts = episode_window_batch(memory, self.offsets, batch)
+            ) from exc
         env, t0 = draw_episode_window(starts, draw_single_start=avail >= self.max_samples)
         device = next(encoder.parameters()).device
         with torch.no_grad():

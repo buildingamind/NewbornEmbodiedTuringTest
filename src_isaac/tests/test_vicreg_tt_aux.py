@@ -216,7 +216,7 @@ def test_too_few_anchors_raises(monkeypatch, t_max):
     encoder = IdentityEncoder()
     aux = VICRegTemporalAuxLoss(encoder)
     aux.attach_memory(identity_memory(t_max))
-    with pytest.raises(ValueError, match="variance/covariance terms are degenerate at B=1"):
+    with pytest.raises(ValueError, match="episode-contiguous temporal window with B_eff >= 2"):
         aux.compute(encoder, torch.empty(0))
 
 
@@ -226,7 +226,7 @@ def test_batch_cap_of_one_raises(monkeypatch):
     encoder = IdentityEncoder()
     aux = VICRegTemporalAuxLoss(encoder)
     aux.attach_memory(identity_memory())
-    with pytest.raises(ValueError, match="B_eff >= 2, got 1"):
+    with pytest.raises(ValueError, match="episode-contiguous temporal window with B_eff >= 2"):
         aux.compute(encoder, torch.empty(0))
 
 
