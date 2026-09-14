@@ -318,3 +318,77 @@ def test_train_step_diagnostics_reach_run_scalar_logs(cls, monkeypatch, tmp_path
         events = EventAccumulator(str(tmp_path / str(i))).Reload()
         for key, value in seg.last_stats.items():
             assert events.Scalars(key)[-1].value == pytest.approx(value)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Keep-mask rule. Consolidated from test_seg_mask_rule.py: one build per slot
+# count checks the rule, the background choice, AND the retained content,
+# instead of three tests rebuilding the same wrapper to check one facet each.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _slot_masks(queries, monkeypatch, rule=None):
+    monkeypatch.setenv("NETT_SEG_QUERIES", str(queries))
+    if rule is not None:
+        monkeypatch.setenv("NETT_SEG_MASK_RULE", rule)
+    env = GwmSeg(Images())
+    env._ensure(3)
+    with torch.no_grad():
+        return env, env._model.get_masks(torch.rand(4, 3, 24, 32))
+
+
+@pytest.mark.parametrize("queries", [2, 3, 5])
+def test_keep_mask_rule_follows_slot_count(queries, monkeypatch):
+    """⛔ KEEPING ONE SLOT AT K>2 CAN DELETE A TEST ALTERNATIVE.
+
+    The parsing test shows TWO objects on two monitors plus the chamber. With K>2
+    a single-slot rule suppresses every other slot, so if the objects land in
+    different slots the agent is shown ONE option in a two-alternative forced
+    choice and scores at chance for a reason unrelated to the hypothesis. K=2 must
+    stay byte-identical to the reference, or the Unity baseline moves.
+    """
+    env, masks = _slot_masks(queries, monkeypatch)
+    keep = env._keep_mask(masks)
+    slot = int(env.last_stats["seg/selected_slot"])
+    areas = masks.mean(dim=(0, 2, 3))
+
+    if queries == 2:
+        assert not env.last_stats["seg/mask_rule_not_background"]
+        torch.testing.assert_close(keep, masks[:, slot:slot + 1], rtol=0, atol=0)
+        assert float(areas[slot]) <= float(areas[1 - slot])          # foreground = smaller
+    else:
+        assert env.last_stats["seg/mask_rule_not_background"]
+        assert slot == int(torch.argmax(areas).item())               # background = largest
+        others = sum(masks[:, j] for j in range(queries) if j != slot)
+        torch.testing.assert_close(keep[:, 0], others, rtol=1e-4, atol=1e-5)
+        assert float(keep.mean()) > max(
+            float(areas[j]) for j in range(queries) if j != slot
+        )
+    # legacy keys stay populated whatever the rule -- renaming them once broke 14
+    # tests including MoTok's acceptance test, whose logged stats ARE its behaviour.
+    assert env.last_stats["seg/fg_slot"] in range(queries)
+    assert 0.0 <= env.last_stats["seg/kept_area"] <= 1.0
+
+
+def test_mask_rule_override_and_rejection(monkeypatch):
+    env, masks = _slot_masks(5, monkeypatch, rule="foreground")
+    env._keep_mask(masks)
+    assert not env.last_stats["seg/mask_rule_not_background"]
+    monkeypatch.setenv("NETT_SEG_MASK_RULE", "whatever")
+    with pytest.raises(ValueError, match="NETT_SEG_MASK_RULE"):
+        GwmSeg(Images())
+
+
+@pytest.mark.parametrize("queries", [2, 5])
+def test_slot_dilution_is_measurable(queries, monkeypatch):
+    """Dilution is invisible in the loss. Measured at 150 steps on real frames, no
+    slot ever dies but confidently-assigned pixels fall 0.79 -> 0.18 from K=2 to
+    K=5 while the closest slot pair reaches 0.906 cosine."""
+    env, masks = _slot_masks(queries, monkeypatch)
+    stats = env.slot_diagnostics(masks)
+    assert set(stats) == {
+        "seg/confident_pixels", "seg/slot_pair_cosine_max",
+        "seg/slot_occ_min", "seg/slot_occ_max",
+    }
+    assert 0.0 <= stats["seg/confident_pixels"] <= 1.0
+    assert -1.0 <= stats["seg/slot_pair_cosine_max"] <= 1.0 + 1e-6
+    assert stats["seg/slot_occ_min"] <= stats["seg/slot_occ_max"]
