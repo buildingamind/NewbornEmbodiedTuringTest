@@ -4,13 +4,14 @@ Context for AI assistants working in this repository.
 
 ## What this repo is
 
-This is **Repo B** of the two-repo Isaac Sim / skrl stack driving the Newborn
+This is **Repo A** (`buildingamind/NewbornEmbodiedTuringTest`) of the two-repo
+Isaac Sim / skrl stack driving the Newborn
 Embodied Turing Test. The maintained code is the **`nett_skrl`** package under
 [`src_isaac/`](src_isaac/README.md) — orchestration, device placement, the skrl
 PPO scaffold, the observation body, the environment bridge, and analysis.
 
 The Isaac Lab environment, robot USD, camera rig, and rewards live in the sibling
-**Repo A**, `NewbornEmbodiedTuringTest_Private/isaac_lab` (the `nett_isaac`
+**Repo B** (`buildingamind/NewbornEmbodiedTuringTest_Private`), in `isaac_lab/` (the `nett_isaac`
 package). The two are wired through a single `DirectRLEnv` the skrl side wraps.
 
 > The legacy Unity/SB3/mlagents package (`nett-benchmarks`, `src/nett`) has been
