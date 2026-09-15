@@ -186,12 +186,28 @@ def test_every_row_places_the_rollout_buffer_on_the_gpu():
     ⛔ cuda:0, NEVER a bare "cuda". agent_factory compares torch.device(mem) != torch.device(dev),
     and torch.device("cuda") != torch.device("cuda:0") is TRUE -- a bare value silently selects
     the CPU hybrid path, i.e. the exact opposite of the decision, with nothing reporting it.
-    The index is 0 because launch_arm pins the card with CUDA_VISIBLE_DEVICES, so the physical
-    card is always device 0 inside the process.
+    ⛔ AND NEVER cuda:1..cuda:7 EITHER, WHICH IS THE LIKELIER EDIT. The owner asked for the wave
+    spread over eight cards, two rows each, and the obvious-looking way to write that -- bumping
+    this value per row -- CRASHES every row not on card 0. launch_arm.sh:284 exports
+    CUDA_VISIBLE_DEVICES="$GPU" and NETT_DEVICE="$GPU" together, so each arm sees exactly ONE card
+    and that card is index 0 inside the process. Measured: under CUDA_VISIBLE_DEVICES=3,
+    device_count() is 1, cuda:0 is the card nvidia-smi calls 3, and cuda:3 raises
+    "RuntimeError: CUDA error: invalid device ordinal". nett_skrl/runtime/device.py is the module
+    written for this collision; torch_device_index() returns 0 whenever one card is visible.
+    ⇒ "cuda:0" here does not mean "card 0". It means "the card this arm was given". The card is a
+    LAUNCH argument (launch_arm.sh --gpu N), not row content -- the per-row assignment lives in
+    the plan's section 6c and the queue header, where a scheduling fact belongs.
+    ⚠ The failure modes are asymmetric: a physical index WITH the pin errors loudly, but a
+    non-zero index WITHOUT the pin does not error at all -- Kit's usdrt scenegraph hangs at the
+    Fabric XFormPrimView, 26-71 min observed and indefinite in principle.
     """
     for model, env in WAVE:
-        assert env.get("NETT_MEMORY_DEVICE") == "cuda:0", (
-            f"{model}: NETT_MEMORY_DEVICE={env.get('NETT_MEMORY_DEVICE')!r}, want 'cuda:0'")
+        got = env.get("NETT_MEMORY_DEVICE")
+        assert got == "cuda:0", (
+            f"{model}: NETT_MEMORY_DEVICE={got!r}, want 'cuda:0'. If this was an attempt to "
+            f"spread the wave across cards, that belongs in `launch_arm.sh --gpu N` -- {got!r} "
+            f"would raise 'invalid device ordinal' inside the arm, because the launcher pins the "
+            f"card with CUDA_VISIBLE_DEVICES and the only visible device is always cuda:0.")
 
 
 def _queue_rows():
