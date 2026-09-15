@@ -29,17 +29,17 @@ WAVE = [
     ("CNN2F", {}),
     ("CNN2F", {"NETT_DECOUPLE_ENCODER": "1"}),
     ("CNN2F+LumNorm", {}),
-    ("CNN2F+CLTT-Ref", {"NETT_AUX_CLTT_REF_DIAG": "1"}),
-    ("CNN2F+CLTT-Ref", {"NETT_AUX_CLTT_REF_DIAG": "1", "NETT_DECOUPLE_ENCODER": "1"}),
-    ("CNN2F+EoO", {}),
-    ("CNN2F+EoO", {"NETT_DECOUPLE_ENCODER": "1"}),
-    ("CNN2F+GWM", {}),
-    ("CNN2F+GWM", {"NETT_DECOUPLE_ENCODER": "1"}),
-    ("CNN+EoO-Dual", {"NETT_EXPERT_FLOW": "1"}),
-    ("CNN+GWM-Dual", {"NETT_EXPERT_FLOW": "1"}),
-    ("CNN+GWM-Dual", {"NETT_EXPERT_FLOW": "1", "NETT_DECOUPLE_ENCODER": "1"}),
+    ("CNN2F+CLTT-Ref", {"NETT_AUX_CLTT_REF_DIAG": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN2F+CLTT-Ref", {"NETT_AUX_CLTT_REF_DIAG": "1", "NETT_DECOUPLE_ENCODER": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN2F+EoO", {"NETT_AUX_BATCH": "128"}),
+    ("CNN2F+EoO", {"NETT_DECOUPLE_ENCODER": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN2F+GWM", {"NETT_AUX_BATCH": "128"}),
+    ("CNN2F+GWM", {"NETT_DECOUPLE_ENCODER": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN+EoO-Dual", {"NETT_EXPERT_FLOW": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN+GWM-Dual", {"NETT_EXPERT_FLOW": "1", "NETT_AUX_BATCH": "128"}),
+    ("CNN+GWM-Dual", {"NETT_EXPERT_FLOW": "1", "NETT_DECOUPLE_ENCODER": "1", "NETT_AUX_BATCH": "128"}),
     ("CNN2F+GWM-Seg", {"NETT_EXPERT_FLOW": "1"}),
-    ("CNN2F+SlotContrast", {"NETT_SLOTC_SLOTS": "4", "NETT_SLOTC_DIAG": "1"}),
+    ("CNN2F+SlotContrast", {"NETT_SLOTC_SLOTS": "4", "NETT_SLOTC_DIAG": "1", "NETT_AUX_BATCH": "128"}),
 ]
 
 _PKG_TEXT = "\n".join(p.read_text() for p in (SRC / "nett_skrl").rglob("*.py"))
@@ -99,3 +99,44 @@ def test_there_is_no_environment_hook_for_body_wrappers():
     manipulation that silently does nothing when the spelling is wrong."""
     assert "NETT_BODY_WRAPPERS" not in _PKG_TEXT
     assert "NETT_WRAPPERS" not in _PKG_TEXT
+
+
+def test_every_aux_condition_pins_its_batch_to_the_same_value():
+    """⛔ B IS NOT ONE NUMBER UNLESS SOMETHING MAKES IT ONE.
+
+    NETT_AUX_BATCH is read at 13 sites with FOUR different defaults. Unpinned, this wave would
+    have run cltt_ref at 512 and every other aux loss at 32 -- an 8x spread across rows whose
+    entire design is to differ only in the objective, confounding the 3x2 with batch size. And
+    every level claim about a contrastive objective depends on B: NT-Xent chance is ln(2B-1).
+
+    This asserts the PROPERTY (every aux row pins it, all to one value) rather than restating
+    the values, so a new aux condition added without a pin fails here instead of silently
+    inheriting whichever default its loss happens to carry.
+    """
+    pinned = {}
+    for model, env in WAVE:
+        if not ct.MODELS[model].get("aux"):
+            assert "NETT_AUX_BATCH" not in env, (
+                f"{model} declares no aux loss but pins NETT_AUX_BATCH -- nothing would read it")
+            continue
+        assert "NETT_AUX_BATCH" in env, (
+            f"{model} declares aux={ct.MODELS[model]['aux']!r} and does not pin NETT_AUX_BATCH; "
+            f"it would take that loss's own default, which is not the same across losses")
+        pinned[model] = env["NETT_AUX_BATCH"]
+    assert len(set(pinned.values())) == 1, f"aux batch differs across the wave: {pinned}"
+
+
+def test_the_pinned_batch_is_reachable_at_this_protocol():
+    """⛔ cltt_ref's OWN DEFAULT IS UNREACHABLE HERE, which is why a pin was needed rather than
+    merely tidy. memory_size = rollouts//scope = 8000//32 = 250; cltt_ref's offsets are (1,2), so
+    avail = 248 and B can never exceed it. Left at its 512 default the arm runs ~248 while its
+    config records 512 -- a resolved value diverging silently from the passed one.
+
+    A pin ABOVE the ceiling would recreate exactly that, so the pin is checked against it.
+    """
+    rollouts, scope, max_offset = 8000, 32, 2
+    ceiling = rollouts // scope - max_offset
+    assert ceiling == 248
+    pin = int(dict(WAVE)["CNN2F+CLTT-Ref"]["NETT_AUX_BATCH"])
+    assert pin <= ceiling, f"pinned B={pin} exceeds the reachable ceiling {ceiling}"
+    assert pin >= 2, "agent_factory refuses B < 2: an empty mean is NaN forward, ZERO backward"
