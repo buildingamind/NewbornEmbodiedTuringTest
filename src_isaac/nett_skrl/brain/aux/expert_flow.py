@@ -82,5 +82,19 @@ class ExpertBlockFlow(nn.Module):
         flow_coarse = table[best].permute(0, 3, 1, 2)   # (B, 2, H/p, W/p), channel 0 = dx
         return F.interpolate(flow_coarse, size=(H, W), mode="bilinear", align_corners=False)
 
-    # The wrapper calls the dorsal through this name; keep both so it is a true drop-in.
-    forward = forward_single
+    @torch.no_grad()
+    def forward(self, frame_t: torch.Tensor, frame_t1: torch.Tensor):
+        """Bidirectional flows, matching ``Small3DCNNDorsal.forward``'s 2-TUPLE contract.
+
+        ⛔ THIS USED TO BE ``forward = forward_single``, and that alias was wrong for half
+        the callers. ``Small3DCNNDorsal`` has TWO contracts on purpose: ``forward_single``
+        returns one (B,2,H,W) tensor and GWM/``gwm_seg`` call that, while ``forward``
+        returns ``(F_fwd, F_bwd)`` and EoO calls THAT (``eoo_dual_loss`` unpacks the pair).
+        Aliasing the two made this a drop-in for the GWM path only; an EoO arm would have
+        unpacked a (B,2,H,W) tensor along its batch axis and failed -- or worse, silently
+        succeeded at B=2. The bidirectional flow is computed by swapping the frame order,
+        exactly as the learned dorsal does; block matching is symmetric, so the backward
+        pass is a second search rather than a negation of the first (they differ wherever
+        a correspondence is occluded, which is the signal EoO's consistency term reads).
+        """
+        return self.forward_single(frame_t, frame_t1), self.forward_single(frame_t1, frame_t)

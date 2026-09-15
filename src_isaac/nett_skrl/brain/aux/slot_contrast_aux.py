@@ -1,14 +1,38 @@
-"""CNN-SlotContrast — a SCREENING CANDIDATE. Not registered, not launchable.
+"""CNN-SlotContrast, PROMOTED from `examples/candidates/` and registered as `slot_contrast`.
 
-⛔ THIS FILE IS DELIBERATELY OUTSIDE `nett_skrl/brain/aux/`. `AUX_LOSSES` is what
-`NETT_AUX_LOSS` resolves against, so a candidate placed there becomes launchable by a queue
-row before anything has screened it. It is reachable only through the replay harness:
+Promoted 2026-09-15 for the 14-condition wave. Until then it lived outside
+`nett_skrl/brain/aux/` precisely so a queue row could not launch it unscreened; promotion
+is the visible diff that makes `NETT_AUX_LOSS=slot_contrast` resolve. The screening path
+still works and is still the cheap way to exercise it without a card:
 
-    examples/replay_harness.py --fixture --model CNN \\
-        --aux examples/candidates/slot_contrast_aux.py:SlotContrastAuxLoss
+    examples/replay_harness.py --fixture --model CNN2F --aux slot_contrast
 
-Promotion means MOVING this module into `nett_skrl/brain/aux/` and adding the registry
-entry — a visible diff in the repo the launcher reads.
+⛔ TWO THINGS CHANGED ON PROMOTION, AND BOTH ARE LOAD-BEARING.
+
+1. **The temporal sampler now refuses to cross an episode boundary.** The candidate's
+   `_temporal_pair` sliced the buffer with a bare `randint`, so a (t, t+1) pair could
+   straddle a reset or the circular buffer's write seam -- pairing the LAST frame of one
+   episode with the FIRST frame of the next and calling it "the scene moved". That is the
+   exact defect commit 345f291 fixed for every other temporal loss here; this module was
+   written before it and did not inherit the fix. It now uses the same
+   `episode_window_batch` / `draw_episode_window` helpers as `cltt_ref` and
+   `cltt_schneider`, so there is one implementation of episode contiguity, not two.
+
+2. **No usable window now RAISES instead of returning zero.** The candidate returned
+   `new_zeros(())`, which enters the running mean as a real value and makes "there was no
+   pair" indistinguishable from "the pair scored 0". The fleet convention is to refuse.
+
+⚠ THE GRID IS THE FIRST QUESTION ABOUT THIS PORT, AHEAD OF ANYTHING ABOUT THE LOSS.
+Slot attention partitions a set of spatial positions by competition. On `compact_cnn` the
+pre-pool map is 20x32 = 640 positions; on `nature_cnn` -- which is what the whole fleet CNN
+family actually runs -- it is 6x12 = **72**. At K slots that is ~72/K cells each, and
+whether object-level competition is even expressible at that granularity is untested. The
+wave runs `nature_cnn` anyway, because the point of holding the encoder constant across all
+14 conditions is worth more than the extra positions, and because a win on a 72-cell grid
+would be the stronger result. `NETT_SLOTC_SLOTS` defaults to 6 here but the wave sets 4:
+during IMPRINTING the scene has ~3 regions (object, chamber, bezel), not the 4 the parsing
+TEST has, and the aux loss only ever runs during training. See
+notes/researcher/slotcontrast-cnn.md section 6.
 
 Port of `martius-lab/slotcontrast` (Manasyan et al., CVPR 2025) with DINOv2 replaced by our
 own CNN trunk, per the owner's instruction *"SlotContrast could just replace DINO with a CNN,
@@ -56,6 +80,8 @@ import os
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from .cltt_ref_aux import episode_window_batch, draw_episode_window
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -198,11 +224,16 @@ class SlotContrastAuxLoss(nn.Module):
         # collide with a variance, which is >= 0.
         self.last_mask_variance: float = -1.0
         self.last_terms: tuple[float, float, float] | None = None
+        # ⛔ `last_scalars` IS THE CHANNEL ppo_aux READS (ppo_aux.py:442). `last_mask_variance`
+        # alone reached no reader -- the identical defect `nt_xent_diagnostics` had, where the
+        # diagnostic ran, cost its forward passes, and produced no log line and no scalar.
+        # tests/test_aux_telemetry_reaches_a_reader.py catches the class; this is the fix.
+        self.last_scalars: dict = {}
 
     # -- plumbing ---------------------------------------------------------------------
 
     def _probe_map(self, encoder: nn.Module) -> tuple[int, int, int]:
-        from nett_skrl.body.observation import image_channels_hw
+        from ...body.observation import image_channels_hw
         c, h, w = image_channels_hw(getattr(encoder, "observation_space", None))
         dummy = torch.zeros(1, c, h, w, device=next(encoder.parameters()).device)
         feats = spatial_features(encoder, dummy)
@@ -246,15 +277,11 @@ class SlotContrastAuxLoss(nn.Module):
     # -- the loss ---------------------------------------------------------------------
 
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
-        from nett_skrl.body.observation import prepare_image_tensor
+        from ...body.observation import prepare_image_tensor
 
-        pair = self._temporal_pair(encoder, observations)
-        if pair is None:
-            # No usable (t, t+1) window. Returning a zero would enter the running mean as a
-            # real value; the caller must be able to tell "no pair" from "pair scored 0".
-            self.last_terms = None
-            return observations.new_zeros(())
-        obs_t, obs_next = pair
+        # Raises rather than returning a zero when no episode-contiguous pair exists --
+        # see _temporal_pair. There is no longer a None branch to fall through.
+        obs_t, obs_next = self._temporal_pair(encoder, observations)
 
         space = encoder.observation_space
         prep_t = prepare_image_tensor(obs_t, space)
@@ -292,23 +319,56 @@ class SlotContrastAuxLoss(nn.Module):
 
         total = self.w_ss * ss + self.w_rec * rec
         self.last_terms = (float(ss.detach()), float(rec.detach()), float(total.detach()))
+        # Emitted on EVERY call, whether or not the diagnostic is on -- a value written only
+        # where it succeeds makes "off" and "on and degenerate" both present as absent, and
+        # absent reads as benign. The sentinel is negative so it cannot be mistaken for a
+        # variance, which is >= 0.
+        self.last_scalars = {"slots": float(self.slots),
+                             "positions": float(self.grid_h * self.grid_w),
+                             "mask_variance": float(self.last_mask_variance)}
         return total
 
     def _temporal_pair(self, encoder, observations):
-        """(obs_t, obs_{t+1}) from the rollout buffer, or None if unavailable."""
+        """(obs_t, obs_{t+1}) drawn from ONE episode-contiguous slab of one env stream.
+
+        ⛔ Uses the shared helpers rather than a bare randint. `episode_window_batch`
+        tests ADJACENCY -- it will not return a slab that crosses a reset or the circular
+        buffer's write seam -- and `draw_episode_window` picks uniformly among the starts
+        that survive. A pair spanning a reset shows a teleport, not motion, and slot
+        attention asked to keep a slot on "the same thing" across it is being trained on
+        a correspondence that does not exist.
+        """
         mem = self._memory
         if mem is None:
-            return None
+            raise RuntimeError(
+                "SlotContrastAuxLoss draws its own temporal windows; "
+                "call attach_memory(memory) before compute().")
         tensors = getattr(mem, "tensors", None)
         if not tensors or "observations" not in tensors:
-            return None
+            raise ValueError("SlotContrastAuxLoss needs an 'observations' tensor in memory.")
         buf = tensors["observations"]
-        avail = int(getattr(mem, "memory_index", 0)) if not getattr(mem, "filled", False) \
-            else int(getattr(mem, "memory_size", 0))
-        if avail < 2:
-            return None
-        n_env = buf.shape[1]
-        batch = min(self.max_samples, avail - 1)
-        env = int(torch.randint(n_env, ()).item())
-        t0 = int(torch.randint(avail - batch, ()).item()) if avail - batch > 0 else 0
-        return buf[t0: t0 + batch, env], buf[t0 + 1: t0 + 1 + batch, env]
+        t_max = mem.memory_size if getattr(mem, "filled", False) else mem.memory_index
+        offsets = (1,)
+        try:
+            batch, starts = episode_window_batch(mem, offsets, min(self.max_samples, t_max - 1))
+        except ValueError as exc:
+            # ⛔ RAISE, never return a zero. A zero enters the running mean as a real value
+            # and makes "no usable window" look exactly like "the objective scored 0".
+            raise ValueError(
+                f"{exc} (t_max={t_max}, offsets={offsets}, "
+                f"NETT_AUX_BATCH={self.max_samples}). SlotContrast needs at least one "
+                "episode-contiguous (t, t+1) pair; without it the slot-slot contrast has "
+                "no temporal positive and would be scoring a frame against itself."
+            ) from exc
+        env, t0 = draw_episode_window(starts)
+        # ⛔ .to(device) IS NOT OPTIONAL. campaign_train forces NETT_MEMORY_DEVICE=cpu for
+        # EVERY framestacked arm (rollout buffer -> host ram), and this loss is only ever
+        # declared on framestacked arms -- so the slice is on the CPU while the encoder is on
+        # the GPU, and the first conv raises "Input type (torch.FloatTensor) and weight type
+        # (torch.cuda.FloatTensor) should be the same". The candidate never hit this because
+        # the screening harness keeps everything on one device. cltt_ref already does the same
+        # transfer for the same reason; slicing BEFORE the transfer matters too, or the whole
+        # ~2 GB observation buffer is copied to the GPU on every aux call.
+        device = next(encoder.parameters()).device
+        return (buf[t0: t0 + batch, env].to(device),
+                buf[t0 + 1: t0 + 1 + batch, env].to(device))

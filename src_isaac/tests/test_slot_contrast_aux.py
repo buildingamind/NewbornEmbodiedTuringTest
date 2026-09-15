@@ -1,7 +1,7 @@
-"""CPU tests for the CNN-SlotContrast screening candidate.
+"""CPU tests for CNN-SlotContrast (`nett_skrl.brain.aux.slot_contrast_aux`).
 
-The candidate lives in `examples/candidates/`, outside the launcher's registry, so these
-tests are the only thing standing between it and a screening result about the wrong object.
+PROMOTED out of `examples/candidates/` on 2026-09-15 and registered as `slot_contrast`, so
+these tests now guard a LAUNCHABLE objective rather than a screening candidate.
 Two failure modes dominate and both are silent:
 
   * reading a POOLED global vector instead of the pre-pool feature map -- slot attention
@@ -13,8 +13,6 @@ Two failure modes dominate and both are silent:
 """
 from __future__ import annotations
 
-import importlib.util
-import sys
 from pathlib import Path
 
 import gymnasium as gym
@@ -23,13 +21,8 @@ import torch
 import torch.nn as nn
 
 REPO = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO / "examples"))
 
-_spec = importlib.util.spec_from_file_location(
-    "slot_contrast_candidate", REPO / "examples" / "candidates" / "slot_contrast_aux.py")
-slotc = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(slotc)
-
+from nett_skrl.brain.aux import slot_contrast_aux as slotc  # noqa: E402
 from nett_skrl.brain.registry import encoder_mapping  # noqa: E402
 
 
@@ -39,8 +32,23 @@ def _encoder(channels=3, h=80, w=128):
 
 
 class _FakeMemory:
-    def __init__(self, obs):
-        self.tensors = {"observations": obs}
+    """A rollout buffer the episode-contiguity helpers can actually read.
+
+    ⛔ `terminated`/`truncated` are NOT decoration. Since promotion the sampler refuses to
+    draw a window that crosses an episode reset, and it discovers resets from these two
+    tensors (or from replay `keys`). A double that omitted them would make every test here
+    exercise the raise-path instead of the loss -- passing, while measuring nothing.
+    Pass `done_at` to place a boundary and check the sampler actually honours it.
+    """
+
+    def __init__(self, obs, done_at=None):
+        t, envs = obs.shape[0], obs.shape[1]
+        terminated = torch.zeros(t, envs, 1, dtype=torch.bool)
+        if done_at is not None:
+            terminated[done_at, :, 0] = True
+        self.tensors = {"observations": obs,
+                        "terminated": terminated,
+                        "truncated": torch.zeros(t, envs, 1, dtype=torch.bool)}
         self.memory_size = obs.shape[0]
         self.memory_index = obs.shape[0]
         self.filled = True
@@ -238,13 +246,17 @@ def test_the_loss_reaches_the_trunk():
     assert grads and any(g.abs().sum() > 0 for g in grads), "no gradient reached the encoder"
 
 
-def test_no_memory_is_distinguishable_from_a_zero_loss():
-    """A zero returned for 'no window available' would enter a running mean as a real
-    value. last_terms is None exactly when nothing was scored."""
+def test_no_memory_raises_rather_than_scoring_zero():
+    """⛔ THE CANDIDATE RETURNED 0.0 HERE AND THAT WAS THE DEFECT.
+
+    A zero enters the caller's running mean as a real value, so "there was no usable
+    (t, t+1) window" and "the objective scored 0" become the same series -- and a loss
+    sitting at zero reads as converged, not as never-ran. Promotion changed it to a raise.
+    """
     enc = _encoder()
     aux = slotc.SlotContrastAuxLoss(enc)
-    out = aux.compute(enc, _obs()[0])
-    assert out.shape == () and float(out) == 0.0
+    with pytest.raises(RuntimeError, match="attach_memory"):
+        aux.compute(enc, _obs()[0])
     assert aux.last_terms is None
 
     aux.attach_memory(_FakeMemory(_obs()))
@@ -252,5 +264,47 @@ def test_no_memory_is_distinguishable_from_a_zero_loss():
     assert aux.last_terms is not None and len(aux.last_terms) == 3
 
 
+def test_the_temporal_pair_never_crosses_an_episode_reset():
+    """The pair must come from ONE episode. A pair spanning a reset shows a teleport.
+
+    With a boundary after step 2 of a 6-step buffer, every returned (t, t+1) pair must sit
+    wholly inside [0,2] or wholly inside [3,5]. The candidate's bare `randint` could return
+    (2,3) -- the last frame of one episode against the first of the next -- and nothing
+    downstream could tell, because a teleport is a perfectly well-formed image pair.
+    """
+    enc = _encoder()
+    obs = _obs(n=6)
+    aux = slotc.SlotContrastAuxLoss(enc)
+    aux.attach_memory(_FakeMemory(obs, done_at=2))
+    mem = aux._memory
+    for _ in range(64):
+        a, b = aux._temporal_pair(enc, obs[0])
+        # Recover the slab by identity against the buffer rather than trusting an index.
+        starts = [t for t in range(obs.shape[0] - len(a) + 1)
+                  for e in range(obs.shape[1])
+                  if torch.equal(obs[t:t + len(a), e], a)]
+        assert starts, "returned slab is not a contiguous slice of the buffer"
+        for t0 in starts:
+            assert not (t0 <= 2 < t0 + len(a)), (
+                f"slab [{t0}, {t0 + len(a)}) straddles the reset after step 2")
+
+
 def test_it_declares_that_it_draws_its_own_windows():
     assert slotc.SlotContrastAuxLoss.needs_memory is True
+
+
+def test_the_temporal_pair_is_moved_to_the_encoders_device():
+    """⛔ campaign_train forces NETT_MEMORY_DEVICE=cpu for EVERY framestacked arm, and this
+    loss is only ever declared on framestacked arms. So the buffer slice is on the CPU while
+    the encoder may be on the GPU. The candidate returned the slice untouched and would have
+    raised "Input type (torch.FloatTensor) and weight type (torch.cuda.FloatTensor) should be
+    the same" on the first aux call of every real arm. Device-agnostic form of the check: the
+    pair must come back on the encoder's device whatever device the buffer is on.
+    """
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    aux.attach_memory(_FakeMemory(_obs()))
+    want = next(enc.parameters()).device
+    a, b = aux._temporal_pair(enc, _obs()[0])
+    assert a.device == want and b.device == want, (
+        f"pair came back on {a.device}/{b.device}, encoder is on {want}")

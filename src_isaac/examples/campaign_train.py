@@ -332,6 +332,28 @@ MODELS: dict[str, dict] = {
     "CNN2F+GWM-Seg":    dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=2),
     "CNN2F+GWM-Seg-Q3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=3),
     "CNN2F+GWM-Seg-Q5": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=5),
+
+    # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
+    # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS
+    # ALONE. The gradient-routing arm is NOT a separate model: NETT_DECOUPLE_ENCODER is an
+    # environment flag on these same entries, so "standard" and "decoupled" are byte-identical
+    # architectures and the contrast cannot be confounded with a construction difference.
+    #
+    # ⛔ CNN2F+CLTT-Ref IS THE FIRST CLTT ARM ON A CNN TRUNK. Every existing CLTT entry rides
+    # compact_vit or simclr_cltt, so `cltt_ref - CNN2F` did not exist and the family could
+    # only ever be compared across a trunk change. cltt_ref's views are the CURRENT RGB frame
+    # repeated across the stack slots (cltt_views.current_frame_stack), which is benign for a
+    # 2-D CNN over the channel stack and would be degenerate for a motion encoder -- nature_cnn
+    # is the former, so this pairing is sound where 3DCNN+CLTT would not be.
+    "CNN2F+CLTT-Ref":  dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # ⚠ ~803K with the SlotContrast head on nature_cnn (trunk 666,272 + 137,025), against a
+    # ~700K SOFT budget, and the EMA target doubles trunk ACTIVATION memory on top. Declared
+    # here rather than discovered at launch: this arm is the wave's memory outlier and the
+    # reason the memory probe exists.
+    # Luminance-standardised control. `pre` puts lumnorm INNERMOST -- before framestack --
+    # so the policy stacks standardised frames rather than standardising a stack.
+    "CNN2F+LumNorm":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, pre=("lumnorm",)),
+    "CNN2F+SlotContrast": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, aux="slot_contrast", aux_weight=1.0),
 }
 
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
@@ -349,10 +371,23 @@ EXPERIMENTS: dict[str, tuple[str, str, str]] = {
 
 
 def segmentation_wrappers(spec: dict) -> list[str]:
-    """Body order is innermost first; only pair-based segmenters go last."""
+    """Body order is innermost first; only pair-based segmenters go last.
+
+    ⛔ THIS IS THE ONLY PLACE BODY WRAPPERS ARE CHOSEN, AND THERE IS NO ENVIRONMENT HOOK.
+    `NETT_BODY_WRAPPERS` does not exist and never has -- a queue row naming it would launch
+    happily, log the experimental label, and run the CONTROL, which is a difference with no
+    symptom. A wrapper reaches an arm by being declared in that arm's MODELS entry, so the
+    model NAME always says which wrappers ran.
+
+    `pre` holds wrappers that must sit INNERMOST, before framestack and before any
+    segmenter -- `lumnorm` is one: it standardises each raw frame, and every downstream
+    consumer (segmenters included) must see the standardised version, not the raw one.
+    """
+    pre = list(spec.get("pre", ()))
     seg = [spec["seg"]] if spec.get("seg") else []
     stack = ["framestack"] if spec["framestack"] else []
-    return stack + seg if spec.get("seg_after") else seg + stack
+    body = stack + seg if spec.get("seg_after") else seg + stack
+    return pre + body
 
 
 def _slug(s: str) -> str:

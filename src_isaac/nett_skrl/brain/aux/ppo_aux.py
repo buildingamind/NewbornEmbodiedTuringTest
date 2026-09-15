@@ -89,6 +89,18 @@ def _build_gwm_dual(encoder):
     return GWMDualAuxLoss(encoder)
 
 
+def _build_slot_contrast(encoder):
+    """Slot-slot temporal contrast + feature reconstruction against a stop-grad EMA trunk.
+
+    Promoted from examples/candidates/ 2026-09-15. Needs a `cnn` Sequential on the encoder
+    with a pool/flatten boundary -- it reads the PRE-POOL feature map and REFUSES a pooled
+    global vector rather than substituting one, because slot attention over a vector with no
+    spatial positions is a different method wearing this one's name.
+    """
+    from .slot_contrast_aux import SlotContrastAuxLoss
+    return SlotContrastAuxLoss(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -108,6 +120,7 @@ AUX_LOSSES = {
     "gwm": _build_gwm,
     "eoo_dual": _build_eoo_dual,
     "gwm_dual": _build_gwm_dual,
+    "slot_contrast": _build_slot_contrast,
 }
 
 

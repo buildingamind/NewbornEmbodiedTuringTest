@@ -62,7 +62,7 @@ import numpy as np
 import torch
 from torch import nn
 
-from ...brain.aux.dual_stream import SmallCNNVentral, Small3DCNNDorsal
+from ...brain.aux.dual_stream import SmallCNNVentral, make_dorsal
 from ...brain.aux.gwm_dual_loss import flow_reconstruction_loss
 from ..observation import image_layout
 from .segmentation import SegmentationObservationWrapper
@@ -72,7 +72,7 @@ class _GwmModel(nn.Module):
     def __init__(self, num_queries: int):
         super().__init__()
         self.ventral = SmallCNNVentral(num_out_channels=num_queries)
-        self.dorsal = Small3DCNNDorsal()
+        self.dorsal = make_dorsal()
 
     def get_masks(self, frame):
         return self.ventral(frame).softmax(dim=1)
@@ -108,10 +108,23 @@ class GwmSeg(SegmentationObservationWrapper):
         self._model = _GwmModel(self.num_queries).to(self.device).eval()
         # DO NOT combine these groups or learning rates. The measured constant-
         # flow degeneracy is much worse when dorsal learns as fast as ventral.
-        self._optim = torch.optim.AdamW([
-            {"params": self._model.ventral.parameters(), "lr": self.lr, "name": "ventral"},
-            {"params": self._model.dorsal.parameters(), "lr": self.backbone_lr, "name": "dorsal"},
-        ], weight_decay=self.wd)
+        groups = [{"params": self._model.ventral.parameters(), "lr": self.lr, "name": "ventral"}]
+        dorsal_params = list(self._model.dorsal.parameters())
+        # ⛔ EXPERT FLOW HAS NO PARAMETERS, SO IT HAS NO GROUP. Handing AdamW an empty group
+        # is legal and silent, and it would leave a "dorsal" group in param_groups that a
+        # reader (or a scheduler) would take as evidence a dorsal is being trained. State the
+        # absence instead. ⚠ Under NETT_EXPERT_FLOW the flow is a FIXED target, which is the
+        # condition's whole point: flow_reconstruction_loss is exactly scale-equivariant, so a
+        # TRAINABLE dorsal can drive it toward zero by shrinking its own output while learning
+        # nothing. A target with no parameters cannot take that escape.
+        if dorsal_params:
+            groups.append({"params": dorsal_params, "lr": self.backbone_lr, "name": "dorsal"})
+        else:
+            logging.getLogger("nett.body.gwm_seg").info(
+                "gwm_seg: dorsal has no parameters (%s) -- no dorsal optimizer group, flow is a "
+                "FIXED target. The ventral/dorsal LR ratio does not apply to this arm.",
+                type(self._model.dorsal).__name__)
+        self._optim = torch.optim.AdamW(groups, weight_decay=self.wd)
         logging.getLogger("nett.body.gwm_seg").info(
             "gwm_seg: %s, %d queries, ventral lr=%g dorsal lr=%g wd=%g flow_reg=%g, "
             "train every %d obs; for collapse watch seg/flow_spatial_std / seg/flow_absmax "

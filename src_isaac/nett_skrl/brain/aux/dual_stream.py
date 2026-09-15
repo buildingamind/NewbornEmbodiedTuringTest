@@ -161,13 +161,36 @@ class Small3DCNNDorsal(nn.Module):
         return self._flow_one_dir(frame_t, frame_t1)
 
 
+def make_dorsal() -> nn.Module:
+    """The dorsal stream for a dual-stream head or the GWM-Seg wrapper.
+
+    Default: the learned ``Small3DCNNDorsal``. With ``NETT_EXPERT_FLOW=1``: the
+    parameter-free ``ExpertBlockFlow``, which is an ALGORITHM (exhaustive patch
+    correspondence search), not pretrained weights -- the compliant substitute for the
+    reference's frozen RAFT.
+
+    ⛔ THE SUBSTITUTION IS NOT FREE AND MUST BE ITS OWN CONDITION. ``ExpertBlockFlow`` has
+    no parameters and no gradient path, so every objective that TRAINS its dorsal becomes
+    a different objective under this flag: the flow term stops being optimised and turns
+    into a fixed target. That is the point for ``gwm_seg`` (whose dorsal is deliberately
+    slow) and for the dual losses (where it removes the free-variable degeneracy), but it
+    means an arm run with this flag is NOT comparable to the same arm without it. The flag
+    is read here and nowhere else, so which arms got the expert flow is a property of the
+    run's environment and is recorded in its config.
+    """
+    if os.environ.get("NETT_EXPERT_FLOW", "").strip().lower() in {"1", "true", "yes", "on"}:
+        from .expert_flow import ExpertBlockFlow
+        return ExpertBlockFlow()
+    return Small3DCNNDorsal()
+
+
 class DualStreamHead(nn.Module):
     """Own the ventral decoder and separate dorsal under PPO's head contract."""
 
     def __init__(self, in_channels: int, slots: int = 2):
         super().__init__()
         self.ventral = VentralDecoder(in_channels, slots)
-        self.dorsal = Small3DCNNDorsal()
+        self.dorsal = make_dorsal()
 
     def get_masks(self, features, output_size):
         return self.ventral(features, output_size).softmax(dim=1)
