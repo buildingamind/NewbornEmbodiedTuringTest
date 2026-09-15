@@ -45,6 +45,21 @@ import numpy as np
 from ..observation import image_layout
 
 
+def _policy_obs(obs):
+    """Identical to ``framestack._policy_obs``. Kept byte-for-byte rather than imported so the two
+    wrappers cannot silently drift apart; if this ever needs to change, change BOTH."""
+    return obs.get("policy", obs) if isinstance(obs, dict) else obs
+
+
+def _replace_policy_obs(obs, policy):
+    """Identical to ``framestack._replace_policy_obs``."""
+    if not isinstance(obs, dict):
+        return policy
+    out = dict(obs)
+    out["policy"] = policy
+    return out
+
+
 class LumNorm(gym.ObservationWrapper):
     """Standardise each frame per channel to a fixed mean/std, preserving dtype and layout."""
 
@@ -56,7 +71,17 @@ class LumNorm(gym.ObservationWrapper):
             raise ValueError("NETT_LUMNORM_STD must be positive")
 
     def observation(self, obs):
-        arr = np.asarray(obs)
+        # ⛔ THE REAL ENV YIELDS ``{"policy": array}``, NOT A BARE ARRAY. This read
+        # ``np.asarray(obs)`` directly, and ``np.asarray({"policy": arr})`` is a 0-d OBJECT array --
+        # so every run with this wrapper died in ``validate_tasklist`` -> ``reset`` with
+        # "expects HWC/NHWC or CHW/NCHW, got shape ()", before a single training step.
+        # (seat:insect, 2026-09-15, live smoke of wave row 03.)
+        # ⭐ The handling is not new: ``framestack.py`` already carries ``_policy_obs`` /
+        # ``_replace_policy_obs`` and sits in the SAME wrapper chain. A wrapper's contract is the
+        # chain it is installed in, not its own docstring -- this one shipped without them.
+        # ⚠ Non-``policy`` keys ride through untouched: only the policy observation is an image.
+        policy = _policy_obs(obs)
+        arr = np.asarray(policy)
         if arr.ndim not in (3, 4):
             raise ValueError(f"LumNorm expects HWC/NHWC or CHW/NCHW, got shape {arr.shape}")
         chw = image_layout(arr.shape[-3:]) == "chw"
@@ -72,4 +97,4 @@ class LumNorm(gym.ObservationWrapper):
         # poison every downstream consumer silently.
         scale = np.where(std > 1e-6, self.target_std / np.maximum(std, 1e-6), 0.0)
         y = (x - mean) * scale + self.target_mean
-        return (np.clip(y, 0.0, 1.0) * 255.0).round().astype(arr.dtype)
+        return _replace_policy_obs(obs, (np.clip(y, 0.0, 1.0) * 255.0).round().astype(arr.dtype))
