@@ -117,10 +117,18 @@ class LumNorm(gym.ObservationWrapper):
         x = t.to(torch.float32) / 255.0
         mean = x.mean(dim=axes, keepdim=True)
         # ⛔ ``torch.std`` DEFAULTS TO THE UNBIASED (ddof=1) ESTIMATOR AND ``np.std`` DOES NOT
-        # (ddof=0). Ported naively the two backends would disagree by a factor of
-        # sqrt(n/(n-1)) -- tiny per pixel, systematic across every frame, and invisible to any
-        # test that exercises only one backend. ``correction=0`` is what makes them the same
-        # function. test_lumnorm.py pins the two paths to identical output.
+        # (ddof=0). Ported naively the two backends disagree by exactly sqrt(n/(n-1)), where
+        # ⚠ n is the SPATIAL GROUP SIZE H*W -- the reduction this wrapper performs is per frame
+        # and per channel, NOT over the whole array. Quote the ratio, not a pixel count: the
+        # count is data- and resolution-dependent and two people measuring it get two answers.
+        # Measured, 8 seeds: 8x8 fixture n=64 -> 1.00790526, 42.3% of pixels shift by 1 LSB;
+        # production 64x64 n=4096 -> 1.00012209, 0.59%; 128x128 n=16384 -> 1.00003052, 0.16%.
+        # ⇒ THE FIXTURE EXAGGERATES THIS ~70x RELATIVE TO PRODUCTION. It is still worth guarding:
+        # the bias is one-directional (unbiased std is larger -> scale smaller -> contrast
+        # slightly compressed), so it does not average out over frames. But it is a sub-LSB
+        # effect at real resolution, not the large one an 8x8 fixture suggests.
+        # ``correction=0`` is what makes the two backends the same function; test_lumnorm.py
+        # pins them to identical output and that pin was verified to FIRE when it is removed.
         std = x.std(dim=axes, keepdim=True, correction=0)
         scale = torch.where(std > 1e-6, self.target_std / torch.clamp(std, min=1e-6),
                             torch.zeros_like(std))

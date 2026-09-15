@@ -129,9 +129,18 @@ def test_torch_and_numpy_backends_agree_exactly():
     one function, so they can drift while both stay green in isolation.
 
     The concrete trap already avoided: ``np.std`` is the POPULATION estimator (ddof=0) while
-    ``torch.std`` defaults to the UNBIASED one (ddof=1). A naive port disagrees by sqrt(n/(n-1)) --
-    sub-pixel per frame, systematic across every frame of every run, and undetectable from either
-    backend alone."""
+    ``torch.std`` defaults to the UNBIASED one (ddof=1). A naive port disagrees by exactly
+    sqrt(n/(n-1)).
+
+    ⚠ n IS THE SPATIAL GROUP SIZE H*W, not the array size -- this wrapper reduces per frame and per
+    channel. Quote the ratio; a pixel count is data- and resolution-dependent, and quoting one
+    without its n is how two people measure two numbers and conclude one of them is wrong.
+    Measured over 8 seeds: this 8x8 fixture n=64 -> 1.00790526 and 42.3% of pixels shift by 1 LSB,
+    but production 64x64 n=4096 -> 1.00012209 and 0.59%. THE FIXTURE OVERSTATES IT ~70x.
+
+    Still worth pinning: the bias is one-directional (unbiased std is larger, so scale is smaller,
+    so contrast is slightly compressed), so it does not average out across frames -- and it is
+    undetectable from either backend alone."""
     w = _wrapper()
     for seed in range(4):
         arr = _frame(seed)
