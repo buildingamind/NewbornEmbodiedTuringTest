@@ -24,7 +24,16 @@ Self-supervised objectives:
   * VICReg (ViT+VICReg, ViViT+VICReg) -> NETT_AUX_LOSS=vicreg aux loss folded into
     the PPO update on the shared encoder (weight 1.0, user directive).
 
-Select via env:
+Select via env (a CURATED SUBSET -- see the warning below):
+⛔ THIS LIST IS PARTIAL AND ALWAYS WILL BE. It names ~21 of the 143 NETT_* variables the
+code reads. It is a getting-started list, NOT an index: a name's ABSENCE FROM HERE MEANS
+NOTHING. The authoritative answer to "does this knob exist?" is docs/env_vars.md, which is
+GENERATED from the code (scripts/gen_env_index.py) and kept in sync by tests/test_env_index.py.
+⚠ Why it matters that absence means nothing: a name the code never reads raises nothing and
+warns nothing -- the arm trains, scores, and files under its experimental label while running
+the CONTROL. A queue row was written naming `NETT_BODY_WRAPPERS (DOES NOT EXIST)` on exactly that
+mistake; body wrappers come from the arm's MODELS entry, never from the environment.
+
   NETT_MODEL       one of the 9 labels above (required)
   NETT_EXPERIMENT  binding | parsing | viewinvariance (default binding)
   NETT_IMPRINT     imprint condition override (default = goal condition per exp)
