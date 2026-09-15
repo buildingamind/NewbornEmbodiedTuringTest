@@ -10,6 +10,7 @@ so the model NAME has to carry the manipulation.
 from __future__ import annotations
 
 import importlib.util
+import re
 import sys
 from pathlib import Path
 
@@ -210,12 +211,22 @@ def test_every_row_places_the_rollout_buffer_on_the_gpu():
             f"card with CUDA_VISIBLE_DEVICES and the only visible device is always cuda:0.")
 
 
+_WAVE_ID = re.compile(r"^proposed-wave14-(\d{2})([a-z]*)$")
+
+
 def _queue_rows():
     """The wave's rows from the fleet workspace, or None when it is not on this host.
 
     The workspace is a SEPARATE repository, so it is present on fleet nodes and absent from a
     bare clone. Returning None (-> skip) rather than failing keeps this suite runnable anywhere,
     while still reconciling wherever the file exists.
+
+    Returns (conditions, replicas). The split matters: the wave is 14 CONDITIONS, but the queue
+    also carries suffixed duplicates of some of them (01b, 02b -- second copies of the control and
+    the floor, placed on the other node because every reading in the wave is `row k - row 01`).
+    A replica is not a fifteenth condition, and counting it as one is what made a prefix match
+    wrong here. It is still reconciled, just against the row it duplicates rather than against
+    WAVE -- see the test below.
     """
     import os
     for base in (os.environ.get("NETT_WORKSPACE"),
@@ -226,8 +237,22 @@ def _queue_rows():
         if f.exists():
             import yaml
             rows = yaml.safe_load(f.read_text())
-            wave = [r for r in rows if str(r.get("id", "")).startswith("proposed-wave14")]
-            return wave or None
+            conditions, replicas = {}, []
+            for r in rows:
+                rid = str(r.get("id", ""))
+                if not rid.startswith("proposed-wave14"):
+                    continue
+                m = _WAVE_ID.match(rid)
+                # ⛔ Do NOT skip an id this pattern does not understand. Silently dropping it is
+                # exactly the failure being fixed: a row escapes the reconciliation and the
+                # duplicate it was meant to police diverges unobserved.
+                assert m, (f"{rid!r} is a wave row whose id this reconciliation cannot parse. "
+                           f"Expected proposed-wave14-NN or proposed-wave14-NNx.")
+                (conditions.setdefault(m.group(1), r) if not m.group(2)
+                 else replicas.append((m.group(1), r)))
+            if not conditions:
+                return None
+            return [conditions[k] for k in sorted(conditions)], replicas
     return None
 
 
@@ -242,13 +267,29 @@ def test_WAVE_matches_the_queue_rows_it_duplicates():
     Skips where the workspace is absent -- and says so, rather than passing quietly, because a
     silent skip is how a reconciliation stops running without anyone noticing.
     """
-    rows = _queue_rows()
-    if rows is None:
+    got = _queue_rows()
+    if got is None:
         pytest.skip("fleet workspace not on this host; nothing to reconcile against "
                     "(set NETT_WORKSPACE to point at it)")
-    assert len(rows) == len(WAVE), f"queue has {len(rows)} wave rows, WAVE has {len(WAVE)}"
+    rows, replicas = got
+    assert len(rows) == len(WAVE), f"queue has {len(rows)} wave conditions, WAVE has {len(WAVE)}"
     for row, (model, env) in zip(rows, WAVE):
         assert row["model"] == model, f"{row['id']}: queue says {row['model']!r}, WAVE says {model!r}"
         # Compare as strings: YAML yields ints for 1/32/240, the environment only ever sees text.
         got = {k: str(v) for k, v in (row["env"] or {}).items()}
         assert got == env, f"{row['id']}: queue env {got} != WAVE env {env}"
+
+    # A replica's whole purpose is to be byte-identical to the row it copies -- 01b's own `why`
+    # says "byte-identical to wave14-01 by construction". Assert it, because a replica that
+    # drifted from its base is worse than no replica: `row k - row 01` would silently subtract a
+    # different condition on one node than on the other.
+    by_num = {r["id"].rsplit("-", 1)[-1][:2]: r for r in rows}
+    for num, rep in replicas:
+        base = by_num[num]
+        assert rep["model"] == base["model"], (
+            f"{rep['id']} replicates {base['id']} but says model {rep['model']!r} "
+            f"vs {base['model']!r} -- a replica that is not identical is a second condition.")
+        renv = {k: str(v) for k, v in (rep["env"] or {}).items()}
+        benv = {k: str(v) for k, v in (base["env"] or {}).items()}
+        assert renv == benv, (
+            f"{rep['id']} replicates {base['id']} but env {renv} != {benv}.")
