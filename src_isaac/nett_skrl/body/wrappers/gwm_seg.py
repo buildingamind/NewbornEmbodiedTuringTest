@@ -4,8 +4,35 @@ Reproduces the Unity GwmSegWrapper / GwmPPO integration with the two-query
 SmallCNNVentral + Small3DCNNDorsal model, initialized entirely from scratch.
 The separate AdamW uses ventral LR 1e-4 and dorsal LR 1e-5. This 10x ratio
 is load-bearing: a faster dorsal can bend toward spatially constant flow,
-which the quadratic basis reconstructs with near-zero loss. Monitor
-seg/flow_spatial_std, not just loss, to detect that known collapse.
+which the quadratic basis reconstructs with near-zero loss.
+
+⛔ TO DETECT THAT COLLAPSE, MONITOR seg/flow_spatial_std / seg/flow_absmax --
+THE RATIO, NEVER seg/flow_spatial_std ALONE. An earlier version of this
+docstring said to watch the raw statistic. That instruction was wrong and was
+followed. ``flow_reconstruction_loss`` is a least-squares residual against a
+per-slot quadratic basis, so it is homogeneous of degree 2 in the flow:
+measured loss(c*flow) / (c**2 * loss(flow)) = 1.0000 at c = 1.0, 0.5, 0.1,
+0.01. The dorsal stream can therefore drive the loss arbitrarily low by
+SHRINKING THE MAGNITUDE of its output while learning nothing, and a plain
+``flow.std(dim=(2,3))`` falls in exact lockstep (1.0002 -> 0.0100 at c=0.01).
+A falling raw value is equally consistent with (a) the collapse, (b) uniform
+magnitude shrinkage, and (c) healthy flow that is simply small.
+
+The ratio is scale-free by construction -- invariant at 0.26743 across three
+decades of scaling, and exactly 0.0 for a spatially constant field. Reference
+values from Farneback optical flow (a classical algorithm with no learned
+weights, used as a measuring instrument and NOT as a model component, so it
+does not touch the no-pretrained-weights constraint) on the 18 real NETT
+parsing clips at the live 80x128 eye:
+
+    spatially constant flow (the collapse) .... 0.0000
+    real NETT scene flow ..................... median 0.0645 (0.0397-0.0918)
+    unstructured Gaussian noise .............. 0.2556
+
+⇒ Registered bar, on the RATIO only: < 0.02 collapsed; 0.03-0.12 structured;
+> 0.15 unstructured; 0.02-0.03 and 0.12-0.15 declared indeterminate in advance.
+See notes/researcher/flow-collapse-detector-is-scale-confounded.md (workspace
+25afda75), registered before any arm value was read.
 
 Must run AFTER framestack. The raw pair comes from the first and last RGB
 channels, reusing FrameStack's episode-reset handling without a previous-frame
@@ -87,7 +114,9 @@ class GwmSeg(SegmentationObservationWrapper):
         ], weight_decay=self.wd)
         logging.getLogger("nett.body.gwm_seg").info(
             "gwm_seg: %s, %d queries, ventral lr=%g dorsal lr=%g wd=%g flow_reg=%g, "
-            "train every %d obs; monitor seg/flow_spatial_std for collapse",
+            "train every %d obs; for collapse watch seg/flow_spatial_std / seg/flow_absmax "
+            "(the RATIO -- the raw std confounds structure with scale; bar <0.02 collapsed, "
+            "0.03-0.12 structured)",
             self.device, self.num_queries, self.lr, self.backbone_lr, self.wd,
             self.flow_reg, self.train_every,
         )
