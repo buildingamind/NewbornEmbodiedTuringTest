@@ -41,6 +41,7 @@ import os
 
 import gymnasium as gym
 import numpy as np
+import torch
 
 from ..observation import image_layout
 
@@ -70,25 +71,35 @@ class LumNorm(gym.ObservationWrapper):
         if not 0.0 < self.target_std:
             raise ValueError("NETT_LUMNORM_STD must be positive")
 
+    def _axes(self, shape):
+        """Spatial reduction axes. Reduce over the SPATIAL axes only, per channel and per frame in a
+        batch, so a channel stack of several frames is standardised frame-consistently rather than
+        having one frame's statistics imposed on another."""
+        if len(shape) not in (3, 4):
+            raise ValueError(f"LumNorm expects HWC/NHWC or CHW/NCHW, got shape {tuple(shape)}")
+        return (-2, -1) if image_layout(tuple(shape[-3:])) == "chw" else (-3, -2)
+
     def observation(self, obs):
-        # ⛔ THE REAL ENV YIELDS ``{"policy": array}``, NOT A BARE ARRAY. This read
-        # ``np.asarray(obs)`` directly, and ``np.asarray({"policy": arr})`` is a 0-d OBJECT array --
-        # so every run with this wrapper died in ``validate_tasklist`` -> ``reset`` with
-        # "expects HWC/NHWC or CHW/NCHW, got shape ()", before a single training step.
-        # (seat:insect, 2026-09-15, live smoke of wave row 03.)
-        # ⭐ The handling is not new: ``framestack.py`` already carries ``_policy_obs`` /
-        # ``_replace_policy_obs`` and sits in the SAME wrapper chain. A wrapper's contract is the
-        # chain it is installed in, not its own docstring -- this one shipped without them.
+        # ⛔ THE REAL ENV YIELDS ``{"policy": <CUDA torch.Tensor>}`` -- a dict, and a TENSOR inside it.
+        # Two separate defects, found one after the other by live smoke of wave row 03 (seat:insect,
+        # 2026-09-15). First this read ``np.asarray(obs)``, and ``np.asarray({"policy": arr})`` is a
+        # 0-d OBJECT array -> "got shape ()". With the dict unwrapped it then reached
+        # ``np.asarray(<cuda tensor>)`` -> "can't convert cuda:0 device type tensor to numpy".
+        # ⭐ THE SECOND DEFECT SURVIVED THE FIRST FIX BECAUSE EVERY FIXTURE WAS A NUMPY ARRAY. A
+        # red-then-green test proves the code handles the input THE TEST supplies; it says nothing
+        # about the input the env supplies. The tests now cover cuda and cpu tensors.
+        # ⚠ Type-preserving ON PURPOSE: a tensor in yields a tensor out, on the same device and
+        # dtype. LumNorm is ordered FIRST in the chain and does not know what follows it --
+        # FrameStack would convert to numpy itself (``_obs_to_numpy``), but a wrapper must not
+        # depend on its successor to repair its output type.
         # ⚠ Non-``policy`` keys ride through untouched: only the policy observation is an image.
         policy = _policy_obs(obs)
-        arr = np.asarray(policy)
-        if arr.ndim not in (3, 4):
-            raise ValueError(f"LumNorm expects HWC/NHWC or CHW/NCHW, got shape {arr.shape}")
-        chw = image_layout(arr.shape[-3:]) == "chw"
-        # Reduce over the SPATIAL axes only, per channel and per frame in a batch, so a
-        # channel stack of several frames is standardised frame-consistently rather than
-        # having one frame's statistics imposed on another.
-        axes = (-2, -1) if chw else (-3, -2)
+        if isinstance(policy, torch.Tensor):
+            return _replace_policy_obs(obs, self._normalise_torch(policy))
+        return _replace_policy_obs(obs, self._normalise_numpy(np.asarray(policy)))
+
+    def _normalise_numpy(self, arr):
+        axes = self._axes(arr.shape)
         x = arr.astype(np.float32) / 255.0
         mean = x.mean(axis=axes, keepdims=True)
         std = x.std(axis=axes, keepdims=True)
@@ -97,4 +108,21 @@ class LumNorm(gym.ObservationWrapper):
         # poison every downstream consumer silently.
         scale = np.where(std > 1e-6, self.target_std / np.maximum(std, 1e-6), 0.0)
         y = (x - mean) * scale + self.target_mean
-        return _replace_policy_obs(obs, (np.clip(y, 0.0, 1.0) * 255.0).round().astype(arr.dtype))
+        return (np.clip(y, 0.0, 1.0) * 255.0).round().astype(arr.dtype)
+
+    def _normalise_torch(self, t):
+        """The numpy path's twin. Stays on-device: LumNorm runs on every frame, and a round trip
+        through host memory here would be paid per step."""
+        axes = self._axes(t.shape)
+        x = t.to(torch.float32) / 255.0
+        mean = x.mean(dim=axes, keepdim=True)
+        # ⛔ ``torch.std`` DEFAULTS TO THE UNBIASED (ddof=1) ESTIMATOR AND ``np.std`` DOES NOT
+        # (ddof=0). Ported naively the two backends would disagree by a factor of
+        # sqrt(n/(n-1)) -- tiny per pixel, systematic across every frame, and invisible to any
+        # test that exercises only one backend. ``correction=0`` is what makes them the same
+        # function. test_lumnorm.py pins the two paths to identical output.
+        std = x.std(dim=axes, keepdim=True, correction=0)
+        scale = torch.where(std > 1e-6, self.target_std / torch.clamp(std, min=1e-6),
+                            torch.zeros_like(std))
+        y = (x - mean) * scale + self.target_mean
+        return (torch.clamp(y, 0.0, 1.0) * 255.0).round().to(t.dtype)

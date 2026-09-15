@@ -14,9 +14,19 @@ not the wrapper's own docstring.
 ⚠ WHY THIS WAS NOT CAUGHT: there was no lumnorm test at all. The wrapper arrived in 29e927c with a
 registry entry and no fixture, and every check that ran against it used a bare array, which is the
 one input shape the real environment never produces at reset.
+
+⛔⛔ AND THE FIRST FIX FOR IT WAS ALSO INCOMPLETE, FOR THE SAME REASON ONE LEVEL IN. Every fixture in
+the first version of this file was a NUMPY array. The dict unwrap was correct and the suite went
+green, but the real payload inside ``{"policy": ...}`` is a **CUDA torch.Tensor**, so the very next
+smoke died on ``np.asarray(<cuda tensor>)`` -> "can't convert cuda:0 device type tensor to numpy"
+(seat:insect again, on the fix's own sha). ⭐ A RED-THEN-GREEN TEST PROVES THE CODE HANDLES THE INPUT
+**THE TEST** SUPPLIES. Going green says nothing about the input the environment supplies, and the
+fixture is the thing least likely to be questioned once the bug it was written for is dead. The
+tensor cases below exist because the numpy ones could not have failed.
 """
 import numpy as np
 import pytest
+import torch
 
 from nett_skrl.body.wrappers.lumnorm import LumNorm
 
@@ -86,3 +96,73 @@ def test_still_rejects_a_genuinely_wrong_rank():
         w.observation(np.zeros(5, dtype=np.uint8))
     with pytest.raises(ValueError, match="HWC/NHWC or CHW/NCHW"):
         w.observation({"policy": np.zeros(5, dtype=np.uint8)})
+
+
+# --------------------------------------------------------------------------------------------
+# The payload type. The env hands back a CUDA tensor inside the dict, not a numpy array.
+# --------------------------------------------------------------------------------------------
+
+def _tensor_frame(seed=0, device="cpu"):
+    return torch.as_tensor(_frame(seed), device=device)
+
+
+def test_cpu_tensor_payload_is_normalised_not_crashed():
+    """The second regression: np.asarray(<tensor>) is the failure, dict or no dict."""
+    w, t = _wrapper(), _tensor_frame(4)
+    out = w.observation({"policy": t})
+    assert isinstance(out, dict)
+    assert isinstance(out["policy"], torch.Tensor), (
+        "a tensor in must yield a tensor out -- LumNorm is ordered FIRST and must not rely on a "
+        "later wrapper to repair the type it emits")
+    assert out["policy"].shape == t.shape and out["policy"].dtype == t.dtype
+
+
+def test_bare_tensor_payload_works_too():
+    """Not every chain wraps the observation in a dict; the tensor path must not need one."""
+    w, t = _wrapper(), _tensor_frame(5)
+    out = w.observation(t)
+    assert isinstance(out, torch.Tensor) and out.shape == t.shape and out.dtype == t.dtype
+
+
+def test_torch_and_numpy_backends_agree_exactly():
+    """⛔ THE ONE THAT CATCHES A SILENT PORT ERROR. The two paths are separate implementations of
+    one function, so they can drift while both stay green in isolation.
+
+    The concrete trap already avoided: ``np.std`` is the POPULATION estimator (ddof=0) while
+    ``torch.std`` defaults to the UNBIASED one (ddof=1). A naive port disagrees by sqrt(n/(n-1)) --
+    sub-pixel per frame, systematic across every frame of every run, and undetectable from either
+    backend alone."""
+    w = _wrapper()
+    for seed in range(4):
+        arr = _frame(seed)
+        got_np = w.observation(arr)
+        got_t = w.observation(torch.as_tensor(arr)).numpy()
+        assert np.array_equal(got_np, got_t), (
+            f"seed {seed}: numpy and torch backends disagree; max abs diff "
+            f"{np.abs(got_np.astype(int) - got_t.astype(int)).max()}")
+
+
+def test_a_constant_channel_does_not_produce_nan_in_either_backend():
+    """std==0 is a divide-by-zero in both implementations, and NaN would poison silently."""
+    w = _wrapper()
+    flat = np.full((2, 8, 8, 3), 7, dtype=np.uint8)
+    assert not np.isnan(w.observation(flat).astype(np.float32)).any()
+    assert not torch.isnan(w.observation(torch.as_tensor(flat)).to(torch.float32)).any()
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="no CUDA on this host")
+def test_cuda_tensor_stays_on_its_device():
+    """The exact input from the failing smoke: a cuda:0 tensor. It must neither crash nor be
+    silently migrated to the host."""
+    w, t = _wrapper(), _tensor_frame(6, device="cuda:0")
+    out = w.observation({"policy": t})["policy"]
+    assert isinstance(out, torch.Tensor)
+    assert out.device.type == "cuda", f"observation left the device: {out.device}"
+    assert np.array_equal(out.cpu().numpy(), w.observation(_frame(6)))
+
+
+def test_still_rejects_a_wrong_rank_tensor():
+    """The rank guard must hold on the tensor path too, not just the numpy one."""
+    w = _wrapper()
+    with pytest.raises(ValueError, match="HWC/NHWC or CHW/NCHW"):
+        w.observation({"policy": torch.zeros(5, dtype=torch.uint8)})

@@ -74,8 +74,8 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_LIFECYCLE_TERM_GRACE` | `"25"` | `nett_skrl/runtime/lifecycle.py:78` |
 | `NETT_LR` | `"3e-4"` | `examples/train_binding_8brain_targets.py:156` |
 | `NETT_LR_WARMUP` | *(required / no literal default)* | `examples/train_binding_8brain_targets.py:119`<br>`examples/train_binding_8brain_targets.py:125` |
-| `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:68` |
-| `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
+| `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
+| `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:527`<br>`examples/train_binding_8brain_targets.py:38` |
 | `NETT_MEDIA_ROOT` | `media` | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:796` |
 | `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:128`<br>`examples/campaign_train.py:637` |
