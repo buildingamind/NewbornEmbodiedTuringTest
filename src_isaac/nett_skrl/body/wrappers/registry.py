@@ -20,6 +20,10 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "motok_seg": ("nett_skrl.body.wrappers.motok_seg", "MoTokSeg"),
     # Frame-pair perception model: unlike MoTok, this goes AFTER framestack.
     "gwm_seg": ("nett_skrl.body.wrappers.gwm_seg", "GwmSeg"),
+    # Removes the global brightness cue that separates BACKGROUNDS (50-70 grey
+    # levels) while objects are matched to 0.1. Order it FIRST so every downstream
+    # consumer, segmenters included, sees standardised frames.
+    "lumnorm": ("nett_skrl.body.wrappers.lumnorm", "LumNorm"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }

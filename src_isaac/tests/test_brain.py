@@ -1091,3 +1091,62 @@ def test_grad_clip_scales_shared_encoder_and_heads_equally():
     assert torch.nn.utils.clip_grad_norm_.__module__.startswith("torch"), (
         "the patch must be restored on exit; leaking it would silently change every later clip"
     )
+
+
+# --- decoupled encoder: aux shapes the representation, reward shapes the heads ------
+
+
+def _decouple_models():
+    env = _FakeSkrlEnv()
+    brain = Brain(algorithm="PPO", encoder="nature_cnn",
+                  encoder_cfg={"features_dim": 32, "conv_dim": 8, "trainable": True},
+                  algorithm_cfg=_tiny_algorithm_cfg("PPO"), model={"shared_encoder": True})
+    return _build_agents(brain, env, torch.device("cpu"))[0].models["policy"]
+
+
+def _rl_path_grads(model, monkeypatch, decouple):
+    from nett_skrl.brain.models.utils.features import features_forward
+    if decouple:
+        monkeypatch.setenv("NETT_DECOUPLE_ENCODER", "1")
+    else:
+        monkeypatch.delenv("NETT_DECOUPLE_ENCODER", raising=False)
+    model.zero_grad(set_to_none=True)
+    x = torch.rand(2, 3, 64, 64)
+    features_forward(model, {"observations": x}).sum().backward()
+    enc = sum(float(p.grad.abs().sum()) for p in model.encoder.parameters() if p.grad is not None)
+    trunk = sum(float(p.grad.abs().sum()) for p in model.trunk.parameters() if p.grad is not None)
+    return enc, trunk
+
+
+def test_decoupled_encoder_blocks_the_reward_gradient_only(monkeypatch):
+    """⭐ THE OWNER'S HYPOTHESIS, PINNED: aux forms the representation, reward drives control.
+
+    ⛔ The failure this guards against is the one that would look like success: cutting the
+    gradient INSIDE the encoder, or via requires_grad, blocks the auxiliary loss too and
+    silently converts every aux arm into a frozen-encoder arm. The arms would still run and
+    still produce numbers.
+    """
+    model = _decouple_models()
+
+    enc_on, trunk_on = _rl_path_grads(model, monkeypatch, decouple=False)
+    assert enc_on > 0, "baseline: the RL path must reach the encoder when not decoupled"
+    assert trunk_on > 0
+
+    enc_off, trunk_off = _rl_path_grads(model, monkeypatch, decouple=True)
+    assert enc_off == 0, f"decoupled: the RL path must NOT reach the encoder, got {enc_off}"
+    assert trunk_off > 0, "decoupled: the heads must still train"
+
+
+def test_decoupled_encoder_leaves_the_auxiliary_path_intact(monkeypatch):
+    """The auxiliary loss calls model.encoder DIRECTLY, bypassing features_forward.
+
+    This is what makes the flag a ROUTING change rather than a freeze.
+    """
+    model = _decouple_models()
+    monkeypatch.setenv("NETT_DECOUPLE_ENCODER", "1")
+
+    model.zero_grad(set_to_none=True)
+    # exactly what an aux loss does: call the encoder itself and backprop
+    model.encoder(torch.rand(2, 3, 64, 64)).sum().backward()
+    aux = sum(float(p.grad.abs().sum()) for p in model.encoder.parameters() if p.grad is not None)
+    assert aux > 0, "decoupling must NOT block the auxiliary gradient into the encoder"
