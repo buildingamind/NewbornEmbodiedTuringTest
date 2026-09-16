@@ -69,7 +69,7 @@ from skrl import logger
 # exp(1/T), equal to e only at T=1. At its T=0.5, exp(2)=7.3891 minus 2.7183
 # leaves 4.67 of self-similarity per row. Our nt_xent masks the diagonal exactly.
 from .simclr_aux import nt_xent
-from .cltt_views import current_frame_stack
+from .cltt_views import current_frame_stack, resolve_channels_per_frame
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -315,7 +315,9 @@ class CLTTReferenceAuxLoss(nn.Module):
                 for k in (0, *self.offsets)
             ]
         if self.num_frames is None:
-            self.num_frames = views[0].shape[1] // 3
+            # ⚠ NOT `// 3`. dvs_polarity makes one frame TWO channels, and a stack depth read
+            # through the wrong divisor is reported in the log line below as fact.
+            self.num_frames = views[0].shape[1] // resolve_channels_per_frame()
             # ⛔ THE BATCH BELONGS HERE. Every level claim about this objective depends on
             # B -- NT-Xent chance is 2*ln(2B-1) summed over two offsets -- and this line
             # used to emit the offsets and the stack depth and NOT the one parameter the

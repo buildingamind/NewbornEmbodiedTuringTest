@@ -17,7 +17,8 @@ prepared stacks, unmodified. The positive pair is then two disjoint MOTION SEGME
 ⛔ AND THE GUARD THE STATIC ADAPTER MADE UNNECESSARY IS NECESSARY AGAIN. With whole stacks,
 ``stack(t)`` and ``stack(t+1)`` SHARE a frame at T=2, which lets the encoder match on a literally
 identical frame instead of learning anything. Offsets must be multiples of the stack depth. The
-depth is DISCOVERED at runtime by the parent (``shape[1] // 3``), never passed in, so the guard
+depth is DISCOVERED at runtime by the parent (``shape[1] // channels-per-frame``, 3 for RGB
+and 2 for ``dvs_polarity``), never passed in, so the guard
 fires on the realised geometry rather than on a declared one. Default offsets are therefore "2,4",
 the values the pre-``088a785`` implementation used, not the reference's "1,2".
 

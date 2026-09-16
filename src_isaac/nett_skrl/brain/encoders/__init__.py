@@ -9,6 +9,7 @@ from .compact_cnn import CompactCNN
 from .compact_cnn_pretrained import CompactCNNPretrained
 from .compact_vivit import CompactViViT
 from .compact_vit import CompactViT
+from .unity_vit import UnityViT
 from .guess_what_moves import GuessWhatMoves
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .nature_cnn import NatureCNN
@@ -23,6 +24,7 @@ __all__ = [
     "CompactCNNPretrained",
     "Compact3DCNNPretrained",
     "CompactViT",
+    "UnityViT",
     "CompactViViT",
     "GuessWhatMoves",
     "HWCFeatureExtractor",

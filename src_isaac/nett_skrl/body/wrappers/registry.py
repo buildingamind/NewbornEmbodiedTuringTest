@@ -6,6 +6,13 @@ import gymnasium as gym
 
 _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "dvs": ("nett_skrl.body.wrappers.dvs", "DVS"),
+    # Two-channel (ON, OFF) event representation. NOT a variant of "dvs" above: that one
+    # emits a single ternary channel or three colour ones, runs on the CPU via cv2, and
+    # stacks frames itself. See dvs_polarity.py's module docstring for why a second entry
+    # rather than an edit.
+    # ⚠ ORDER MATTERS: like "motok_seg" and "lumnorm" this must precede "framestack" --
+    # it consumes RAW frames and emits events, so framestack then stacks event frames.
+    "dvs_polarity": ("nett_skrl.body.wrappers.dvs_polarity", "DVSPolarity"),
     "framestack": ("nett_skrl.body.wrappers.framestack", "FrameStack"),
     # ⛔ THE MoTok ARM IS NOT AN (encoder, aux) ARM AND CANNOT BE EXPRESSED AS ONE.
     # In Unity (trainParsing.py:338, seg_wrappers.py:213) MoTok holds its OWN model

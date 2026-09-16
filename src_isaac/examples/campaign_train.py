@@ -95,6 +95,38 @@ VIT_CFG = {
 # ── The QK-ablation arms (SIDE_LOCK_INVESTIGATION.md Phases 10-12). `attn_mode` swaps the
 # token-mixing operator only; embed_dim is re-matched to the ViT arm's 697,184 in each,
 # because an ablation that also deletes a third of the parameters proves nothing.
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# WAVE 15 -- IS THE ViT's WEAKNESS ARCHITECTURAL? Six one-factor variants of VIT_CFG.
+#
+# ViT-CLTT-Ref is the only ViT arm that has ever cleared the incumbent on BU same-bg, and it
+# did so INCONCLUSIVELY (0.5696, band edge 0.5170, n=7). These rows ask whether what is
+# limiting it is the SHAPE of the encoder rather than the objective, so the aux, the imprint,
+# the offsets and the episode budget are all held at ViT-CLTT-Ref's values and exactly one
+# architectural knob moves per row.
+#
+# ⛔ EVERY embed_dim BELOW WAS SOLVED AGAINST A MEASURED BASELINE, NOT AGAINST THE "~699K"
+# COMMENT ON VIT_CFG. That annotation is the THREE-channel figure; ViT-CLTT-Ref runs
+# framestack=True, so its encoder takes 6 channels and is 804,320 parameters. Matching to
+# 699K would have handed all six rows ~13% less capacity than the arm they are compared to --
+# a capacity contrast wearing an architecture label. Each row's parameter count and its
+# deviation from 804,320 are recorded on its line; the widest is +2.12%, inside the +1.8% /
+# -1.6% this file already accepted for the QK ablations.
+#
+# ⚠ dim/head is NOT held constant and cannot be: with embed_dim re-solved per row, heads=4
+# gives 18-40 dims per head across the set. Where a row moves head count (R1) that is the
+# factor under test; elsewhere it is a consequence of the capacity match. Read no row as a
+# clean test of dim/head.
+VIT_CLTT_H8_CFG    = {**VIT_CFG, "num_heads": 8, "embed_dim": 144}   # ENC 804,320  +0.00%  d/head 18
+VIT_CLTT_P8_CFG    = {**VIT_CFG, "patch_size": 8, "embed_dim": 160}  # ENC 789,952  -1.79%  d/head 40; 40 -> 160 tokens
+VIT_CLTT_SP_CFG    = {**VIT_CFG, "pool": "spatial", "spatial_grid": (5, 4),
+                      "spatial_reduce_dim": 16, "embed_dim": 132}    # ENC 797,704  -0.82%  d/head 33
+VIT_CLTT_CONV_CFG  = {**VIT_CFG, "stem": "conv", "embed_dim": 156}   # ENC 821,337  +2.12%  d/head 39
+VIT_CLTT_D6_CFG    = {**VIT_CFG, "depth": 6, "embed_dim": 108}       # ENC 793,556  -1.34%  d/head 27
+VIT_CLTT_MLP4_CFG  = {**VIT_CFG, "mlp_ratio": 4.0, "embed_dim": 124} # ENC 818,416  +1.75%  d/head 31
+# Row 8's encoder. dvs_polarity emits 2 channels and framestack doubles that to 4, against the
+# RGB stack's 6, so embed_dim is re-solved for the narrower input: 152 -> 800,336 (-0.50%).
+VIT_CLTT_DVS_CFG   = {**VIT_CFG, "embed_dim": 152}                   # ENC 800,336  -0.50%  d/head 38  (4 input channels)
+
 VIT_NOQK_CFG = {**VIT_CFG, "embed_dim": 164, "attn_mode": "uniform"}   # ENCODER 706,368 at 128x80 (+1.8% vs ViT enc 693,728); agent 707,909
 VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # ENCODER 682,675 at 128x80 (-1.6% vs ViT enc 693,728); agent 684,216
 # ⚠ THOSE TWO ARE CLS-POOLED AND ARE NOT VALID CONTROLS. They are kept because they still
@@ -256,6 +288,68 @@ MODELS: dict[str, dict] = {
     # Reference-faithful rebuild; cltt is retained unchanged as their paired incumbent.
     "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT-CLTT-Ref":    dict(encoder="compact_vit", cfg=dict(VIT_CFG),                                            framestack=True, aux="cltt_ref", aux_weight=1.0),
+
+    # ── WAVE 15: eight ViT rows, all holding ViT-CLTT-Ref's aux/imprint/offsets/budget fixed.
+    # ⚠ Rows 1-6 move ONE architectural knob each; row 7 swaps the whole encoder for repo A's
+    # Unity default; row 8 changes the INPUT rather than the encoder. Read them as one family
+    # only for the shared question ("is the shape the limit?"), never as one comparison.
+    #
+    # R1: more heads at fixed width. Splits the SAME 144 dims into 8 subspaces of 18 instead of
+    # 4 of 36. This is the only row whose parameter count is exactly the incumbent's, because
+    # MultiheadAttention's projections do not depend on head count. More heads = more
+    # simultaneous binding relations at lower per-relation resolution.
+    "ViT-CLTT-Ref-H8":   dict(encoder="compact_vit", cfg=dict(VIT_CLTT_H8_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R2: finer patches. 5x8=40 tokens -> 10x16=160. ⭐ THE ROW WITH THE CLEAREST PRIOR: at
+    # patch 16 a chick-scale object can sit inside ONE token, so "parsing" has nothing to route
+    # between. 4x the tokens is 16x the attention work -- budget wall-clock, not parameters.
+    "ViT-CLTT-Ref-P8":   dict(encoder="compact_vit", cfg=dict(VIT_CLTT_P8_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R3: spatial pooling instead of CLS. ⛔ CLS pooling reads ONE token, which is why the
+    # ViViT arms scored EXACT chance on a supervised small-stimulus probe: a sub-patch object is
+    # averaged ~64x into the global summary. This is the row that tests whether the ViT's
+    # weakness is in the READOUT rather than the trunk -- if so, the trunk rows should all fail
+    # and this one should not.
+    "ViT-CLTT-Ref-Sp":   dict(encoder="compact_vit", cfg=dict(VIT_CLTT_SP_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R4: convolutional stem (Xiao et al. 2021, "Early Convolutions Help Transformers See
+    # Better"). A linear patch projection has no local inductive bias at all; the conv stem
+    # gives the first layer edges and corners without giving the trunk convolution.
+    "ViT-CLTT-Ref-Conv": dict(encoder="compact_vit", cfg=dict(VIT_CLTT_CONV_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R5: depth over width -- 6 blocks of 108 instead of 3 of 144. Binding is compositional, so
+    # if the limit is the NUMBER of routing steps rather than their width this is the row that
+    # moves. ⚠ Its 3-of-4 counterpart is R6: they trade the same budget in opposite directions.
+    "ViT-CLTT-Ref-D6":   dict(encoder="compact_vit", cfg=dict(VIT_CLTT_D6_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R6: width over depth -- mlp_ratio 2.0 -> 4.0 (the ViT paper's own ratio) at 3 blocks of
+    # 124. Per-token capacity up, routing steps unchanged.
+    "ViT-CLTT-Ref-MLP4": dict(encoder="compact_vit", cfg=dict(VIT_CLTT_MLP4_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R7: repo A's ORIGINAL Unity ViT -- vit.py -> vit_contrastive.LitClassifier -> SimpleViT --
+    # vendored at nett_skrl/brain/encoders/unity_vit.py because vit_pytorch and lightning are
+    # not installed and this venv is shared with running arms. Its defaults are kept verbatim,
+    # including three upstream quirks that look like bugs (no Xavier init, a no-op fc=Identity,
+    # a never-read projection head); see that file's docstring for each and for the two forced
+    # deviations. Differs from every row above in FOUR ways at once (patch 4, dim 64, sincos
+    # position, mean pooling) plus size.
+    # ⛔ THE ONE ROW THAT IS NOT CAPACITY-MATCHED, DELIBERATELY: 237,888 encoder parameters,
+    # 30% of the 804,320 the others carry. Matching it would stop it being the default, which
+    # is the only thing it is for. A loss here is therefore NOT evidence about architecture --
+    # it is confounded with capacity by construction. Only a WIN is interpretable.
+    # ⚠ 640 tokens at patch 4 vs 40 at patch 16: ~256x the attention work at 1/3 the params.
+    "UnityViT-CLTT-Ref": dict(encoder="unity_vit",   cfg={"trainable": True, "features_dim": 512}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # R8: the same encoder fed EVENTS instead of pixels. dvs_polarity replaces each frame with
+    # a 2-channel (ON, OFF) brightness-change map, so framestack hands the encoder 4 channels
+    # rather than 6 and embed_dim is re-solved to 152 to hold capacity.
+    # ⛔ `pre=` IS LOAD-BEARING: the wrapper must sit INNERMOST, before framestack. It is itself
+    # temporal -- it holds the previous frame -- so it must consume RAW frames and emit events
+    # that framestack then stacks. Reversed it would difference two already-stacked tensors.
+    # ⛔ THE ENV BLOCK IS NOT OPTIONAL. cltt_ref_aux derives its stack depth as
+    # `channels // channels-per-frame`, which defaults to 3 for RGB; at 4 channels that is
+    # 4 % 3 != 0 and the arm DIES on its first aux step. NETT_AUX_CLTT_CHANNELS_PER_FRAME=2 is
+    # how the arm states the truth. The failure is loud, which is the only reason a default is
+    # tolerable here -- see cltt_views.resolve_channels_per_frame for the residual hazard.
+    # ⚠ WHAT THIS ARM CANNOT SEE: a stationary object against a stationary agent produces zero
+    # events in both channels. Colour is gone by construction -- that is the point, since the
+    # backgrounds are cued by brightness and colour while the objects are matched for them --
+    # but so is every static cue, and the falsifier must be able to tell "motion is enough" from
+    # "the encoder learned nothing".
+    "ViT-CLTT-Ref-DVS":  dict(encoder="compact_vit", cfg=dict(VIT_CLTT_DVS_CFG),  framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
     # ⭐ 3DCNN-CLTT-Ref: the ONE-FACTOR cross of the two arms that currently top the two
     # chick-referenced parsing conditions. cfg is BYTE-IDENTICAL to "3DCNN" above -- the only
     # difference from that row is aux="cltt_ref", exactly as "ViT-CLTT-Ref" differs from "ViT".

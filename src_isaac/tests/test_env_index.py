@@ -89,3 +89,98 @@ def test_the_index_records_that_NETT_AUX_BATCH_has_more_than_one_default():
         "NETT_AUX_BATCH now has a single default. If that was a deliberate unification, delete "
         "this test and say so; if it is accidental, the differing defaults were load-bearing.")
     assert len(sites) > 5, f"expected many read sites, found {len(sites)}"
+
+
+def test_env_flag_knobs_are_indexed():
+    """⛔ `_env_flag` WAS THIS INDEX'S BLIND SPOT, and a blind spot in an ABSENCE CHECK is the
+    worst kind: the staleness test above cannot see a variable the scanner's pattern never
+    matches, so it passed while nine of the ten `_env_flag` knobs were missing from a document
+    whose entire value is that absence means something.
+
+    Pinned by scanning for the CALL SITES rather than by listing names, so a knob added tomorrow
+    is covered without editing this test.
+    """
+    names = set()
+    for top in gen.SCAN:
+        for path in (ROOT / top).rglob("*.py"):
+            if "__pycache__" in path.parts:
+                continue
+            names |= set(re.findall(r"""_env_flag\(\s*["'](NETT_[A-Z0-9_]+)["']""",
+                                    path.read_text()))
+    assert len(names) >= 5, f"expected several _env_flag knobs to exist, found {sorted(names)}"
+    missing = names - set(gen.scan())
+    assert not missing, (
+        f"{sorted(missing)} are read through _env_flag but absent from the index. The scanner's "
+        "PAT must match every wrapper around os.environ, not just literal environ.get calls.")
+
+
+def test_env_flag_without_an_explicit_default_is_reported_as_False_not_required():
+    """⚠ `_env_flag(name)` defaults to False -- a real default. Reporting it as
+    "required / no literal default" would send a reader hunting for a value they must supply."""
+    src = "x = _env_flag('NETT_MADE_UP_FLAG')\ny = _env_flag('NETT_MADE_UP_TWO', True)\n"
+    hits = {m.group("name3"): (m.group("default3") or "").strip() or None
+            for m in gen.PAT.finditer(src) if m.group("name3")}
+    assert set(hits) == {"NETT_MADE_UP_FLAG", "NETT_MADE_UP_TWO"}
+    assert hits["NETT_MADE_UP_TWO"] == "True"
+    assert hits["NETT_MADE_UP_FLAG"] is None      # scan() then substitutes "False"
+    from_scan = gen.scan()
+    assert any(d == "False" for _, _, d in from_scan["NETT_DVS_BLUR"]) or \
+        any(d == "True" for _, _, d in from_scan["NETT_DVS_BLUR"])
+
+
+def test_a_name_bound_to_a_constant_is_indexed():
+    """⛔ `OFFSETS_ENV = "NETT_AUX_CLTT_REF_OFFSETS"` then `environ.get(self.OFFSETS_ENV, ...)`
+    puts the literal nowhere near the read. Both live CLTT losses name their offsets knob this
+    way, and BOTH were missing -- one of them is set by a queued wave-15 row, so the row named a
+    variable the index said did not exist.
+
+    ⚠ The stack variant is the harder half: its binding is in `cltt_ref_stack_aux.py` and the
+    READ is in its parent class in another file, so a per-file resolution finds the binding, sees
+    no read beside it, and drops the name silently.
+    """
+    found = gen.scan()
+    for name in ("NETT_AUX_CLTT_REF_OFFSETS", "NETT_AUX_CLTT_STACK_OFFSETS", "NETT_REAP_TOKEN"):
+        assert name in found, f"{name} is read through a constant but is absent from the index"
+
+
+def test_a_helper_call_taking_a_constant_is_indexed():
+    """Both indirections at once: `_env_int(ENV_VAR, DEFAULT)`. Neither the helper pattern (it
+    wants a literal) nor a constant pattern restricted to `environ.get` can see it."""
+    assert "NETT_KIT_THREADS" in gen.scan()
+
+
+def test_a_call_split_across_lines_is_indexed():
+    """⛔ THE SCANNER USED TO READ LINE BY LINE, so
+    `Path(os.environ.get("NETT_CAMPAIGN_DIR",\\n    default))` matched nothing at all."""
+    found = gen.scan()
+    assert "NETT_CAMPAIGN_DIR" in found
+    src = (ROOT / "examples" / "campaign_run.py").read_text().splitlines()
+    line = found["NETT_CAMPAIGN_DIR"][0][1]
+    assert "NETT_CAMPAIGN_DIR" in src[line - 1], "reported line does not contain the read"
+
+
+def test_the_generator_does_not_index_its_own_patterns():
+    """⛔ Whole-file scanning made this file index ITS OWN comments -- inventing a variable from a
+    docstring example and filing the generator as a reader of two real knobs. An index that lists
+    itself as a consumer makes the provenance column untrustworthy for every row."""
+    sites = [rel for hits in gen.scan().values() for rel, _, _ in hits]
+    assert not [r for r in sites if r.endswith("gen_env_index.py")]
+    assert "NETT_FOO" not in gen.scan(), "a docstring example leaked into the index"
+
+
+def test_reported_line_numbers_point_at_the_read():
+    """⚠ Line numbers now come from a character OFFSET rather than an enumerate() counter. An
+    off-by-one there is invisible in the diff and wrong in every provenance link."""
+    found = gen.scan()
+    checked = 0
+    for name, hits in found.items():
+        for rel, line, _ in hits:
+            text = (ROOT / rel).read_text().splitlines()
+            assert 1 <= line <= len(text), f"{name}: line {line} out of range in {rel}"
+            window = "\n".join(text[max(0, line - 1):line + 3])
+            # Either the literal is right there, or it is a constant/helper read -- in which case
+            # the line must at least contain an environ/helper call.
+            assert name in window or re.search(r"environ|getenv|_env_[a-z_]+", window), (
+                f"{name}: {rel}:{line} contains neither the name nor an env read")
+            checked += 1
+    assert checked > 150, f"expected to check many sites, checked {checked}"

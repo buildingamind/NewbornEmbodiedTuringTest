@@ -132,6 +132,9 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "compact_cnn_pretrained": encoders.CompactCNNPretrained,
     "compact_3dcnn_pretrained": encoders.Compact3DCNNPretrained,
     "compact_vit": encoders.CompactViT,
+    # Repo A's ORIGINAL Unity ViT (vit.py -> vit_contrastive.LitClassifier -> SimpleViT),
+    # vendored because vit_pytorch/lightning are not installed. See unity_vit.py.
+    "unity_vit": encoders.UnityViT,
     "compact_3dcnn": encoders.Compact3DCNN,
     "compact_vivit": encoders.CompactViViT,
     "simclr_cltt": encoders.SimCLRCLTT,
