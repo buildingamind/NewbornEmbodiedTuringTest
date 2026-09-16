@@ -222,6 +222,12 @@ def slot_contrast_diagnostics(s1: torch.Tensor, s2: torch.Tensor, temperature: f
         pos_acc ~= 1/B  AND excess <= 0  -> constant-slot collapse
         pos_acc ~ chance                 -> no correspondence learned
 
+    ⛔ AND THE LAST TWO ROWS ARE NOT TOLD APART BY ANY SINGLE READ OF THIS STATISTIC. Verified
+    over 200 seeds: the orderings that look structural on one seed hold 132/200 and 59/200. The
+    separator is that the COLLAPSE IS EXACT AND PERSISTENT -- `ss_pos_acc_x_batch` pinned at
+    exactly 1.0 and `ss_input_dependence` at exactly 0.0, every read -- where no-correspondence
+    only brushes those values and moves off them. Read three CONSECUTIVE updates, never one.
+
     ⚠ THE LAST ROW IS THE STARTING STATE, NOT A FAILURE, and that changes when this is read.
     `slots_t` and `slots_n` are separate forward calls each drawing their own `randn`, so there
     is no index correspondence at step 0 and chance-level pos_acc is CORRECT at init. Unlike
@@ -276,12 +282,26 @@ def slot_contrast_diagnostics(s1: torch.Tensor, s2: torch.Tensor, temperature: f
         # ⭐⭐ INPUT DEPENDENCE, AND IT FALLS OUT OF THE ACROSS-NULL RATHER THAN NEEDING A
         # SEPARATE INSTRUMENT. If slot k is the same vector whatever the image, the
         # across-image same-slot column is IN THE TIE SET with the positive, so `across`
-        # RISES TO MEET `pos_acc`. Measured on the three constructed regimes, B=32 K=4:
-        #     healthy     pos 1.0000  across 0.0000  -> 1.0000
-        #     degenerate  pos 0.0312  across 0.0312  -> 0.0000
-        #     nocorr      pos 0.0156  across 0.0078  -> 0.0078
-        # ⇒ `pos_acc` separates correspondence from none; THIS separates slots that depend on
-        # the image from constants with stable indices -- the axis `pos_acc` alone cannot see.
+        # RISES TO MEET `pos_acc` and the difference goes to zero.
+        #     healthy     -> ~1.0   (input-driven slots)
+        #     degenerate  -> EXACTLY 0.0, zero variance, 200/200 seeds x 4 (B,K)
+        #
+        # ⛔⛔⛔ AND IT DOES *NOT* SEPARATE THE COLLAPSE FROM NO-CORRESPONDENCE. I CLAIMED IT
+        # DID, ON ONE SEED, AND A 200-SEED SWEEP BY THE RESEARCHER SEAT REFUTED IT:
+        #     input_dep(degenerate) < input_dep(nocorr)   in 59/200   <- I claimed ~always
+        #     `across == pos` true of degen but not nocorr   132/200  <- I claimed structural
+        # The reason is that degenerate sits at EXACTLY 0 while no-correspondence is NOISE
+        # CENTRED SLIGHTLY BELOW ZERO (mean -0.0011, range -0.0312..+0.0234), so the collapse
+        # is ABOVE nocorr more often than below -- the opposite of the ordering I asserted. My
+        # single seed happened to draw nocorr at +0.0078. ⇒ This field is a discriminator
+        # against HEALTHY only. [[a-repeat-that-varies-nothing]] in reverse: I read one draw
+        # of a noisy quantity as a structural constant because it sat where my story wanted it.
+        #
+        # ⇒ WHAT ACTUALLY SEPARATES COLLAPSE FROM NO-CORRESPONDENCE IS EXACTNESS AND
+        # PERSISTENCE, NOT A THRESHOLD, and it is free because this runs every update: the
+        # collapse is PINNED at exactly 1.0 / exactly 0.0, while no-correspondence merely
+        # touches those values (~1.5% of reads) and scatters. See the registered kill rule --
+        # three CONSECUTIVE reads, not one.
         # ⚠ COMPLEMENTARY TO `mask_variance_excess`, NOT A REPLACEMENT: that one measures input
         # dependence of the ATTENTION MASKS, this one of the SLOT VECTORS as the contrast
         # consumes them. Two different objects; agreement between them is evidence, and

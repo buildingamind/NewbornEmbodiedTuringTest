@@ -557,27 +557,50 @@ def test_the_diagnostic_separates_the_three_regimes(kind):
         assert r["ss_pos_acc_x_batch"] < 0.5 * b
 
 
-def test_the_collapse_is_distinguishable_from_no_correspondence():
-    """⛔ NECESSARY AND SEPARATE. Both regimes give a LOW pos_acc; an instrument that only
-    said "low" would collapse the researcher's rows 2 and 3 into one reading, and they call
-    for opposite actions -- one is a dead arm, the other is the STARTING state."""
+def test_the_collapse_is_EXACT_where_no_correspondence_only_brushes_the_value():
+    """⛔ THE REAL SEPARATOR IS EXACTNESS, NOT AN ORDERING. Both the constant-slot collapse and
+    the no-correspondence state give a LOW pos_acc, and they call for opposite actions -- one is
+    a dead arm, the other is the correct STARTING state. What tells them apart is that the
+    collapse is PINNED at exactly 1.0 / exactly 0.0 by construction (B columns tie, argmax takes
+    the first), while no-correspondence is a noisy quantity that merely passes through.
+    """
     b, k, d = 32, 4, 16
-    deg = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "degenerate"), 0.1, k)
-    noc = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "nocorr"), 0.1, k)
-    hea = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "healthy"), 0.1, k)
-    # 1. pos_acc orders them, but does NOT separate the two low cases by much
-    assert hea["ss_pos_acc"] > deg["ss_pos_acc"] > noc["ss_pos_acc"], (hea, deg, noc)
-    # 2. ⭐ the collapse's signature is across RISING TO MEET pos_acc: slot k is the same
-    #    vector in every image, so the across-image same-slot column is in the tie set.
-    assert deg["ss_shuffled_acc_across"] == pytest.approx(deg["ss_pos_acc"], abs=1e-6), deg
-    assert hea["ss_shuffled_acc_across"] < 0.1 * hea["ss_pos_acc"], hea
-    # 3. ⇒ input dependence separates HEALTHY from BOTH low regimes, which pos_acc cannot
-    assert hea["ss_input_dependence"] > 0.9, hea
-    assert abs(deg["ss_input_dependence"]) < 1e-6, deg
-    assert noc["ss_input_dependence"] < 0.05, noc
-    # 4. and pos_acc_x_batch pins the collapse at ~1.0 without a hardcoded absolute
-    assert deg["ss_pos_acc_x_batch"] == pytest.approx(1.0, abs=0.5)
-    assert hea["ss_pos_acc_x_batch"] > 0.5 * b
+    for seed in range(40):
+        deg = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "degenerate", seed), 0.1, k)
+        assert abs(deg["ss_pos_acc_x_batch"] - 1.0) < 1e-6, (seed, deg)
+        assert abs(deg["ss_input_dependence"]) < 1e-6, (seed, deg)
+    exact = sum(
+        1 for seed in range(40)
+        if abs(slotc.slot_contrast_diagnostics(
+            *_slots(b, k, d, "nocorr", seed), 0.1, k)["ss_pos_acc_x_batch"] - 1.0) < 1e-6)
+    assert exact < 8, f"no-correspondence hit exactly 1.0 in {exact}/40 -- exactness is not rare"
+
+
+def test_a_SINGLE_read_cannot_tell_the_collapse_from_no_correspondence():
+    """⛔⛔⛔ THIS PINS A REFUTATION OF MY OWN CLAIM, SO IT CANNOT COME BACK.
+
+    I asserted, from ONE seed, that `ss_input_dependence` and `across == pos_acc` separate the
+    constant-slot collapse from no-correspondence. A 200-seed sweep by the researcher seat found
+    the first holds 59/200 -- WORSE THAN A COIN FLIP IN THE DIRECTION I CLAIMED -- and the second
+    132/200. Degenerate sits at exactly 0 while no-correspondence is noise centred slightly BELOW
+    zero (mean -0.0011), so the collapse is ABOVE nocorr more often than below: the opposite
+    ordering. My single seed happened to draw nocorr at +0.0078.
+
+    ⇒ The lesson is not "that claim was wrong", it is that ONE DRAW OF A NOISY QUANTITY READ AS A
+    STRUCTURAL CONSTANT looks exactly like a discriminator when it lands where your story wants
+    it. This test fails if anyone re-derives the ordering claim from a small sample.
+    """
+    b, k, d = 32, 4, 16
+    n = 60
+    holds = sum(
+        1 for seed in range(n)
+        if slotc.slot_contrast_diagnostics(*_slots(b, k, d, "degenerate", seed), 0.1, k
+                                           )["ss_input_dependence"]
+        < slotc.slot_contrast_diagnostics(*_slots(b, k, d, "nocorr", seed), 0.1, k
+                                          )["ss_input_dependence"])
+    assert holds < 0.9 * n, (
+        f"input_dependence ordering held {holds}/{n}; it is NOT a single-read discriminator "
+        "against no-correspondence, and treating it as one is the error this test exists for")
 
 
 def test_the_two_nulls_are_not_one_null():
