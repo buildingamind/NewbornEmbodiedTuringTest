@@ -235,6 +235,13 @@ class CLTTReferenceAuxLoss(nn.Module):
 
     needs_memory = True
 
+    # ⭐ THE TWO VARIANT POINTS, named so a subclass changes them and nothing else. The
+    # incumbent's values are unchanged and MUST stay unchanged: already-scored ViT-CLTT-Ref and
+    # SimCLR-CLTT-Ref arms keep their definition. See CLTTReferenceStackAuxLoss for the variant
+    # that gives a MOTION encoder something to read. [[a-knob-nothing-reads-runs-the-control]]
+    OFFSETS_ENV = "NETT_AUX_CLTT_REF_OFFSETS"
+    DEFAULT_OFFSETS = "1,2"
+
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
         # GATE A control, OFF unless asked for. One extra similarity matrix per offset, no
@@ -242,14 +249,14 @@ class CLTTReferenceAuxLoss(nn.Module):
         self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
         self.last_diag: dict | None = None
         self.last_scalars: dict = {}
-        offsets = os.environ.get("NETT_AUX_CLTT_REF_OFFSETS", "1,2")
+        offsets = os.environ.get(self.OFFSETS_ENV, self.DEFAULT_OFFSETS)
         try:
             self.offsets = tuple(int(k.strip()) for k in offsets.split(","))
             if not self.offsets or any(k <= 0 for k in self.offsets):
                 raise ValueError
         except ValueError as exc:
             raise ValueError(
-                "NETT_AUX_CLTT_REF_OFFSETS must be a comma-separated list of "
+                f"{self.OFFSETS_ENV} must be a comma-separated list of "
                 f"at least one positive integer; got {offsets!r}."
             ) from exc
         self.max_samples = int(os.environ.get("NETT_AUX_BATCH", "512"))
@@ -261,6 +268,15 @@ class CLTTReferenceAuxLoss(nn.Module):
 
     def attach_memory(self, memory) -> None:
         self._memory = memory
+
+    def _make_views(self, views, encoder):
+        """Reference-faithful: each view is the CURRENT RGB frame repeated across the T slots.
+
+        ⛔ This is the line that decides what the objective is actually invariant to, and for a
+        motion encoder it decides that the answer is "nothing temporal" -- the repeated slots make
+        every view a still image. Overridden by CLTTReferenceStackAuxLoss.
+        """
+        return [current_frame_stack(view) for view in views]
 
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
         """Ignore the PPO minibatch; draw temporal windows from attached memory."""
@@ -318,7 +334,7 @@ class CLTTReferenceAuxLoss(nn.Module):
                 math.log(2 * batch - 1), len(self.offsets),
                 len(self.offsets) * math.log(2 * batch - 1),
             )
-        views = [current_frame_stack(view) for view in views]
+        views = self._make_views(views, encoder)
 
         z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []

@@ -59,6 +59,11 @@ def _build_cltt_ref(encoder):
     return CLTTReferenceAuxLoss(encoder)
 
 
+def _build_cltt_ref_stack(encoder):
+    from .cltt_ref_stack_aux import CLTTReferenceStackAuxLoss
+    return CLTTReferenceStackAuxLoss(encoder)
+
+
 def _build_cltt_schneider(encoder):
     from .cltt_schneider_aux import CLTTSchneiderAuxLoss
     return CLTTSchneiderAuxLoss(encoder)
@@ -113,6 +118,7 @@ AUX_LOSSES = {
     # PPO -- but the registry entry was simply missing. Added 2026-09-02.
     "cltt": _build_cltt,
     "cltt_ref": _build_cltt_ref,
+    "cltt_ref_stack": _build_cltt_ref_stack,
     "cltt_schneider": _build_cltt_schneider,
     "vicreg": _build_vicreg,
     "vicreg_tt": _build_vicreg_tt,

@@ -272,6 +272,11 @@ MODELS: dict[str, dict] = {
     # a spatial backbone. Same objective, different quantity being made invariant. That is the
     # hypothesis under test, not an implementation detail -- do not report it as "CLTT on 3DCNN".
     "3DCNN-CLTT-Ref":  dict(encoder="compact_3dcnn",  cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # ⭐ The MOTION half of the pair. Identical to 3DCNN-CLTT-Ref in every field but `aux`: the
+    # views are whole temporally-offset stacks instead of a repeated still frame, so the Conv3d
+    # gets real temporal gradient. Run BOTH -- one arm cannot separate "a contrastive objective
+    # helps this encoder" from "a contrastive objective OVER MOTION helps this encoder".
+    "3DCNN-CLTT-Stack": dict(encoder="compact_3dcnn",  cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="cltt_ref_stack", aux_weight=1.0),
     # Schneider's single-frame temporal positives come from attached rollout memory.
     "SimCLR-CLTT-Schneider": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=False, aux="cltt_schneider", aux_weight=1.0),
     "ViT-CLTT-Schneider":    dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=False, aux="cltt_schneider", aux_weight=1.0),
