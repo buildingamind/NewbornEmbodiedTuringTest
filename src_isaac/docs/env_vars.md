@@ -23,7 +23,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_AUX_CLTT_REF_OFFSETS` | `"1,2"` | `nett_skrl/brain/aux/cltt_ref_aux.py:245` |
 | `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:256` |
 | `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:30`<br>`examples/campaign_train.py:601`<br>`examples/campaign_train.py:879` |
-| `NETT_AUX_STRICT` | `""` | `nett_skrl/brain/aux/ppo_aux.py:406` |
+| `NETT_AUX_STRICT` | `""` | `nett_skrl/brain/aux/ppo_aux.py:416` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:87` |
 | `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:31`<br>`examples/campaign_train.py:602`<br>`examples/campaign_train.py:880` |
 | `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:524`<br>`examples/train_binding_8brain_targets.py:41` |

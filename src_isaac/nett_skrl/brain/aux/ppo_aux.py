@@ -372,6 +372,16 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                     value_loss = self.cfg.value_loss_scale * F.mse_loss(sampled_returns, predicted_values)
 
                     # ---- auxiliary SimCLR contrastive loss (shapes encoder) ----
+                    # ⛔ THIS RUNS ONCE PER MINIBATCH, NOT ONCE PER UPDATE. The aux module
+                    # therefore takes `learning_epochs * mini_batches` gradient steps per PPO
+                    # update -- 10 * 16 = 160 at fleet defaults, so a 125-update arm gives the
+                    # aux ~20,000 steps, not 125. Read the loop this line sits in, never the
+                    # update counter: "the arm only got N updates" is off by 160x as an
+                    # argument about whether an auxiliary objective had time to learn.
+                    # ⚠ Second time this nesting has been misread in this file (the 16-vs-160
+                    # averaging divisor at the `track_data` site below was the first, and the
+                    # same seat made both). The hazard is the file's structure, not the reader:
+                    # emission and increment sit at different depths throughout.
                     aux_loss = self._aux_weight * self._aux.compute(
                         self._aux_encoder, sampled_observations
                     )
