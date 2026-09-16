@@ -272,7 +272,16 @@ def test_WAVE_matches_the_queue_rows_it_duplicates():
         pytest.skip("fleet workspace not on this host; nothing to reconcile against "
                     "(set NETT_WORKSPACE to point at it)")
     rows, replicas = got
-    assert len(rows) == len(WAVE), f"queue has {len(rows)} wave conditions, WAVE has {len(WAVE)}"
+    # ⚠ Name WHICH ids differ, not just how many. A bare count tells the next reader that the two
+    # lists disagree and leaves them to diff two files by eye; the ids point straight at the edit.
+    if len(rows) != len(WAVE):
+        q = {r["id"].rsplit("-", 1)[-1] for r in rows}
+        w = {f"{i + 1:02d}" for i in range(len(WAVE))}
+        raise AssertionError(
+            f"queue has {len(rows)} wave conditions, WAVE has {len(WAVE)}.\n"
+            f"  numbers only in the queue: {sorted(q - w)}\n"
+            f"  numbers only in WAVE     : {sorted(w - q)}\n"
+            f"  (replicas are excluded from this count by design: {[r['id'] for _, r in replicas]})")
     for row, (model, env) in zip(rows, WAVE):
         assert row["model"] == model, f"{row['id']}: queue says {row['model']!r}, WAVE says {model!r}"
         # Compare as strings: YAML yields ints for 1/32/240, the environment only ever sees text.
