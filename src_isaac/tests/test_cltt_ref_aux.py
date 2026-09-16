@@ -433,9 +433,39 @@ def test_episode_window_helper_supports_getter_and_rollout_ring_seam():
     assert valid.tolist() == [True, True, True, False, False, True, True, True]
 
 
+def test_cltt_ref_does_not_support_transit_masking_and_that_is_asserted_not_assumed():
+    """⛔ `NETT_AUX_TRANSIT_MASK` IS READ BY `vicreg_tt_aux` AND BY NOTHING ELSE.
+
+    This test exists because the parametrisation below USED to sweep `mask=[False, True]`
+    across `kind=[cltt_ref, vicreg_tt]`, and for `cltt_ref` that factor VARIED NOTHING: the
+    module never reads the variable, so the two cases were byte-identical runs. Both passed,
+    and a test whose name and parameters both say "mask" is exactly what makes a reader
+    conclude the feature is covered. (Found by the lion seat, reproduced by commander, and it
+    gated a registered precondition on a procedure with no implementation.)
+
+    ⇒ The absence is now an ASSERTION. If someone adds transit masking to cltt_ref, this fails
+    and points at the registration that depends on the answer -- which is the behaviour a
+    silent zero-variance parameter could never have.
+    [[a-repeat-that-varies-nothing]] [[a-knob-nothing-reads-runs-the-control]]
+    """
+    import re
+    from nett_skrl.brain.aux import cltt_ref_aux
+    src = Path(cltt_ref_aux.__file__).read_text()
+    # The one "transit" in this module is a comment about done-flag TRANSITIONS.
+    reads = re.findall(r"NETT_AUX_TRANSIT_MASK", src)
+    assert reads == [], (
+        f"cltt_ref_aux now reads NETT_AUX_TRANSIT_MASK ({len(reads)} sites). That is a real "
+        f"capability change: the 14-condition wave's rows 04/05 have a registered precondition "
+        f"written against this absence, and notes/researcher/fourteen-condition-wave.md section "
+        f"7 must be updated in the same change.")
+
+
 @pytest.mark.parametrize("kind", ["cltt_ref", "vicreg_tt"])
 @pytest.mark.parametrize("mask", [False, True])
 def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask):
+    """⚠ `mask` is a live factor for vicreg_tt ONLY; cltt_ref ignores it by construction and
+    the case above asserts that. Kept across both so the RESET-exclusion behaviour -- which is
+    what this test is actually about -- is checked for each module under both settings."""
     from nett_skrl.brain.aux import vicreg_tt_aux
 
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2")
