@@ -438,3 +438,66 @@ def test_every_registered_aux_kind_exposes_a_head():
         "the sweep could not construct these, so it did NOT check them: " + "; ".join(unbuilt)
     )
     assert len(AUX_LOSSES) >= 11, f"registry shrank to {len(AUX_LOSSES)}; is this sweep still real?"
+
+
+def test_the_bare_mask_variance_cannot_GRADE_input_dependence_at_init():
+    """⛔ THE CONFOUND THE NULL EXISTS FOR, AND IT IS NARROWER THAN "the measure is broken".
+
+    `test_collapsed_slots_show_near_zero_mask_variance` above is still true: zeroing to_k/to_v
+    makes every logit 0, attention uniform and identical for every batch element, so the bare
+    variance collapses. The bare measure DOES detect the total-collapse ENDPOINT.
+
+    What it cannot do is GRADE input dependence, because `SlotAttention` draws
+    `mu + log_sigma.exp() * randn(b, K, D)` -- a random slot init PER BATCH ELEMENT -- so
+    across-batch variance has two sources:
+
+        input dependence (the signal)  and  slot-init noise (which SHRINKS as log_sigma trains)
+
+    The decisive input is a batch of IDENTICAL images: zero input-dependent variance by
+    construction, so whatever the bare statistic reports there is pure noise. At fresh init it
+    reports the SAME ORDER as on distinct images -- i.e. no discriminating power at all.
+
+    ⇒ That is why a FALLING mask_variance early in training cannot be read as degeneracy: it is
+    also exactly what the noise term shrinking looks like. The insect seat measured that fall in
+    7/7 brains over 4 updates and correctly declined to call it degeneracy; this test records the
+    instrument-level reason, which is a defect in this diagnostic rather than a limit on their
+    reading.
+    """
+    import torch
+    from nett_skrl.brain.aux.slot_contrast_aux import SlotAttention
+
+    torch.manual_seed(0)
+    B, K, D, N = 32, 4, 64, 72
+    sa = SlotAttention(in_dim=D, slot_dim=D, slots=K).eval()
+
+    torch.manual_seed(1)
+    distinct = torch.randn(B, N, D)
+    identical = distinct[:1].expand(B, N, D).contiguous()
+
+    def bare(x):
+        with torch.no_grad():
+            return float(sa(x)[1].var(dim=0).mean())
+
+    v_distinct, v_identical = bare(distinct), bare(identical)
+
+    # Identical inputs have no input-dependent variance, yet the bare statistic reports a value
+    # of the same order -- so the bare number is not a measure of input dependence at init.
+    assert v_identical > 0.5 * v_distinct, (
+        f"identical-input variance {v_identical:.3e} vs distinct {v_distinct:.3e}: the bare "
+        f"measure now DOES separate them at init, so this test's premise has changed -- re-derive "
+        f"whether mask_variance_null is still needed before deleting it.")
+
+
+def test_the_null_is_emitted_and_reaches_the_reader(monkeypatch):
+    """A diagnostic that never reaches `last_scalars` is not a diagnostic (ppo_aux.py:442)."""
+    monkeypatch.setenv("NETT_SLOTC_DIAG", "1")
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    aux.compute(enc, obs[0])
+    for key in ("mask_variance", "mask_variance_null", "mask_variance_excess"):
+        assert key in aux.last_scalars, f"{key} never reaches last_scalars"
+    assert aux.last_scalars["mask_variance_null"] >= 0.0, "null kept its negative sentinel"
+    assert aux.last_scalars["mask_variance_excess"] == pytest.approx(
+        aux.last_scalars["mask_variance"] - aux.last_scalars["mask_variance_null"])

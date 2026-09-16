@@ -264,6 +264,9 @@ class SlotContrastAuxLoss(nn.Module):
         # Diagnostics, read by the screening harness. Sentinels are negative so they cannot
         # collide with a variance, which is >= 0.
         self.last_mask_variance: float = -1.0
+        #: Slot-init-noise floor for `last_mask_variance`. Same sentinel discipline: negative so
+        #: "diagnostic off" cannot be read as "null was zero".
+        self.last_mask_variance_null: float = -1.0
         self.last_terms: tuple[float, float, float] | None = None
         # ⛔ `last_scalars` IS THE CHANNEL ppo_aux READS (ppo_aux.py:442). `last_mask_variance`
         # alone reached no reader -- the identical defect `nt_xent_diagnostics` had, where the
@@ -356,7 +359,36 @@ class SlotContrastAuxLoss(nn.Module):
             # constants, `ss` goes to ~0 with nothing segmented -- and a falling loss reads
             # as progress. Variance of each slot's mask ACROSS the batch is near zero
             # exactly in that case, and the loss cannot tell you.
+            #
+            # ⛔⛔⛔ AND THE BARE VARIANCE CANNOT ANSWER THAT. IT HAS A NULL NOW, AND HERE IS WHY.
+            # `SlotAttention.forward` draws `mu + log_sigma.exp() * randn(b, K, D)` -- a random
+            # slot initialisation PER BATCH ELEMENT. So across-batch variance has TWO sources,
+            # and only one of them is the signal:
+            #     input dependence  (the thing being measured)   <- grows with training
+            #     slot-init noise   (a per-sample random draw)   <- SHRINKS as log_sigma trains
+            # Measured at fresh init, B=32, K=4: variance on a batch of IDENTICAL inputs is
+            # 3.86e-03 against 3.78e-03 on DISTINCT inputs -- i.e. the bare measure has ZERO
+            # discriminating power there, because identical inputs carry no input-dependent
+            # variance by construction and it reports the same number anyway.
+            # ⇒ A FALLING mask_variance early in training is exactly what the noise term
+            # shrinking looks like, and the bare measure cannot tell that from slots collapsing.
+            # The insect seat measured precisely that (7/7 brains falling, ratio 0.266-0.493, over
+            # the first 4 updates) and correctly declined to call it degeneracy; this is the
+            # instrument-level reason their caution was right, and it is a defect in MY diagnostic
+            # rather than a limitation of their reading.
+            #
+            # ⇒ THE NULL: the same statistic on a batch whose inputs are IDENTICAL, so its only
+            # source is the slot-init noise. `mask_variance` above `mask_variance_null` is the
+            # input-dependent component; at or below it, the masks are not input-dependent and a
+            # falling `ss` means nothing. Same shape as `shuffled_acc` in cltt_ref's
+            # `nt_xent_diagnostics` -- a null drawn from the same embeddings under a structure
+            # that carries no signal. I wrote that pattern for the other module and did not apply
+            # it here. [[a-score-a-non-policy-attains]] [[unanimity-is-an-instrument-signal]]
             self.last_mask_variance = float(attn_t.var(dim=0).mean().detach())
+            with torch.no_grad():
+                flat = prep_t[:1].expand_as(prep_t).contiguous()
+                _, attn_null, _, _ = self._slots_for(encoder, flat)
+                self.last_mask_variance_null = float(attn_null.var(dim=0).mean())
 
         total = self.w_ss * ss + self.w_rec * rec
         self.last_terms = (float(ss.detach()), float(rec.detach()), float(total.detach()))
@@ -366,7 +398,12 @@ class SlotContrastAuxLoss(nn.Module):
         # variance, which is >= 0.
         self.last_scalars = {"slots": float(self.slots),
                              "positions": float(self.grid_h * self.grid_w),
-                             "mask_variance": float(self.last_mask_variance)}
+                             "mask_variance": float(self.last_mask_variance),
+                             "mask_variance_null": float(self.last_mask_variance_null),
+                             # The signal, reported directly so nobody has to subtract two
+                             # series by hand and nobody reads the bare variance as the answer.
+                             "mask_variance_excess": float(self.last_mask_variance
+                                                           - self.last_mask_variance_null)}
         return total
 
     def _temporal_pair(self, encoder, observations):
