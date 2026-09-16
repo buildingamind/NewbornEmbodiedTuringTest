@@ -485,6 +485,21 @@ class SlotContrastAuxLoss(nn.Module):
         slots, attn, used_init = self.head.attn(tokens, slots_init, return_init=True)
         return slots, attn, feats, (b, c, h, w), used_init
 
+    def _slots_for_paired(self, encoder: nn.Module, prepared: torch.Tensor,
+                          slots_init: torch.Tensor):
+        """The diagnostic null's ONLY entry point. `slots_init` is REQUIRED.
+
+        ⛔ WHY THIS EXISTS RATHER THAN A TEST. `_slots_for`'s `slots_init` defaults to None
+        because the SIGNAL pass needs that default -- and that default is exactly what made
+        deleting the argument at the null site silent: the call still ran, drew a fresh init, and
+        produced an unpaired null that looks identical to a paired one. Here omitting it is a
+        TypeError at the call. Unrepresentable rather than guarded, no test and no fixture, and
+        it survives refactors that would break an assertion on source shape.
+        """
+        if slots_init is None:
+            raise ValueError("the diagnostic null must be paired to its signal's slot init")
+        return self._slots_for(encoder, prepared, slots_init)
+
     def _decode(self, slots: torch.Tensor, shape) -> torch.Tensor:
         b, c, h, w = shape
         grid = slots.reshape(b * self.slots, self.slot_dim, 1, 1) + self.head.pos
@@ -589,10 +604,36 @@ class SlotContrastAuxLoss(nn.Module):
             # and is strengthened, but via noise, not bias. A correct conclusion reached
             # through the wrong mechanism is still a defect.
             # ⚠ Measured on a synthetic input-blind module, not the live trunk.
+            #
+            # ⛔⛔ AND THE EXACT ZERO IS A POINT MASS, NOT A NULL DISTRIBUTION. `excess == 0`
+            # holds where attention is EXACTLY input-blind -- a measure-zero point that no real
+            # run occupies. The operative null is "input dependence is NEGLIGIBLE", which is
+            # composite and has nonzero variance. Measured by tuning input dependence
+            # continuously (k = c + alpha*proj(x)), 80 trials per alpha, B=32 K=4:
+            #
+            #     alpha      mean        sd        mean/sd   frac < 0
+            #     0.0     +0.00e+00   0.00e+00      --         0.00
+            #     0.001   +1.41e-08   2.49e-07     0.06        0.47
+            #     0.01    +1.45e-07   2.49e-06     0.06        0.47
+            #     0.05    +7.83e-07   1.25e-05     0.06        0.47
+            #     0.2     +3.98e-06   5.01e-05     0.08        0.49
+            #     1.0     +5.02e-05   2.80e-04     0.18        0.41
+            #
+            # ⭐ The mean is POSITIVE and MONOTONE in input dependence -- so the statistic is
+            # correctly signed, which the earlier structured-input probe had left in doubt.
+            # ⛔ BUT THE EFFECT AND THE NOISE SCALE TOGETHER: mean/sd stays ~0.06-0.18 across
+            # four orders of magnitude of alpha, so MORE input dependence buys almost no
+            # detectability. Nearly HALF of single reads are negative even where the mean is
+            # genuinely positive.
+            # ⇒ CONSEQUENCE FOR ANY BLOCK MEDIAN: with median se ~ 1.25*sd/sqrt(n), reaching
+            # z=2 needs ~193 updates at the most favourable alpha measured. The wave arm ran
+            # 125. A 20-point block reaches z=0.64. ⇒ THIS IS NOT A WINDOW-SIZE PROBLEM AND NO
+            # WINDOW INSIDE THE BUDGET FIXES IT -- the per-update SNR is the binding constraint.
+            # ⚠ Untrained module, synthetic inputs; a trained trunk on real frames may differ.
             self.last_mask_variance = float(attn_t.var(dim=0).mean().detach())
             with torch.no_grad():
                 flat = prep_t[:1].expand_as(prep_t).contiguous()
-                _, attn_null, _, _, _ = self._slots_for(encoder, flat, init_t)
+                _, attn_null, _, _, _ = self._slots_for_paired(encoder, flat, init_t)
                 self.last_mask_variance_null = float(attn_null.var(dim=0).mean())
                 # Discriminability of the TEMPORAL POSITIVES -- the question `mask_variance`
                 # does not ask and `loss_ss` cannot answer. Uses the SAME slots the loss just
