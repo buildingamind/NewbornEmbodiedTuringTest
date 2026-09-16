@@ -256,11 +256,28 @@ def test_incumbent_and_campaign_registry():
     assert isinstance(incumbent, CLTTAuxLoss)
     assert isinstance(incumbent.head, SimCLRProjectionHead)
     assert isinstance(AUX_LOSSES["cltt_ref"](encoder), CLTTReferenceAuxLoss)
+    # ⛔ THIS LOOP'S CONTRACT IS "PREFIXES THAT HAVE BOTH VARIANTS" -- it asserts `-CLTT` as well
+    # as `-CLTT-Ref`. Adding "3DCNN" here failed on KeyError: '3DCNN-CLTT', correctly: there is no
+    # 3DCNN incumbent and there must not be one, because the incumbent `cltt` family is frozen so
+    # already-scored arms keep their definition. A Ref-only member gets its own assertion.
     for prefix in ("SimCLR", "ViT"):
         assert MODELS[f"{prefix}-CLTT-Ref"]["aux"] == "cltt_ref"
         assert MODELS[f"{prefix}-CLTT"]["aux"] == "cltt"
         assert MODELS[f"{prefix}-CLTT-Ref"]["framestack"] is True
         assert MODELS[f"{prefix}-CLTT-Ref"]["aux_weight"] == 1.0
+
+    # Ref-only members: the aux is attached to an encoder that has no `cltt` incumbent twin.
+    for name in ("3DCNN-CLTT-Ref",):
+        assert MODELS[name]["aux"] == "cltt_ref"
+        assert MODELS[name]["framestack"] is True
+        assert MODELS[name]["aux_weight"] == 1.0
+        # ⛔ THE ONE-FACTOR PROPERTY IS THE POINT OF THE ARM AND IS ASSERTED, NOT ASSUMED.
+        # If cfg ever drifts from its plain twin the contrast stops being "adds cltt_ref" and
+        # becomes "adds cltt_ref AND something else", which no result would reveal.
+        base = name[: -len("-CLTT-Ref")]
+        assert MODELS[name]["cfg"] == MODELS[base]["cfg"]
+        assert MODELS[name]["encoder"] == MODELS[base]["encoder"]
+        assert MODELS[base].get("aux") is None
 
 
 @pytest.mark.parametrize("has_memory", [True, False])
@@ -566,3 +583,56 @@ def test_capture_gap_allows_windows_that_fit_inside_one_burst():
     assert valid.any(), "a 5-frame span fits inside an 8-frame burst"
     batch, _starts = episode_window_batch(memory, (4,), 64)
     assert batch == 4, f"8-frame burst with offset 4 admits batch 4, got {batch}"
+
+
+# ---------------------------------------------------------------------------
+# ⭐⭐⭐ THE FRAMESTACK QUESTION FOR 3DCNN-CLTT-Ref, ANSWERED BY EXECUTION.
+# The open design question was "how do you do temporal contrastive learning on an encoder
+# whose input is already a framestack?". The registry assertions above cannot answer it --
+# they only check a dict. These run the real Compact3DCNN through the real aux.
+# ⛔⛔⛔ AND THE ANSWER IS NOT THE ONE THE OLD DOCSTRING GIVES. `088a785` replaced whole
+# temporally-offset stacks (offsets 2,4, guarded to multiples of T) with the reference-faithful
+# SINGLE CURRENT FRAME, REPEATED across the encoder's T slots (offsets now 1,2, guard removed
+# because views can no longer overlap). cltt_views.current_frame_stack says so itself: "it is a
+# static view, so a motion encoder sees no within-view motion."
+# ⇒ For 3DCNN, whose first Conv3d exists ONLY to read motion across the stack, every auxiliary
+# view is a STILL IMAGE. The aux trains the spatial pathway and hands the temporal kernel a
+# constant. That is a real property of this arm and it is asserted here so it cannot change
+# silently. [[source-version-is-a-per-phase-fact]] [[a-knob-nothing-reads-runs-the-control]]
+def _compact_3dcnn(num_frames=2, height=16, width=16):
+    import gymnasium as gym
+    from nett_skrl.brain.encoders.compact_3dcnn import Compact3DCNN
+    space = gym.spaces.Box(low=0, high=255,
+                           shape=(height, width, 3 * num_frames), dtype="uint8")
+    return Compact3DCNN(space, features_dim=32, num_frames=num_frames, conv_dim=8)
+
+
+def _raw_frames(t_max=24, num_envs=2, num_frames=2, height=16, width=16):
+    torch.manual_seed(0)
+    return torch.rand(t_max, num_envs, height * width * 3 * num_frames) * 255.0
+
+
+def test_cltt_ref_runs_on_a_framestack_native_encoder():
+    """The interface holds: Compact3DCNN supplies features_dim, _prepare_image and
+    encode_prepared (the last two inherited), which is all the aux touches."""
+    enc = _compact_3dcnn(num_frames=2)
+    loss = AUX_LOSSES["cltt_ref"](enc)
+    loss.attach_memory(FakeMemory(_raw_frames()))
+    value = loss.compute(enc, torch.empty(0))
+    assert loss.num_frames == 2, loss.num_frames          # T discovered, not passed
+    assert torch.is_tensor(value) and torch.isfinite(value), value
+    assert value.requires_grad, "backbone gradients must flow, as for ViT-CLTT-Ref"
+
+
+def test_a_cltt_ref_view_is_temporally_CONSTANT_so_3dcnn_sees_no_motion():
+    """⛔ THE COST OF THE REFERENCE-FAITHFUL ADAPTER, MEASURED RATHER THAN ASSUMED."""
+    from nett_skrl.brain.aux.cltt_views import current_frame_stack
+    prepared = torch.arange(2 * 6 * 4 * 4, dtype=torch.float32).reshape(2, 6, 4, 4)
+    view = current_frame_stack(prepared)
+    assert view.shape == prepared.shape, "input geometry must be preserved"
+    B, CT, H, W = view.shape
+    slots = view.view(B, CT // 3, 3, H, W)
+    assert torch.equal(slots[:, 0], slots[:, 1]), (
+        "the T slots must be identical -- this is what makes the view static")
+    # and the frame kept is the CURRENT one (T-major: last three channels)
+    assert torch.equal(slots[:, -1], prepared[:, -3:])

@@ -256,6 +256,22 @@ MODELS: dict[str, dict] = {
     # Reference-faithful rebuild; cltt is retained unchanged as their paired incumbent.
     "SimCLR-CLTT-Ref": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "ViT-CLTT-Ref":    dict(encoder="compact_vit", cfg=dict(VIT_CFG),                                            framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # ⭐ 3DCNN-CLTT-Ref: the ONE-FACTOR cross of the two arms that currently top the two
+    # chick-referenced parsing conditions. cfg is BYTE-IDENTICAL to "3DCNN" above -- the only
+    # difference from that row is aux="cltt_ref", exactly as "ViT-CLTT-Ref" differs from "ViT".
+    # ⛔ THE FRAMESTACK QUESTION IS ALREADY ANSWERED IN cltt_ref_aux AND NEEDS NO NEW MECHANISM.
+    # The aux is encoder-agnostic: it needs only features_dim, _prepare_image and encode_prepared,
+    # and Compact3DCNN inherits the last two from HWCFeatureExtractor -> NETTFeatureExtractor.
+    # _prepare_image returns (B, C*T, H, W), so the aux's own `T = shape[1] // 3` discovers T=2
+    # correctly, and its guard REFUSES offsets that are not multiples of T -- the default "2,4"
+    # are, so the two positive views hold DISJOINT frame sets and no shared-frame shortcut exists.
+    # ⚠ WHAT IS GENUINELY DIFFERENT AND MUST NOT BE GLOSSED: Compact3DCNN's first Conv3d has
+    # kernel depth = num_frames and then .squeeze(2), so it COLLAPSES time inside the encoder.
+    # The contrast therefore pulls together two disjoint MOTION SEGMENTS, [f(t-1),f(t)] against
+    # [f(t+1),f(t+2)], where ViT-CLTT-Ref's pulls together two channel-stacked frame pairs through
+    # a spatial backbone. Same objective, different quantity being made invariant. That is the
+    # hypothesis under test, not an implementation detail -- do not report it as "CLTT on 3DCNN".
+    "3DCNN-CLTT-Ref":  dict(encoder="compact_3dcnn",  cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     # Schneider's single-frame temporal positives come from attached rollout memory.
     "SimCLR-CLTT-Schneider": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=False, aux="cltt_schneider", aux_weight=1.0),
     "ViT-CLTT-Schneider":    dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=False, aux="cltt_schneider", aux_weight=1.0),
