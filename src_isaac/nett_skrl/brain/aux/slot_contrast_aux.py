@@ -151,8 +151,8 @@ class SlotAttention(nn.Module):
     #: that reads it before any forward pass gets None, not an AttributeError.
     last_init: torch.Tensor | None = None
 
-    def forward(self, inputs: torch.Tensor,
-                slots_init: torch.Tensor | None = None) -> tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, inputs: torch.Tensor, slots_init: torch.Tensor | None = None,
+                return_init: bool = False):
         """inputs (B, N, in_dim) -> slots (B, K, slot_dim), attention (B, K, N).
 
         `slots_init` REUSES a previous draw instead of sampling a new one. That exists for one
@@ -169,6 +169,7 @@ class SlotAttention(nn.Module):
                 b, self.slots, self.mu.shape[-1], device=inputs.device, dtype=inputs.dtype)
             self.last_init = slots_init.detach()
         slots = slots_init
+        used_init = slots_init
         attn = None
         for _ in range(self.iters):
             q = self.to_q(self.norm_slots(slots))
@@ -181,7 +182,7 @@ class SlotAttention(nn.Module):
             slots = self.gru(updates.reshape(-1, updates.shape[-1]),
                              slots.reshape(-1, slots.shape[-1])).view_as(slots)
             slots = slots + self.mlp(self.norm_mlp(slots))
-        return slots, attn
+        return (slots, attn, used_init) if return_init else (slots, attn)
 
 
 def slot_contrast_diagnostics(s1: torch.Tensor, s2: torch.Tensor, temperature: float,
@@ -470,11 +471,19 @@ class SlotContrastAuxLoss(nn.Module):
 
     def _slots_for(self, encoder: nn.Module, prepared: torch.Tensor,
                    slots_init: torch.Tensor | None = None):
+        """-> slots, attn, feats, shape, AND THE SLOT INIT THIS PASS USED.
+
+        ⛔ THE INIT IS RETURNED RATHER THAN LEFT ON `self.head.attn.last_init` SO THAT PAIRING A
+        NULL TO THE WRONG PASS IS UNREPRESENTABLE. `last_init` is a mutable side-channel that the
+        next forward overwrites, so a caller reading it late silently pairs to whichever pass ran
+        most recently -- which cancels nothing and looks exactly like a working fix. Each pass now
+        hands back its own; a later call cannot reach an earlier one's.
+        """
         feats = spatial_features(encoder, prepared)              # (B, C, h, w)
         b, c, h, w = feats.shape
         tokens = feats.flatten(2).transpose(1, 2)                # (B, N, C)
-        slots, attn = self.head.attn(tokens, slots_init)
-        return slots, attn, feats, (b, c, h, w)
+        slots, attn, used_init = self.head.attn(tokens, slots_init, return_init=True)
+        return slots, attn, feats, (b, c, h, w), used_init
 
     def _decode(self, slots: torch.Tensor, shape) -> torch.Tensor:
         b, c, h, w = shape
@@ -498,14 +507,13 @@ class SlotContrastAuxLoss(nn.Module):
         prep_t = prepare_image_tensor(obs_t, space)
         prep_n = prepare_image_tensor(obs_next, space)
 
-        slots_t, attn_t, feats_t, shape_t = self._slots_for(encoder, prep_t)
-        # ⛔ CAPTURE HERE, NOT AT THE NULL. `last_init` records the MOST RECENT draw, and the
-        # `prep_n` pass on the next line overwrites it. `attn_t` is what the mask null is
-        # compared against, so the null must reuse THIS pass's init -- reading `last_init`
-        # later would pair the null to the wrong pass and leave the noise uncancelled while
-        # looking exactly like a working fix.
-        init_t = self.head.attn.last_init
-        slots_n, _, _, _ = self._slots_for(encoder, prep_n)
+        slots_t, attn_t, feats_t, shape_t, init_t = self._slots_for(encoder, prep_t)
+        # ⛔ `init_t` comes back FROM the pass above, not from `self.head.attn.last_init`. The
+        # side-channel is overwritten by the `prep_n` pass on the next line, so reading it here
+        # would pair the null to the wrong draw -- cancelling nothing while looking like a
+        # working fix. Returning the init makes that mistake unrepresentable rather than merely
+        # guarded: this call cannot reach the previous pass's init.
+        slots_n, _, _, _, _ = self._slots_for(encoder, prep_n)
 
         # --- slot-slot temporal contrast (the reference's Slot_Slot_Contrastive_Loss) ---
         s1 = F.normalize(slots_t, p=2.0, dim=-1)
@@ -559,20 +567,32 @@ class SlotContrastAuxLoss(nn.Module):
             # it here. [[a-score-a-non-policy-attains]] [[unanimity-is-an-instrument-signal]]
             # ⛔ THE NULL IS PAIRED TO THE SIGNAL: same slot-init draw, inputs the ONLY thing
             # varied. An UNPAIRED null (a fresh randn for the null pass) makes the excess a
-            # difference of two INDEPENDENT draws of the same noise term, and at fresh init
-            # B=32 K=4 that measured null 3.86e-03 against signal 3.78e-03 -- excess
-            # -8.0e-05, NEGATIVE at ZERO true input-dependence. A reading of `excess <= 0`
-            # was therefore the BASELINE, not a finding, and could not distinguish "no input
-            # dependence" from "input dependence below the noise". Reusing the draw makes the
-            # slot-init contribution COMMON to both terms, so it cancels in the difference
-            # instead of adding a second copy of itself.
-            # ⇒ Exact consequence, and the test pins it: with identical inputs AND a shared
-            # init the two passes are the SAME computation, so excess is EXACTLY 0.0. Under
-            # the unpaired form it was a nonzero random number.
+            # difference of two INDEPENDENT draws of the slot-init noise, so it carries that
+            # noise TWICE instead of cancelling it.
+            #
+            # ⇒ THE PROPERTY, and it is exact rather than approximate: if attention does not
+            # depend on the input, then attn(x_b, I) and attn(x_0, I) are the SAME TENSOR, so
+            # the two variances are equal and `excess == 0.0` exactly -- for ANY inputs, not
+            # only degenerate ones. Measured on a module whose k/v are constants (attention
+            # provably input-blind, `max|attn(x1,I) - attn(x2,I)| = 0`) while slot-init
+            # variance stays live, over 60 trials with DISTINCT inputs each time:
+            #
+            #     iters=1   unpaired  mean -7.6e-05  sd 2.75e-03  max|.| 7.37e-03
+            #     iters=3   unpaired  mean +3.0e-04  sd 1.38e-03  max|.| 3.35e-03
+            #     both      PAIRED    mean  0.0e+00  sd 0.00e+00  max|.| 0.00e+00
+            #
+            # ⛔ NOTE WHAT THAT CORRECTS. The unpaired form is NOT negatively biased -- its
+            # mean is within noise of zero. It is SYMMETRICALLY NOISY, with sd 17-34x the
+            # -8.0e-05 once quoted as its bias; that figure is ONE DRAW from this
+            # distribution. The conclusion it was used for -- that `excess <= 0` cannot
+            # separate "no input dependence" from "input dependence below the noise" -- holds
+            # and is strengthened, but via noise, not bias. A correct conclusion reached
+            # through the wrong mechanism is still a defect.
+            # ⚠ Measured on a synthetic input-blind module, not the live trunk.
             self.last_mask_variance = float(attn_t.var(dim=0).mean().detach())
             with torch.no_grad():
                 flat = prep_t[:1].expand_as(prep_t).contiguous()
-                _, attn_null, _, _ = self._slots_for(encoder, flat, init_t)
+                _, attn_null, _, _, _ = self._slots_for(encoder, flat, init_t)
                 self.last_mask_variance_null = float(attn_null.var(dim=0).mean())
                 # Discriminability of the TEMPORAL POSITIVES -- the question `mask_variance`
                 # does not ask and `loss_ss` cannot answer. Uses the SAME slots the loss just
