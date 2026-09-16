@@ -13,6 +13,8 @@ Two failure modes dominate and both are silent:
 """
 from __future__ import annotations
 
+import random
+import statistics
 from pathlib import Path
 
 import gymnasium as gym
@@ -654,3 +656,117 @@ def test_the_diag_on_path_writes_real_ss_values(monkeypatch):
     assert aux.last_scalars["ss_batch"] > 0
     assert 0.0 <= aux.last_scalars["ss_pos_acc"] <= 1.0
     assert aux.last_scalars["ss_chance"] > 0.0
+
+
+# ---------------------------------------------------------------------------
+# Row 14's REGISTERED HEALTHY FLOOR.
+#
+# The floor is calibrated against the two nulls, never against a constructed
+# "healthy" fixture -- a fixture built as s2 = s1 + noise has correspondence by
+# fiat and can only ever confirm the threshold fitted to it. Both nulls here are
+# derivable without running an arm, which is what makes the floor registrable in
+# advance. These tests pin the derivation so the registered numbers cannot drift
+# away from the code that produces them.
+# ---------------------------------------------------------------------------
+
+_FLOOR_DEP = 0.05  # median ss_input_dependence, final 20 logged updates
+_FLOOR_XB = 1.0  # median ss_pos_acc_x_batch must be STRICTLY above this
+
+
+def _chance_draw(batch: int, slots: int, seed: int, dim: int = 64) -> dict:
+    gen = torch.Generator().manual_seed(seed)
+    a = torch.randn(batch * slots, dim, generator=gen)
+    b = torch.randn(batch * slots, dim, generator=gen)
+    return slotc.slot_contrast_diagnostics(a, b, 0.1, slots)
+
+
+@pytest.mark.parametrize("batch,slots", [(32, 4), (32, 3), (16, 4)])
+def test_x_batch_is_hits_over_slots_so_the_chance_null_is_closed_form(batch, slots):
+    """x_batch = hits/K exactly, which is what makes the null analytic.
+
+    Without this identity the null is a simulation and its tail is only ever as
+    good as the seed count. With it, P(x_batch >= t) is a Binomial survival
+    function -- independent of B, and in `hits` units independent of K as well.
+    """
+    for seed in range(40):
+        x = _chance_draw(batch, slots, seed)["ss_pos_acc_x_batch"]
+        hits = round(x * slots)
+        assert abs(x - hits / slots) < 1e-6, f"x_batch={x} is not a multiple of 1/{slots}"
+
+
+def test_the_collapse_fails_the_floor_deterministically_not_probabilistically():
+    """The degenerate solution must fail the floor at EVERY seed, not merely usually.
+
+    This is the defect the first floor had: `median hits >= 3` has chance-null
+    p < 5e-6 and the constant-slot collapse attains hits = K = 4, so it PASSED.
+    A floor must clear the score a non-policy attains, not the score chance attains.
+
+    Reuses `_slots(..., "degenerate")` rather than building a second constant-slot
+    fixture. The first draft of this test did build its own, collapsing all B*K
+    vectors onto ONE -- which also destroys the K slot prototypes and scores at
+    chance (x_batch = 1/K), not at the registered 1.0. Two constructions of "the
+    collapse" would have drifted apart silently.
+    """
+    for seed in range(50):
+        d = slotc.slot_contrast_diagnostics(*_slots(32, 4, 64, "degenerate", seed=seed), 0.1, 4)
+        assert d["ss_input_dependence"] == pytest.approx(0.0, abs=1e-9)
+        assert d["ss_pos_acc_x_batch"] == pytest.approx(1.0, abs=1e-9)
+        # ... and therefore fails both conjuncts, with no margin to argue about.
+        assert not d["ss_input_dependence"] >= _FLOOR_DEP
+        assert not d["ss_pos_acc_x_batch"] > _FLOOR_XB
+
+
+def test_the_floor_catches_a_total_collapse_that_the_kill_rule_does_not():
+    """A degeneracy the KILL RULE misses, and the floor does not.
+
+    If the K slot prototypes collapse onto each other too, every row of `sim` is
+    identical, the argmax ties resolve to column 0, and the read is x_batch = 1/K
+    -- indistinguishable from chance. The kill rule requires x_batch == 1.0 and so
+    NEVER FIRES on this state. The floor fails it on both conjuncts.
+
+    Recorded because it bounds what the kill rule is: a detector for ONE degenerate
+    manifold, not for degeneracy.
+    """
+    dim = 64
+    for seed in range(20):
+        gen = torch.Generator().manual_seed(seed)
+        one = torch.nn.functional.normalize(torch.randn(1, dim, generator=gen), p=2.0, dim=-1)
+        flat = one.expand(32 * 4, dim).contiguous()
+        d = slotc.slot_contrast_diagnostics(flat, flat.clone(), 0.1, 4)
+        assert d["ss_pos_acc_x_batch"] == pytest.approx(0.25, abs=1e-9)  # == 1/K, i.e. chance
+        assert not abs(d["ss_pos_acc_x_batch"] - 1.0) < 1e-6, "kill rule would fire; it must not"
+        assert not (d["ss_input_dependence"] >= _FLOOR_DEP and d["ss_pos_acc_x_batch"] > _FLOOR_XB)
+
+
+@pytest.mark.parametrize("batch,slots", [(32, 4), (32, 3), (16, 4), (48, 4)])
+def test_chance_clears_neither_conjunct_of_the_block_median_floor(batch, slots):
+    """No-correspondence is the CORRECT state at init, so it must fail the floor.
+
+    ⚠ The floor is a MEDIAN over the final 20 logged updates, and this test must
+    match that unit. Asserting it per-update fails honestly -- single reads at
+    B=16 reach input_dep = 0.0625, above the 0.05 threshold -- because a single
+    update is MORE variable than the median, not less. Testing the per-update
+    value would have condemned a floor that is sound at the unit it is read at.
+    """
+    deps, xbs = [], []
+    for seed in range(400):
+        d = _chance_draw(batch, slots, seed)
+        deps.append(d["ss_input_dependence"])
+        xbs.append(d["ss_pos_acc_x_batch"])
+    rng = random.Random(7)
+    for _ in range(300):
+        idx = [rng.randrange(len(deps)) for _ in range(20)]
+        med_dep = statistics.median(deps[i] for i in idx)
+        med_xb = statistics.median(xbs[i] for i in idx)
+        assert med_dep < _FLOOR_DEP
+        assert not (med_dep >= _FLOOR_DEP and med_xb > _FLOOR_XB)
+
+
+def test_input_dependence_alone_is_a_weak_conjunct_and_the_kill_rule_needs_both():
+    """Pins WHY the kill rule is a conjunction.
+
+    `input_dep == 0` alone fires on roughly a third of no-correspondence draws.
+    If anyone ever simplifies the kill rule to that half, this fails.
+    """
+    fires = sum(abs(_chance_draw(32, 4, s)["ss_input_dependence"]) < 1e-6 for s in range(400))
+    assert 0.15 < fires / 400 < 0.50, f"input_dep==0 fired {fires}/400; the rule's shape assumed ~0.31"
