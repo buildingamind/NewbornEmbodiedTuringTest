@@ -169,6 +169,43 @@ class SlotAttention(nn.Module):
         return slots, attn
 
 
+class SlotContrastHead(nn.Module):
+    """The whole trainable set of this loss, as ONE submodule named `head`.
+
+    ⛔ `head` IS THE AUX INTERFACE, NOT A NAMING PREFERENCE. ppo_aux reaches for
+    `aux.head` in FOUR places -- `checkpoint_modules` (:235), the optimiser param
+    group (:252) and BOTH grad-norm-clip chains (:422, :425) -- and only the first
+    is guarded by aux kind. Every other loss in `AUX_LOSSES` defines one. This file
+    did not, so `build_agents` raised
+
+        AttributeError: 'SlotContrastAuxLoss' object has no attribute 'head'
+
+    ~60s into the arm, before a single training step. (Verified at runtime against
+    all four sites, not by grep: tests/test_slot_contrast_aux.py.)
+
+    ⛔ AND THE ONE-LINE FIX IS THE DANGEROUS ONE. `self.head = self.attn` satisfies
+    every one of those four sites: the arm builds, trains, runs to completion and
+    files results -- with the DECODER AND THE POSITIONAL GRID (78,081 + 4,608 =
+    82,689 of the 137,025 params, measured) in NO optimiser param group and NO grad
+    clip. That is a silent partial ablation wearing this
+    method's name, and nothing downstream can tell it from the real thing. The head
+    must be the whole trainable set, which is what `test_the_optimiser_group_covers_
+    the_whole_trainable_set` pins.
+
+    ⛔ IT ALSO OWNS THE DEVICE. `pos` was created by `nn.Parameter(torch.zeros(...))`
+    with no `.to(device)`, and nothing calls `aux.to(device)` -- `_build_slot_contrast`
+    returns the module as-is. On CPU that is invisible; on a GPU `_decode` adds a cuda
+    `slots` to a cpu `pos` and raises. Holding all three here and moving the container
+    once makes the device a property of the set rather than of each line.
+    """
+
+    def __init__(self, attn: nn.Module, pos: nn.Parameter, decoder: nn.Module) -> None:
+        super().__init__()
+        self.attn = attn
+        self.pos = pos
+        self.decoder = decoder
+
+
 class SlotContrastAuxLoss(nn.Module):
     """Slot-slot temporal contrast + feature reconstruction against a stop-gradient EMA trunk.
 
@@ -200,15 +237,19 @@ class SlotContrastAuxLoss(nn.Module):
         with torch.no_grad():
             probe = self._probe_map(encoder)
         self.in_dim, self.grid_h, self.grid_w = probe
-        self.attn = SlotAttention(self.in_dim, self.slot_dim, self.slots, iters).to(device)
         # Broadcast decoder: each slot decodes the whole grid plus an alpha, and the
         # alphas compose. This is the reference's spatial-broadcast form, minus its
         # positional embedding size, which the grid here does not need.
-        self.pos = nn.Parameter(torch.zeros(1, self.slot_dim, self.grid_h, self.grid_w))
-        self.decoder = nn.Sequential(
-            nn.Conv2d(self.slot_dim, self.slot_dim, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(self.slot_dim, self.slot_dim, 3, padding=1), nn.ReLU(),
-            nn.Conv2d(self.slot_dim, self.in_dim + 1, 1),
+        # All three go in `self.head` -- see SlotContrastHead for why that name is the
+        # interface and why splitting the set across attributes broke the arm twice.
+        self.head = SlotContrastHead(
+            SlotAttention(self.in_dim, self.slot_dim, self.slots, iters),
+            nn.Parameter(torch.zeros(1, self.slot_dim, self.grid_h, self.grid_w)),
+            nn.Sequential(
+                nn.Conv2d(self.slot_dim, self.slot_dim, 3, padding=1), nn.ReLU(),
+                nn.Conv2d(self.slot_dim, self.slot_dim, 3, padding=1), nn.ReLU(),
+                nn.Conv2d(self.slot_dim, self.in_dim + 1, 1),
+            ),
         ).to(device)
         # ⛔ THE EMA TARGET IS HELD IN A LIST, NOT AS AN ATTRIBUTE. Assigning an nn.Module
         # to an attribute of an nn.Module REGISTERS it, so `aux.parameters()` would then
@@ -262,13 +303,13 @@ class SlotContrastAuxLoss(nn.Module):
         feats = spatial_features(encoder, prepared)              # (B, C, h, w)
         b, c, h, w = feats.shape
         tokens = feats.flatten(2).transpose(1, 2)                # (B, N, C)
-        slots, attn = self.attn(tokens)
+        slots, attn = self.head.attn(tokens)
         return slots, attn, feats, (b, c, h, w)
 
     def _decode(self, slots: torch.Tensor, shape) -> torch.Tensor:
         b, c, h, w = shape
-        grid = slots.reshape(b * self.slots, self.slot_dim, 1, 1) + self.pos
-        out = self.decoder(grid)
+        grid = slots.reshape(b * self.slots, self.slot_dim, 1, 1) + self.head.pos
+        out = self.head.decoder(grid)
         recon, alpha = out[:, : self.in_dim], out[:, self.in_dim:]
         recon = recon.view(b, self.slots, self.in_dim, h, w)
         alpha = alpha.view(b, self.slots, 1, h, w).softmax(dim=1)

@@ -124,12 +124,12 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:27` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
-| `NETT_SLOTC_DIM` | `slot_dim` | `nett_skrl/brain/aux/slot_contrast_aux.py:186` |
-| `NETT_SLOTC_EMA` | `ema` | `nett_skrl/brain/aux/slot_contrast_aux.py:190` |
-| `NETT_SLOTC_SLOTS` | `slots` | `nett_skrl/brain/aux/slot_contrast_aux.py:185` |
-| `NETT_SLOTC_TEMP` | `temperature` | `nett_skrl/brain/aux/slot_contrast_aux.py:187` |
-| `NETT_SLOTC_W_REC` | `w_rec` | `nett_skrl/brain/aux/slot_contrast_aux.py:189` |
-| `NETT_SLOTC_W_SS` | `w_ss` | `nett_skrl/brain/aux/slot_contrast_aux.py:188` |
+| `NETT_SLOTC_DIM` | `slot_dim` | `nett_skrl/brain/aux/slot_contrast_aux.py:223` |
+| `NETT_SLOTC_EMA` | `ema` | `nett_skrl/brain/aux/slot_contrast_aux.py:227` |
+| `NETT_SLOTC_SLOTS` | `slots` | `nett_skrl/brain/aux/slot_contrast_aux.py:222` |
+| `NETT_SLOTC_TEMP` | `temperature` | `nett_skrl/brain/aux/slot_contrast_aux.py:224` |
+| `NETT_SLOTC_W_REC` | `w_rec` | `nett_skrl/brain/aux/slot_contrast_aux.py:226` |
+| `NETT_SLOTC_W_SS` | `w_ss` | `nett_skrl/brain/aux/slot_contrast_aux.py:225` |
 | `NETT_STAGGER_SECS` | `"12"` | `examples/campaign_retest_launch.py:53`<br>`examples/campaign_run.py:211` |
 | `NETT_STALL_EXIT_CODE` | `"77"` | `nett_skrl/runtime/reap.py:744` |
 | `NETT_STALL_GUARD` | `"1"` | `nett_skrl/runtime/stall_guard.py:133` |

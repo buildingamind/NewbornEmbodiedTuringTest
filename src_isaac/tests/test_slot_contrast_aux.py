@@ -215,8 +215,8 @@ def test_collapsed_slots_show_near_zero_mask_variance(monkeypatch):
     # Collapse it by hand: zero the key/value projections so attention logits are
     # input-independent, which is the failure the diagnostic exists to see.
     with torch.no_grad():
-        aux.attn.to_k.weight.zero_()
-        aux.attn.to_v.weight.zero_()
+        aux.head.attn.to_k.weight.zero_()
+        aux.head.attn.to_v.weight.zero_()
     aux.compute(enc, obs[0])
     assert aux.last_mask_variance < live / 100, (aux.last_mask_variance, live)
 
@@ -308,3 +308,133 @@ def test_the_temporal_pair_is_moved_to_the_encoders_device():
     a, b = aux._temporal_pair(enc, _obs()[0])
     assert a.device == want and b.device == want, (
         f"pair came back on {a.device}/{b.device}, encoder is on {want}")
+
+
+# -- the `head` interface ppo_aux reaches for ------------------------------------------
+#
+# ⛔ THESE GUARD A BUILD DEFECT THAT COST ROW 14 OF THE 14-ARM WAVE. `slot_contrast` was
+# promoted into AUX_LOSSES without a `head`, and ppo_aux reaches for `aux.head` at four
+# sites -- checkpoint_modules (:235), the optimiser param group (:252) and both
+# grad-norm-clip chains (:422, :425). Only the first is guarded by aux kind, so the arm
+# died with AttributeError ~60s in, before a training step. The tests below fix the
+# instance AND sweep the class.
+
+
+def _ppo_aux_head_sites(aux, enc):
+    """Exactly what ppo_aux does with `aux.head`, in the order it does it."""
+    import itertools
+    return {
+        ":235 checkpoint_modules": lambda: aux.head,
+        ":252 optimizer group": lambda: list(aux.head.parameters()),
+        ":422 grad-clip shared": lambda: list(itertools.chain(enc.parameters(), aux.head.parameters())),
+        ":425 grad-clip split": lambda: list(itertools.chain(enc.parameters(), aux.head.parameters())),
+    }
+
+
+def test_every_ppo_aux_head_site_resolves():
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    for name, site in _ppo_aux_head_sites(aux, enc).items():
+        site()  # AttributeError here is the build defect, at the site that raises it
+
+
+def test_the_optimiser_group_covers_the_whole_trainable_set():
+    """⛔ THE CONTROL THAT FAILS FOR `self.head = self.attn`.
+
+    That one-liner satisfies all four sites and builds, trains and files results with
+    78,081 decoder + 4,608 positional params receiving no optimiser group and no grad
+    clip -- an arm that is a partial ablation and reports as the method. Construction
+    succeeding is NOT the property under test; coverage of the trainable set is.
+    """
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    opt = torch.optim.Adam(list(enc.parameters()), lr=1e-4)
+    opt.add_param_group({"params": list(aux.head.parameters())})   # ppo_aux.py:252, verbatim
+
+    optimised = {id(p) for g in opt.param_groups for p in g["params"]}
+    assert {id(p) for p in aux.parameters()} <= optimised, "a trainable tensor is in no param group"
+    for name, mod in (("decoder", aux.head.decoder), ("attn", aux.head.attn)):
+        missing = [n for n, p in mod.named_parameters() if id(p) not in optimised]
+        assert not missing, f"{name}: {missing} never reaches the optimiser"
+    assert id(aux.head.pos) in optimised, "the positional grid never reaches the optimiser"
+
+
+def test_the_head_carries_the_encoder_neither_directly_nor_through_the_ema_target():
+    """The harness optimises list(encoder.parameters()) + list(aux.parameters()); a head
+    that reached either would hand Adam the same tensors twice."""
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    head_ids = {id(p) for p in aux.head.parameters()}
+    assert not (head_ids & {id(p) for p in enc.parameters()})
+    aux._update_target(enc)
+    assert aux._target, "control is vacuous unless the target actually exists"
+    assert not (head_ids & {id(p) for p in aux._target[0].parameters()})
+
+
+def test_the_head_holds_every_trainable_tensor_the_module_has():
+    """`aux.head.parameters()` and `aux.parameters()` must be the SAME set: ppo_aux
+    optimises the former, the promotion note counts the latter."""
+    aux = slotc.SlotContrastAuxLoss(_encoder())
+    assert {id(p) for p in aux.head.parameters()} == {id(p) for p in aux.parameters()}
+    assert sum(p.numel() for p in aux.head.parameters()) == 137_025
+
+
+def test_the_whole_trainable_set_lands_on_the_encoders_device():
+    """⛔ THE DEFECT CPU TESTS CANNOT SEE. `pos` was built by nn.Parameter(torch.zeros(...))
+    with no `.to(device)`, and nothing calls `aux.to(device)` -- `_build_slot_contrast`
+    returns the module as-is. On a GPU `_decode` added a cuda `slots` to a cpu `pos`.
+    Asserted against the encoder's device so it is a real check on either host.
+    """
+    enc = _encoder()
+    if torch.cuda.is_available():
+        enc = enc.cuda()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    want = next(enc.parameters()).device
+    off = [n for n, p in aux.head.named_parameters() if p.device != want]
+    assert not off, f"{off} are not on {want}"
+
+
+def test_every_registered_aux_kind_exposes_a_head():
+    """⛔ FIX THE INSTANCE, SWEEP THE CLASS. ppo_aux:252 and :422/:425 are NOT guarded by
+    kind, so any registered loss without a `head` dies exactly the way slot_contrast did.
+
+    Built, not grepped: a `self.head = ...` line in the source proves nothing about the
+    object the builder returns (slot_contrast had three such lines and no head). The
+    A sweep that silently covers 7 of 11 kinds reports as a class check and is an
+    instance check, so each kind gets the host shape it actually declares:
+
+      * eoo / gwm read the framestack and refuse a 3-channel space;
+      * eoo_dual / gwm_dual demand a >=6-channel SPACE but probe the host with a
+        3-channel tensor (dual_stream.py:219) -- the host consumes single frames
+        spatially while the stack declares two. That is production's shape, not this
+        test's invention: I74/I75 built and trained on insect, so that probe resolved
+        against the real encoder.
+    """
+    from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+    import gymnasium as gym
+
+    def _framestacked_host():
+        """Convs sized for one RGB frame; observation_space declaring two."""
+        enc = _encoder(channels=3)
+        enc.observation_space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
+        return enc
+
+    missing, unbuilt = [], []
+    for kind, build in sorted(AUX_LOSSES.items()):
+        aux = None
+        for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6), _framestacked_host):
+            try:
+                aux = build(host())
+                break
+            except Exception as exc:
+                last = f"{type(exc).__name__}: {exc}"
+        if aux is None:
+            unbuilt.append(f"{kind} ({last})")
+        elif not hasattr(aux, "head"):
+            missing.append(kind)
+
+    assert not missing, f"registered aux kinds with no .head: {missing}"
+    assert not unbuilt, (
+        "the sweep could not construct these, so it did NOT check them: " + "; ".join(unbuilt)
+    )
+    assert len(AUX_LOSSES) >= 11, f"registry shrank to {len(AUX_LOSSES)}; is this sweep still real?"
