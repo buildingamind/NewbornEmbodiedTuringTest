@@ -501,3 +501,133 @@ def test_the_null_is_emitted_and_reaches_the_reader(monkeypatch):
     assert aux.last_scalars["mask_variance_null"] >= 0.0, "null kept its negative sentinel"
     assert aux.last_scalars["mask_variance_excess"] == pytest.approx(
         aux.last_scalars["mask_variance"] - aux.last_scalars["mask_variance_null"])
+
+
+# -- loss_ss discriminability ----------------------------------------------------------
+#
+# ⛔ THE DISCHARGE CONDITION FOR ROW 14'S BLOCKER, STATED BY THE RESEARCHER IN ADVANCE:
+# building what the blocker names discharges it IFF the instrument SEPARATES the states it
+# must separate -- red on the constant-slot collapse, and distinguishable from the
+# no-correspondence case. "The null is a null" is necessary and NOT sufficient.
+
+
+def _slots(b, k, d, kind, seed=0):
+    """Three constructed regimes, as unit-normalised slot sets (s1, s2)."""
+    g = torch.Generator().manual_seed(seed)
+    if kind == "healthy":
+        # input-dependent, and slot identity is stable across t
+        s1 = torch.randn(b, k, d, generator=g)
+        s2 = s1 + 0.01 * torch.randn(b, k, d, generator=g)
+    elif kind == "degenerate":
+        # constant per-slot vectors: slot k is the SAME vector for every batch element, at
+        # both t and t+1. Nothing is segmented; the temporal pairing is nonetheless perfect.
+        proto = torch.randn(1, k, d, generator=g)
+        s1 = proto.expand(b, k, d).contiguous()
+        s2 = proto.expand(b, k, d).contiguous()
+    elif kind == "nocorr":
+        # independent draws: no temporal correspondence at all (this is ALSO the init state)
+        s1 = torch.randn(b, k, d, generator=g)
+        s2 = torch.randn(b, k, d, generator=g)
+    else:
+        raise ValueError(kind)
+    n = torch.nn.functional.normalize
+    return n(s1, p=2.0, dim=-1).reshape(-1, d), n(s2, p=2.0, dim=-1).reshape(-1, d)
+
+
+@pytest.mark.parametrize("kind", ["healthy", "degenerate", "nocorr"])
+def test_the_diagnostic_separates_the_three_regimes(kind):
+    """⛔ THE TEST THAT DISCHARGES THE BLOCKER, OR DOES NOT."""
+    b, k, d = 32, 4, 16
+    s1, s2 = _slots(b, k, d, kind)
+    r = slotc.slot_contrast_diagnostics(s1, s2, 0.1, k)
+    chance = r["ss_chance"]
+    assert r["ss_batch"] == b
+    if kind == "healthy":
+        assert r["ss_pos_acc"] > 0.9, r
+        assert r["ss_pos_acc_x_batch"] > 0.5 * b, "healthy must sit far above the 1/B collapse"
+    elif kind == "degenerate":
+        # ⭐ pos_acc ~= 1/B, and CRUCIALLY it is ABOVE both nulls -- which is why cltt_ref's
+        # "pos_acc <= shuffled_acc" rule cannot be carried across.
+        assert abs(r["ss_pos_acc"] - 1.0 / b) < 0.5 / b, r
+        assert r["ss_pos_acc_x_batch"] == pytest.approx(1.0, abs=0.5), r
+        assert r["ss_pos_acc"] > r["ss_shuffled_acc_within"], (
+            "the collapse SATISFIES cltt_ref's rule; that is the whole reason for this test")
+    else:
+        assert r["ss_pos_acc"] < 8 * chance, r
+        assert r["ss_pos_acc_x_batch"] < 0.5 * b
+
+
+def test_the_collapse_is_distinguishable_from_no_correspondence():
+    """⛔ NECESSARY AND SEPARATE. Both regimes give a LOW pos_acc; an instrument that only
+    said "low" would collapse the researcher's rows 2 and 3 into one reading, and they call
+    for opposite actions -- one is a dead arm, the other is the STARTING state."""
+    b, k, d = 32, 4, 16
+    deg = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "degenerate"), 0.1, k)
+    noc = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "nocorr"), 0.1, k)
+    hea = slotc.slot_contrast_diagnostics(*_slots(b, k, d, "healthy"), 0.1, k)
+    # 1. pos_acc orders them, but does NOT separate the two low cases by much
+    assert hea["ss_pos_acc"] > deg["ss_pos_acc"] > noc["ss_pos_acc"], (hea, deg, noc)
+    # 2. ⭐ the collapse's signature is across RISING TO MEET pos_acc: slot k is the same
+    #    vector in every image, so the across-image same-slot column is in the tie set.
+    assert deg["ss_shuffled_acc_across"] == pytest.approx(deg["ss_pos_acc"], abs=1e-6), deg
+    assert hea["ss_shuffled_acc_across"] < 0.1 * hea["ss_pos_acc"], hea
+    # 3. ⇒ input dependence separates HEALTHY from BOTH low regimes, which pos_acc cannot
+    assert hea["ss_input_dependence"] > 0.9, hea
+    assert abs(deg["ss_input_dependence"]) < 1e-6, deg
+    assert noc["ss_input_dependence"] < 0.05, noc
+    # 4. and pos_acc_x_batch pins the collapse at ~1.0 without a hardcoded absolute
+    assert deg["ss_pos_acc_x_batch"] == pytest.approx(1.0, abs=0.5)
+    assert hea["ss_pos_acc_x_batch"] > 0.5 * b
+
+
+def test_the_two_nulls_are_not_one_null():
+    """⛔ A SINGLE SHIFT-BY-ONE NULL AVERAGES TWO DIFFERENT QUESTIONS. At K=4 it lands on
+    another slot of the SAME image 3 times in 4 and crosses to a different image once, so it
+    estimates neither. They are emitted separately and must be able to disagree."""
+    b, k, d = 16, 4, 16
+    g = torch.Generator().manual_seed(3)
+    # scenes differ; slots WITHIN a scene are identical -> across is easy, within is impossible
+    scene = torch.randn(b, 1, d, generator=g).expand(b, k, d).contiguous()
+    n = torch.nn.functional.normalize
+    s = n(scene, p=2.0, dim=-1).reshape(-1, d)
+    r = slotc.slot_contrast_diagnostics(s, s, 0.1, k)
+    assert r["ss_shuffled_acc_within"] > r["ss_shuffled_acc_across"], (
+        "slots identical within a scene must show up as a WITHIN-null hit, not an across one")
+
+
+def test_a_null_on_a_degenerate_axis_is_a_sentinel_not_a_number():
+    """K=1 makes the within-null the positive itself; B=1 does the same for across. Returning
+    a NUMBER there would read as perfect agreement between a statistic and its own null."""
+    d = 8
+    one_slot = slotc.slot_contrast_diagnostics(torch.randn(6, d), torch.randn(6, d), 0.1, 1)
+    assert one_slot["ss_shuffled_acc_within"] == -1.0, one_slot
+    one_img = slotc.slot_contrast_diagnostics(torch.randn(4, d), torch.randn(4, d), 0.1, 4)
+    assert one_img["ss_shuffled_acc_across"] == -1.0, one_img
+
+
+def test_every_ss_field_reaches_last_scalars_with_the_diag_off(monkeypatch):
+    """⛔ A DIAGNOSTIC THAT NEVER REACHES ppo_aux.py:442 IS NOT A DIAGNOSTIC -- the defect this
+    module already had once. With the diag OFF the fields must still be PRESENT and carry the
+    negative sentinel, so "off" and "on and degenerate" cannot both present as absent."""
+    monkeypatch.delenv("NETT_SLOTC_DIAG", raising=False)
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    aux.compute(enc, torch.empty(0))
+    for f in ("ss_pos_acc", "ss_shuffled_acc_within", "ss_shuffled_acc_across",
+              "ss_chance", "ss_batch", "ss_pos_acc_x_batch", "ss_pos_sim", "ss_neg_sim"):
+        assert f in aux.last_scalars, f"{f} never reaches a reader"
+        assert aux.last_scalars[f] == -1.0, f"{f} should be the sentinel with the diag off"
+
+
+def test_the_diag_on_path_writes_real_ss_values(monkeypatch):
+    monkeypatch.setenv("NETT_SLOTC_DIAG", "1")
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    aux.compute(enc, torch.empty(0))
+    assert aux.last_scalars["ss_batch"] > 0
+    assert 0.0 <= aux.last_scalars["ss_pos_acc"] <= 1.0
+    assert aux.last_scalars["ss_chance"] > 0.0

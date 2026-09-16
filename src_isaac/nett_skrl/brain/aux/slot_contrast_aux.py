@@ -169,6 +169,129 @@ class SlotAttention(nn.Module):
         return slots, attn
 
 
+def slot_contrast_diagnostics(s1: torch.Tensor, s2: torch.Tensor, temperature: float,
+                              slots_per_image: int) -> dict:
+    """Are the TEMPORAL POSITIVES informative, and informative for the right reason?
+
+    ⛔ `loss_ss` FALLING CANNOT ANSWER THAT, AND THE MODULE DOCSTRING ALREADY SAYS WHY: the
+    degenerate optimum is constant slots, which drive the contrastive term toward zero with
+    nothing segmented. A falling `ss` is consistent with the objective working and with the
+    collapse it exists to avoid. `mask_variance` does not close the gap either -- it asks
+    whether slot attention is DEGENERATE, not whether the temporal pairing carries signal, and
+    its bare form could not even do that until it was given a null.
+
+    Shape is deliberately `nt_xent_diagnostics`'s (cltt_ref_aux.py:101): an accuracy, read
+    against a null drawn from the SAME slots under a structure carrying no temporal signal, so
+    the bare number is never the answer.
+
+    ⭐⭐ BUT THE NULL FORKS HERE, AND COLLAPSING IT TO ONE NUMBER WOULD MEASURE NEITHER HALF.
+    The flattened row index is `i = b*K + k`: batch element `b`, slot `k`. cltt_ref's null
+    shifts the positive assignment by one, which there moves to a different SAMPLE. Here, at
+    K=4, a shift of one lands on another slot of the SAME IMAGE three times out of four and
+    crosses to a different image once -- an average over two different questions:
+
+      * `shuffled_acc_within`  same image, a DIFFERENT SLOT. "Can a slot be told from its
+        neighbours in the same scene?" This is the one the collapse breaks: identical slots
+        make the within-image rows indistinguishable while leaving scenes distinguishable.
+      * `shuffled_acc_across`  same slot index, a DIFFERENT IMAGE. A much easier task, solvable
+        by scene appearance alone, and it stays solvable straight through a slot collapse.
+
+    ⇒ Both are emitted. [[a-mean-over-a-mixture-estimates-nothing]]
+
+    ⛔⛔⛔ AND DO NOT CARRY cltt_ref's RULE ACROSS. "pos_acc <= shuffled_acc means the pairing
+    carried no information" is registered for rows 04/05 and is SATISFIED BY THE COLLAPSE HERE.
+    Measured by the researcher seat against three constructed regimes, B=32 K=4:
+
+        regime                                        pos_acc   shuffled   chance
+        HEALTHY (input-dependent, stable over t)       1.0000    0.0000    0.0078
+        DEGENERATE (constant per-slot vectors)         0.0312    0.0000    0.0078
+        NO temporal correspondence (independent)       0.0156    0.0234    0.0078
+
+    At the degeneracy pos_acc is STRICTLY GREATER than shuffled. The reason is structural and is
+    the thing to internalise: in cltt_ref the positives are real images, so a collapse destroys
+    the pairing; here CONSTANT SLOTS TRIVIALLY PRESERVE SLOT INDEX ACROSS TIME -- slot k at t and
+    slot k at t+1 are the same constant -- so the temporal correspondence is perfect while
+    nothing is segmented. Same instrument shape, different degenerate manifold.
+    [[a-score-a-non-policy-attains]]
+
+    ⇒ THIS STATISTIC CANNOT STAND ALONE. It separates "correspondence" from "no correspondence";
+    it does NOT separate "slots track objects" from "slots are input-independent constants with
+    stable indices". That axis is `mask_variance_excess`, and the two are read as a PAIR:
+
+        pos_acc high    AND excess > 0   -> slot identity is real and input-driven
+        pos_acc ~= 1/B  AND excess <= 0  -> constant-slot collapse
+        pos_acc ~ chance                 -> no correspondence learned
+
+    ⚠ THE LAST ROW IS THE STARTING STATE, NOT A FAILURE, and that changes when this is read.
+    `slots_t` and `slots_n` are separate forward calls each drawing their own `randn`, so there
+    is no index correspondence at step 0 and chance-level pos_acc is CORRECT at init. Unlike
+    cltt_ref -- whose "too easy" hazard shows AT the first update -- the failure here DEVELOPS,
+    so an early read is uninformative rather than reassuring.
+
+    ⚠ Sentinels are negative (an accuracy is >= 0) and are returned where a null is UNDEFINED
+    rather than where it is uninteresting: `within` needs K >= 2 and `across` needs B >= 2. A
+    null computed on a degenerate axis would equal the positive by construction and read as
+    perfect agreement.
+    """
+    n = int(s1.shape[0])
+    k = max(1, int(slots_per_image))
+    b = n // k
+    sim = (s1 @ s2.t()) / temperature
+    labels = torch.arange(n, device=sim.device)
+    pred = sim.argmax(dim=1)
+    pos_acc = float((pred == labels).float().mean())
+
+    b_idx, k_idx = labels // k, labels % k
+    if k >= 2:
+        within = b_idx * k + (k_idx + 1) % k
+        within_acc = float((pred == within).float().mean())
+    else:
+        within_acc = -1.0
+    if b >= 2:
+        across = ((b_idx + 1) % b) * k + k_idx
+        across_acc = float((pred == across).float().mean())
+    else:
+        across_acc = -1.0
+
+    raw = sim * temperature
+    pos_sim = float(raw.gather(1, labels[:, None]).mean())
+    off = torch.ones_like(raw, dtype=torch.bool)
+    off.scatter_(1, labels[:, None], False)
+    neg_sim = float(raw[off].mean()) if bool(off.any()) else -1.0
+    return {
+        "ss_pos_acc": pos_acc,
+        "ss_shuffled_acc_within": within_acc,
+        "ss_shuffled_acc_across": across_acc,
+        "ss_chance": 1.0 / n if n else -1.0,
+        # ⭐ THE COLLAPSE SIGNATURE IS 1/B, NOT AN ABSOLUTE. With constant per-slot vectors the
+        # B columns sharing a slot index tie at similarity 1 and argmax takes the first, so each
+        # row is correct exactly once per batch: pos_acc -> 1/B with BOTH nulls at ~0. B is
+        # emitted because the realised batch is a CEILING, not a constant -- `t_max` is the fill
+        # index until the buffer fills -- so a rule written against a hardcoded 0.031 drifts off
+        # the signature between updates. `ss_pos_acc_x_batch` is that rule's natural units:
+        # ~1.0 AT the collapse, ~B when the correspondence is real. Emitted rather than left as
+        # a division for the reader, for the same reason `mask_variance_excess` is.
+        "ss_batch": float(b),
+        "ss_pos_acc_x_batch": pos_acc * b if b else -1.0,
+        # ⭐⭐ INPUT DEPENDENCE, AND IT FALLS OUT OF THE ACROSS-NULL RATHER THAN NEEDING A
+        # SEPARATE INSTRUMENT. If slot k is the same vector whatever the image, the
+        # across-image same-slot column is IN THE TIE SET with the positive, so `across`
+        # RISES TO MEET `pos_acc`. Measured on the three constructed regimes, B=32 K=4:
+        #     healthy     pos 1.0000  across 0.0000  -> 1.0000
+        #     degenerate  pos 0.0312  across 0.0312  -> 0.0000
+        #     nocorr      pos 0.0156  across 0.0078  -> 0.0078
+        # ⇒ `pos_acc` separates correspondence from none; THIS separates slots that depend on
+        # the image from constants with stable indices -- the axis `pos_acc` alone cannot see.
+        # ⚠ COMPLEMENTARY TO `mask_variance_excess`, NOT A REPLACEMENT: that one measures input
+        # dependence of the ATTENTION MASKS, this one of the SLOT VECTORS as the contrast
+        # consumes them. Two different objects; agreement between them is evidence, and
+        # disagreement is a finding rather than a fault in either.
+        "ss_input_dependence": pos_acc - across_acc if b >= 2 else -1.0,
+        "ss_pos_sim": pos_sim,
+        "ss_neg_sim": neg_sim,
+    }
+
+
 class SlotContrastHead(nn.Module):
     """The whole trainable set of this loss, as ONE submodule named `head`.
 
@@ -267,6 +390,14 @@ class SlotContrastAuxLoss(nn.Module):
         #: Slot-init-noise floor for `last_mask_variance`. Same sentinel discipline: negative so
         #: "diagnostic off" cannot be read as "null was zero".
         self.last_mask_variance_null: float = -1.0
+        # loss_ss discriminability. ⛔ A DICT OF SENTINELS, NOT None: `last_scalars` is built
+        # unconditionally below, so a None here would raise inside the emitter on the diag-off
+        # path instead of reporting "not measured". Negative because an accuracy is >= 0.
+        self.last_ss_diag: dict = {"ss_pos_acc": -1.0, "ss_shuffled_acc_within": -1.0,
+                                   "ss_shuffled_acc_across": -1.0, "ss_chance": -1.0,
+                                   "ss_batch": -1.0, "ss_pos_acc_x_batch": -1.0,
+                                   "ss_input_dependence": -1.0,
+                                   "ss_pos_sim": -1.0, "ss_neg_sim": -1.0}
         self.last_terms: tuple[float, float, float] | None = None
         # ⛔ `last_scalars` IS THE CHANNEL ppo_aux READS (ppo_aux.py:442). `last_mask_variance`
         # alone reached no reader -- the identical defect `nt_xent_diagnostics` had, where the
@@ -389,6 +520,13 @@ class SlotContrastAuxLoss(nn.Module):
                 flat = prep_t[:1].expand_as(prep_t).contiguous()
                 _, attn_null, _, _ = self._slots_for(encoder, flat)
                 self.last_mask_variance_null = float(attn_null.var(dim=0).mean())
+                # Discriminability of the TEMPORAL POSITIVES -- the question `mask_variance`
+                # does not ask and `loss_ss` cannot answer. Uses the SAME slots the loss just
+                # consumed, so it measures the objective as run, not a re-derivation of it.
+                self.last_ss_diag = slot_contrast_diagnostics(
+                    s1.reshape(-1, self.slot_dim).detach(),
+                    s2.reshape(-1, self.slot_dim).detach(),
+                    self.temperature, self.slots)
 
         total = self.w_ss * ss + self.w_rec * rec
         self.last_terms = (float(ss.detach()), float(rec.detach()), float(total.detach()))
@@ -403,7 +541,8 @@ class SlotContrastAuxLoss(nn.Module):
                              # The signal, reported directly so nobody has to subtract two
                              # series by hand and nobody reads the bare variance as the answer.
                              "mask_variance_excess": float(self.last_mask_variance
-                                                           - self.last_mask_variance_null)}
+                                                           - self.last_mask_variance_null),
+                             **{k: float(v) for k, v in self.last_ss_diag.items()}}
         return total
 
     def _temporal_pair(self, encoder, observations):
