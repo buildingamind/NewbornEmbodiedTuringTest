@@ -16,6 +16,7 @@ import torch.nn.functional as F
 
 from nett_skrl.brain.aux.cltt_patch_aux import CLTTPatchTerm
 from nett_skrl.brain.aux.cltt_ref_aux import CLTTReferenceProjectionHead
+from nett_skrl.brain.aux.knobs import NOT_MEASURED
 from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
 from nett_skrl.brain.aux.with_cltt_ref import WithCLTTRef
 from nett_skrl.brain.encoders.compact_vit import CompactViT
@@ -168,7 +169,11 @@ def test_the_deranged_positive_null_is_emitted_beside_the_accuracy():
     enc, comp = _composite()
     comp.term.compute(enc, None)
     s = comp.term.last_scalars
-    assert {"patch_pos_acc", "patch_shuffled_acc", "patch_chance", "patch_pos_sim",
+    # `patch_chance` became `patch_pos_chance` on 2026-09-17: the diagnostic's key used to be
+    # `chance`, which collided with the LOSS floor of the same name in cltt_ref's last_scalars.
+    # `patch_duplicates` is the unmeasured sentinel here by design -- see the call site.
+    assert s["patch_duplicates"] == NOT_MEASURED and s["patch_pos_ceiling"] == NOT_MEASURED
+    assert {"patch_pos_acc", "patch_shuffled_acc", "patch_pos_chance", "patch_pos_sim",
             "patch_neg_sim", "identity_frac_parked", "identity_frac_transit", "shift_rho",
             "shift_rho_null", "match_conf", "top_gamma", "rows"} <= set(s)
     assert 0.0 <= s["patch_pos_acc"] <= 1.0

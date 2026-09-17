@@ -20,9 +20,13 @@ target becomes the identity, the ego forward model learns the identity whatever 
 and the DenseCL correspondence degenerates to same-location. Every term therefore reports its
 IDENTITY FRACTION, split parked/transit -- that is the I77 "engaged vs not engaged" gate, and it
 is required, not optional.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations
+
+import math
 
 from dataclasses import dataclass
 
@@ -30,13 +34,12 @@ import torch
 import torch.nn as nn
 
 from .action_windows import draw_action_window
-from .knobs import _env_positive_int
+from .knobs import NOT_MEASURED, _env_positive_int  # noqa: F401  (re-exported)
 
 #: A statistic that could not be computed (empty stratum, degenerate null, diagnostic off).
 #: ⛔ Negative and distinctive: every real quantity these terms emit is either a probability, a
 #: fraction, a norm or a correlation, so a plausible-looking 0.0 would be indistinguishable from
 #: "the objective is perfectly degenerate", which is exactly the reading it must not permit.
-NOT_MEASURED = -9.0
 
 #: No window drawn yet (vicreg_tt's MASK_UNSET, same value so track_transit_mask agrees).
 MASK_UNSET = -4.0
@@ -136,6 +139,36 @@ def column_shift(match: torch.Tensor, n_w: int) -> torch.Tensor:
     src_col = (torch.arange(match.shape[1]) % n_w).float()
     dst_col = (match % n_w).float()
     return (dst_col - src_col).median(dim=1).values
+
+
+def excess_engaged(value: float, nulls) -> float:
+    """Is `value` outside the spread of its paired nulls? -> 1.0 / 0.0 / NOT_MEASURED.
+
+    ⛔ TWO-SIDED, AND THAT IS NOT CONSERVATISM -- A ONE-SIDED VERSION FAILS ON THE POSITIVE
+    CONTROL. These nulls destroy a pairing and compare a variance. A map that is CONSISTENT
+    across the batch (the object in the same place in every frame) varies LESS than the scrambled
+    version, so a genuinely engaged statistic comes out BELOW its null: measured 9.7e-03 against
+    a null of 1.37e-02 on a clip whose residual was 15.6x centre-concentrated. `excess > 0` calls
+    that not engaged. The informative quantity is the DISTANCE from the null, in units of the
+    null's own spread.
+
+    ⛔ AND IT IS AGAINST A SPREAD, NOT AGAINST 0. One permutation is a draw, not an estimate: at
+    2 PPO updates the same excess read -1.6e-04 and +5.1e-04 on consecutive updates against a
+    variance of 0.029. Several draws give the null a standard deviation, and 2 sd is the
+    threshold -- stated here rather than per call site so every gate in this package uses one
+    rule.
+    """
+    nulls = [float(v) for v in nulls]
+    if len(nulls) < 2 or not math.isfinite(value):
+        return NOT_MEASURED
+    mean = sum(nulls) / len(nulls)
+    var = sum((v - mean) ** 2 for v in nulls) / (len(nulls) - 1)
+    sd = math.sqrt(var)
+    if sd <= 0.0:
+        # Every draw identical: the null has no spread, so no distance is resolvable. That is a
+        # measurement the instrument could not make, not a negative result.
+        return NOT_MEASURED
+    return 1.0 if abs(value - mean) > 2.0 * sd else 0.0
 
 
 class TokenWindowTerm(nn.Module):

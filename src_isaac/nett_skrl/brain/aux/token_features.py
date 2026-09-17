@@ -17,6 +17,8 @@ pinned on the module past the step. tests/test_token_features.py asserts both, i
 `shared_feature_cache()`. ⚠ The cost is one extra trunk forward per token call; if a later loss
 wants to share the RL minibatch's trunk pass it needs its own cache with its own release, not a
 key in this one.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations

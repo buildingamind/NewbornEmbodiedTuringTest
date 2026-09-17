@@ -22,6 +22,8 @@ the user ... support the deepcopy protocol` for a non-leaf tensor. A lazy copy t
 update 1 with the cache on -- and never on CPU, where the cache path is inactive in tests.
 Constructing here (AuxLossPPO builds the aux before any update) avoids it, and the cache slot is
 additionally neutralised around the copy so a late construction cannot resurrect it.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations

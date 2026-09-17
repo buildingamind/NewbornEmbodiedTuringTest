@@ -84,6 +84,20 @@ def _composite(enc=None, memory=None):
     return enc, comp
 
 
+#: The composite owns the EMA teacher, so a bare term is built through it and then unwrapped.
+_TERMS = {}
+
+
+def _term(memory=None):
+    enc, comp = _composite(memory=memory)
+    _TERMS[id(comp.term)] = enc
+    return comp.term
+
+
+def _encoder_for(term):
+    return _TERMS[id(term)]
+
+
 # ------------------------------------------------------------------ the target is the reference's
 
 def test_target_rows_are_a_distribution_over_destination_tokens():
@@ -298,3 +312,109 @@ def test_the_row_is_registered_as_cltt_ref_plus_one_term():
     assert isinstance(aux, WithCLTTRef) and isinstance(aux.term, PatchAffinityTerm)
     assert aux.name == "patch_affinity" and aux.cltt_ref_weight == 1.0
     assert aux._teacher is not None
+
+
+# --------------------------------------------------------------------------------------------
+# NETT_AUX_AFF_CENTER. ⛔ The row did not engage on the GPU verification: target entropy 0.999 of
+# ln N and `ce - ce_floor` = 0.030 nats, i.e. nothing to learn. The cause was measured, not
+# guessed -- the teacher's tokens decompose as DC 11.73 / position 2.44 / content 0.26, so every
+# pairwise cosine sits in [0.881, 1.000] and a τ = 0.1 softmax of that range is flat.
+
+
+def _dc_pair(b=6, n=N, d=16, dc=12.0, content=0.3):
+    """A (t, t+k) token pair with the measured shape of the defect: DC 12 / position 0.5 /
+    content 0.3, per the decomposition of the real teacher (11.73 / 2.44 / 0.26).
+
+    ⛔ ONE shared component for BOTH views, which is the whole point -- it is the same encoder on
+    two frames of one scene. Two independent DC vectors would make every cross-view cosine ≈ -1
+    after centring and trip the all-negative wipe, which is a fixture artefact, not the defect.
+    """
+    shared = torch.randn(1, 1, d) * dc
+    position = torch.randn(1, n, d) * 0.5
+    base = shared + position
+    return base + torch.randn(b, n, d) * content, base + torch.randn(b, n, d) * content
+
+
+def test_centring_is_what_unsaturates_the_cosine(monkeypatch):
+    """The whole argument for the knob, as arithmetic on the shape the defect actually has."""
+    u_t, u_tk = _dc_pair()
+    raw, _ = affinity_target(u_t, u_tk, 0.1)
+    raw_entropy = float(-(raw.clamp_min(1e-12).log() * raw).sum(-1).mean())
+    c = torch.cat([u_t, u_tk]).mean(dim=(0, 1), keepdim=True)
+    centred, _ = affinity_target(u_t - c, u_tk - c, 0.1)
+    centred_entropy = float(-(centred.clamp_min(1e-12).log() * centred).sum(-1).mean())
+    assert raw_entropy > 0.95 * math.log(N)          # flat: nothing to learn
+    assert centred_entropy < 0.6 * raw_entropy       # the target now discriminates
+
+
+def test_the_centre_is_used_then_updated_which_is_dinos_order(monkeypatch):
+    """⚠ A batch must not centre ITSELF: at B = 1 that subtraction is exact and the target
+    becomes the cosine of two zero vectors. The batch centres the NEXT call."""
+    term = _term()
+    u_t, u_tk = _dc_pair(d=term.token_dim)
+    assert float(term.center.abs().max()) == 0.0
+    out_t, out_tk = term._centre(u_t, u_tk)
+    assert torch.equal(out_t, u_t) and torch.equal(out_tk, u_tk)     # the ZERO centre was used
+    expected = (1 - term.center_momentum) * torch.cat([u_t, u_tk]).mean(dim=(0, 1), keepdim=True)
+    assert torch.allclose(term.center, expected, atol=1e-6)          # ... and then updated
+    out2, _ = term._centre(u_t, u_tk)
+    assert not torch.equal(out2, u_t)
+
+
+def test_the_centre_never_reaches_the_optimizer_and_never_gets_grad():
+    """It is a statistic of a stop-grad teacher. A parameter here would be trained by the loss
+    it exists to measure, and the composite asserts over `head.parameters()`."""
+    term = _term()
+    assert "center" in dict(term.named_buffers())
+    assert not any(p is term.center for p in term.head.parameters())
+    assert not term.center.requires_grad
+    term.compute(_encoder_for(term), None)
+    assert term.center.grad is None
+
+
+def test_centring_off_leaves_the_centre_at_zero_and_the_knob_raises_on_nonsense(monkeypatch):
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER", "0")
+    term = _term()
+    assert term.centred is False
+    term.compute(_encoder_for(term), None)
+    assert float(term.center.abs().max()) == 0.0
+    assert term.last_scalars["centred"] == 0.0
+    assert term.last_scalars["center_norm"] == 0.0
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER", "maybe")
+    with pytest.raises(ValueError, match="NETT_AUX_AFF_CENTER"):
+        _term()
+
+
+def test_a_frozen_centre_is_refused_rather_than_silently_inert(monkeypatch):
+    """momentum 1.0 keeps the centre at its zero init for ever: the knob would read ON in every
+    log line and subtract nothing."""
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER", "1")
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER_MOMENTUM", "1.0")
+    with pytest.raises(ValueError, match="freezes the centre"):
+        _term()
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER_MOMENTUM", "0.5")
+    assert _term().center_momentum == 0.5
+    monkeypatch.setenv("NETT_AUX_AFF_CENTER_MOMENTUM", "1.5")
+    with pytest.raises(ValueError, match="NETT_AUX_AFF_CENTER_MOMENTUM"):
+        _term()
+
+
+def test_pair_dep_is_exactly_zero_for_an_image_blind_target():
+    """⛔ THE SIGN OF `input_dep` IS NOT INFORMATIVE -- a healthy target gives a NEGATIVE excess,
+    because consecutive frames give similar matrices across the batch and random pairings give
+    dissimilar ones. `pair_dep` is the statistic without the trap: exactly 0 when the target does
+    not depend on which frames were paired, positive when it does."""
+    perm = torch.tensor([3, 4, 5, 0, 1, 2])
+    a, b = _dc_pair(b=1)
+    blind_t, blind_tk = a.expand(6, -1, -1).contiguous(), b.expand(6, -1, -1).contiguous()
+    t_blind, _ = affinity_target(blind_t, blind_tk, 0.1)
+    null_blind, _ = affinity_target(blind_t, blind_tk[perm], 0.1)
+    assert float(0.5 * (t_blind - null_blind).abs().sum(-1).mean()) == 0.0
+    # The positive half is measured CENTRED, because that is where the target has any structure
+    # at all: uncentred, this exact fixture gives a target that is uniform to float precision --
+    # which is itself the defect, and is asserted above.
+    real_t, real_tk = _dc_pair()
+    c = torch.cat([real_t, real_tk]).mean(dim=(0, 1), keepdim=True)
+    t_real, _ = affinity_target(real_t - c, real_tk - c, 0.1)
+    null_real, _ = affinity_target(real_t - c, (real_tk - c)[perm], 0.1)
+    assert float(0.5 * (t_real - null_real).abs().sum(-1).mean()) > 0.0

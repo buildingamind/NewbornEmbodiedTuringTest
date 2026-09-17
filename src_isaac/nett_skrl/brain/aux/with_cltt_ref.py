@@ -35,6 +35,8 @@ THE AuxLossPPO CONTRACT THIS SATISFIES (ppo_aux.py, read before changing anythin
 
 ORDER. cltt_ref is computed FIRST, so it consumes the global RNG stream from the same state it
 would in the control at the start of each minibatch's aux call; the term draws after it.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations

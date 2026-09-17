@@ -50,6 +50,8 @@ TRANSIT WEIGHTING. `window_mean_abs_turn` / `transit_weights` are the arithmetic
 `VICRegTemporalAuxLoss._select_window`'s transit mask, moved here so both callers share one
 copy; vicreg_tt's branching, sentinels, warnings and RNG draw order are untouched (pinned against
 a frozen copy in tests/test_action_windows.py). Why |turn| and not |move|: see that docstring.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations

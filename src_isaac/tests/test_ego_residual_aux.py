@@ -17,6 +17,7 @@ import torch.nn.functional as F
 
 from nett_skrl.brain.aux.ego_residual_aux import EgoResidualTerm, objectness_from_residual
 from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+from nett_skrl.brain.aux.token_term import excess_engaged  # noqa: F401  (re-exported below)
 from nett_skrl.brain.aux.token_term import NOT_MEASURED, TokenWindow
 from nett_skrl.brain.aux.with_cltt_ref import WithCLTTRef
 from nett_skrl.brain.encoders.compact_vit import CompactViT
@@ -277,8 +278,15 @@ def test_the_objectness_null_is_an_EXACTNESS_test_for_the_fixed_map_artefact():
     batch = 6
     shared = torch.randn(1, N, 10)
     fixed = _objectness_diag(torch.randn(batch, N, 10), shared.expand(batch, -1, -1).contiguous())
-    assert fixed["objectness_input_dep"] == 0.0
-    assert fixed["objectness_var"] == fixed["objectness_var_null"]
+    # ⚠ NOT `== 0.0` ANY MORE, AND THE REASON IS ARITHMETIC, NOT A WEAKENED CLAIM. The null is
+    # now the MEAN of NULL_DRAWS permutations (one draw is not an estimate of a spread), and
+    # summing eight identical float32 values and dividing leaves ~4e-09. Every individual draw
+    # still reproduces the map exactly; the claim "permuting the pairing changes nothing" is
+    # unchanged, and a real per-sample object below is four orders of magnitude above this.
+    assert abs(fixed["objectness_input_dep"]) < 1e-7
+    assert fixed["objectness_var"] == pytest.approx(fixed["objectness_var_null"], abs=1e-7)
+    # With no spread in the null there is no distance to resolve, so the gate must not answer.
+    assert fixed["objectness_var_null_sd"] < 1e-7
 
     u0 = torch.randn(batch, N, 10)
     u1 = u0.clone()
@@ -359,7 +367,9 @@ def test_every_diagnostic_is_emitted_on_every_call():
             "res_centre_ratio_noedge", "res_centre_ratio_null", "pix_centre_ratio",
             "action_gain", "action_gain_transit", "compensation_gain", "objectness_input_dep",
             "route_diag_top_quartile", "route_diag_bottom_quartile", "route_p_diag_at_zero",
-            "token_std", "residual_mean", "res_ratio_rho_turn"} <= keys
+            "token_std", "residual_mean", "res_ratio_rho_turn",
+            "objectness_engaged", "objectness_var_null_sd", "centre_ratio_interpretable",
+            "pix_centre_ratio_null", "pix_centre_ratio_null_sd"} <= keys
 
 
 def test_parameter_counts_are_what_the_spec_derived():
@@ -374,3 +384,71 @@ def test_the_row_is_registered_as_cltt_ref_plus_one_term():
     aux = AUX_LOSSES["ego_residual"](_encoder())
     assert isinstance(aux, WithCLTTRef) and isinstance(aux.term, EgoResidualTerm)
     assert aux.name == "ego_residual" and aux._teacher is not None
+
+
+# --------------------------------------------------------------------------------------------
+# The two gates. ⛔ Both were added after a GPU verification round read "the objectness did not
+# engage" from numbers that could not have said so: `pix_centre_ratio` was 1.06 and 1.12, i.e.
+# the PIXELS carried no centre concentration in those episodes, and `objectness_input_dep` was
+# -1.6e-04 / +5.1e-04 against a variance of 0.029 with a single permutation behind it.
+
+
+def test_the_engagement_rule_is_two_sided_because_the_positive_control_goes_the_other_way():
+    """⛔ THE ONE-SIDED VERSION FAILS ON A CLIP WHERE THE ANSWER IS KNOWN. On real Isaac frames
+    with the object centred, the residual was 15.6x centre-concentrated -- unambiguously engaged
+    -- and its objectness variance was 9.7e-03 against a permuted null of 1.37e-02. BELOW. A map
+    that is consistent across the batch varies less than a scrambled one, so `excess > 0` reports
+    the positive control as dead. The numbers below are those measurements."""
+    assert excess_engaged(0.0097, [0.0137, 0.0136, 0.0138, 0.0135]) == 1.0      # positive control
+    assert excess_engaged(0.0286, [0.0287, 0.0279, 0.0290, 0.0281]) == 0.0      # 2 updates, real
+    assert excess_engaged(0.05, [0.0137, 0.0136, 0.0138, 0.0135]) == 1.0        # above, also 1.0
+
+
+def test_a_null_with_no_spread_or_too_few_draws_is_not_measured_rather_than_negative():
+    """⚠ A gate that cannot resolve a distance must say so. Reporting 0.0 there would be a
+    negative result the instrument never established."""
+    assert excess_engaged(1.0, [1.0, 1.0, 1.0, 1.0]) == NOT_MEASURED
+    assert excess_engaged(1.0, [1.0]) == NOT_MEASURED
+    assert excess_engaged(float("nan"), [1.0, 2.0, 3.0]) == NOT_MEASURED
+
+
+def test_the_centre_ratio_declares_itself_uninterpretable_when_the_pixels_are_not_centred():
+    """⛔ D1 ASKS "IS THE RESIDUAL IN THE CENTRE?" AND PRESUMES THE OBJECT IS. When the input has
+    no centre concentration, ~1.0 is the correct answer to that question and NOT a null result
+    about objectness. The flag is what stops the second reading."""
+    term = EgoResidualTerm(_encoder())
+    batch = 8
+    u0, u1 = torch.randn(batch, N, 10), torch.randn(batch, N, 10)
+    window = _window(batch, torch.zeros(batch))
+    A = torch.eye(N)[None].expand(batch, -1, -1)
+    e = term._residual(A, u0, u1)
+    w = objectness_from_residual(e)
+    z = torch.randn(batch, N, term.token_dim)
+
+    noisy = 0.3 + torch.rand(batch, N) * 0.05              # real frames: no centre structure
+    weak = noisy.clone()
+    weak[:, (torch.arange(N) % N_W >= 2) & (torch.arange(N) % N_W < 6)] *= 1.15   # the 1.06-1.17
+    centred = noisy.clone()                                                       # regime
+    centred[:, (torch.arange(N) % N_W >= 2) & (torch.arange(N) % N_W < 6)] = 30.0
+    for pix, expect, tag in ((noisy, 0.0, "uniform"), (weak, 0.0, "the live-apparatus regime"),
+                             (centred, 1.0, "centre-heavy")):
+        term._pixel_change = lambda _w, _p=pix: _p
+        d = term._diagnostics(window, A, u0, u1, e, w, z)
+        assert d["centre_ratio_interpretable"] == expect, (tag, d["pix_centre_ratio"],
+                                                           d["pix_centre_ratio_null"])
+
+
+def test_the_objectness_gate_reads_engaged_on_a_per_sample_object():
+    term = EgoResidualTerm(_encoder())
+    batch = 8
+    u0 = torch.randn(batch, N, 10)
+    u1 = u0.clone()
+    for b in range(batch):
+        u1[b, (b * 5) % N] += 6.0                 # a different object token per sample
+    d = _objectness_diag(u0, u1)
+    assert d["objectness_engaged"] == 1.0
+    shared = torch.randn(1, N, 10).expand(batch, -1, -1).contiguous()
+    fixed = _objectness_diag(torch.randn(batch, N, 10), shared)
+    # A map identical for every sample: every null draw reproduces it exactly, so the null has
+    # no spread and the gate reports NOT MEASURED rather than inventing a negative.
+    assert fixed["objectness_engaged"] == NOT_MEASURED

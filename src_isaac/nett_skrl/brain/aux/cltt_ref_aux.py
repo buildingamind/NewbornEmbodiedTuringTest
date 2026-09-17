@@ -53,6 +53,8 @@ change plan v14 parks in Tier 2 ("an objective that needs a signature change acr
 five compute() implementations is a code change with its own review"). compute()'s
 signature is unchanged and the other four losses are untouched. The incumbent
 ``cltt`` also stays byte-identical: already-scored arms must keep their definition.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations
@@ -68,7 +70,7 @@ from skrl import logger
 # Deliberately do NOT port the reference's `neg - math.e`: the self term is
 # exp(1/T), equal to e only at T=1. At its T=0.5, exp(2)=7.3891 minus 2.7183
 # leaves 4.67 of self-similarity per row. Our nt_xent masks the diagonal exactly.
-from .simclr_aux import nt_xent
+from .knobs import NOT_MEASURED
 from .cltt_views import current_frame_stack, resolve_channels_per_frame
 
 
@@ -98,7 +100,140 @@ class CLTTReferenceProjectionHead(nn.Module):
 
 
 
-def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float) -> dict:
+def same_frame_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor, int]:
+    """(2B, 2B) boolean mask of entries whose ROW AND COLUMN ARE THE SAME FRAME, and its count.
+
+    ⛔ ONE DERIVATION, TWO CONSUMERS -- the loss and the diagnostic. Deriving it twice is how the
+    two drift, and the diagnostic's job is to describe the loss.
+
+    Derived from the slicing in `CLTTReferenceAuxLoss.compute`, not from the symptom it caused::
+
+        views[m] = raw[t0 + k_m : t0 + batch + k_m]        k_0 = 0, k_m = offsets[m-1]
+
+    so for the pair (view_0, view_k) that forms one similarity matrix:
+
+        row i  (i < B)   is frame t0 + i;      z2[j] is frame t0 + k + j, so the SAME frame sits
+                         at j = i - k, i.e. column B + (i - k) -- which exists iff i >= k;
+        row B + j        is frame t0 + k + j;  the same frame sits at column j + k in the first
+                         half -- which exists iff j + k < B. That is the transpose of the above,
+                         so the mask is symmetric by construction and is asserted to be.
+
+    ⇒ 2(B - k) entries when 0 < k < B; the k edge rows of each half have no duplicate, and at
+    k >= B nothing does. The count is RETURNED rather than assumed: a caller that logs "masked"
+    while masking nothing is the failure this signature exists to prevent.
+
+    ⚠ THE DIAGONAL IS NOT THIS. `fill_diagonal_` masks a row against its own embedding; this
+    masks a row against ANOTHER INDEX holding the same frame. Both are needed and they are
+    different facts -- the diagonal is exact self-similarity, this is an exact duplicate whose
+    two encodings can differ (and if they do, the tie breaks and the loss can fall below
+    n_offsets*ln2 without any temporal invariance being learned).
+    """
+    if batch < 1:
+        raise ValueError(f"batch={batch} has no similarity matrix.")
+    if offset <= 0:
+        raise ValueError(
+            f"offset={offset} is not a frame offset: at 0 the two views are the same slab and "
+            f"the 'duplicate' IS the positive, which this mask must never remove.")
+    n = 2 * batch
+    mask = torch.zeros(n, n, dtype=torch.bool, device=device)
+    if offset >= batch:
+        return mask, 0                     # no i satisfies both i >= offset and i < batch
+    rows = torch.arange(offset, batch, device=device)
+    cols = batch + rows - offset
+    flat = torch.cat([rows * n + cols, cols * n + rows])
+    mask.view(-1).scatter_(0, flat, torch.ones_like(flat, dtype=torch.bool))
+    return mask, int(flat.numel())
+
+
+def positive_alias_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor, int]:
+    """(2B, 2B) mask of columns holding the same frame as the ROW'S POSITIVE, and its count.
+
+    ⛔ WITHOUT THIS THE DIAGNOSTIC STAYS PINNED, JUST ON A DIFFERENT ALIAS, and the requested
+    control ("a perfect encoder must read pos_acc ~ 1") cannot pass however good the encoder is.
+    Derivation, from the same slicing::
+
+        row i < B    is frame t0+i, its positive is z2[i] = frame t0+k+i -- and THAT FRAME is
+                     also in the FIRST half, at column i+k, whenever i+k < B;
+        row B+j      is frame t0+k+j, its positive is z1[j] = frame t0+j -- also in the SECOND
+                     half at column B+(j-k), whenever j >= k.
+
+    Those columns are exact copies of the positive, so their similarity to the anchor EQUALS the
+    positive's, to the last bit. `argmax` breaks that tie by index and the lower index wins, so
+    the prediction lands on the copy and `pos_acc` reads 0 for an encoder that has in fact put
+    the right frame on top.
+
+    ⇒ The diagnostic counts a hit when the argmax lands on ANY column holding the positive's
+    frame -- the question it exists to ask is "did the encoder rank the frame at t+k above every
+    OTHER frame", and both columns are that frame. It is deliberately NOT removed from the loss:
+    doing that would delete real negatives from the objective, which is a second owner decision
+    and not the one taken on 2026-09-17.
+    """
+    if batch < 1:
+        raise ValueError(f"batch={batch} has no similarity matrix.")
+    if offset <= 0:
+        raise ValueError(f"offset={offset} is not a frame offset.")
+    n = 2 * batch
+    mask = torch.zeros(n, n, dtype=torch.bool, device=device)
+    if offset >= batch:
+        return mask, 0
+    rows = torch.arange(0, batch - offset, device=device)
+    first = rows * n + (rows + offset)                       # row i -> column i+k
+    second = (rows + batch + offset) * n + (batch + rows)    # row B+j (j>=k) -> column B+j-k
+    flat = torch.cat([first, second])
+    mask.view(-1).scatter_(0, flat, torch.ones_like(flat, dtype=torch.bool))
+    return mask, int(flat.numel())
+
+
+def nt_xent_same_frame_masked(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
+                              offset: int) -> tuple[torch.Tensor, int]:
+    """NT-Xent with each anchor's OWN FRAME removed from its negatives. -> (loss, masked count).
+
+    ⛔ OWNER DECISION, 2026-09-17 (workspace DECISIONS): "the CLTT objective should exclude an
+    anchor's own frame from its negatives". Every cltt_ref arm trained BEFORE that decision ran
+    the unmasked objective and is NOT comparable to one trained after it.
+
+    ⛔ WHAT IT CHANGES, AND WHY IT IS NOT COSMETIC. Unmasked, each anchor's own frame sat among
+    its negatives at the maximum similarity a temporally invariant encoder can produce, so the
+    objective was partly "push this frame away from itself at another index" -- and it could be
+    minimised by embedding ONE frame differently in the two views (breaking the tie) rather than
+    by learning invariance. With the duplicate removed that route is gone, and the
+    n_offsets*ln2 tie floor no longer applies: `chance` = n_offsets*ln(2B-1) is the only floor.
+
+    ⛔ THIS IS NOT `simclr_aux.nt_xent` AND MUST NOT BE FOLDED INTO IT. The SimCLR arms pair two
+    AUGMENTATIONS of one image; their 2B set contains no duplicate frame, so this mask would
+    remove real negatives from a live objective.
+    """
+    batch = z1.shape[0]
+    z = torch.cat([z1, z2], dim=0)
+    sim = torch.mm(z, z.t()) / temperature
+    sim.fill_diagonal_(float("-inf"))
+    mask, count = same_frame_mask(batch, offset, device=z.device)
+    sim = sim.masked_fill(mask, float("-inf"))     # out-of-place: the graph keeps its gradient
+    labels = (torch.arange(2 * batch, device=z.device) + batch) % (2 * batch)
+    return F.cross_entropy(sim, labels), count
+
+
+_DIAG_GENERATORS: dict = {}
+
+
+def _diag_generator(device) -> torch.Generator:
+    """One generator per device, private to the diagnostics.
+
+    ⛔ THE DIAGNOSTIC MUST NOT MOVE THE TRAINING RNG STREAM. It runs under `no_grad` and cannot
+    change a gradient in its own step, but drawing from the global generator would change every
+    window drawn AFTER it -- so `NETT_AUX_CLTT_REF_DIAG=1` would silently be a different run
+    from `=0`. Seeded from a constant, so a null is reproducible across processes.
+    """
+    g = _DIAG_GENERATORS.get(device)
+    if g is None:
+        g = torch.Generator(device=device)
+        g.manual_seed(20260917)
+        _DIAG_GENERATORS[device] = g
+    return g
+
+
+def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
+                        *, duplicate_offset: int | None = None) -> dict:
     """Is the contrastive task SOLVABLE, and is it solvable for the right reason?
 
     ⛔ THE LOSS VALUE CANNOT ANSWER EITHER, AND cltt_ref HAS TWO OPPOSITE FAILURE MODES that
@@ -120,9 +255,30 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float) 
        object at a different viewpoint -- penalising the invariance under test. If `pos_acc`
        sits at chance (1/(2B-1)) the pairing is unusable.
 
-    `shuffled_acc` is the null: the same embeddings scored against a DERANGED positive
-    assignment. `pos_acc` at or below it means the temporal offset carried no information --
+    `shuffled_acc` is the null: the same embeddings scored against a RANDOM VALID WRONG
+    candidate. `pos_acc` at or below it means the temporal offset carried no information --
     the reading the vicreg-tt+ kill was really about, expressed for a contrastive objective.
+
+    ⛔ CORRECTION, 2026-09-17 (workspace FINDINGS §4bw.1). Both readings above were unusable as
+    shipped, and the numbers they produced in the field were reports about this function, not
+    about any encoder. The views are contiguous slabs of ONE stream -- `view_k[i] IS view_0[i+k]`,
+    the same frame, not a similar one -- so each anchor's own frame sat in the opposite half at
+    the maximum similarity a temporally invariant encoder can produce, the argmax was pinned
+    there, and `pos_acc` collapsed to ~2e-4, BELOW its own reported chance of 1.005e-3. The
+    `labels + 1` null aliased that same duplicate at offset 1 and never at offset 2, so it read
+    (B-1)/4B = 0.2495 on every arm -- a null 248x above chance beside a signal below it, which
+    is an instrument signature and not a result. Both scalars were two readings of one bit.
+
+    ⇒ The candidate set now EXCLUDES each row's duplicate, `pos_chance` is 1/|candidates| rather
+    than 1/(2B-1), and the null is a random valid wrong candidate that cannot land on a
+    duplicate. `duplicates` reports how many rows had one, so this version's numbers are
+    distinguishable from the old ones at a glance.
+
+    ⚠ READ THE LOSS AGAINST TWO FLOORS, NOT ONE. `chance` is n_offsets*ln(2B-1), the random
+    floor. But a pair that contains the SAME frame twice can be driven below n_offsets*ln2 by
+    embedding that one frame DIFFERENTLY in the two views -- breaking the tie rather than
+    learning invariance. A loss under the tie floor is therefore evidence AGAINST temporal
+    invariance, not for it; measured on a real arm (C72, all seven brains).
 
     ⚠ Every field is emitted on EVERY call. A diagnostic written only where it succeeds makes
     "engaged" and "fell through" both present as absent, and absent reads as benign.
@@ -132,22 +288,107 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float) 
     sim = torch.mm(z, z.t()) / temperature
     sim.fill_diagonal_(float("-inf"))
     labels = (torch.arange(2 * B, device=z.device) + B) % (2 * B)
+
+    # ⛔ EXCLUDE THE ANCHOR'S OWN FRAME FROM ITS OWN CANDIDATE SET. Derivation, from the slicing
+    # in `compute` rather than from the symptom: view_m[i] = raw[t0 + k_m + i], so for the pair
+    # (view_0, view_k) passed here,
+    #     row i < B   is frame t0 + i      and the SAME frame sits in the second half wherever
+    #                 t0 + k + j = t0 + i, i.e. at column B + (i - k), which exists iff i >= k;
+    #     row B + j   is frame t0 + k + j  and the same frame sits in the first half at column
+    #                 j + k, which exists iff j + k < B.
+    # ⇒ 2(B - k) of the 2B rows carry an exact duplicate of their own anchor (max abs pixel
+    # difference 0.0, not "similar"), and its similarity is the maximum a temporally invariant
+    # encoder can produce -- so the argmax is pinned there and `pos_acc` collapses BELOW its own
+    # reported chance. The k edge rows in each half have no duplicate.
+    # ⇒ THE SAME MASK THE LOSS USES. `same_frame_mask` is the single derivation; a second one
+    # here is how a diagnostic comes to describe an objective the code no longer runs.
+    if duplicate_offset is None:
+        dup_mask = torch.zeros_like(sim, dtype=torch.bool)
+        n_dup = NOT_MEASURED           # the caller did not declare an overlap: unmeasured, not 0
+    else:
+        dup_mask, n_masked = same_frame_mask(B, int(duplicate_offset), device=z.device)
+        n_dup = float(n_masked)
+    sim = sim.masked_fill(dup_mask, float("-inf"))
+
     pred = sim.argmax(dim=1)
-    pos_acc = float((pred == labels).float().mean())
-    # Deranged null: shift the positive assignment by one within each half, so every row is
-    # scored against a DIFFERENT real embedding rather than against noise.
-    shifted = (labels + 1) % (2 * B)
-    shuffled_acc = float((pred == shifted).float().mean())
+    # A hit is the positive OR any other column holding the positive's frame; see
+    # `positive_alias_mask` for why the plain equality reads 0 for a perfect encoder.
+    hit = torch.zeros_like(sim, dtype=torch.bool)
+    hit.scatter_(1, labels[:, None], True)
+    if duplicate_offset is not None:
+        alias_mask, n_alias = positive_alias_mask(B, int(duplicate_offset), device=z.device)
+        hit |= alias_mask
+    else:
+        alias_mask = torch.zeros_like(hit)
+        n_alias = NOT_MEASURED
+    pos_acc = float(hit.gather(1, pred[:, None]).float().mean())
+    # The candidate set is what is LEFT: 2B minus the row itself, minus its duplicate where one
+    # exists. Chance is the mean of 1/|candidates| over rows, not 1/(2B-1) -- that number
+    # presumed 2B distinct samples, which this slab has never supplied.
+    # The alias is a candidate the row can legitimately land on, so it stays in the count.
+    candidates = (2 * B - 1) - dup_mask.sum(dim=1)
+    chance = float((1.0 / candidates.float()).mean())
+
+    # ⛔ THE NULL IS A RANDOM VALID WRONG CANDIDATE, NOT `labels + 1`. The shift aliased the
+    # duplicate exactly when k = 1 (column B + i + 1 vs the duplicate at B + i - 1 -- they meet
+    # under the +1 when the offsets are read across both halves) and never when k = 2, so the
+    # "null" averaged (B-1)/4B = 0.2495 over two offsets and was reporting the same pinned
+    # argmax the signal was. A null that can land on the duplicate measures the duplicate.
+    # Drawn from a DEDICATED generator so the diagnostic consumes none of the training RNG
+    # stream: with the global generator, turning the diagnostic on would change which windows
+    # later updates draw, and this must not touch training at all.
+    valid = torch.ones_like(sim, dtype=torch.bool)
+    valid.fill_diagonal_(False)
+    valid.scatter_(1, labels[:, None], False)
+    valid &= ~dup_mask & ~alias_mask      # a null that can land on a copy of the positive
+
+    noise = torch.rand(sim.shape, device=z.device, generator=_diag_generator(z.device))
+    deranged = noise.masked_fill(~valid, -1.0).argmax(dim=1)
+    shuffled_acc = float((pred == deranged).float().mean())
+
+    raw_full = (torch.mm(z, z.t()))          # untempered, BEFORE any masking
+    # ⛔ THE ONE STATISTIC THAT SEPARATES THE TWO WAYS A LOW LOSS CAN HAPPEN. `pos_acc` cannot:
+    # an encoder that has learned temporal invariance and an encoder that has broken the tie by
+    # embedding ONE frame differently in the two views both score high. But a pure function of
+    # the image gives cos(z1[i], z2[i-k]) = 1 EXACTLY for a duplicate, because it is the same
+    # image; anything below 1 means the embedding depends on which view the frame arrived in
+    # (batch statistics are the live route -- BatchNorm in train() sees two different slabs).
+    # Measured on a 600-step fixture where the tie broke: dup_sim 0.9910 BELOW pos_sim 0.9943.
+    dup_sim = float(raw_full[dup_mask].mean()) if bool(dup_mask.any()) else NOT_MEASURED
+
     raw = sim * temperature
     pos_sim = float(raw.gather(1, labels[:, None]).mean())
     off = torch.ones_like(raw, dtype=torch.bool)
     off.fill_diagonal_(False)
     off.scatter_(1, labels[:, None], False)
+    # ⚠ The duplicate is not a negative in any sense the number is read for -- it is the anchor
+    # itself -- so it leaves `neg_sim` too, or the mean negative similarity is inflated by the
+    # single largest entry in the row.
+    off &= ~dup_mask
     neg_sim = float(raw[off].mean())
     return {
         "pos_acc": pos_acc,
         "shuffled_acc": shuffled_acc,
-        "chance": 1.0 / (2 * B - 1),
+        # ⛔ NOT "chance". That key is the LOSS floor, n_offsets*ln(2B-1), and this dict is
+        # merged into the same `last_scalars`: the diagnostic's probability silently overwrote
+        # it, so the loss floor was lost on exactly the arms carrying the diagnostic.
+        "pos_chance": chance,
+        # ⛔ READ pos_acc AGAINST THIS, NOT AGAINST 1.0. On a contiguous slab the frame at
+        # t - k is a candidate too, and for a TIME-HOMOGENEOUS encoder (similarity a function of
+        # |Δt| alone -- which is what "learned temporal invariance at lag k" means) it is EXACTLY
+        # as similar to the anchor as the positive at t + k. The argmax breaks that tie by index,
+        # so half the rows miss whatever the encoder has learned. Only the k rows at each half's
+        # start have no backward twin, which gives the closed form
+        #     ceiling = 0.5 + k / 2B
+        # verified to four decimals at (B,k) = (12,2), (20,3), (30,5) and (16,1) against a
+        # lookup-table encoder whose similarity peaks exactly at lag k. A reading near 1.0 is not
+        # a better encoder; it is a DIRECTION-SENSITIVE one, which on this apparatus means the
+        # embedding depends on something other than the image content at that instant.
+        "pos_ceiling": (0.5 + duplicate_offset / (2.0 * B)) if duplicate_offset is not None
+                       else NOT_MEASURED,
+        "duplicates": n_dup,
+        "positive_aliases": n_alias if n_alias == NOT_MEASURED else float(n_alias),
+        "dup_sim": dup_sim,
         "pos_sim": pos_sim,
         "neg_sim": neg_sim,
         "batch": B,
@@ -340,12 +581,22 @@ class CLTTReferenceAuxLoss(nn.Module):
 
         z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []
-        for view in views[1:]:
+        masked_pairs = 0
+        for offset, view in zip(self.offsets, views[1:]):
             z_pos = self.head(encoder.encode_prepared(view))
-            total = total + nt_xent(z_anchor, z_pos, self.temperature)
+            # ⛔ OWNER DECISION 2026-09-17: the anchor's own frame is not one of its negatives.
+            # This CHANGES THE OBJECTIVE -- see `nt_xent_same_frame_masked`. Arms trained before
+            # this commit are not comparable to arms trained after it.
+            offset_loss, masked = nt_xent_same_frame_masked(
+                z_anchor, z_pos, self.temperature, offset)
+            total = total + offset_loss
+            masked_pairs += masked
             if self.diag:
                 with torch.no_grad():
-                    diags.append(nt_xent_diagnostics(z_anchor, z_pos, self.temperature))
+                    # The offset IS the overlap: view_offset[i] is view_0[i + offset], the same
+                    # frame. The diagnostic needs it to know which candidates are duplicates.
+                    diags.append(nt_xent_diagnostics(z_anchor, z_pos, self.temperature,
+                                                     duplicate_offset=offset))
         # Averaged over offsets, and emitted whether or not the diagnostic is on, so a reader
         # can tell "off" from "on and degenerate". See nt_xent_diagnostics.
         self.last_diag = ({k: sum(d[k] for d in diags) / len(diags) for k in diags[0]}
@@ -355,7 +606,16 @@ class CLTTReferenceAuxLoss(nn.Module):
         # B, t_max and avail go out ALWAYS -- not only when the diag is on -- because they
         # are what makes any level claim about this loss checkable, and because they vary
         # across updates while the startup log fires once.
+        # ⛔ THE REGIME GOES OUT ON EVERY CALL, so an old arm and a new one are distinguishable
+        # from tfevents alone -- the objective changed mid-wave and the loss VALUE alone cannot
+        # say which one produced it. `masked_pairs` is the realised count, not the intent: at
+        # offset >= B it is legitimately 0, and a regime flag without its count would report
+        # masking that did not happen.
         self.last_scalars = {"B": float(batch), "t_max": float(t_max),
+                             "same_frame_masked": 1.0,
+                             "masked_pairs": float(masked_pairs),
+                             "masked_frac": float(masked_pairs)
+                             / float(len(self.offsets) * (2 * batch) ** 2),
                              "chance": float(len(self.offsets)
                                              * math.log(2 * batch - 1))}
         if self.last_diag:

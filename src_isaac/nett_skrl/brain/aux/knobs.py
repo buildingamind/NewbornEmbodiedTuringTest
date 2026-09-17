@@ -22,6 +22,14 @@ _ON = frozenset({"1", "true", "yes", "on"})
 _OFF = frozenset({"", "0", "false", "no", "off"})
 
 
+#: A statistic that could not be computed. ⛔ NOT 0.0 and NOT silence: a diagnostic that
+#: reports a plausible zero where it failed to measure is indistinguishable from one that
+#: measured and found nothing, and those are opposite facts. Defined HERE, in the leaf both
+#: `token_term` and `cltt_ref_aux` already import, because a second copy is a second convention
+#: the day one of them is edited.
+NOT_MEASURED = -9.0
+
+
 def _env_flag_strict(name: str, default: bool = False) -> bool:
     """Boolean knob: unset -> ``default``; on/off spellings as `_env_flag`; anything else raises."""
     raw = os.environ.get(name)

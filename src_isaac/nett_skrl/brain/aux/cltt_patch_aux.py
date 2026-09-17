@@ -30,17 +30,32 @@ half removes most of those. VICRegL keeps its top 20 pairs for the same reason.
 penalise within-object coherence. All-pairs at M = 40 and B = 512 OOMs a 24 GB card (measured,
 research spec §6.4). M = 8 over the batch gives 2BM = 8,192 rows.
 
-⚠ NOT RUNNABLE UNDER `NETT_AUX_STRICT=1`. The anchors are selected with `gather`, whose BACKWARD
-is `index_add`-shaped and has no deterministic CUDA kernel. That is fine as shipped -- ppo_aux
-runs the auxiliary backward inside `relaxed_determinism()` -- but the fused fully-strict control
-path would raise. The same is true of any token-selection objective; it is stated here rather
-than discovered on the control run.
+⛔ CORRECTION, 2026-09-17: THIS ROW *IS* RUNNABLE UNDER `NETT_AUX_STRICT=1`. The warning that
+stood here said it was not, because the anchors are selected with `gather`, whose backward is
+`self.new_zeros(...).scatter_add_(...)`, and both `torch.gather` on a CUDA tensor that requires
+grad and `Tensor.scatter_add_` on a CUDA tensor appear in `torch.use_deterministic_algorithms`'s
+docstring. They appear in its FIRST list -- "operations will act DETERMINISTICALLY when
+mode=True", i.e. torch selects a deterministic kernel for them -- not in the second list, which
+is the one that throws. The claim came from reading the ops out of the list without the heading
+above them.
+
+MEASURED, not merely re-read: all six wave-17 rows ran the real `AuxLossPPO.update` at production
+shape with `NETT_AUX_STRICT=1` (the fused, fully-strict backward), rc=0, zero determinism
+warnings, on torch 2.7.0+cu126. The control that proves the guard was live ran beside them: `eoo`
+under the same flag RAISED on `grid_sampler_2d_backward_cuda`, which is in the throwing list.
+
+⚠ UNVERIFIED ON AMPERE. That run was a TITAN RTX (Turing, sm_75); the fleet trains on A10s. The
+deterministic implementation is a generic sort-based path rather than an arch-specific kernel, so
+there is no known reason for it to differ -- but it was not run, and "no known reason" is not a
+measurement.
 
 ⛔ COMPARATOR HAZARD, HANDLED BY DRAWING SEPARATELY. If this term shared cltt_ref's slab by
 adding offset 8 to its offsets, the set of valid slab starts would change (8 more contiguous
 steps required), so row 00's own sampler would no longer see the same valid-start set as the
 control it is compared to. This term therefore draws its OWN window through the P0 sampler and
 `cltt_ref` is called exactly as the control calls it.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations
@@ -125,9 +140,16 @@ class CLTTPatchTerm(TokenWindowTerm):
             scalars = {
                 **self.identity_fraction(match, window.turn),
                 **self.shift_correlation(match, window.a_bar[:, 0]),
-                # ⛔ pos_acc against the DERANGED-positive null, the same instrument cltt_ref
+                # ⛔ pos_acc against the deranged-positive null, the same instrument cltt_ref
                 # uses: at 2BM rows a low loss can come from an easy task rather than a learned
                 # correspondence, and the null is what tells those apart.
+                # ⚠ `duplicate_offset` is NOT passed, and `patch_duplicates` therefore reads the
+                # unmeasured sentinel rather than 0. cltt_ref's rows are FRAMES, and its slab
+                # puts each anchor's own frame in the opposite half; these rows are (frame,
+                # token) pairs, and a duplicate needs the same frame AND the same token index --
+                # the partner token is the teacher's argmax match, which is generally a
+                # different token. So duplicates are possible but not derivable from the offset,
+                # and claiming zero would be a count this call never made.
                 **{f"patch_{k}": v for k, v in
                    nt_xent_diagnostics(p.detach(), p_pos.detach(), self.temperature).items()},
                 "match_conf": float(conf.mean()),

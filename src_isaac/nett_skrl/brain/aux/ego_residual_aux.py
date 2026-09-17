@@ -36,11 +36,35 @@ p(1−p) ≈ 0.002, so A would SIT at the identity whatever ā is -- manufacturi
 reading. c = 4 gives p_diag ≈ 0.58 at N = 40. `route_p_diag_at_zero` is emitted so the realised
 value is read rather than assumed.
 
+⛔ WHAT THE OBJECTNESS READOUT CAN AND CANNOT SHOW, MEASURED 2026-09-17. The path is not
+defective and it is not dead at fresh init: on a clip where the object is in the centre columns
+and the camera is still, an UNTRAINED teacher already gives a residual 15.6x concentrated on the
+centre (the pixels themselves are 177x). What it needs is (i) the object actually in the columns
+D1 calls "centre", and (ii) ego-motion small enough not to swamp it.
+
+⚠ AT 2 PPO UPDATES ON THE REAL APPARATUS NEITHER HELD, AND D1 READ ~1.0 FOR THE RIGHT REASON.
+The Isaac verification run measured `pix_centre_ratio` 1.06 and 1.12 -- the RAW PIXELS carry
+essentially no centre concentration in those episodes, because an untrained policy spins and the
+object is rarely centred. `res_centre_ratio` 0.978/1.037 against its null 1.033/1.040 is then the
+CORRECT answer to the question D1 asks, and reading it as "the objectness failed" answers a
+question the window could not pose. `centre_ratio_interpretable` is emitted so that reading is
+not available: when the pixel ratio is not distinguishable from its own permutation null, D1 is
+UNINTERPRETABLE, which is a different fact from a null result.
+
+⚠ WHAT WOULD HAVE TO BE TRUE, rather than a number of updates. On PARKED windows with the object
+in view the residual is object-concentrated IMMEDIATELY -- no training required, because A(0) is
+already near the identity. On TRANSIT windows the routing must first learn to compensate, which
+`compensation_gain_transit` reports: it was 1.028/1.030 at 2 updates, i.e. barely above the 1.0
+of no compensation, while `route_diag_top_quartile` had already moved 0.553 -> 0.408 against a
+bottom quartile that stayed at ~0.55 (D5 IS engaging). Read those two before reading D1.
+
 ⚠ SAMPLING IS A 50/50 MIXTURE OF TRANSIT-WEIGHTED AND UNIFORM WINDOWS, drawn as TWO half-slabs
 through the same P0 sampler. Parked windows are where objectness is cleanest (A(0) ≈ I, so the
 residual is the object's own motion); transit windows are where the routing learns ego
 compensation. One Bernoulli choice per update would leave 63% of updates with no transit step at
 all, and then the parked/transit median split every diagnostic here uses would be degenerate.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations
@@ -51,7 +75,8 @@ import torch.nn.functional as F
 
 from .knobs import _env_nonneg_float, _env_unit_interval
 from .token_term import (
-    NOT_MEASURED, TokenWindow, TokenWindowTerm, parked_transit, rank_corr, stratum_mean,
+    NOT_MEASURED, TokenWindow, TokenWindowTerm, excess_engaged, parked_transit, rank_corr,
+    stratum_mean,
 )
 
 
@@ -76,6 +101,17 @@ class EgoResidualTerm(TokenWindowTerm):
     OFFSET_ENV = "NETT_AUX_EGO_OFFSET"
     DEFAULT_OFFSET = 8
     IDENTITY_BIAS_ENV = "NETT_AUX_EGO_IDENTITY_BIAS"
+    #: Permutation draws behind every paired null here. Not a knob: it fixes the RESOLUTION of
+    #: the diagnostics, and an arm that changed it would not be comparable with one that did not.
+    #: ⚠ 8 RATHER THAN 4 BECAUSE THE SD IS THE GATE. At 4 draws the null's standard deviation has
+    #: 3 df -- about 40% relative error -- and a marginal window flipped engaged/not with the
+    #: seed alone. 7 df is still noisy, so a value near the 2 sd line should be read as "not
+    #: resolved" rather than as either answer. The cost is one extra (B,N,N)x(B,N,D) bmm per
+    #: draw, on tensors the term is already holding.
+    NULL_DRAWS = 8
+    #: D1 is readable only when the INPUT is centre-concentrated by at least this much. Between
+    #: the measured 1.06-1.17 of the live apparatus and the 177 of a centred clip.
+    CENTRE_RATIO_FLOOR = 1.5
     TRANSIT_FRAC_ENV = "NETT_AUX_EGO_TRANSIT_FRAC"
     #: Sampling is the explicit 50/50 mixture below, not the base class's single draw.
     TRANSIT_WEIGHTED = False
@@ -203,7 +239,26 @@ class EgoResidualTerm(TokenWindowTerm):
         perm_tokens = torch.stack([e[b][torch.randperm(e.shape[1], device=e.device)]
                                    for b in range(e.shape[0])])
         r_res_null = ratio(perm_tokens, periph)
-        r_pix = ratio(self._pixel_change(window), periph)
+        pix = self._pixel_change(window)
+        r_pix = ratio(pix, periph)
+        # ⛔ D1 PRESUMES THE OBJECT IS IN THE CENTRE COLUMNS, AND ON THIS APPARATUS IT OFTEN IS
+        # NOT. `res_centre_ratio` then answers a question the window cannot pose, and its ~1.0
+        # reads as "the objectness failed" when it means "there was nothing centre-shaped to
+        # find". The flag below is what makes those two readings different facts.
+        #
+        # ⚠ AN EXPLICIT THRESHOLD, AND IT SITS BETWEEN TWO MEASURED REGIMES rather than being
+        # chosen: the real apparatus at 2 PPO updates gives `pix_centre_ratio` 1.06-1.17 (an
+        # untrained policy spins, the object is rarely centred), and a clip with the object
+        # centred gives 177. Nothing has been observed in between. A permutation null was tried
+        # here first and is the wrong instrument: on a nearly flat map it has almost no spread,
+        # so a 0.6% deviation clears 2 sd and the gate opens on noise. The null is still emitted
+        # as the reference for what "no concentration" looks like on this window.
+        pix_nulls = torch.stack([
+            ratio(torch.stack([pix[b][torch.randperm(pix.shape[1], device=pix.device)]
+                               for b in range(pix.shape[0])]), periph).mean()
+            for _ in range(self.NULL_DRAWS)])
+        pix_null, pix_null_sd = float(pix_nulls.mean()), float(pix_nulls.std(unbiased=True))
+        interpretable = 1.0 if float(r_pix.mean()) >= self.CENTRE_RATIO_FLOOR else 0.0
 
         # D2 action gain: the same residual with ā PERMUTED across the batch. If the routing
         # ignores the action, the permutation changes nothing and G = 1.
@@ -226,12 +281,30 @@ class EgoResidualTerm(TokenWindowTerm):
         # destroyed pairing raises the residual everywhere, which can raise the across-batch
         # variance too. So: |excess| ~ 0 means "the map is the same whatever we paired"; a
         # nonzero value means the pairing reaches w, and how much is not this statistic's answer.
+        #
+        # ⛔ THE TEST IS TWO-SIDED AND IT IS AGAINST A SPREAD, NOT AGAINST THE NUMBER 0. Both
+        # halves were got wrong once. (i) ONE draw is not an estimate: at 2 updates the measured
+        # excess was -1.6e-04 and +5.1e-04 against a variance of 0.029, which no single
+        # permutation can separate from noise, so the null is drawn NULL_DRAWS times and the
+        # comparison is against its standard deviation. (ii) A ONE-SIDED test fails on the
+        # positive control: on a clip where the residual is unambiguously object-concentrated
+        # (15.6x) the true variance is LOWER than the permuted one (9.7e-03 vs 1.37e-02),
+        # because a map that is consistent across the batch varies less than a scrambled one.
+        # Engagement is |excess| > 2 sd, and a gate written as `excess > 0` would have reported
+        # the positive control as not engaged.
         if w.shape[0] > 1:
-            w_null = objectness_from_residual(self._residual(A, u0, u1[perm]))
-            var, var_null = float(w.var(dim=0).mean()), float(w_null.var(dim=0).mean())
+            nulls = []
+            for _ in range(self.NULL_DRAWS):
+                p_r = torch.randperm(w.shape[0], device=w.device)
+                nulls.append(float(objectness_from_residual(
+                    self._residual(A, u0, u1[p_r])).var(dim=0).mean()))
+            null_t = torch.tensor(nulls)
+            var, var_null = float(w.var(dim=0).mean()), float(null_t.mean())
+            null_sd = float(null_t.std(unbiased=True))
             w_input_dep = var - var_null
+            engaged = excess_engaged(var, nulls)
         else:
-            var = var_null = w_input_dep = NOT_MEASURED
+            var = var_null = w_input_dep = null_sd = engaged = NOT_MEASURED
 
         # D5 routing identity, top vs bottom quartile of |turn|.
         diag = A.diagonal(dim1=1, dim2=2).mean(dim=1)
@@ -264,7 +337,15 @@ class EgoResidualTerm(TokenWindowTerm):
             "compensation_gain_transit": stratum_mean(comp, transit),
             "objectness_var": var,
             "objectness_var_null": var_null,
+            "objectness_var_null_sd": null_sd,
             "objectness_input_dep": w_input_dep,
+            # ⛔ THE GATE ROW 05 READS. 1 = the objectness map depends on which frames were
+            # paired, so it is a map of something; 0 = it does not, so it is noise and anything
+            # supervised by it is uninterpretable -- NOT "no objectness found".
+            "objectness_engaged": engaged,
+            "centre_ratio_interpretable": interpretable,
+            "pix_centre_ratio_null": pix_null,
+            "pix_centre_ratio_null_sd": pix_null_sd,
             "route_diag_top_quartile": diag_top,
             "route_diag_bottom_quartile": diag_bottom,
             "route_p_diag_at_zero": float(zero_action.diagonal(dim1=1, dim2=2).mean()),

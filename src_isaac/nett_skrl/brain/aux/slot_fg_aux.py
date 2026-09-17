@@ -38,6 +38,8 @@ purpose. `fg_mass` and `sep_entropy` are emitted so the realised behaviour is re
 
 ⚠ λ = 1.0 and γ = 0.1 are PLACEHOLDERS: the paper gives no values (§2.6 of the research spec
 records this as UNVERIFIED). Both are knobs.
+
+⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
 
 from __future__ import annotations
@@ -236,7 +238,7 @@ class SlotFGTerm(TokenWindowTerm):
                    "sep_entropy_frac": float(sep.detach()) / math.log(self.slots),
                    "slots": float(self.slots), "ramp": 0.0,
                    "fg_bce": NOT_MEASURED, "stuff": NOT_MEASURED,
-                   "ego_loss": NOT_MEASURED}
+                   "ego_loss": NOT_MEASURED, "fg_target_engaged": NOT_MEASURED}
         m_fg = attn_t[:, 0, :]                                        # slot 0's per-token mass
         if self.ego is not None:
             ego_loss, w, ego_scalars = self.ego.loss_and_objectness(encoder, window)
@@ -255,7 +257,17 @@ class SlotFGTerm(TokenWindowTerm):
             scalars.update({"ego_loss": float(ego_loss.detach()), "ramp": float(ramp),
                             "fg_bce": float(fg_bce.detach()), "stuff": float(stuff.detach()),
                             **{f"ego_{k}": float(v) for k, v in ego_scalars.items()}})
-            scalars["fg_objectness_corr"] = rank_corr(m_fg.mean(dim=0), w.mean(dim=0))
+            # ⛔ THE FOREGROUND TARGET CARRIES ITS OWN VALIDITY, AND A CORRELATION AGAINST AN
+            # INVALID TARGET IS THE PLAUSIBLE-LOOKING ZERO THE SENTINEL RULE FORBIDS. When the
+            # ego term's paired null cannot distinguish `w` from noise, "slot 0 does not match
+            # the objectness" and "there was no objectness to match" produce the SAME small
+            # number, and only one of them is a finding. Uninterpretable is reported as
+            # uninterpretable; the training is NOT gated, so the row still runs and the flag
+            # says how to read it.
+            engaged = ego_scalars.get("objectness_engaged", NOT_MEASURED)
+            scalars["fg_target_engaged"] = float(engaged)
+            scalars["fg_objectness_corr"] = (rank_corr(m_fg.mean(dim=0), w.mean(dim=0))
+                                             if engaged == 1.0 else NOT_MEASURED)
         with torch.no_grad():
             scalars.update(self._diagnostics(encoder, window, z_t, slots_t, slots_tk,
                                              attn_t, m_fg, init))

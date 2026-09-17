@@ -256,7 +256,16 @@ def test_the_ego_knob_composes_P3_inside_P4_on_ONE_window(monkeypatch):
     assert len(windows) == 1                       # the ego runs on the slot window, once
     assert s["used_ego"] == 1.0 and s["fg_bce"] > 0 and s["ego_loss"] > 0
     assert "ego_action_gain" in s and "ego_token_std" in s
-    assert s["fg_objectness_corr"] != NOT_MEASURED
+    # ⛔ THE CONTRACT, NOT THE FIXTURE'S CURRENT ANSWER. Whether this synthetic window's
+    # objectness clears its paired null is a property of the fixture and the seed; what must
+    # hold on every run is that the correlation is reported only when the target it correlates
+    # against was established. A near-zero correlation against a noise target and a near-zero
+    # correlation against a real one are the same number and opposite facts.
+    assert s["fg_target_engaged"] in (0.0, 1.0, NOT_MEASURED)
+    if s["fg_target_engaged"] == 1.0:
+        assert s["fg_objectness_corr"] != NOT_MEASURED
+    else:
+        assert s["fg_objectness_corr"] == NOT_MEASURED
 
 
 def test_the_foreground_bce_equals_torchs_but_is_autocast_safe():
@@ -348,3 +357,28 @@ def test_the_row_is_registered_and_carries_the_shared_teacher():
     aux = AUX_LOSSES["slot_fg"](_encoder())
     assert isinstance(aux, WithCLTTRef) and isinstance(aux.term, SlotFGTerm)
     assert aux.name == "slot_fg" and aux._teacher is not None
+
+
+def test_the_foreground_correlation_is_withheld_exactly_when_the_target_is_not_established(
+        monkeypatch):
+    """Both branches of the gate, forced -- the fixture cannot be relied on to visit both.
+
+    ⛔ WHY THIS IS NOT PARANOIA. Row 05's foreground target IS the ego term's objectness. The GPU
+    verification round read `fg_centre_corr` and `fg_objectness_corr` off a run whose objectness
+    had not separated from its own null, and a small correlation there says nothing at all about
+    the slots.
+    """
+    monkeypatch.setenv("NETT_AUX_SLOTFG_EGO", "1")
+    enc, comp = _composite()
+    term = comp.term
+    real = term.ego.loss_and_objectness
+
+    for flag, expect_number in ((1.0, True), (0.0, False), (NOT_MEASURED, False)):
+        def stub(e, w, _f=flag):
+            loss, objectness, scalars = real(e, w)
+            return loss, objectness, {**scalars, "objectness_engaged": _f}
+        term.ego.loss_and_objectness = stub
+        term.compute(enc, None)
+        s = term.last_scalars
+        assert s["fg_target_engaged"] == flag
+        assert (s["fg_objectness_corr"] != NOT_MEASURED) is expect_number

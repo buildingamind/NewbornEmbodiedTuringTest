@@ -17,10 +17,15 @@ sys.path.insert(0, str(_SRC / "examples"))
 
 from campaign_train import MODELS, VIT_CFG
 from nett_skrl.brain.aux.cltt_aux import CLTTAuxLoss
+from nett_skrl.brain.aux.knobs import NOT_MEASURED
 from nett_skrl.brain.aux.cltt_ref_aux import (
     CLTTReferenceAuxLoss,
     CLTTReferenceProjectionHead,
+    nt_xent_same_frame_masked,
+    positive_alias_mask,
+    same_frame_mask,
 )
+from nett_skrl.brain.aux.knobs import NOT_MEASURED
 from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES, AuxLossPPO, PPO
 from nett_skrl.brain.aux.simclr_aux import SimCLRProjectionHead, nt_xent
 from nett_skrl.brain.registry import encoder_mapping
@@ -202,7 +207,11 @@ def test_both_offsets_are_summed(monkeypatch):
     two_loss = aux.compute(encoder, torch.empty(0))
     raw = memory.tensors["observations"]
     z = [aux.head(encoder.encode_prepared(raw[3 + k:7 + k, 1])) for k in (0, 2, 4)]
-    terms = [nt_xent(z[0], positive, 0.5) for positive in z[1:]]
+    # ⛔ THE REFERENCE IS THE MASKED FORM NOW. The objective changed on 2026-09-17 (the anchor's
+    # own frame left its own negatives), and this line is where that change is visible: against
+    # plain `nt_xent` the module reads 1.8461 where the unmasked objective gives 2.1058 at B=4.
+    terms = [nt_xent_same_frame_masked(z[0], positive, 0.5, k)[0]
+             for k, positive in zip((2, 4), z[1:])]
     torch.testing.assert_close(one_loss, terms[0])
     torch.testing.assert_close(two_loss, terms[0] + terms[1])
     assert not torch.isclose(one_loss, two_loss)
@@ -347,7 +356,7 @@ def test_an_uninformative_pairing_reads_at_chance():
     """TOO HARD: if the temporal offset carries nothing, the positive is not findable."""
     d = nt_xent_diagnostics(_norm(torch.randn(32, 8)), _norm(torch.randn(32, 8)), 0.2)
     assert d["pos_acc"] < 0.2, d
-    assert d["chance"] == pytest.approx(1 / 63)
+    assert d["pos_chance"] == pytest.approx(1 / 63)
 
 
 def test_the_shuffled_null_is_the_comparator_not_zero():
@@ -371,9 +380,14 @@ def test_positive_and_negative_similarity_are_reported_untempered():
 
 
 def test_the_batch_size_is_reported_beside_the_accuracy():
-    """chance is 1/(2B-1), so an accuracy without its B is not interpretable."""
+    """pos_chance is 1/|candidates|, so an accuracy without its B is not interpretable.
+
+    ⚠ `chance` (the LOSS floor) and `pos_chance` (the argmax probability) are different numbers
+    under different keys since 2026-09-17: the diagnostic's key used to be `chance` too and
+    silently overwrote the loss floor in `last_scalars` whenever the diagnostic was on."""
     d = nt_xent_diagnostics(_norm(torch.randn(10, 4)), _norm(torch.randn(10, 4)), 0.2)
-    assert d["batch"] == 10 and d["chance"] == pytest.approx(1 / 19)
+    assert d["batch"] == 10 and d["pos_chance"] == pytest.approx(1 / 19)
+    assert d["duplicates"] == NOT_MEASURED and d["dup_sim"] == NOT_MEASURED
 
 
 def test_the_diag_is_off_by_default_and_goes_through_env_flag(monkeypatch):
@@ -636,3 +650,280 @@ def test_a_cltt_ref_view_is_temporally_CONSTANT_so_3dcnn_sees_no_motion():
         "the T slots must be identical -- this is what makes the view static")
     # and the frame kept is the CURRENT one (T-major: last three channels)
     assert torch.equal(slots[:, -1], prepared[:, -3:])
+
+
+# =============================================================================================
+# The anchor's own frame leaves its own negatives (owner decision 2026-09-17), and the
+# diagnostic that describes it. ⛔ ONE derivation of "which (row, column) pairs are the same
+# frame" -- `same_frame_mask` -- consumed by both the loss and the diagnostic.
+
+import itertools  # noqa: E402
+import math  # noqa: E402
+
+import torch.nn.functional as _F  # noqa: E402
+
+from nett_skrl.brain.aux.simclr_aux import nt_xent as _plain_nt_xent  # noqa: E402
+
+
+def _stream(steps, d=32, drift=0.15, seed=0):
+    """A PURE FUNCTION OF THE FRAME: one embedding per frame, smoothly drifting, no periodicity.
+
+    This is the regime the tie argument is about -- an encoder that cannot tell which view a
+    frame arrived in, so the two encodings of one frame are identical to the last bit.
+    """
+    g = torch.Generator().manual_seed(seed)
+    traj = torch.cumsum(torch.randn(steps, d, generator=g) * drift, dim=0)
+    return _F.normalize(traj + torch.randn(1, d, generator=g) * 3.0, dim=-1)
+
+
+def _sliced(batch, offset, **kw):
+    """z1, z2 built by the MODULE'S OWN SLICING, so the duplicates are really there."""
+    frames = _stream(batch + offset, **kw)
+    return frames[:batch], frames[offset:offset + batch]
+
+
+@pytest.mark.parametrize("batch,offset", list(itertools.product((3, 5, 8, 12, 498), (1, 2, 4, 8))))
+def test_the_mask_count_is_the_number_of_valid_duplicate_pairs(batch, offset):
+    """⛔ A COUNT, NOT A SPOT CHECK, and over the edge cases: the k rows at the start of each
+    half have NO duplicate (i - k < 0), and at k >= B nothing does."""
+    mask, count = same_frame_mask(batch, offset)
+    assert count == max(0, 2 * (batch - offset)), (batch, offset)
+    assert int(mask.sum()) == count
+    assert bool((mask == mask.t()).all()), "the relation is symmetric by construction"
+    assert not bool(mask.diagonal().any()), "the diagonal is the OTHER mask and stays separate"
+    for i in range(min(offset, batch)):                     # the edge rows, explicitly
+        assert not bool(mask[i].any()), f"row {i} < k has no duplicate"
+
+
+def test_an_offset_of_zero_is_refused_because_the_duplicate_would_be_the_positive():
+    with pytest.raises(ValueError, match="not a frame offset"):
+        same_frame_mask(8, 0)
+    with pytest.raises(ValueError, match="no similarity matrix"):
+        same_frame_mask(0, 1)
+
+
+def test_the_masked_pairs_are_exactly_the_entries_whose_two_frames_are_identical():
+    """The mask is derived from indices; this checks the indices against the PIXELS -- that the
+    entries it removes are the ones whose row and column really are one frame."""
+    batch, offset = 10, 3
+    z1, z2 = _sliced(batch, offset)
+    z = torch.cat([z1, z2])
+    same = torch.zeros(2 * batch, 2 * batch, dtype=torch.bool)
+    for a in range(2 * batch):
+        for b in range(2 * batch):
+            fa = a if a < batch else offset + (a - batch)    # frame index of row a
+            fb = b if b < batch else offset + (b - batch)
+            same[a, b] = (fa == fb) and (a != b)
+    mask, count = same_frame_mask(batch, offset)
+    assert torch.equal(mask, same), "the index derivation disagrees with the frame identities"
+    cos = torch.mm(z, z.t())
+    assert torch.allclose(cos[mask], torch.ones(count), atol=1e-6), (
+        "a masked entry must be an exact duplicate under a pure-function encoder")
+
+
+def test_the_masked_entries_are_minus_inf_and_hold_no_softmax_mass():
+    batch, offset, temp = 10, 3, 0.1
+    z1, z2 = _sliced(batch, offset)
+    z = torch.cat([z1, z2])
+    sim = torch.mm(z, z.t()) / temp
+    sim.fill_diagonal_(float("-inf"))
+    mask, count = same_frame_mask(batch, offset)
+    masked = sim.masked_fill(mask, float("-inf"))
+    assert bool(torch.isinf(masked[mask]).all()) and int(torch.isinf(masked).sum()) == count + 2 * batch
+    assert float(torch.softmax(masked, dim=1)[mask].sum()) == 0.0
+
+
+def test_removing_the_duplicate_moves_the_loss_and_the_positive_gains_the_mass():
+    """⚠ THE OBJECTIVE CHANGED. Not bitwise identity -- the opposite: this is the size of it."""
+    batch, offset, temp = 12, 2, 0.1
+    z1, z2 = _sliced(batch, offset)
+    unmasked = float(_plain_nt_xent(z1, z2, temp))
+    masked, count = nt_xent_same_frame_masked(z1, z2, temp, offset)
+    assert float(masked) < unmasked
+    assert count == 2 * (batch - offset)
+    # the fraction of the candidate set removed, per row that has a duplicate: 1 of (2B - 1)
+    assert count / float((2 * batch) ** 2) < 0.05
+
+
+def test_the_ln2_floor_is_NOT_removed_by_this_mask_and_here_is_why():
+    """⛔ I DISAGREE WITH ONE LINE OF THE SPEC, AND THIS IS THE DERIVATION.
+
+    The claim was that with the anchor's own frame excluded, the n_offsets*ln2 tie floor no
+    longer applies. It still does. Row i's positive is z2[i] = frame t0+k+i -- and THAT FRAME
+    ALSO SITS IN THE FIRST HALF, at column i+k, whenever i+k < B. It is not the anchor's frame,
+    so this mask does not touch it, and its similarity to the anchor is EXACTLY the positive's
+    (same two frames). A tie at the maximum caps p(positive) at 1/2, so the loss cannot go below
+    ln2 for those rows either way.
+
+    ⇒ Going below n_offsets*ln2 still means the tie was broken, i.e. one frame embedded two
+    ways. Removing that floor as well would mean masking (i, i+k) and (B+j, B+j-k) -- the
+    POSITIVE's frame rather than the anchor's -- which removes real negatives and is a second
+    owner decision, not this one.
+    """
+    batch, offset, temp = 12, 2, 0.1
+    z1, z2 = _sliced(batch, offset)
+    z = torch.cat([z1, z2])
+    for i in range(batch - offset):
+        assert torch.equal(z1[i + offset], z2[i]), "the positive's frame is in the first half"
+        assert float(torch.dot(z1[i], z1[i + offset])) == pytest.approx(
+            float(torch.dot(z1[i], z2[i])), abs=1e-6), "and it ties the positive exactly"
+    sim = torch.mm(z, z.t()) / temp
+    sim.fill_diagonal_(float("-inf"))
+    mask, _ = same_frame_mask(batch, offset)
+    p = torch.softmax(sim.masked_fill(mask, float("-inf")), dim=1)
+    labels = (torch.arange(2 * batch) + batch) % (2 * batch)
+    p_pos = p.gather(1, labels[:, None]).squeeze(1)
+    assert float(p_pos[:batch - offset].max()) <= 0.5 + 1e-6
+    assert float(nt_xent_same_frame_masked(z1, z2, temp, offset)[0]) >= math.log(2)
+
+
+def test_an_offset_at_or_above_the_batch_masks_nothing_and_reports_that_it_did_not():
+    """⛔ "Masked" must never be claimed where nothing was masked -- the count is what says so."""
+    z1, z2 = _sliced(4, 4)
+    loss, count = nt_xent_same_frame_masked(z1, z2, 0.1, 4)
+    assert count == 0
+    assert torch.equal(loss, _plain_nt_xent(z1, z2, 0.1)), (
+        "with no duplicate in range the objective is the unmasked one, exactly")
+
+
+def test_the_masked_loss_still_carries_gradient_to_the_encoder():
+    """masked_fill is out-of-place and the graph survives it; a fill_ on a leaf would not."""
+    encoder = IdentityEncoder()
+    aux = CLTTReferenceAuxLoss(encoder)
+    aux.attach_memory(identity_memory())
+    loss = aux.compute(encoder, torch.empty(0))
+    loss.backward()
+    assert any(p.grad is not None and float(p.grad.abs().sum()) > 0
+               for p in encoder.parameters()), "no gradient reached the encoder"
+    for name, p in aux.head.named_parameters():
+        assert p.grad is not None and float(p.grad.norm()) > 0, name
+
+
+def test_the_regime_and_the_mask_count_go_out_on_every_call():
+    """From tfevents alone a reader must be able to tell an old arm from a new one."""
+    encoder = IdentityEncoder()
+    aux = CLTTReferenceAuxLoss(encoder)
+    aux.attach_memory(identity_memory())
+    aux.compute(encoder, torch.empty(0))
+    s = aux.last_scalars
+    assert s["same_frame_masked"] == 1.0
+    assert s["masked_pairs"] == float(sum(max(0, 2 * (int(s["B"]) - k)) for k in aux.offsets))
+    assert 0.0 < s["masked_frac"] < 1.0
+    assert s["chance"] == pytest.approx(len(aux.offsets) * math.log(2 * s["B"] - 1))
+
+
+def _lookup_encoder(batch, offset, dim=48, seed=3):
+    """A lookup-table encoder whose similarity PEAKS at lag `offset` -- the best case the
+    diagnostic is meant to recognise -- sliced exactly as the module slices."""
+    g = torch.Generator().manual_seed(seed)
+    e = _F.normalize(torch.randn(batch + 3 * offset, dim, generator=g), dim=-1)
+    f = _F.normalize(torch.stack([e[j] + 0.9 * e[j + offset] + 0.9 * e[max(j - offset, 0)]
+                                  for j in range(batch + offset)]), dim=-1)
+    return f[:batch], f[offset:offset + batch]
+
+
+@pytest.mark.parametrize("batch,offset", [(12, 2), (20, 3), (30, 5), (16, 1)])
+def test_a_perfect_encoder_reads_at_the_ATTAINABLE_ceiling_which_is_not_one(batch, offset):
+    """⛔ THE REQUESTED CONTROL WAS "pos_acc ~ 1.0 FOR A PERFECT ENCODER". IT CANNOT BE, AND THE
+    CEILING HAS A CLOSED FORM.
+
+    The slab is contiguous, so the frame at t - k is a candidate as well. An encoder that has
+    learned temporal invariance at lag k is TIME-HOMOGENEOUS -- its similarity depends on |Δt| --
+    so sim(t, t-k) EQUALS sim(t, t+k) exactly, the argmax breaks the tie by column index, and
+    the rows that have a backward twin miss by construction. Only the k rows at the start of
+    each half have none:
+
+        ceiling = 0.5 + k / 2B
+
+    ⇒ `pos_ceiling` is emitted beside `pos_acc` so the comparison is against what is attainable.
+    A reading materially ABOVE it is not a better encoder: it is a direction-sensitive one.
+    """
+    z1, z2 = _lookup_encoder(batch, offset)
+    d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
+    assert d["pos_ceiling"] == pytest.approx(0.5 + offset / (2.0 * batch))
+    assert d["pos_acc"] == pytest.approx(d["pos_ceiling"], abs=1e-6), d
+    assert d["shuffled_acc"] < d["pos_acc"]
+
+
+def test_a_random_encoder_reads_at_chance_on_the_signal_and_on_the_null():
+    """Both statistics must collapse together when there is nothing to find."""
+    batch, offset = 64, 2
+    g = torch.Generator().manual_seed(11)
+    f = _F.normalize(torch.randn(batch + offset, 48, generator=g), dim=-1)
+    d = nt_xent_diagnostics(f[:batch], f[offset:offset + batch], 0.1, duplicate_offset=offset)
+    rows = 2 * batch
+    tol = 3.0 * math.sqrt(d["pos_chance"] * (1 - d["pos_chance"]) / rows)
+    assert abs(d["pos_acc"] - d["pos_chance"]) <= tol + 1.0 / rows, d
+    assert abs(d["shuffled_acc"] - d["pos_chance"]) <= tol + 1.0 / rows, d
+
+
+def test_dup_sim_is_what_separates_invariance_from_a_broken_tie():
+    """⛔ `pos_acc` CANNOT SEPARATE THEM and this is the statistic that can.
+
+    Two encoders reach a low loss by opposite routes: one has learned that t and t+k are the
+    same thing; the other embeds ONE frame differently depending on which view it arrived in
+    (BatchNorm in train() sees two different slabs -- the live route). A pure function of the
+    image gives cos(the two encodings of one frame) = 1 EXACTLY. Anything below is the second
+    route, and the loss it reaches is not evidence of invariance.
+    """
+    batch, offset = 12, 2
+    z1, z2 = _lookup_encoder(batch, offset)
+    invariant = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
+    g = torch.Generator().manual_seed(5)
+    view_bias = 0.25 * _F.normalize(torch.randn(1, z2.shape[-1], generator=g), dim=-1)
+    broken = nt_xent_diagnostics(z1, _F.normalize(z2 + view_bias, dim=-1), 0.1,
+                                 duplicate_offset=offset)
+    assert invariant["dup_sim"] == pytest.approx(1.0, abs=1e-6)
+    assert broken["dup_sim"] < 0.999
+    # ... and pos_acc alone does NOT separate them, which is why dup_sim is emitted.
+    assert abs(broken["pos_acc"] - invariant["pos_acc"]) < 0.2
+
+
+def test_the_null_cannot_land_on_a_duplicate_or_on_a_copy_of_the_positive():
+    """⛔ THE OLD NULL WAS `labels + 1`, WHICH ALIASED THE DUPLICATE at offset 1 and never at
+    offset 2 -- so it read (B-1)/4B = 0.2495 on every arm and was measuring the same pinned
+    argmax the signal was."""
+    batch, offset = 12, 2
+    z1, z2 = _lookup_encoder(batch, offset)
+    dup, _ = same_frame_mask(batch, offset)
+    alias, _ = positive_alias_mask(batch, offset)
+    labels = (torch.arange(2 * batch) + batch) % (2 * batch)
+    for _ in range(20):
+        d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
+        assert d["shuffled_acc"] <= 0.5
+    # The draw itself: reconstruct the valid set and confirm it excludes all three.
+    valid = torch.ones(2 * batch, 2 * batch, dtype=torch.bool)
+    valid.fill_diagonal_(False)
+    valid.scatter_(1, labels[:, None], False)
+    valid &= ~dup & ~alias
+    assert not bool((valid & dup).any()) and not bool((valid & alias).any())
+    assert not bool(valid.diagonal().any())
+    assert not bool(valid.gather(1, labels[:, None]).any())
+
+
+def test_the_diagnostic_cannot_move_training_bitwise(monkeypatch):
+    """⛔ THE DIAGNOSTIC FIX IS DIAGNOSTIC-ONLY, AND THIS IS THE EVIDENCE. Same seed, same
+    window, diag off vs on: the loss and EVERY parameter gradient must be bitwise identical.
+    The new null draws random numbers, so it uses a private generator -- with the global one,
+    turning the diagnostic on would change every window drawn after it."""
+    losses, grads = [], []
+    for diag in ("0", "1"):
+        monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", diag)
+        torch.manual_seed(20260917)
+        encoder = IdentityEncoder()
+        aux = CLTTReferenceAuxLoss(encoder)
+        aux.attach_memory(identity_memory())
+        fixed_draws(monkeypatch, [1, 3, 1, 3])
+        loss = aux.compute(encoder, torch.empty(0))
+        loss.backward()
+        losses.append(loss.detach().clone())
+        grads.append({n: p.grad.detach().clone()
+                      for n, p in itertools.chain(encoder.named_parameters(),
+                                                  aux.head.named_parameters())
+                      if p.grad is not None})
+        # the RNG stream must also be where it would have been without the diagnostic
+        grads[-1]["__rng__"] = torch.random.get_rng_state()
+    assert torch.equal(losses[0], losses[1]), (float(losses[0]), float(losses[1]))
+    assert set(grads[0]) == set(grads[1]) and len(grads[0]) > 1
+    for name in grads[0]:
+        assert torch.equal(grads[0][name], grads[1][name]), name

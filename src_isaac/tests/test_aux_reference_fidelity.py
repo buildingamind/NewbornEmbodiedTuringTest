@@ -96,8 +96,23 @@ def test_buildingamind_three_frame_positives_and_summed_loss(monkeypatch, frames
     # The newest RGB frame, with no augmentation, supplies each view.
     assert (views[0][0, 0, 0, 0] % 1).item() == pytest.approx((frames - 1) * .03, abs=1e-6)
     zs = [aux.head(encoder.encode_prepared(v)) for v in views]
-    expected = sum(nt_xent(zs[0], z, .5) for z in zs[1:])
+    # ⛔ A DELIBERATE, OWNER-APPROVED DEVIATION FROM THE REFERENCE (2026-09-17, workspace
+    # DECISIONS), RECORDED HERE RATHER THAN RELAXED AWAY. The reference
+    # (ChicksAndDNNs_ViewInvariance) draws contiguous sliding windows from one unshuffled
+    # stream, so each anchor's OWN FRAME is among its negatives there too -- the port was
+    # faithful. The owner decided the CLTT objective should exclude it. This test therefore
+    # pins the masked form, and the line below records how far that puts us from the
+    # reference, so the distance is a number somebody can read rather than a lost property.
+    from nett_skrl.brain.aux.cltt_ref_aux import nt_xent_same_frame_masked
+
+    expected = sum(nt_xent_same_frame_masked(zs[0], z, .5, k)[0]
+                   for k, z in zip(aux.offsets, zs[1:]))
     torch.testing.assert_close(loss, expected)
+    reference = sum(nt_xent(zs[0], z, .5) for z in zs[1:])
+    assert float(loss) < float(reference), (
+        "removing a maximal-similarity candidate can only lower the cross-entropy")
+    assert float(reference) - float(loss) > 1e-3, (
+        "if the two agree, the mask stopped doing anything and the deviation is silent")
     # Keep exact self masking: identical normalized vectors have loss ln(2B-1).
     identical = F.normalize(torch.ones(4, 8), dim=1)
     assert nt_xent(identical, identical, .5).item() == pytest.approx(math.log(7))
