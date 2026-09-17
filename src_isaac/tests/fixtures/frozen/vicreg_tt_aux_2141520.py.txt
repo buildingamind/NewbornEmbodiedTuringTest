@@ -37,7 +37,6 @@ import torch.nn.functional as F
 from skrl import logger
 
 from .cltt_ref_aux import episode_window_batch, episode_window_starts, draw_episode_window
-from .action_windows import transit_weights, window_mean_abs_turn
 from .simclr_aux import _augment
 from .vicreg_aux import VICRegExpander, _off_diagonal, vicreg_loss
 
@@ -199,11 +198,11 @@ class VICRegTemporalAuxLoss(nn.Module):
             )
             self.last_window_turn = self.MASK_NO_ACTIONS
             return uniform_env, uniform_t0
-        # Mean |turn| over every contiguous window, via cumulative sum. The arithmetic lives in
-        # action_windows so the wave-17 action-aligned sampler shares ONE copy; this call is
-        # pinned bitwise to the pre-move code (tests/test_action_windows.py, frozen 2141520).
-        win = window_mean_abs_turn(actions, avail, n_env, batch)   # (n_windows, n_env)
-        weights = transit_weights(win, starts)
+        turn = actions[:avail, :n_env, 0].abs().float().cpu()      # (avail, n_env)
+        # Mean |turn| over every contiguous window, via cumulative sum.
+        csum = torch.cat([torch.zeros(1, turn.shape[1]), turn.cumsum(0)], dim=0)
+        win = (csum[batch:] - csum[:n_windows]) / float(batch)     # (n_windows, n_env)
+        weights = win.masked_fill(~starts, 0.0).flatten().clamp_min(0.0)
         total = float(weights.sum())
         if not (total > 0.0) or not torch.isfinite(weights).all():
             # A rollout with no commanded rotation anywhere: uniform is the honest
