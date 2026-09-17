@@ -71,7 +71,12 @@ def parked_transit(turn: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
     if turn.numel() < 2:
         z = torch.zeros_like(turn, dtype=torch.bool)
         return z, z
-    med = turn.median()
+    # ⛔ THE MEDIAN IS TAKEN ON THE CPU. The PPO update runs inside `strict_update`
+    # (use_deterministic_algorithms(True, warn_only=False)) and only the AUX BACKWARD is
+    # relaxed, so a CUDA `median` with an indices output RAISES at the first optimizer step --
+    # the same death `compact_vit.py` records for adaptive_avg_pool2d, and equally invisible on
+    # a CPU test host. This is a B-length vector; the copy costs nothing.
+    med = turn.detach().cpu().median().to(turn.device)
     transit = turn > med
     parked = ~transit
     return parked, transit
@@ -93,6 +98,9 @@ def rank_corr(x: torch.Tensor, y: torch.Tensor) -> float:
     """
     if x.numel() < 3 or y.numel() != x.numel():
         return NOT_MEASURED
+    # One of these comes back from a CPU-side statistic (see `column_shift`), so both are moved
+    # to the CPU rather than assuming they share a device.
+    x, y = x.detach().cpu(), y.detach().cpu()
     x = x.float() - x.float().mean()
     y = y.float() - y.float().mean()
     denom = float(x.norm() * y.norm())
@@ -118,8 +126,14 @@ def column_shift(match: torch.Tensor, n_w: int) -> torch.Tensor:
     ground-truth check: correlate it with the window's cumulative turn (research spec §1.5).
     The SIGN convention is UNVERIFIED -- the magnitude against the permuted-action null is what
     is read, not the sign.
+
+    ⛔ COMPUTED ON THE CPU: `median(dim=...)` returns INDICES, and that kernel has no
+    deterministic CUDA implementation, so under the PPO update's strict-determinism guard it
+    raises rather than returning a number. Diagnostics are B x N integers here; the transfer is
+    the same one the transit sampler already pays.
     """
-    src_col = (torch.arange(match.shape[1], device=match.device) % n_w).float()
+    match = match.detach().cpu()
+    src_col = (torch.arange(match.shape[1]) % n_w).float()
     dst_col = (match % n_w).float()
     return (dst_col - src_col).median(dim=1).values
 
@@ -138,14 +152,17 @@ class TokenWindowTerm(nn.Module):
     #: Sampling: whether the window draw is weighted by mean |turn| (research spec §0.2).
     TRANSIT_WEIGHTED = True
 
-    BATCH_ENV = "NETT_AUX_BATCH"       # subclasses MUST override; see the module docstring
-    OFFSET_ENV = "NETT_AUX_OFFSET"
+    # ⛔ None, NOT the name of a real knob. A class constant holding "NETT_AUX_BATCH" made
+    # `gen_env_index.py` file THIS CLASS as a reader of the very knob it exists to refuse --
+    # a wrong provenance row in an index whose whole contract is that its rows are true.
+    BATCH_ENV = None                   # subclasses MUST override; see the module docstring
+    OFFSET_ENV = None
     DEFAULT_BATCH = 32
     DEFAULT_OFFSET = 8
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
-        if self.BATCH_ENV == TokenWindowTerm.BATCH_ENV:
+        if self.BATCH_ENV is None or self.OFFSET_ENV is None:
             raise TypeError(
                 f"{type(self).__name__} must define its OWN batch knob: NETT_AUX_BATCH is read "
                 f"by cltt_ref (default 512) and slot_contrast (default 32), so a composition "

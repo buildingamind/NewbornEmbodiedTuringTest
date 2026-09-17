@@ -271,6 +271,20 @@ def test_knobs_are_read_and_invalid_values_raise(monkeypatch):
         monkeypatch.delenv(name)
 
 
+def test_a_term_without_its_own_knobs_refuses_to_be_built():
+    """⛔ The base class must not silently fall back to NETT_AUX_BATCH -- and it must not NAME it
+    either, or gen_env_index.py files the base class as a reader of the knob it exists to refuse.
+    """
+    from nett_skrl.brain.aux.token_term import TokenWindowTerm
+
+    class _NoKnobs(TokenWindowTerm):
+        pass
+
+    assert TokenWindowTerm.BATCH_ENV is None and TokenWindowTerm.OFFSET_ENV is None
+    with pytest.raises(TypeError, match="its OWN batch knob"):
+        _NoKnobs(_encoder())
+
+
 def test_it_never_reads_the_colliding_shared_batch_knob(monkeypatch):
     """⛔ NETT_AUX_BATCH is cltt_ref's (default 512). If this term read it too, setting the
     composite's cltt_ref batch would silently resize the affinity batch as well."""

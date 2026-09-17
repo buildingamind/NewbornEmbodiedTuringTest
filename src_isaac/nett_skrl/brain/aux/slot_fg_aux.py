@@ -194,6 +194,12 @@ class SlotFGTerm(TokenWindowTerm):
         ⚠ The mixture belongs to the EGO half of row 05: its routing only learns ego compensation
         on transit windows, while the objectness it feeds the slots is cleanest on parked ones.
         Row 04 has no action-conditioned part, so it keeps the plain uniform draw.
+
+        ⚠ The `|Δt| < k` false-negative mask in the slot contrast indexes the CONCATENATED batch,
+        so it treats the seam between the two half-slabs as near-in-time (a few valid negatives
+        are over-masked, which is harmless) and it cannot see an overlap ACROSS the halves when
+        they happen to land close together in the same env (a few false negatives survive). Both
+        are bounded by the slab count, which is 2.
         """
         if self.ego is not None:
             window = self.draw_mixed(encoder, transit_frac=self.ego.transit_frac)

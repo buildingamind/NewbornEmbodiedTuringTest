@@ -335,6 +335,20 @@ def test_vicreg_tt_select_window_is_identical_to_the_pre_refactor_code(monkeypat
     assert states == expected, (scenario, states)
 
 
+def test_order_statistics_are_computed_on_the_cpu_so_the_strict_update_cannot_kill_them():
+    """⛔ THE GPU-ONLY DEATH. The PPO update runs under use_deterministic_algorithms(True,
+    warn_only=False) and only the AUX BACKWARD is relaxed, so a CUDA `median(dim=...)` (indices
+    output) or `quantile` RAISES at the first optimizer step -- the same failure compact_vit.py
+    records for adaptive_avg_pool2d, and one a CPU test host can never reproduce. The reachable
+    proxy is that these statistics come back on the CPU, having been computed there."""
+    from nett_skrl.brain.aux.token_term import column_shift, parked_transit
+    match = torch.randint(0, 40, (6, 40))
+    assert column_shift(match, 8).device.type == "cpu"
+    turn = torch.rand(6)
+    parked, transit = parked_transit(turn)
+    assert bool((parked | transit).all()) and int(transit.sum()) > 0
+
+
 def test_shared_arithmetic_matches_the_inline_original_bitwise():
     actions = torch.randn(40, 4, 2)
     starts = torch.rand(33, 4) > 0.3

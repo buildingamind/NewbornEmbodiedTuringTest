@@ -236,7 +236,10 @@ class EgoResidualTerm(TokenWindowTerm):
         # D5 routing identity, top vs bottom quartile of |turn|.
         diag = A.diagonal(dim1=1, dim2=2).mean(dim=1)
         if turn.numel() >= 4:
-            q_lo, q_hi = torch.quantile(turn, torch.tensor([0.25, 0.75], device=turn.device))
+            # On the CPU for the same reason the median split is (see token_term.parked_transit):
+            # order statistics under the update's strict-determinism guard.
+            q = torch.quantile(turn.detach().cpu(), torch.tensor([0.25, 0.75]))
+            q_lo, q_hi = q[0].to(turn.device), q[1].to(turn.device)
             diag_top = stratum_mean(diag, turn >= q_hi)
             diag_bottom = stratum_mean(diag, turn <= q_lo)
         else:

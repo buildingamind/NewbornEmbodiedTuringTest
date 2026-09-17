@@ -30,6 +30,12 @@ half removes most of those. VICRegL keeps its top 20 pairs for the same reason.
 penalise within-object coherence. All-pairs at M = 40 and B = 512 OOMs a 24 GB card (measured,
 research spec §6.4). M = 8 over the batch gives 2BM = 8,192 rows.
 
+⚠ NOT RUNNABLE UNDER `NETT_AUX_STRICT=1`. The anchors are selected with `gather`, whose BACKWARD
+is `index_add`-shaped and has no deterministic CUDA kernel. That is fine as shipped -- ppo_aux
+runs the auxiliary backward inside `relaxed_determinism()` -- but the fused fully-strict control
+path would raise. The same is true of any token-selection objective; it is stated here rather
+than discovered on the control run.
+
 ⛔ COMPARATOR HAZARD, HANDLED BY DRAWING SEPARATELY. If this term shared cltt_ref's slab by
 adding offset 8 to its offsets, the set of valid slab starts would change (8 more contiguous
 steps required), so row 00's own sampler would no longer see the same valid-start set as the
