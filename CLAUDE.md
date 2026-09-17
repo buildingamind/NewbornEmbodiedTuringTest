@@ -19,11 +19,12 @@ package). The two are wired through a single `DirectRLEnv` the skrl side wraps.
 
 ## Start here
 
-**`../blueprint.md`** (project root) is the ground truth: the consolidated,
-conflict-free technical reality of the whole stack — the venv and how to launch
-Python, the per-step execution loop, PhysX device strategy, the fisheye/reward
-geometry, determinism, env sizing, and the dead-ends list. Read it before making
-changes.
+Read **`../NETT_Global_Workspace/README.md`** and
+**`../NETT_Global_Workspace/CONVENTIONS.md`** before making changes. They cover the
+fleet layout, how arms are queued and launched, naming, the results schema, and git
+and push rules. Each node's venv is listed in
+`../NETT_Global_Workspace/prompts/SHARED.md` §3. `../blueprint.md`, where it exists,
+is historical context from before 2026-09-08 and is not a reference.
 
 Package-local orientation: [`src_isaac/README.md`](src_isaac/README.md) and
 `src_isaac/docs/`.
@@ -38,9 +39,9 @@ PYTHONPATH=.:../../NewbornEmbodiedTuringTest_Private/isaac_lab/source \
   /path/to/venv/bin/python -m pytest tests -q
 ```
 
-(Use the real venv path from `../blueprint.md`.) Tests that import `pxr` require a
-Kit-booting driver — that is a harness constraint, not a broken test; see the
-blueprint.
+(Use the node's venv from `../NETT_Global_Workspace/prompts/SHARED.md` §3.) Tests that
+import `pxr` require a Kit-booting driver — that is a harness constraint, not a broken
+test; see `src_isaac/docs/development.md`.
 
 Three packages the runtime does not need are the `test` extra —
 `pip install -e 'src_isaac[test]'`: `pytest`, `psutil` (without it the suite fails
