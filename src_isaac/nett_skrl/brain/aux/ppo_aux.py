@@ -123,6 +123,11 @@ def _build_patch_affinity(encoder):
     return _wave17(PatchAffinityTerm, "patch_affinity")(encoder)
 
 
+def _build_ego_residual(encoder):
+    from .ego_residual_aux import EgoResidualTerm
+    return _wave17(EgoResidualTerm, "ego_residual")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -147,6 +152,7 @@ AUX_LOSSES = {
     # ── WAVE 17. Each is `cltt_ref` + ONE new token-level term (brain/aux/with_cltt_ref.py),
     # so every row differs from the concurrent ViT-CLTT-Ref control by a single term.
     "patch_affinity": _build_patch_affinity,
+    "ego_residual": _build_ego_residual,
 }
 
 
