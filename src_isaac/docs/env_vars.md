@@ -27,14 +27,14 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:204` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:237` |
-| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:503`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
+| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:507`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:204` |
-| `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_ref_aux.py:490` |
-| `NETT_AUX_CLTT_REF_OFFSETS` | `'1,2'` | `nett_skrl/brain/aux/cltt_ref_aux.py:493` |
-| `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:504` |
+| `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_ref_aux.py:494` |
+| `NETT_AUX_CLTT_REF_OFFSETS` | `'1,2'` | `nett_skrl/brain/aux/cltt_ref_aux.py:497` |
+| `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:508` |
 | `NETT_AUX_CLTT_REF_WEIGHT` | `1.0` | `nett_skrl/brain/aux/with_cltt_ref.py:79` |
-| `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:493` |
+| `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:497` |
 | `NETT_AUX_EGO_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:203` |
 | `NETT_AUX_EGO_IDENTITY_BIAS` | `4.0` | `nett_skrl/brain/aux/ego_residual_aux.py:121` |
 | `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:204` |

@@ -381,9 +381,13 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
         # start have no backward twin, which gives the closed form
         #     ceiling = 0.5 + k / 2B
         # verified to four decimals at (B,k) = (12,2), (20,3), (30,5) and (16,1) against a
-        # lookup-table encoder whose similarity peaks exactly at lag k. A reading near 1.0 is not
-        # a better encoder; it is a DIRECTION-SENSITIVE one, which on this apparatus means the
-        # embedding depends on something other than the image content at that instant.
+        # lookup-table encoder whose similarity peaks exactly at lag k.
+        # ⚠ IT IS A BOUND UNDER SYMMETRIC SIMILARITY, NOT A LAW. The fixture that verifies it is
+        # symmetric by construction, so it establishes the arithmetic GIVEN the assumption, not
+        # that the assumption holds of any real encoder. A reading materially above the ceiling
+        # means sim(t, t+k) > sim(t, t-k) systematically -- which a direction-sensitive STIMULUS
+        # can produce as readily as a view-dependent encoder (approach and retreat are not
+        # mirror images). Above the ceiling is a question to ask, not a verdict.
         "pos_ceiling": (0.5 + duplicate_offset / (2.0 * B)) if duplicate_offset is not None
                        else NOT_MEASURED,
         "duplicates": n_dup,
