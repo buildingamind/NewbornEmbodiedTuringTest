@@ -350,6 +350,70 @@ MODELS: dict[str, dict] = {
     # but so is every static cue, and the falsifier must be able to tell "motion is enough" from
     # "the encoder learned nothing".
     "ViT-CLTT-Ref-DVS":  dict(encoder="compact_vit", cfg=dict(VIT_CLTT_DVS_CFG),  framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # WAVE 17 -- OBJECT-CENTRIC PRESSURE ON THE TOKENS (owner request 2026-09-17).
+    #
+    # ⭐ THE ENCODER IS THE SAME OBJECT IN ALL SIX ROWS. Every entry below is
+    # `cfg=dict(VIT_CFG)` -- byte-identical to "ViT-CLTT-Ref", the concurrent control (row 00) --
+    # and framestack=True, so all six build the SAME 804,320-parameter encoder at 6 input
+    # channels and the same 5x8=40 token grid at patch 16. ⛔ DO NOT RE-SOLVE embed_dim HERE.
+    # Wave 15 re-matched embed_dim per row because it MOVED the encoder; this wave does not
+    # touch it, and only the aux head differs. Resizing the trunk to "match capacity" would
+    # introduce the very confound wave 15 had to work around. Head sizes (examples/count_params.py,
+    # measured at the live 128x80 eye, 2-frame stack) are on each line: they are what the aux
+    # optimizer group carries ON TOP of the shared encoder, and they are NOT matched to each
+    # other -- an aux head is the method, not a capacity knob, and a row's head is as big as its
+    # objective needs. cltt_ref's own 329,216-parameter projector is inside every one of them,
+    # because each aux here is `cltt_ref + ONE new term` (brain/aux/with_cltt_ref.py).
+    #
+    # ⚠ ALL FIVE DIFFER FROM ROW 00 BY EXACTLY ONE THING: the `aux` key (and, for SlotsFG-Ego,
+    # one env flag). Same experiment, imprint, offsets, budget, framestack, patch size and
+    # aux_weight=1.0.
+    #
+    # R1 (row 01): CLTT on the PATCH TOKENS instead of only the CLS readout. DenseCL argmax
+    # correspondence on a stop-grad EMA teacher, VICRegL top-gamma filter, NT-Xent at tau 0.5 --
+    # the same contrastive family as cltt_ref, moved from one pooled vector to the token grid.
+    # ⛔ THIS ROW CANNOT RUN UNDER NETT_AUX_STRICT=1: the anchors are selected with `gather`,
+    # whose backward is index_add-shaped and has no deterministic CUDA kernel. The shipped path
+    # (the relaxed aux backward in ppo_aux) is fine; the strict control is not available for it.
+    # ⚠ It holds two extra token-grad views at NETT_AUX_PATCH_BATCH=512 -- the memory row to watch.
+    "ViT-CLTT-Patch":    dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="cltt_patch",     aux_weight=1.0),  # aux head 470,016 (cltt_ref 329,216 + patch projector 140,800)
+    # R2 (row 02): a VideoSAUR-style TEMPORAL TOKEN-AFFINITY target. The EMA teacher's
+    # softmax(cos(u_i^t, u_j^{t+k})/tau) is the distribution; a per-token MLP on the student's
+    # frame-t tokens supplies the log-probabilities. No slots, so nothing forces grouping -- the
+    # honest scope is "VideoSAUR's target, not VideoSAUR's bottleneck".
+    "ViT-PatchAffinity": dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="patch_affinity", aux_weight=1.0),  # aux head 382,536 (cltt_ref 329,216 + affinity MLP 53,320)
+    # R3 (row 03): C3. An action-conditioned, CONTENT-INDEPENDENT routing A(a_bar) transports the
+    # student's tokens; the residual against the EMA teacher's t+k tokens is what a global
+    # ego-motion transport cannot explain. Content-independent on purpose: the stimulus video
+    # loops deterministically, so a content-aware predictor would learn the object's own motion
+    # and drive exactly the residual we want to zero.
+    "ViT-EgoResidual":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="ego_residual",   aux_weight=1.0),  # aux head 516,784 (cltt_ref 329,216 + routing 104,192 + predictor 83,376)
+    # R4 (row 04): slots over the 40 ViT tokens with a fg/bg indicator (Tian et al. CVPR 2025) and
+    # SlotContrast's temporal slot contrast. ⛔ THE I77 FIX IS IN THIS TERM: the slot init at t is
+    # a FIXED LEARNED vector and the init at t+k is predictor(slots_t), so "slot k at t" and
+    # "slot k at t+k" are a correspondence by construction rather than two independent draws.
+    # ⚠ WITHOUT THE EGO RESIDUAL THERE IS NO FG/BG SYMMETRY BREAKER (C4: the background never
+    # varies), so read this row as "2-slot-family SA + temporal contrast" and expect fg_centre_corr
+    # at chance as the null, not as a bug. L_sep's axis is UNVERIFIED against the paper.
+    "ViT-SlotsFG":       dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 616,593 (cltt_ref 329,216 + slot_fg 287,377)
+    # R5 (row 05): the composition -- the ego residual's per-token objectness as the FOREGROUND
+    # TARGET for row 04's slots. This is the symmetry breaker C4 denies row 04.
+    # ⛔⛔ THIS ENTRY IS BYTE-IDENTICAL TO "ViT-SlotsFG" AND THAT IS NOT A MISTAKE -- IT IS ALSO
+    # NOT SELF-SUFFICIENT. The composition is selected by NETT_AUX_SLOTFG_EGO=1, an ENV knob, and
+    # MODELS has no per-model env field (nothing in this file reads one; see `spec.get` uses
+    # around agent_factory). Exactly the ViT3F hazard documented below: launching this entry
+    # WITHOUT NETT_AUX_SLOTFG_EGO=1 trains row 04 wearing row 05's label, and nothing raises.
+    # The queue row carries the knob and the launcher must verify it in-band (the term emits
+    # `slot_fg_used_ego` = 1.0 exactly when the ego branch is live -- read that, do not trust
+    # the label). The name exists so the two rows are distinguishable in results/*.csv, which
+    # keys on the model string.
+    # ⚠ Its head is LARGER than row 04's (the ego routing + predictor live inside slot_fg's head
+    # so they reach the optimizer), which is a property of the composition, not a capacity knob.
+    "ViT-SlotsFG-Ego":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 804,161 WITH NETT_AUX_SLOTFG_EGO=1 (= row 04's 616,593 + ego 187,568); 616,593 WITHOUT IT
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+
     # ⭐ 3DCNN-CLTT-Ref: the ONE-FACTOR cross of the two arms that currently top the two
     # chick-referenced parsing conditions. cfg is BYTE-IDENTICAL to "3DCNN" above -- the only
     # difference from that row is aux="cltt_ref", exactly as "ViT-CLTT-Ref" differs from "ViT".

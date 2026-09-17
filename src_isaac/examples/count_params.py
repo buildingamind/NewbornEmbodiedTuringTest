@@ -111,7 +111,46 @@ def wrapped_space(spec: dict, w: int, h: int) -> tuple[gym.spaces.Box, list[str]
     return (out["policy"] if isinstance(out, gym.spaces.Dict) else out), names
 
 
-def count(spec: dict, w: int, h: int) -> tuple[int, int, int, list[str]]:
+def aux_head_params(spec: dict, enc) -> tuple[int, str]:
+    """(parameters the AUX optimizer group carries, note) for this arm's aux loss.
+
+    ⛔ `aux.head` IS THE CONTRACT, NOT A CONVENIENCE. `AuxLossPPO.__init__` does exactly
+    ``optimizer.add_param_group({"params": list(self._aux.head.parameters())})`` and registers
+    nothing else, so a parameter not reachable from `head` is never stepped. Counting the whole
+    module instead would (a) add the shared ENCODER back in -- every aux holds a reference to it
+    -- and (b) count parameters that do not train. Counting `head` answers the question a
+    capacity table is asked: what does this row carry ON TOP of the encoder?
+
+    ⚠ THE EMA TEACHER IS DELIBERATELY ABSENT FROM THIS NUMBER, and it is not free: wave 17's
+    terms hold a frozen deepcopy of the trunk (`ema_teacher.py` keeps it in a LIST so it is not
+    registered). It costs memory, it is not trained, and it is not a capacity difference between
+    rows -- every wave-17 row has exactly one. The guard below asserts the encoder itself never
+    appears in `head`, which is the failure that WOULD silently double a row's count.
+
+    ⚠ THIS BUILDS THE AUX FOR REAL. Some terms read env knobs at construction (slot_fg's
+    NETT_AUX_SLOTFG_EGO decides whether the ego routing is inside its head), so this number is a
+    function of the ENVIRONMENT as well as the spec -- run the script under the row's env and the
+    header line below records what was set.
+    """
+    kind = spec.get("aux")
+    if not kind:
+        return 0, "-"
+    from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+
+    if kind not in AUX_LOSSES:
+        return -1, f"UNREGISTERED aux {kind!r}"
+    aux = AUX_LOSSES[kind](enc)
+    head = getattr(aux, "head", None)
+    if head is None:
+        return -1, f"{type(aux).__name__} has no .head"
+    enc_ids = {id(p) for p in enc.parameters()}
+    params = list(head.parameters())
+    if any(id(p) in enc_ids for p in params):
+        return -1, f"{kind}: head contains ENCODER parameters (would be stepped twice)"
+    return sum(p.numel() for p in params), kind
+
+
+def count(spec: dict, w: int, h: int, with_aux: bool = True):
     cfg = dict(spec["cfg"])
     cfg.pop("trainable", None)
     space, names = wrapped_space(spec, w, h)
@@ -121,17 +160,32 @@ def count(spec: dict, w: int, h: int) -> tuple[int, int, int, list[str]]:
     # PPO heads with hidden_sizes=[]: gaussian policy mean Linear(fd->act) +
     # log_std param, value Linear(fd->1). (shared encoder, so counted once.)
     head_params = (fd * ACTION_DIM + ACTION_DIM) + ACTION_DIM + (fd * 1 + 1)
-    return enc_params, enc_params + head_params, int(space.shape[-1]), names
+    aux_params, aux_note = (0, "-")
+    if with_aux:
+        try:
+            aux_params, aux_note = aux_head_params(spec, enc)
+        except Exception as exc:                              # noqa: BLE001
+            aux_params, aux_note = -1, f"{type(exc).__name__}: {exc}"[:60]
+    total = enc_params + head_params + max(aux_params, 0)
+    return enc_params, aux_params, total, int(space.shape[-1]), names, aux_note
 
 
 if __name__ == "__main__":
     W, H, src = eye_wh()
-    print(f"eye = {W} wide x {H} high   (from {src})\n")
-    print(f"{'model':22} {'encoder':16} {'ch':>3} {'enc_params':>12} {'total':>12}  wrappers")
+    no_aux = "--no-aux" in sys.argv
+    print(f"eye = {W} wide x {H} high   (from {src})")
+    # ⚠ The aux column depends on the ENVIRONMENT (see aux_head_params). Record what was set, so
+    # a pasted table cannot be read as unconditional.
+    aux_env = {k: v for k, v in sorted(os.environ.items()) if k.startswith("NETT_AUX_")}
+    print(f"aux heads: {'SKIPPED (--no-aux)' if no_aux else 'built'}"
+          f"   NETT_AUX_* in this environment: {aux_env or 'none (all knobs at their defaults)'}\n")
+    print(f"{'model':22} {'encoder':16} {'ch':>3} {'enc_params':>12} {'aux_head':>10} "
+          f"{'total':>12}  aux / wrappers")
     for model, spec in MODELS.items():
         try:
-            enc_p, total, ch, names = count(spec, W, H)
-            print(f"{model:22} {spec['encoder']:16} {ch:>3} {enc_p:12,} {total:12,}  "
-                  f"{','.join(names) or '-'}")
+            enc_p, aux_p, total, ch, names, aux_note = count(spec, W, H, with_aux=not no_aux)
+            acol = "ERR" if aux_p < 0 else (f"{aux_p:,}" if aux_p else "-")
+            print(f"{model:22} {spec['encoder']:16} {ch:>3} {enc_p:12,} {acol:>10} {total:12,}  "
+                  f"{aux_note} / {','.join(names) or '-'}")
         except Exception as exc:                              # noqa: BLE001
             print(f"{model:22} {spec['encoder']:16} ERROR: {type(exc).__name__}: {exc}")
