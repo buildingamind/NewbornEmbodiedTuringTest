@@ -108,6 +108,21 @@ def _build_slot_contrast(encoder):
     return SlotContrastAuxLoss(encoder)
 
 
+def _wave17(term_cls, name):
+    """Wave-17 row: the incumbent `cltt_ref` term PLUS one new term, so the row differs from its
+    concurrent control (row 00, `cltt_ref` alone) by exactly ONE term. WithCLTTRef owns the shared
+    EMA teacher and exposes the single `head` this file optimizes."""
+    def build(encoder):
+        from .with_cltt_ref import WithCLTTRef
+        return WithCLTTRef(encoder, term_cls(encoder), name)
+    return build
+
+
+def _build_patch_affinity(encoder):
+    from .patch_affinity_aux import PatchAffinityTerm
+    return _wave17(PatchAffinityTerm, "patch_affinity")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -129,6 +144,9 @@ AUX_LOSSES = {
     "eoo_dual": _build_eoo_dual,
     "gwm_dual": _build_gwm_dual,
     "slot_contrast": _build_slot_contrast,
+    # ── WAVE 17. Each is `cltt_ref` + ONE new token-level term (brain/aux/with_cltt_ref.py),
+    # so every row differs from the concurrent ViT-CLTT-Ref control by a single term.
+    "patch_affinity": _build_patch_affinity,
 }
 
 

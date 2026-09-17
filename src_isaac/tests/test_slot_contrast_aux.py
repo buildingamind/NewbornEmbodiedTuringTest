@@ -422,9 +422,19 @@ def test_every_registered_aux_kind_exposes_a_head():
         return enc
 
     missing, unbuilt = [], []
+    def _vit_host():
+        """A TOKEN host. The wave-17 kinds (cltt_ref + a token term) REFUSE an encoder with no
+        token path by design -- `token_features.spatial_tokens` raises rather than reshaping a
+        pooled vector -- so a CNN-only sweep would report them as unbuildable and stop checking
+        them. Their real rows all run `compact_vit`."""
+        space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
+        return encoder_mapping["compact_vit"](
+            space, features_dim=32, patch_size=16, embed_dim=32, depth=1, num_heads=2)
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
-        for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6), _framestacked_host):
+        for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
+                     _framestacked_host, _vit_host):
             try:
                 aux = build(host())
                 break
