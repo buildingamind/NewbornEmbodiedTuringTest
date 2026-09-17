@@ -98,6 +98,19 @@ class WithCLTTRef(nn.Module):
 
         self._memory = None
         self.last_scalars: dict = {}
+        # ⛔ ONE EMA TEACHER, BUILT HERE AND NOW. Every wave-17 token target is computed from an
+        # encoder the loss also trains, so it needs a stop-grad EMA copy or its optimum is a
+        # constant z. One holder above the terms, because a per-term deepcopy would (a) hold two
+        # or three copies of the trunk on a composition row and (b) give the terms targets that
+        # DRIFT APART, so "the same teacher tokens" in two diagnostics would not be.
+        # ⛔ AT CONSTRUCTION, NOT AT THE FIRST COMPUTE: inside AuxLossPPO.update the encoder
+        # carries the shared feature cache, whose tensor is non-leaf, and deepcopy raises on it.
+        # See ema_teacher.py.
+        self._teacher = None
+        if getattr(term, "needs_teacher", False):
+            from .ema_teacher import EMATeacher
+            self._teacher = EMATeacher(encoder)
+            term.attach_teacher(self._teacher)
 
     def attach_memory(self, memory) -> None:
         self._memory = memory
@@ -107,11 +120,19 @@ class WithCLTTRef(nn.Module):
 
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
         ref = self.cltt_ref.compute(encoder, observations)
+        # ⚠ ONE EMA STEP PER COMPUTE, not one per term: two terms stepping it would apply the
+        # decay twice per minibatch (0.996^2 = 0.992) with nothing downstream saying so.
+        if self._teacher is not None:
+            self._teacher.step(encoder)
         term = self.term.compute(encoder, observations)
         scalars = {
             "cltt_ref_loss": float(ref.detach()),
             f"{self.name}_loss": float(term.detach()),
             "cltt_ref_weight": float(self.cltt_ref_weight),
+            # ⚠ Emitted ALWAYS, sentinel when there is no teacher: "this row has no EMA target"
+            # and "the EMA never stepped" are different facts, and a missing series reads as
+            # neither. A frozen teacher (updates not rising) is a dead target.
+            "ema_updates": float(self._teacher.updates) if self._teacher is not None else -9.0,
         }
         for prefix, source in (("cltt_ref", self.cltt_ref), (self.name, self.term)):
             for key, value in (getattr(source, "last_scalars", None) or {}).items():

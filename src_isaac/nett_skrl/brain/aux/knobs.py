@@ -39,6 +39,59 @@ def _env_flag_strict(name: str, default: bool = False) -> bool:
     )
 
 
+def _env_positive_int(name: str, default: int) -> int:
+    """Integer knob > 0; unset -> ``default``; anything else raises."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return int(default)
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        value = 0
+    if value <= 0:
+        raise ValueError(
+            f"{name}={raw!r} must be an integer > 0. A zero or negative batch, offset or token "
+            f"count would make the objective degenerate while still returning a number."
+        )
+    return value
+
+
+def _env_nonneg_float(name: str, default: float) -> float:
+    """Finite float >= 0; unset -> ``default``; anything else raises.
+
+    For knobs whose zero is MEANINGFUL (an identity bias of 0 is a real configuration), unlike
+    a loss weight, where zero silently deletes the term.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return float(default)
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        value = float("nan")
+    if not (math.isfinite(value) and value >= 0.0):
+        raise ValueError(f"{name}={raw!r} must be a finite number >= 0.")
+    return value
+
+
+def _env_unit_interval(name: str, default: float) -> float:
+    """Float in [0, 1]; unset -> ``default``; anything else raises.
+
+    For EMA decays and mixture fractions, where a value outside [0, 1] is not a strong setting
+    but a different (and usually divergent) objective.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return float(default)
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        value = float("nan")
+    if not (math.isfinite(value) and 0.0 <= value <= 1.0):
+        raise ValueError(f"{name}={raw!r} must be a finite number in [0, 1].")
+    return value
+
+
 def _env_positive_float(name: str, default: float) -> float:
     """Finite, strictly positive float knob; unset -> ``default``; anything else raises.
 
