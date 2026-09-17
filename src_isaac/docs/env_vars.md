@@ -13,7 +13,7 @@ name in a queue row, a launcher, or a message, confirm it here or with
 more than one place the defaults can differ — every site is listed rather than collapsed,
 because a knob with two defaults is a real hazard and a single-row summary would hide it.
 
-173 variables.
+174 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -24,12 +24,13 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_ref_aux.py:249` |
 | `NETT_AUX_CLTT_REF_OFFSETS` | `self.DEFAULT_OFFSETS` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
 | `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:263` |
+| `NETT_AUX_CLTT_REF_WEIGHT` | `1.0` | `nett_skrl/brain/aux/with_cltt_ref.py:77` |
 | `NETT_AUX_CLTT_STACK_OFFSETS` | `self.DEFAULT_OFFSETS` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
 | `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:30`<br>`examples/campaign_train.py:716`<br>`examples/campaign_train.py:994` |
 | `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:425` |
-| `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:118` |
-| `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:114` |
-| `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:87` |
+| `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
+| `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
+| `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |
 | `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:31`<br>`examples/campaign_train.py:717`<br>`examples/campaign_train.py:995` |
 | `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:639`<br>`examples/train_binding_8brain_targets.py:41` |
 | `NETT_BRAIN_OFFSET` | `"0"`, `'0'` | `examples/campaign_train.py:640`<br>`examples/train_binding_8brain_targets.py:190`<br>`examples/train_binding_8brain_targets.py:208` |
@@ -176,9 +177,9 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:936` |
 | `NETT_UINT8_BUFFER` | `"1"` | `nett_skrl/brain/agent_factory.py:184` |
 | `NETT_UNIFIED_WANDB` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:83`<br>`nett_skrl/recording/wandb.py:296` |
-| `NETT_VICREG_COV` | `"10"` | `nett_skrl/brain/aux/vicreg_aux.py:101`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |
-| `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:99` |
-| `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
+| `NETT_VICREG_COV` | `"10"` | `nett_skrl/brain/aux/vicreg_aux.py:101`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:102` |
+| `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
+| `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |
 | `NETT_VIDEOS_ROOT` | `"/home/zlaborde/code/isaac/videos"` | `examples/_paths.py:18` |
 | `NETT_VIT_EMBED` | `"128"` | `examples/train_binding_8brain_targets.py:87` |
 | `NETT_VIT_HEADS` | `"4"` | `examples/train_binding_8brain_targets.py:89` |
