@@ -76,6 +76,7 @@ import torch.nn.functional as F
 from .knobs import _env_nonneg_float, _env_unit_interval
 from .token_term import (
     NOT_MEASURED, TokenWindow, TokenWindowTerm, excess_engaged, parked_transit, rank_corr,
+    window_turn_scalar,
     stratum_mean,
 )
 
@@ -195,7 +196,7 @@ class EgoResidualTerm(TokenWindowTerm):
         loss, _w, scalars = self.loss_and_objectness(encoder, window)
         self.last_window_turn = float(window.mean_turn)
         self.last_scalars = {"B": float(window.prepared_t.shape[0]), "k": float(self.offset),
-                             "window_turn": float(window.mean_turn),
+                             "window_turn": window_turn_scalar(window.mean_turn),
                              **{k: float(v) for k, v in scalars.items()}}
         return loss
 

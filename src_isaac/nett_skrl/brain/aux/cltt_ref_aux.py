@@ -128,6 +128,22 @@ def same_frame_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor,
     two encodings can differ (and if they do, the tie breaks and the loss can fall below
     n_offsets*ln2 without any temporal invariance being learned).
     """
+    cols, exists = same_frame_columns(batch, offset, device=device)
+    return _mask_from_columns(cols, exists), int(exists.sum())
+
+
+def same_frame_columns(batch: int, offset: int, device=None) -> tuple[torch.Tensor, torch.Tensor]:
+    """Per ROW: the column holding that row's own frame, and whether it exists. O(B), not O(B^2).
+
+    ⛔ THE INDEX FORM IS THE DERIVATION; the (2B, 2B) mask above is built FROM it. A dense mask
+    at cltt_ref's B=498 is 1 MB and nobody notices, but `nt_xent_diagnostics` is also called by
+    cltt_patch with 2BM = 7,872 rows, where every (2B, 2B) helper is 62 MB as bool and 248 MB as
+    float32 -- measured as +740 MiB of GPU peak on the row that is already the wave's ceiling.
+    There is exactly ONE such column per row, so a row-length index vector says the same thing.
+
+    Where no duplicate exists the column is the ROW ITSELF, which is safe to scatter into: the
+    diagonal is masked anyway. `exists` is what callers must gate on.
+    """
     if batch < 1:
         raise ValueError(f"batch={batch} has no similarity matrix.")
     if offset <= 0:
@@ -135,14 +151,21 @@ def same_frame_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor,
             f"offset={offset} is not a frame offset: at 0 the two views are the same slab and "
             f"the 'duplicate' IS the positive, which this mask must never remove.")
     n = 2 * batch
-    mask = torch.zeros(n, n, dtype=torch.bool, device=device)
+    rows = torch.arange(n, device=device)
+    first = rows < batch
+    exists = torch.where(first, rows >= offset, (rows - batch) + offset < batch)
     if offset >= batch:
-        return mask, 0                     # no i satisfies both i >= offset and i < batch
-    rows = torch.arange(offset, batch, device=device)
-    cols = batch + rows - offset
-    flat = torch.cat([rows * n + cols, cols * n + rows])
-    mask.view(-1).scatter_(0, flat, torch.ones_like(flat, dtype=torch.bool))
-    return mask, int(flat.numel())
+        exists = torch.zeros_like(exists)
+    cols = torch.where(first, batch + rows - offset, rows - batch + offset)
+    return torch.where(exists, cols, rows), exists
+
+
+def _mask_from_columns(cols: torch.Tensor, exists: torch.Tensor) -> torch.Tensor:
+    """(2B, 2B) bool from one column per row. Only for callers that really want a matrix."""
+    n = cols.shape[0]
+    mask = torch.zeros(n, n, dtype=torch.bool, device=cols.device)
+    mask.scatter_(1, cols[:, None], exists[:, None])
+    return mask
 
 
 def positive_alias_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor, int]:
@@ -168,20 +191,25 @@ def positive_alias_mask(batch: int, offset: int, device=None) -> tuple[torch.Ten
     doing that would delete real negatives from the objective, which is a second owner decision
     and not the one taken on 2026-09-17.
     """
+    cols, exists = positive_alias_columns(batch, offset, device=device)
+    return _mask_from_columns(cols, exists), int(exists.sum())
+
+
+def positive_alias_columns(batch: int, offset: int,
+                           device=None) -> tuple[torch.Tensor, torch.Tensor]:
+    """Per ROW: the other column holding that row's POSITIVE's frame, and whether it exists."""
     if batch < 1:
         raise ValueError(f"batch={batch} has no similarity matrix.")
     if offset <= 0:
         raise ValueError(f"offset={offset} is not a frame offset.")
     n = 2 * batch
-    mask = torch.zeros(n, n, dtype=torch.bool, device=device)
+    rows = torch.arange(n, device=device)
+    first = rows < batch
+    exists = torch.where(first, rows + offset < batch, (rows - batch) >= offset)
     if offset >= batch:
-        return mask, 0
-    rows = torch.arange(0, batch - offset, device=device)
-    first = rows * n + (rows + offset)                       # row i -> column i+k
-    second = (rows + batch + offset) * n + (batch + rows)    # row B+j (j>=k) -> column B+j-k
-    flat = torch.cat([first, second])
-    mask.view(-1).scatter_(0, flat, torch.ones_like(flat, dtype=torch.bool))
-    return mask, int(flat.numel())
+        exists = torch.zeros_like(exists)
+    cols = torch.where(first, rows + offset, rows - offset)
+    return torch.where(exists, cols, rows), exists
 
 
 def nt_xent_same_frame_masked(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
@@ -213,6 +241,19 @@ def nt_xent_same_frame_masked(z1: torch.Tensor, z2: torch.Tensor, temperature: f
     return F.cross_entropy(sim, labels), count
 
 
+#: Row block for the diagnostic's argmax, and the rejection rounds for its null. Not knobs:
+#: they fix the diagnostic's COST, not its answer, and an arm that changed them would report
+#: the same numbers. 1024 rows x 7,872 columns is 32 MB, against 248 MB for the full matrix.
+DIAG_CHUNK_ROWS = 1024
+DIAG_NULL_ROUNDS = 8
+
+#: Every key `nt_xent_diagnostics` returns. ⛔ ONE list, asserted against the function's own
+#: output by a test, because a call site that switches the diagnostic OFF must still emit the
+#: same keys as sentinels -- and a second hand-written copy of this list would go quiet on
+#: exactly the key that was added last.
+DIAG_KEYS = ("pos_acc", "shuffled_acc", "pos_chance", "pos_ceiling", "duplicates",
+             "positive_aliases", "dup_sim", "pos_sim", "neg_sim", "batch")
+
 _DIAG_GENERATORS: dict = {}
 
 
@@ -230,6 +271,16 @@ def _diag_generator(device) -> torch.Generator:
         g.manual_seed(20260917)
         _DIAG_GENERATORS[device] = g
     return g
+
+
+def nt_xent_diagnostics_absent(batch: int) -> dict:
+    """The diagnostic's keys, all sentinel, for a call site where it is switched OFF.
+
+    ⚠ SENTINELS, NOT SILENCE. A key that disappears when a flag is off makes "the diagnostic did
+    not run" and "the diagnostic ran and found nothing" the same absence, and the sentinel-aware
+    aggregation in ppo_aux publishes a fire rate of 0 against it, which is readable.
+    """
+    return {k: (float(batch) if k == "batch" else float(NOT_MEASURED)) for k in DIAG_KEYS}
 
 
 def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
@@ -284,88 +335,109 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     "engaged" and "fell through" both present as absent, and absent reads as benign.
     """
     B = z1.shape[0]
+    n = 2 * B
     z = torch.cat([z1, z2], dim=0)
-    sim = torch.mm(z, z.t()) / temperature
-    sim.fill_diagonal_(float("-inf"))
-    labels = (torch.arange(2 * B, device=z.device) + B) % (2 * B)
+    labels = (torch.arange(n, device=z.device) + B) % n
+    rows = torch.arange(n, device=z.device)
 
-    # ⛔ EXCLUDE THE ANCHOR'S OWN FRAME FROM ITS OWN CANDIDATE SET. Derivation, from the slicing
-    # in `compute` rather than from the symptom: view_m[i] = raw[t0 + k_m + i], so for the pair
-    # (view_0, view_k) passed here,
-    #     row i < B   is frame t0 + i      and the SAME frame sits in the second half wherever
-    #                 t0 + k + j = t0 + i, i.e. at column B + (i - k), which exists iff i >= k;
-    #     row B + j   is frame t0 + k + j  and the same frame sits in the first half at column
-    #                 j + k, which exists iff j + k < B.
-    # ⇒ 2(B - k) of the 2B rows carry an exact duplicate of their own anchor (max abs pixel
-    # difference 0.0, not "similar"), and its similarity is the maximum a temporally invariant
-    # encoder can produce -- so the argmax is pinned there and `pos_acc` collapses BELOW its own
-    # reported chance. The k edge rows in each half have no duplicate.
-    # ⇒ THE SAME MASK THE LOSS USES. `same_frame_mask` is the single derivation; a second one
-    # here is how a diagnostic comes to describe an objective the code no longer runs.
+    # ⇒ ONE DERIVATION, IN ITS INDEX FORM. `same_frame_columns` is what `same_frame_mask` is
+    # built from, so the loss and the diagnostic still cannot drift -- but nothing here
+    # materialises a (2B, 2B) helper. cltt_patch calls this with 2BM = 7,872 rows, where each
+    # dense helper is 62 MB (bool) or 248 MB (float32): measured +740 MiB of GPU peak on the row
+    # that is already the wave's memory ceiling, for a diagnostic costing r00 only +22 MiB.
     if duplicate_offset is None:
-        dup_mask = torch.zeros_like(sim, dtype=torch.bool)
-        n_dup = NOT_MEASURED           # the caller did not declare an overlap: unmeasured, not 0
+        dup_col, has_dup = rows, torch.zeros(n, dtype=torch.bool, device=z.device)
+        alias_col, has_alias = rows, torch.zeros(n, dtype=torch.bool, device=z.device)
+        n_dup = n_alias = NOT_MEASURED        # the caller did not declare an overlap
     else:
-        dup_mask, n_masked = same_frame_mask(B, int(duplicate_offset), device=z.device)
-        n_dup = float(n_masked)
-    sim = sim.masked_fill(dup_mask, float("-inf"))
+        k = int(duplicate_offset)
+        dup_col, has_dup = same_frame_columns(B, k, device=z.device)
+        alias_col, has_alias = positive_alias_columns(B, k, device=z.device)
+        n_dup, n_alias = float(int(has_dup.sum())), float(int(has_alias.sum()))
 
-    pred = sim.argmax(dim=1)
-    # A hit is the positive OR any other column holding the positive's frame; see
-    # `positive_alias_mask` for why the plain equality reads 0 for a perfect encoder.
-    hit = torch.zeros_like(sim, dtype=torch.bool)
-    hit.scatter_(1, labels[:, None], True)
-    if duplicate_offset is not None:
-        alias_mask, n_alias = positive_alias_mask(B, int(duplicate_offset), device=z.device)
-        hit |= alias_mask
-    else:
-        alias_mask = torch.zeros_like(hit)
-        n_alias = NOT_MEASURED
-    pos_acc = float(hit.gather(1, pred[:, None]).float().mean())
+    # ⛔ THE ARGMAX IS CHUNKED over rows. It is the one quantity that genuinely needs every
+    # column, and a row block of DIAG_CHUNK_ROWS keeps the transient at 32 MB instead of 248 MB
+    # at cltt_patch's shape while giving the identical answer (argmax is per row).
+    pred = torch.empty(n, dtype=torch.long, device=z.device)
+    for lo in range(0, n, DIAG_CHUNK_ROWS):
+        hi = min(lo + DIAG_CHUNK_ROWS, n)
+        block = torch.mm(z[lo:hi], z.t()) / temperature
+        idx = rows[lo:hi]
+        block.scatter_(1, idx[:, None], float("-inf"))                      # self
+        block.scatter_(1, dup_col[lo:hi][:, None], float("-inf"))           # its own frame
+        pred[lo:hi] = block.argmax(dim=1)
+        del block
+
+    # A hit is the positive OR the other column holding the positive's frame; see
+    # `positive_alias_columns` for why the plain equality reads 0 for a perfect encoder.
+    hit = (pred == labels) | (has_alias & (pred == alias_col))
+    pos_acc = float(hit.float().mean())
     # The candidate set is what is LEFT: 2B minus the row itself, minus its duplicate where one
     # exists. Chance is the mean of 1/|candidates| over rows, not 1/(2B-1) -- that number
-    # presumed 2B distinct samples, which this slab has never supplied.
-    # The alias is a candidate the row can legitimately land on, so it stays in the count.
-    candidates = (2 * B - 1) - dup_mask.sum(dim=1)
+    # presumed 2B distinct samples, which this slab has never supplied. The alias is a candidate
+    # the row can legitimately land on, so it stays in the count.
+    candidates = (n - 1) - has_dup.long()
     chance = float((1.0 / candidates.float()).mean())
 
     # ⛔ THE NULL IS A RANDOM VALID WRONG CANDIDATE, NOT `labels + 1`. The shift aliased the
-    # duplicate exactly when k = 1 (column B + i + 1 vs the duplicate at B + i - 1 -- they meet
-    # under the +1 when the offsets are read across both halves) and never when k = 2, so the
-    # "null" averaged (B-1)/4B = 0.2495 over two offsets and was reporting the same pinned
-    # argmax the signal was. A null that can land on the duplicate measures the duplicate.
-    # Drawn from a DEDICATED generator so the diagnostic consumes none of the training RNG
-    # stream: with the global generator, turning the diagnostic on would change which windows
-    # later updates draw, and this must not touch training at all.
-    valid = torch.ones_like(sim, dtype=torch.bool)
-    valid.fill_diagonal_(False)
-    valid.scatter_(1, labels[:, None], False)
-    valid &= ~dup_mask & ~alias_mask      # a null that can land on a copy of the positive
+    # duplicate exactly when k = 1 and never when k = 2, so the "null" averaged (B-1)/4B =
+    # 0.2495 over two offsets and was reporting the same pinned argmax the signal was. A null
+    # that can land on a duplicate -- or on a copy of the positive -- measures those, not chance.
+    # Drawn by REJECTION on one column per row (at most four are excluded of 2B, so a handful of
+    # rounds clears every row) from a DEDICATED generator, so the diagnostic consumes none of
+    # the training RNG stream: with the global generator, turning the diagnostic on would change
+    # which windows later updates draw, and this must not touch training at all.
+    # ⚠ `torch.rand`, NOT `torch.randint`. The sampler's own draws go through `torch.randint`,
+    # which tests and tools monkeypatch to pin a window; a diagnostic that reached for the same
+    # symbol would eat those fixed draws and move the window it is supposed to describe. The
+    # generator keeps it off the global stream; the symbol keeps it off the sampler's.
+    gen = _diag_generator(z.device)
 
-    noise = torch.rand(sim.shape, device=z.device, generator=_diag_generator(z.device))
-    deranged = noise.masked_fill(~valid, -1.0).argmax(dim=1)
-    shuffled_acc = float((pred == deranged).float().mean())
+    def _draw():
+        return (torch.rand(n, device=z.device, generator=gen) * n).long().clamp_(max=n - 1)
 
-    raw_full = (torch.mm(z, z.t()))          # untempered, BEFORE any masking
-    # ⛔ THE ONE STATISTIC THAT SEPARATES THE TWO WAYS A LOW LOSS CAN HAPPEN. `pos_acc` cannot:
+    def _invalid(c):
+        return ((c == rows) | (c == labels)
+                | (has_dup & (c == dup_col)) | (has_alias & (c == alias_col)))
+
+    choice = _draw()
+    bad = _invalid(choice)
+    for _ in range(DIAG_NULL_ROUNDS):
+        if not bool(bad.any()):
+            break
+        choice = torch.where(bad, _draw(), choice)
+        bad = _invalid(choice)
+    usable = ~bad
+    # A row the rejection could not place is DROPPED rather than counted as a miss: counting it
+    # would be a measurement the draw never made. At 2B >= 8 this is empty in practice.
+    shuffled_acc = (float((pred == choice)[usable].float().mean()) if bool(usable.any())
+                    else NOT_MEASURED)
+
+    # ⛔ THE SIMILARITY SUMMARIES COME FROM VECTOR IDENTITIES, NOT FROM THE MATRIX.
+    # Sum of every pairwise dot is ||Sum_i z_i||^2, so the whole (2B, 2B) product never exists;
+    # the diagonal, the positives and the duplicates are one dot per row each. Accumulated in
+    # float64 because the total is O(n^2) terms against per-term values of order 1.
+    zd = z.double()
+    pos_dot = (zd * zd[labels]).sum(dim=-1)
+    dup_dot = (zd * zd[dup_col]).sum(dim=-1) * has_dup.double()
+    total = float((zd.sum(dim=0) ** 2).sum())
+    diag_sum = float((zd * zd).sum())
+    pos_sim = float(pos_dot.mean())
+    # ⛔ The one statistic that separates the two ways a low loss can happen. `pos_acc` cannot:
     # an encoder that has learned temporal invariance and an encoder that has broken the tie by
-    # embedding ONE frame differently in the two views both score high. But a pure function of
-    # the image gives cos(z1[i], z2[i-k]) = 1 EXACTLY for a duplicate, because it is the same
-    # image; anything below 1 means the embedding depends on which view the frame arrived in
-    # (batch statistics are the live route -- BatchNorm in train() sees two different slabs).
+    # embedding ONE frame differently in the two views both score high. A pure function of the
+    # image gives cos(z1[i], z2[i-k]) = 1 EXACTLY for a duplicate, because it is the same image;
+    # anything below 1 means the embedding depends on which view the frame arrived in (batch
+    # statistics are the live route -- BatchNorm in train() sees two different slabs).
     # Measured on a 600-step fixture where the tie broke: dup_sim 0.9910 BELOW pos_sim 0.9943.
-    dup_sim = float(raw_full[dup_mask].mean()) if bool(dup_mask.any()) else NOT_MEASURED
-
-    raw = sim * temperature
-    pos_sim = float(raw.gather(1, labels[:, None]).mean())
-    off = torch.ones_like(raw, dtype=torch.bool)
-    off.fill_diagonal_(False)
-    off.scatter_(1, labels[:, None], False)
+    dup_count = int(has_dup.sum())
+    dup_sim = float(dup_dot.sum() / dup_count) if dup_count else NOT_MEASURED
     # ⚠ The duplicate is not a negative in any sense the number is read for -- it is the anchor
     # itself -- so it leaves `neg_sim` too, or the mean negative similarity is inflated by the
     # single largest entry in the row.
-    off &= ~dup_mask
-    neg_sim = float(raw[off].mean())
+    neg_count = n * n - 2 * n - dup_count
+    neg_sim = ((total - diag_sum - float(pos_dot.sum()) - float(dup_dot.sum())) / neg_count
+               if neg_count > 0 else NOT_MEASURED)
     return {
         "pos_acc": pos_acc,
         "shuffled_acc": shuffled_acc,

@@ -64,7 +64,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .cltt_ref_aux import CLTTReferenceProjectionHead, nt_xent_diagnostics
+from .cltt_ref_aux import (CLTTReferenceProjectionHead, _env_flag,
+                           nt_xent_diagnostics, nt_xent_diagnostics_absent)
 from .cltt_views import current_frame_stack
 from .knobs import _env_positive_float, _env_positive_int
 from .simclr_aux import nt_xent
@@ -88,6 +89,13 @@ class CLTTPatchTerm(TokenWindowTerm):
         self.top_gamma = _env_positive_int(self.TOPG_ENV, max(1, self.n_tokens // 2))
         self.samples = _env_positive_int(self.SAMPLES_ENV, 8)
         self.temperature = _env_positive_float(self.TEMP_ENV, 0.5)
+        # ⛔ THE SAME KNOB AND THE SAME PARSER AS cltt_ref. This diagnostic was called
+        # UNCONDITIONALLY here, so `NETT_AUX_CLTT_REF_DIAG=0` bought nothing on the one row that
+        # cannot afford it: at 2BM = 7,872 rows it cost +740 MiB of GPU peak (19,432 vs 18,692
+        # MiB), against +22 MiB for cltt_ref's own 996. Reading the knob through cltt_ref's
+        # `_env_flag` rather than a second parser is deliberate -- one knob with two parsers can
+        # be ON for one term and OFF for the other in the same row.
+        self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
         if self.top_gamma > self.n_tokens:
             raise ValueError(
                 f"{self.TOPG_ENV}={self.top_gamma} exceeds the token count {self.n_tokens}: the "
@@ -151,7 +159,8 @@ class CLTTPatchTerm(TokenWindowTerm):
                 # different token. So duplicates are possible but not derivable from the offset,
                 # and claiming zero would be a count this call never made.
                 **{f"patch_{k}": v for k, v in
-                   nt_xent_diagnostics(p.detach(), p_pos.detach(), self.temperature).items()},
+                   (nt_xent_diagnostics(p.detach(), p_pos.detach(), self.temperature)
+                    if self.diag else nt_xent_diagnostics_absent(p.shape[0])).items()},
                 "match_conf": float(conf.mean()),
                 "match_conf_kept": float(conf.gather(1, keep).mean()),
                 "top_gamma": float(self.top_gamma),

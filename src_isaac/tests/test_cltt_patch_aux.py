@@ -165,7 +165,8 @@ def test_identity_correspondence_reads_as_identity_and_a_shifted_one_does_not():
     assert term.identity_fraction(rolled, turn)["identity_frac"] == 0.0
 
 
-def test_the_deranged_positive_null_is_emitted_beside_the_accuracy():
+def test_the_deranged_positive_null_is_emitted_beside_the_accuracy(monkeypatch):
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", "1")
     enc, comp = _composite()
     comp.term.compute(enc, None)
     s = comp.term.last_scalars
@@ -215,3 +216,35 @@ def test_the_row_is_registered_as_cltt_ref_plus_one_term():
     aux = AUX_LOSSES["cltt_patch"](_encoder())
     assert isinstance(aux, WithCLTTRef) and isinstance(aux.term, CLTTPatchTerm)
     assert aux.name == "cltt_patch" and aux._teacher is not None
+
+
+def test_the_diagnostic_is_behind_the_same_flag_as_cltt_refs_and_still_emits_its_keys(monkeypatch):
+    """⛔ IT WAS CALLED UNCONDITIONALLY, ON THE ROW THAT IS THE WAVE'S MEMORY CEILING. At
+    2BM = 7,872 rows it cost +740 MiB of GPU peak and `NETT_AUX_CLTT_REF_DIAG=0` bought nothing,
+    because the flag was never consulted here.
+
+    ⚠ OFF MUST STILL EMIT THE KEYS, as sentinels: a key that disappears makes "did not run" and
+    "ran and found nothing" the same absence."""
+    from nett_skrl.brain.aux.cltt_ref_aux import DIAG_KEYS, nt_xent_diagnostics
+
+    monkeypatch.delenv("NETT_AUX_CLTT_REF_DIAG", raising=False)
+    enc, comp = _composite()
+    assert comp.term.diag is False
+    comp.term.compute(enc, None)
+    off = comp.term.last_scalars
+    for key in DIAG_KEYS:
+        assert f"patch_{key}" in off, key
+        if key != "batch":
+            assert off[f"patch_{key}"] == NOT_MEASURED, key
+    assert off["patch_batch"] > 0
+
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", "1")
+    enc, comp = _composite()
+    assert comp.term.diag is True
+    comp.term.compute(enc, None)
+    on = comp.term.last_scalars
+    assert on["patch_pos_acc"] != NOT_MEASURED and 0.0 <= on["patch_pos_acc"] <= 1.0
+    # ⛔ ONE key list, or the OFF path goes quiet on whichever key was added last.
+    real = nt_xent_diagnostics(torch.nn.functional.normalize(torch.randn(6, 4), dim=-1),
+                               torch.nn.functional.normalize(torch.randn(6, 4), dim=-1), 0.5)
+    assert set(real) == set(DIAG_KEYS)

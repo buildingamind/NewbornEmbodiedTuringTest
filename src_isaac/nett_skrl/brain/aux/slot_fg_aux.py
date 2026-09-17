@@ -55,7 +55,7 @@ from .knobs import (
     _env_flag_strict, _env_nonneg_float, _env_positive_float, _env_positive_int,
 )
 from .slot_contrast_aux import SlotAttention, slot_contrast_diagnostics
-from .token_term import NOT_MEASURED, TokenWindow, TokenWindowTerm, rank_corr
+from .token_term import NOT_MEASURED, TokenWindow, TokenWindowTerm, rank_corr, window_turn_scalar
 
 
 class SlotFGTerm(TokenWindowTerm):
@@ -210,7 +210,7 @@ class SlotFGTerm(TokenWindowTerm):
         loss, scalars = self._core(encoder, window)
         self.last_window_turn = float(window.mean_turn)
         self.last_scalars = {"B": float(window.prepared_t.shape[0]), "k": float(self.offset),
-                             "window_turn": float(window.mean_turn),
+                             "window_turn": window_turn_scalar(window.mean_turn),
                              **{k: float(v) for k, v in scalars.items()}}
         return loss
 

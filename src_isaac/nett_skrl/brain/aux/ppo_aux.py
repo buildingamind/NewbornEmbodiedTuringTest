@@ -37,6 +37,7 @@ from ..skrl_patches import (
 )
 
 from ..models.utils.features import clear_feature_cache
+from .knobs import NOT_MEASURED
 from .simclr_aux import SimCLRAuxLoss
 
 
@@ -167,6 +168,61 @@ AUX_LOSSES = {
     "ego_residual": _build_ego_residual,
     "slot_fg": _build_slot_fg,
 }
+
+
+def accumulate_aux_scalar(sums: dict, fired: dict, key: str, value: float) -> None:
+    """Add one minibatch's value for `key`, EXCLUDING sentinels from the sum.
+
+    ⛔ THE MEAN OF A MIXTURE OF MEASUREMENTS AND SENTINELS IS NEITHER. Measured on the apparatus:
+    `fg_objectness_corr` was published as **-5.545**, outside the [-1, 1] a correlation can take,
+    because 38.1% of minibatches measured r ~ +0.06 and the other 61.9% emitted -9.0:
+    0.38125*0.06 + 0.61875*(-9) = -5.545. The published number was the SENTINEL FRACTION wearing
+    a correlation's name, and a reader who clipped it into range would have got a strong,
+    confident, fabricated anticorrelation. `shift_rho_null` did the same at -1.016.
+
+    ⇒ The fix belongs HERE, at the aggregation, not at the two call sites that happened to be
+    caught: EVERY scalar whose emission is conditional per minibatch has this shape, and the
+    class is "conditional", not "these two keys". A key is still REGISTERED when it emits a
+    sentinel, so a key that never fires is reported rather than silently absent; only its value
+    is withheld.
+    """
+    sums.setdefault(key, 0.0)
+    fired.setdefault(key, 0)
+    if float(value) == NOT_MEASURED:
+        return
+    sums[key] += float(value)
+    fired[key] += 1
+
+
+def aggregate_aux_scalars(sums: dict, fired: dict, seen: int) -> list:
+    """-> [(suffix, value)] to publish: conditional means, fire rates, and the summary count.
+
+    * fired == seen  -> the mean over every minibatch. ⚠ BITWISE IDENTICAL to the pre-2026-09-17
+      behaviour for a scalar that always fires: the same sum divided by the same integer.
+    * 0 < fired < seen -> the mean over the minibatches that MEASURED, plus `<key> fire_rate`.
+      "engaged in 38% of minibatches, r = +0.06" is two readable facts; -5.545 was neither.
+    * fired == 0 -> the SENTINEL, and a fire rate of 0. Never a number: a statistic that was
+      never measured must not acquire a value by being averaged.
+
+    ⚠ `fire_rate` IS EMITTED ONLY WHEN IT IS NOT 1, so the log does not double in width. That
+    convention needs a way to tell "fired everywhere" from "not emitted", so `sentinel_keys` --
+    how many keys had any sentinel this update -- goes out ALWAYS. sentinel_keys == 0 means
+    every key fired on every minibatch; anything else names its keys through their fire rates.
+    """
+    out, sentinel_keys = [], 0
+    for key, total in sorted(sums.items()):
+        hits = fired.get(key, 0)
+        if hits == 0:
+            out.append((key, float(NOT_MEASURED)))
+            out.append((f"{key} fire_rate", 0.0))
+            sentinel_keys += 1
+            continue
+        out.append((key, total / hits))
+        if hits < seen:
+            out.append((f"{key} fire_rate", hits / float(seen)))
+            sentinel_keys += 1
+    out.append(("sentinel_keys", float(sentinel_keys)))
+    return out
 
 
 def track_transit_mask(agent, last: float | None, cumulative: float, seen: int) -> None:
@@ -355,6 +411,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         # log, no tfevents and no reader -- a detector wired to no actuator. Any aux may
         # now expose `last_scalars: dict[str, float]` and have it averaged and tracked.
         cumulative_aux_scalars: dict = {}
+        aux_scalar_fired: dict = {}
         aux_scalars_seen = 0
         cumulative_inv_temporal = 0.0
         cumulative_inv_control = 0.0
@@ -509,8 +566,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                 _scalars = getattr(self._aux, "last_scalars", None)
                 if isinstance(_scalars, dict) and _scalars:
                     for _k, _v in _scalars.items():
-                        cumulative_aux_scalars[_k] = (
-                            cumulative_aux_scalars.get(_k, 0.0) + float(_v))
+                        accumulate_aux_scalar(cumulative_aux_scalars, aux_scalar_fired, _k, _v)
                     aux_scalars_seen += 1
                 _terms = getattr(self._aux, "last_terms", None)
                 if _terms is not None and len(_terms) == 3:
@@ -574,8 +630,12 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
             # reads chance = 2*ln(2B-1) once and compares later updates against it is
             # comparing to a moving line. Measured 2026-09-10: assumed B=96, realised
             # B≈45 at update 1.
-            for _k, _v in sorted(cumulative_aux_scalars.items()):
-                self.track_data(f"Loss / Aux {self._aux_kind} {_k}", _v / aux_scalars_seen)
+            # ⛔ SENTINEL-AWARE. See `aggregate_aux_scalars`: a conditional scalar's mean is
+            # taken over the minibatches that measured it, its fire rate goes out beside it, and
+            # one that never measured stays a sentinel instead of becoming a mixture.
+            for _k, _v in aggregate_aux_scalars(cumulative_aux_scalars, aux_scalar_fired,
+                                                aux_scalars_seen):
+                self.track_data(f"Loss / Aux {self._aux_kind} {_k}", _v)
         if aux_terms_seen:
             for _name, _val in zip(
                 ("invariance", "variance", "covariance"), cumulative_aux_terms

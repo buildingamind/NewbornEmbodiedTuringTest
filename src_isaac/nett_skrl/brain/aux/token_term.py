@@ -141,6 +141,25 @@ def column_shift(match: torch.Tensor, n_w: int) -> torch.Tensor:
     return (dst_col - src_col).median(dim=1).values
 
 
+def window_turn_scalar(mean_turn: float) -> float:
+    """The window's mean |turn| for the AVERAGED telemetry channel, or NOT_MEASURED.
+
+    ⛔ THE MASK CONSTANTS MUST NOT ENTER A MEAN. `ActionWindow.mean_turn` carries MASK_OFF
+    (-1.0) and MASK_NO_MOTION (-3.0) as states, and `track_transit_mask` reads them from
+    `last_window_turn`, which is the right channel for a state. The copy in `last_scalars` is
+    AVERAGED across minibatches, and a mean over {0.31, -1.0, 0.28} is neither a turn nor a
+    state -- the same defect that published a correlation of -5.545.
+
+    ⚠ ONE SENTINEL VALUE IN THE AVERAGED CHANNEL, ON PURPOSE. -9.0 is outside the range of every
+    statistic in this package; -1.0 is NOT (a correlation of exactly -1.0 is attainable), so
+    teaching the aggregator to treat -1.0 as a sentinel would silently drop real measurements
+    from some other key. The conversion happens here, at the one place that knows what -1.0
+    means.
+    """
+    turn = float(mean_turn)
+    return turn if turn >= 0.0 else NOT_MEASURED
+
+
 def excess_engaged(value: float, nulls) -> float:
     """Is `value` outside the spread of its paired nulls? -> 1.0 / 0.0 / NOT_MEASURED.
 
@@ -302,7 +321,7 @@ class TokenWindowTerm(nn.Module):
         self.last_window_turn = float(window.mean_turn)
         self.last_scalars = {"B": float(window.prepared_t.shape[0]),
                              "k": float(self.offset),
-                             "window_turn": float(window.mean_turn),
+                             "window_turn": window_turn_scalar(window.mean_turn),
                              **{k: float(v) for k, v in scalars.items()}}
         return loss
 
