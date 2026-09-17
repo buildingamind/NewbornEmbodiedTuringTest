@@ -9,47 +9,50 @@ the run proceeds as the control while its label says otherwise. Before putting a
 name in a queue row, a launcher, or a message, confirm it here or with
 `grep -rn NETT_YOUR_NAME src_isaac/`.
 
-⚠ Defaults are the literal second argument at the read site. Where a variable is read in
-more than one place the defaults can differ — every site is listed rather than collapsed,
-because a knob with two defaults is a real hazard and a single-row summary would hide it.
+⚠ Defaults are the second argument at the read site, with an identifier resolved to its
+value — per CALLING class where a shared base reads the knob, because four `*_BATCH` knobs
+share one read site and do NOT share a default. A default the generator cannot resolve
+statically says *caller-supplied* rather than printing the identifier, which would read as
+a value. Where a variable is read in more than one place the defaults can differ — every
+site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
 199 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:69`<br>`examples/probe_frozen_features.py:57` |
-| `NETT_AUX_AFF_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:170` |
-| `NETT_AUX_AFF_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:171` |
-| `NETT_AUX_AFF_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:75`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
+| `NETT_AUX_AFF_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:170` |
+| `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:171` |
+| `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:80` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:237` |
-| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `max_samples` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:262`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
+| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:262`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
-| `NETT_AUX_CLTT_PATCH_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:171` |
+| `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:171` |
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_ref_aux.py:249` |
-| `NETT_AUX_CLTT_REF_OFFSETS` | `self.DEFAULT_OFFSETS` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
+| `NETT_AUX_CLTT_REF_OFFSETS` | `'1,2'` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
 | `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:263` |
 | `NETT_AUX_CLTT_REF_WEIGHT` | `1.0` | `nett_skrl/brain/aux/with_cltt_ref.py:77` |
-| `NETT_AUX_CLTT_STACK_OFFSETS` | `self.DEFAULT_OFFSETS` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
-| `NETT_AUX_EGO_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:170` |
+| `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
+| `NETT_AUX_EGO_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:170` |
 | `NETT_AUX_EGO_IDENTITY_BIAS` | `4.0` | `nett_skrl/brain/aux/ego_residual_aux.py:85` |
-| `NETT_AUX_EGO_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:171` |
+| `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:171` |
 | `NETT_AUX_EGO_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/ego_residual_aux.py:86` |
-| `NETT_AUX_EMA_DECAY` | `decay` | `nett_skrl/brain/aux/ema_teacher.py:50` |
+| `NETT_AUX_EMA_DECAY` | `0.996` | `nett_skrl/brain/aux/ema_teacher.py:50` |
 | `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:30`<br>`examples/campaign_train.py:780`<br>`examples/campaign_train.py:1058` |
-| `NETT_AUX_PATCH_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:170` |
+| `NETT_AUX_PATCH_BATCH` | `512` | `nett_skrl/brain/aux/token_term.py:170` |
 | `NETT_AUX_PATCH_M` | `8` | `nett_skrl/brain/aux/cltt_patch_aux.py:74` |
-| `NETT_AUX_PATCH_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:75`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
-| `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2` | `nett_skrl/brain/aux/cltt_patch_aux.py:73` |
-| `NETT_AUX_SLOTFG_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:170` |
+| `NETT_AUX_PATCH_TEMP` | `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:75` |
+| `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2)` | `nett_skrl/brain/aux/cltt_patch_aux.py:73` |
+| `NETT_AUX_SLOTFG_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:170` |
 | `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:99` |
 | `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:86` |
-| `NETT_AUX_SLOTFG_EGO` | *(required / no literal default)* | `nett_skrl/brain/aux/slot_fg_aux.py:92` |
+| `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:92` |
 | `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:91` |
 | `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:90` |
-| `NETT_AUX_SLOTFG_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:171` |
+| `NETT_AUX_SLOTFG_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:171` |
 | `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:97` |
 | `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:85` |
-| `NETT_AUX_SLOTFG_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:75`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
+| `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:87` |
 | `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:89` |
 | `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:88` |
 | `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:462` |
@@ -60,11 +63,11 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:703`<br>`examples/train_binding_8brain_targets.py:41` |
 | `NETT_BRAIN_OFFSET` | `"0"`, `'0'` | `examples/campaign_train.py:704`<br>`examples/train_binding_8brain_targets.py:190`<br>`examples/train_binding_8brain_targets.py:208` |
 | `NETT_CAMERA_FOV` | `""` | `examples/campaign_train.py:594` |
-| `NETT_CAMPAIGN_DIR` | `str(Path.home(` | `examples/campaign_run.py:37` |
+| `NETT_CAMPAIGN_DIR` | `str(Path.home() / "nett_campaign")` | `examples/campaign_run.py:37` |
 | `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:915`<br>`examples/campaign_train.py:916` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:24` |
-| `NETT_DESIGN_SHEET` | `sheet` | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:974` |
-| `NETT_DEVICE` | `"0 (default`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:700`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
+| `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:974` |
+| `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:700`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
 | `NETT_DEVICE_LOST_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/crash_guard.py:272`<br>`nett_skrl/runtime/crash_guard.py:317` |
 | `NETT_DEVICE_LOST_EXIT_CODE` | `"75"`, `75` | `nett_skrl/runtime/crash_guard.py:270`<br>`nett_skrl/runtime/crash_guard.py:376`<br>`nett_skrl/runtime/reap.py:692` |
 | `NETT_DEVICE_LOST_FLUSH_S` | `20` | `nett_skrl/runtime/crash_guard.py:271`<br>`nett_skrl/runtime/crash_guard.py:378` |
@@ -102,13 +105,13 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_GWM_BAL` | `"0.1"` | `nett_skrl/brain/aux/gwm_aux.py:95` |
 | `NETT_GWM_COH` | `"1.0"` | `nett_skrl/brain/aux/gwm_aux.py:93` |
 | `NETT_GWM_PHOTO` | `"1.0"` | `nett_skrl/brain/aux/gwm_aux.py:92` |
-| `NETT_GWM_SLOTS` | `slots` | `nett_skrl/brain/aux/gwm_aux.py:87` |
+| `NETT_GWM_SLOTS` | `2` | `nett_skrl/brain/aux/gwm_aux.py:87` |
 | `NETT_GWM_SMOOTH` | `"0.1"` | `nett_skrl/brain/aux/gwm_aux.py:94` |
 | `NETT_HIDDEN_SIZES` | `""` | `examples/campaign_train.py:725` |
-| `NETT_IMPRINT` | `_EXP_MAP[EXP][2]`, `default_imprint` | `examples/campaign_train.py:691`<br>`examples/train_binding_8brain_targets.py:145` |
+| `NETT_IMPRINT` | `_EXP_MAP[EXP][2]`, *(caller-supplied: `default_imprint`)* | `examples/campaign_train.py:691`<br>`examples/train_binding_8brain_targets.py:145` |
 | `NETT_ISAAC_LAB` | *(required / no literal default)* | `examples/campaign_retest_launch.py:38` |
 | `NETT_JOBS_PER_GPU` | `"1"`, `"2"` | `examples/campaign_retest_launch.py:52`<br>`examples/campaign_run.py:210` |
-| `NETT_KIT_THREADS` | `DEFAULT_CELL_THREADS` | `nett_skrl/runtime/cpu_budget.py:108` |
+| `NETT_KIT_THREADS` | `8` | `nett_skrl/runtime/cpu_budget.py:108` |
 | `NETT_LIFECYCLE_DISABLE` | `"0"` | `nett_skrl/runtime/lifecycle.py:82` |
 | `NETT_LIFECYCLE_POLL` | `"0.25"` | `nett_skrl/runtime/lifecycle.py:80` |
 | `NETT_LIFECYCLE_TERM_GRACE` | `"25"` | `nett_skrl/runtime/lifecycle.py:78` |
@@ -117,7 +120,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
 | `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:706`<br>`examples/train_binding_8brain_targets.py:38` |
-| `NETT_MEDIA_ROOT` | `media` | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:975` |
+| `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:975` |
 | `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:128`<br>`examples/campaign_train.py:816` |
 | `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:928`<br>`examples/campaign_train.py:1057`<br>`examples/train_binding_8brain_targets.py:155` |
 | `NETT_MODEL` | `""` | `examples/campaign_train.py:680` |
@@ -125,7 +128,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_MOTOK_QUERIES` | `"2"` | `nett_skrl/brain/aux/motok_aux.py:321` |
 | `NETT_MOTOK_UPSAMPLE` | `"0"` | `nett_skrl/brain/aux/motok_aux.py:322` |
 | `NETT_MOTOK_VQ_COEF` | `"0.1"` | `nett_skrl/brain/aux/motok_aux.py:320` |
-| `NETT_NAME` | `f"{ENC}_s{SEED_OFFSET}_{datetime.now(` | `examples/train_replicate_single.py:41` |
+| `NETT_NAME` | `f"{ENC}_s{SEED_OFFSET}_{datetime.now():%Y%m%d_%H%M%S}"` | `examples/train_replicate_single.py:41` |
 | `NETT_ONLY_EXPERIMENTS` | `""` | `examples/campaign_run.py:75` |
 | `NETT_ONLY_MODELS` | `""` | `examples/campaign_run.py:74` |
 | `NETT_OPTUNA_DIR` | `"/home/zlaborde/code/isaac/optuna_tune"` | `examples/optuna_tune.py:49` |
@@ -146,13 +149,13 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_REAP_TIMEOUT` | `"0"` | `nett_skrl/runtime/reap.py:107` |
 | `NETT_REAP_TOKEN` | *(required / no literal default)* | `nett_skrl/runtime/reap.py:311` |
 | `NETT_RES` | `"128"`, `"256"` | `examples/campaign_run.py:180`<br>`examples/campaign_train.py:708`<br>`examples/sweep_params.py:12`<br>`examples/train_binding_8brain_targets.py:40` |
-| `NETT_RETEST_DIR` | `str(ROOT / "_retest"` | `examples/campaign_retest_launch.py:45` |
+| `NETT_RETEST_DIR` | `str(ROOT / "_retest")` | `examples/campaign_retest_launch.py:45` |
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
-| `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*"` | `examples/campaign_retest_launch.py:50` |
+| `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*")` | `examples/campaign_retest_launch.py:50` |
 | `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:712` |
 | `NETT_ROLLOUTS` | `"8000"` | `examples/campaign_train.py:742`<br>`examples/campaign_train.py:883` |
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:859` |
-| `NETT_RUN_ROOT` | `str(Path.home(` | `examples/probe_frozen_features.py:89` |
+| `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:28` |
@@ -172,13 +175,13 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
 | `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:393` |
-| `NETT_SLOTC_DIM` | `slot_dim` | `nett_skrl/brain/aux/slot_contrast_aux.py:382` |
-| `NETT_SLOTC_EMA` | `ema` | `nett_skrl/brain/aux/slot_contrast_aux.py:386` |
+| `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:382` |
+| `NETT_SLOTC_EMA` | `0.996` | `nett_skrl/brain/aux/slot_contrast_aux.py:386` |
 | `NETT_SLOTC_NO_DETACH` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:392` |
-| `NETT_SLOTC_SLOTS` | `slots` | `nett_skrl/brain/aux/slot_contrast_aux.py:381` |
-| `NETT_SLOTC_TEMP` | `temperature` | `nett_skrl/brain/aux/slot_contrast_aux.py:383` |
-| `NETT_SLOTC_W_REC` | `w_rec` | `nett_skrl/brain/aux/slot_contrast_aux.py:385` |
-| `NETT_SLOTC_W_SS` | `w_ss` | `nett_skrl/brain/aux/slot_contrast_aux.py:384` |
+| `NETT_SLOTC_SLOTS` | `6` | `nett_skrl/brain/aux/slot_contrast_aux.py:381` |
+| `NETT_SLOTC_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_contrast_aux.py:383` |
+| `NETT_SLOTC_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_contrast_aux.py:385` |
+| `NETT_SLOTC_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_contrast_aux.py:384` |
 | `NETT_STAGGER_SECS` | `"12"` | `examples/campaign_retest_launch.py:53`<br>`examples/campaign_run.py:211` |
 | `NETT_STALL_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/stall_guard.py:298` |
 | `NETT_STALL_EXIT_CODE` | `"77"`, `77` | `nett_skrl/runtime/reap.py:744`<br>`nett_skrl/runtime/stall_guard.py:188`<br>`nett_skrl/runtime/stall_guard.py:332`<br>`nett_skrl/runtime/stall_guard.py:345` |
@@ -194,7 +197,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
 | `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:478` |
-| `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:1009` |
+| `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:1009` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:377`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
 | `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:203` |

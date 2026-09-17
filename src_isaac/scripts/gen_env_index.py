@@ -20,6 +20,8 @@ Usage:  python scripts/gen_env_index.py          # write docs/env_vars.md
 from __future__ import annotations
 
 import argparse
+import ast
+import functools
 import re
 import sys
 from pathlib import Path
@@ -55,12 +57,30 @@ SELF = Path(__file__).resolve()
 # ⇒ THE LESSON, WRITTEN DOWN BECAUSE IT WILL RECUR: this index's failure mode is not "a wrong
 # entry", which someone would notice -- it is a MISSING entry in a document whose contract is that
 # missing means "does not exist". Every such gap is silent, and its own test passes throughout.
-PAT = re.compile(
-    r"""(?:environ\.get|getenv)\(\s*["'](?P<name>NETT_[A-Z0-9_]+)["']\s*(?:,\s*(?P<default>[^)]*?))?\s*\)"""
-    r"""|environ\[\s*["'](?P<name2>NETT_[A-Z0-9_]+)["']\s*\]"""
-    r"""|_env_[a-z_]+\(\s*["'](?P<name3>NETT_[A-Z0-9_]+)["']\s*(?:,\s*(?P<default3>[^)]*?))?\s*\)""",
-    re.X,
-)
+#: A call to anything that reads the environment. The NAME and the DEFAULT are pulled out by
+#: `_call_args` rather than by the regex, because a regex cannot count parentheses -- see below.
+CALL_RE = re.compile(r"(?P<callee>environ\.get|getenv|_env_[a-z_]+)\s*\(")
+SUBSCRIPT_RE = re.compile(r"""environ\[\s*["'](?P<name>NETT_[A-Z0-9_]+)["']\s*\]""")
+NAME_LIT = re.compile(r"""^["'](?P<name>NETT_[A-Z0-9_]+)["']$""")
+#: The first argument as a CONSTANT rather than a literal: `self.BATCH_ENV`, `cls.X`, `X`.
+CONST_REF = re.compile(r"^(?:self\.|cls\.)?(?P<ident>[A-Z][A-Z0-9_]*)$")
+#: A default that is nothing but a name (possibly dotted). These are the dangerous ones: printed
+#: verbatim they READ AS VALUES, and the reader has no way to tell `decay` the parameter from
+#: `decay` the string. Anything with an operator, a call or a literal in it is an expression and
+#: is printed as written.
+DOTTED = re.compile(r"^(?:self\.|cls\.)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+KEYWORDS = {"True", "False", "None"}
+
+
+class CallerSupplied(str):
+    """A default the scanner could not resolve statically, carrying the expression it gave up on.
+
+    ⚠ IT IS A `str` SUBCLASS ON PURPOSE: every consumer that sorts, sets or prints defaults keeps
+    working, and `render` is the one place that has to know the difference. Saying "I could not
+    resolve this, here is the read site" is an acceptable answer. Printing the identifier as
+    though it were the value is not -- that is the failure this class exists to make impossible
+    to reintroduce by accident.
+    """
 
 
 #: `NAME = "NETT_FOO"` / `NAME: str = "NETT_FOO"`, at module or class level. Two live auxiliary
@@ -70,6 +90,53 @@ CONST_PAT = re.compile(
     r"""^\s*(?P<ident>[A-Z][A-Z0-9_]*)\s*(?::[^=\n]*)?=\s*["'](?P<cname>NETT_[A-Z0-9_]+)["']""",
     re.M,
 )
+
+
+def _call_args(text: str, open_idx: int) -> list[str] | None:
+    """Split the argument list of the call whose ``(`` sits at `open_idx`, at TOP-LEVEL commas.
+
+    ⛔ A `)` INSIDE THE DEFAULT USED TO TRUNCATE IT. The old pattern captured the default as
+    `[^)]*?`, so `_env_positive_int(self.TOPG_ENV, max(1, self.n_tokens // 2))` was indexed with
+    the default `max(1, self.n_tokens // 2` -- an expression missing its closing paren, which a
+    reader can neither evaluate nor paste, and which looks like a scanner artefact exactly when
+    it is not. `f"{ENC}_s{SEED_OFFSET}_{datetime.now(` was the same defect on a longer default.
+    Nesting has to be COUNTED; no regex can do it.
+
+    Returns None when the call never closes (a truncated or unparseable file), so the caller
+    drops the site rather than indexing a guess.
+    """
+    depth, quote, start, args = 0, None, open_idx + 1, []
+    i = open_idx
+    while i < len(text):
+        ch = text[i]
+        if quote is not None:
+            if ch == "\\":
+                i += 2
+                continue
+            if ch == quote:
+                quote = None
+        elif ch in "\"'":
+            quote = ch
+        elif ch in "([{":
+            depth += 1
+        elif ch in ")]}":
+            depth -= 1
+            if depth == 0:
+                args.append(text[start:i])
+                return [a for a in args if a.strip()] or []
+        elif ch == "," and depth == 1:
+            args.append(text[start:i])
+            start = i + 1
+        i += 1
+    return None
+
+
+def _iter_calls(text: str):
+    """Yield `(callee, args, offset)` for every environment read in `text`."""
+    for m in CALL_RE.finditer(text):
+        args = _call_args(text, m.end() - 1)
+        if args:
+            yield m.group("callee"), args, m.start()
 
 
 def _line_indexer(text: str):
@@ -86,6 +153,113 @@ def _norm(default: str | None) -> str | None:
     return " ".join(default.split()) or None
 
 
+@functools.lru_cache(maxsize=None)
+def _tree(text: str):
+    try:
+        return ast.parse(text)
+    except SyntaxError:      # a scanned file need not be importable on this interpreter
+        return None
+
+
+def _assigns(body) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for st in body:
+        if isinstance(st, ast.Assign) and len(st.targets) == 1 and isinstance(st.targets[0], ast.Name):
+            out[st.targets[0].id] = ast.unparse(st.value)
+        elif isinstance(st, ast.AnnAssign) and isinstance(st.target, ast.Name) and st.value is not None:
+            out[st.target.id] = ast.unparse(st.value)
+    return out
+
+
+def _innermost(text: str, lineno: int, kinds) -> object | None:
+    tree = _tree(text)
+    if tree is None:
+        return None
+    best = None
+    for node in ast.walk(tree):
+        if isinstance(node, kinds) and node.lineno <= lineno <= (node.end_lineno or node.lineno):
+            if best is None or node.lineno > best.lineno:
+                best = node
+    return best
+
+
+def _class_consts(text: str, lineno: int) -> dict[str, str]:
+    cls = _innermost(text, lineno, ast.ClassDef)
+    return _assigns(cls.body) if cls is not None else {}
+
+
+def _module_consts(text: str) -> dict[str, str]:
+    tree = _tree(text)
+    return _assigns(tree.body) if tree is not None else {}
+
+
+def _param_default(text: str, lineno: int, ident: str) -> str | None:
+    """The default of parameter `ident` in the function containing `lineno`, if it has one."""
+    fn = _innermost(text, lineno, (ast.FunctionDef, ast.AsyncFunctionDef))
+    if fn is None:
+        return None
+    a = fn.args
+    positional = list(a.posonlyargs) + list(a.args)
+    for i, arg in enumerate(positional):
+        if arg.arg == ident:
+            k = i - (len(positional) - len(a.defaults))
+            return ast.unparse(a.defaults[k]) if k >= 0 else None
+    for arg, d in zip(a.kwonlyargs, a.kw_defaults):
+        if arg.arg == ident and d is not None:
+            return ast.unparse(d)
+    return None
+
+
+def _resolve_default(callee: str, src: str | None,
+                     bind: tuple[str, int], read: tuple[str, int]) -> str | None:
+    """Turn the default AS WRITTEN into a value, or into an explicit `CallerSupplied`.
+
+    ⛔ WHY THE *CALLER'S* MODULE IS CONSULTED FIRST. `TokenWindowTerm.__init__` reads
+    `_env_positive_int(self.BATCH_ENV, self.DEFAULT_BATCH)` once, and FOUR subclasses each bind
+    their own `BATCH_ENV` and their own `DEFAULT_BATCH` against it. Resolving the identifier at
+    the READ site gives the base class's 32 for all four and hides that one of them is 512 -- a
+    16x difference in the batch every NT-Xent chance level is computed from. The binding site is
+    what identifies the caller, so the class that binds the name is where its default is looked
+    up; the read site is only the fallback.
+    """
+    if src is None:
+        # `_env_flag(name)` with no second argument returns False. That is a real default, and
+        # reporting it as "required" sends a reader hunting for a value they must supply. The
+        # rule lives HERE rather than in one branch, because the same call reached through a
+        # constant used to fall out of the literal branch and print as required.
+        return "False" if callee.startswith("_env_") else None
+    if src in KEYWORDS or not DOTTED.match(src):
+        return src                                   # a literal, or an expression as written
+    ident = src.split(".")[-1]
+    head = src[:-len(ident)].rstrip(".")
+    if head not in ("", "self", "cls"):
+        return CallerSupplied(src)                   # `cfg.batch`: an object we cannot see
+    brel, bline = bind
+    rrel, rline = read
+    btext, rtext = _TEXTS.get(brel, ""), _TEXTS.get(rrel, "")
+    if head:
+        # `self.X` / `cls.X`: an ATTRIBUTE, so the caller's class is looked at first and the
+        # read site's class only as the base-class fallback.
+        candidates = (_class_consts(btext, bline).get(ident),
+                      _module_consts(btext).get(ident),
+                      _class_consts(rtext, rline).get(ident),
+                      _module_consts(rtext).get(ident))
+    else:
+        # ⚠ A BARE NAME FOLLOWS PYTHON SCOPING, NOT THE CLASS BODY. Inside a method, `slots`
+        # is the parameter or a module global -- a class attribute of the same name is NOT in
+        # scope, and consulting one would print a value the code cannot possibly read.
+        candidates = (_param_default(rtext, rline, ident),
+                      _module_consts(rtext).get(ident))
+    for value in candidates:
+        if value is not None:
+            return value
+    return CallerSupplied(src)
+
+
+#: Every scanned file's text, so a resolution can look outside the file it is resolving in.
+_TEXTS: dict[str, str] = {}
+
+
 def scan() -> dict[str, list[tuple[str, int, str | None]]]:
     found: dict[str, list[tuple[str, int, str | None]]] = {}
     # ⛔ TWO PASSES, BECAUSE A CONSTANT AND ITS READ NEED NOT SHARE A FILE.
@@ -93,7 +267,10 @@ def scan() -> dict[str, list[tuple[str, int, str | None]]]:
     # lives in its PARENT class in `cltt_ref_aux.py`. A per-file resolution finds the binding,
     # finds no read beside it, and drops the variable -- silently, which is this index's whole
     # failure mode. Collect every file's text first, then resolve bindings against all of it.
+    _TEXTS.clear()
     texts: list[tuple[str, str]] = []
+    const_reads: dict[str, list[tuple[str, int, str, str | None]]] = {}
+    bindings: list[tuple[str, int, str, str]] = []
     for top in SCAN:
         for path in sorted((ROOT / top).rglob("*.py")):
             if "__pycache__" in path.parts or path.resolve() == SELF:
@@ -101,34 +278,53 @@ def scan() -> dict[str, list[tuple[str, int, str | None]]]:
             rel = path.relative_to(ROOT).as_posix()
             text = path.read_text()
             texts.append((rel, text))
+            _TEXTS[rel] = text
             line_of = _line_indexer(text)
-            for m in PAT.finditer(text):
-                name = m.group("name") or m.group("name2") or m.group("name3")
-                default = (m.group("default") or m.group("default3") or "").strip() or None
-                if m.group("name3") and default is None:
-                    # `_env_flag(name)` with no second argument defaults to False, which is
-                    # a real default and not "required" -- reporting it as required would
-                    # send a reader looking for a value they must supply.
-                    default = "False"
-                found.setdefault(name, []).append((rel, line_of(m.start()), _norm(default)))
+            # ⚠ CALLS AND SUBSCRIPTS ARE MERGED BY OFFSET, NOT SCANNED IN TWO SWEEPS. Sites are
+            # listed in the order they are found, so scanning all `environ.get(...)` before all
+            # `environ["..."]` would report a file's sites out of line order -- a provenance
+            # column that reads as if the earlier line came second.
+            hits = []
+            for callee, args, start in _iter_calls(text):
+                default = _norm(args[1]) if len(args) > 1 else None
+                first = args[0].strip()
+                lit = NAME_LIT.match(first)
+                if lit:
+                    hits.append((start, lit.group("name"), callee, default))
+                    continue
+                ref = CONST_REF.match(first)
+                if ref:
+                    const_reads.setdefault(ref.group("ident"), []).append(
+                        (rel, line_of(start), callee, default))
+            hits += [(m.start(), m.group("name"), None, None)
+                     for m in SUBSCRIPT_RE.finditer(text)]
+            for start, name, callee, default in sorted(hits):
+                line = line_of(start)
+                site = (rel, line, None if callee is None else
+                        _resolve_default(callee, default, (rel, line), (rel, line)))
+                found.setdefault(name, []).append(site)
+            for cm in CONST_PAT.finditer(text):
+                bindings.append((rel, line_of(cm.start()), cm.group("ident"), cm.group("cname")))
 
     # Pass 2: names bound to a constant, resolved against the whole corpus.
-    for rel, text in texts:
-        for cm in CONST_PAT.finditer(text):
-            ident, cname = cm.group("ident"), cm.group("cname")
-            # ⚠ BOTH INDIRECTIONS AT ONCE: `_env_int(ENV_VAR, DEFAULT)` is a helper call taking
-            # a constant, which neither the helper pattern (it wants a literal) nor an
-            # environ-only constant pattern can see. NETT_KIT_THREADS was the last one hiding
-            # behind exactly this combination.
-            pat = re.compile(r"(?:environ\.get|getenv|_env_[a-z_]+)\(\s*(?:self\.|cls\.)?"
-                             + re.escape(ident) + r"\s*(?:,\s*(?P<d>[^)]*?))?\s*\)")
-            for use_rel, use_text in texts:
-                use = pat.search(use_text)
-                if not use:
-                    continue
-                site = (use_rel, _line_indexer(use_text)(use.start()), _norm(use.group("d")))
-                if site not in found.get(cname, []):
-                    found.setdefault(cname, []).append(site)
+    for brel, bline, ident, cname in bindings:
+        reads = const_reads.get(ident, [])
+        # ⛔ OWN MODULE FIRST. `TEMP_ENV` is bound in THREE wave-17 modules, each with its own
+        # read and its own default; a whole-corpus match gave every one of those three knobs all
+        # three read sites and both defaults. That is wrong provenance in the column the index
+        # exists to make trustworthy -- and it is the same shape as the collision that made
+        # NETT_AUX_BATCH's genuine multi-default hazard indistinguishable from an artefact.
+        # The cross-file fallback stays for the subclass-binds/parent-reads case above.
+        own = [r for r in reads if r[0] == brel]
+        seen: set[str] = set()
+        for rrel, rline, callee, default in (own or reads):
+            if rrel in seen:
+                continue
+            seen.add(rrel)
+            site = (rrel, rline,
+                    _resolve_default(callee, default, (brel, bline), (rrel, rline)))
+            if site not in found.setdefault(cname, []):
+                found[cname].append(site)
     return found
 
 
@@ -145,9 +341,12 @@ def render(found) -> str:
         "name in a queue row, a launcher, or a message, confirm it here or with",
         "`grep -rn NETT_YOUR_NAME src_isaac/`.",
         "",
-        "⚠ Defaults are the literal second argument at the read site. Where a variable is read in",
-        "more than one place the defaults can differ — every site is listed rather than collapsed,",
-        "because a knob with two defaults is a real hazard and a single-row summary would hide it.",
+        "⚠ Defaults are the second argument at the read site, with an identifier resolved to its",
+        "value — per CALLING class where a shared base reads the knob, because four `*_BATCH` knobs",
+        "share one read site and do NOT share a default. A default the generator cannot resolve",
+        "statically says *caller-supplied* rather than printing the identifier, which would read as",
+        "a value. Where a variable is read in more than one place the defaults can differ — every",
+        "site is listed rather than collapsed, because a knob with two defaults is a real hazard.",
         "",
         f"{len(found)} variables.",
         "",
@@ -156,8 +355,10 @@ def render(found) -> str:
     ]
     for name in sorted(found):
         sites = found[name]
-        defaults = sorted({d for _, _, d in sites if d is not None})
-        dcol = ", ".join(f"`{d}`" for d in defaults) if defaults else "*(required / no literal default)*"
+        defaults = sorted({d for _, _, d in sites if d is not None}, key=str)
+        dcol = ", ".join(
+            f"*(caller-supplied: `{d}`)*" if isinstance(d, CallerSupplied) else f"`{d}`"
+            for d in defaults) or "*(required / no literal default)*"
         where = "<br>".join(f"`{f}:{ln}`" for f, ln, _ in sites[:6])
         if len(sites) > 6:
             where += f"<br>*(+{len(sites) - 6} more)*"

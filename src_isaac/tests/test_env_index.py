@@ -17,6 +17,7 @@ from __future__ import annotations
 import importlib.util
 import re
 import sys
+import textwrap
 from pathlib import Path
 
 import pytest
@@ -111,21 +112,7 @@ def test_env_flag_knobs_are_indexed():
     missing = names - set(gen.scan())
     assert not missing, (
         f"{sorted(missing)} are read through _env_flag but absent from the index. The scanner's "
-        "PAT must match every wrapper around os.environ, not just literal environ.get calls.")
-
-
-def test_env_flag_without_an_explicit_default_is_reported_as_False_not_required():
-    """⚠ `_env_flag(name)` defaults to False -- a real default. Reporting it as
-    "required / no literal default" would send a reader hunting for a value they must supply."""
-    src = "x = _env_flag('NETT_MADE_UP_FLAG')\ny = _env_flag('NETT_MADE_UP_TWO', True)\n"
-    hits = {m.group("name3"): (m.group("default3") or "").strip() or None
-            for m in gen.PAT.finditer(src) if m.group("name3")}
-    assert set(hits) == {"NETT_MADE_UP_FLAG", "NETT_MADE_UP_TWO"}
-    assert hits["NETT_MADE_UP_TWO"] == "True"
-    assert hits["NETT_MADE_UP_FLAG"] is None      # scan() then substitutes "False"
-    from_scan = gen.scan()
-    assert any(d == "False" for _, _, d in from_scan["NETT_DVS_BLUR"]) or \
-        any(d == "True" for _, _, d in from_scan["NETT_DVS_BLUR"])
+        "CALL_RE must match every wrapper around os.environ, not just literal environ.get calls.")
 
 
 def test_a_name_bound_to_a_constant_is_indexed():
@@ -184,3 +171,218 @@ def test_reported_line_numbers_point_at_the_read():
                 f"{name}: {rel}:{line} contains neither the name nor an env read")
             checked += 1
     assert checked > 150, f"expected to check many sites, checked {checked}"
+
+
+# --------------------------------------------------------------------------------------------
+# ⛔ THE FOUR SHAPES BELOW ARE PINNED AS SHAPES, NOT AS KNOB NAMES. Every one of them is live on
+# a wave-17 knob today, but a test that names `NETT_AUX_PATCH_BATCH` goes stale the first time
+# that knob is renamed or retired, and then stops guarding the generator that broke on it. A
+# synthetic corpus states the CALL-SITE SHAPE the generator must handle and outlives the names.
+#
+# ⚠ All four are DEFAULT-COLUMN defects, not missing-entry defects, so the absence check above
+# passes throughout. A wrong default is the quieter failure: the reader believes it.
+
+
+def _corpus(tmp_path, monkeypatch, files: dict[str, str]) -> dict:
+    """Point the scanner at a synthetic package and return its scan()."""
+    pkg = tmp_path / "pkg"
+    pkg.mkdir()
+    for rel, src in files.items():
+        (pkg / rel).write_text(textwrap.dedent(src).lstrip())
+    monkeypatch.setattr(gen, "ROOT", tmp_path)
+    monkeypatch.setattr(gen, "SCAN", ("pkg",))
+    return gen.scan()
+
+
+def _defaults(found: dict, name: str) -> set:
+    assert name in found, f"{name} never reached the index at all: {sorted(found)}"
+    return {d for _, _, d in found[name] if d is not None}
+
+
+def test_a_default_read_through_a_shared_base_resolves_per_CALLER(tmp_path, monkeypatch):
+    """⛔ SHAPE 1: ONE READ SITE, MANY CALLERS, DIFFERENT DEFAULTS.
+
+    A base class reads `helper(self.SOME_ENV, self.SOME_DEFAULT)` and each subclass supplies both.
+    Every subclass's knob therefore resolves to the SAME read site, and printing that site's
+    source text gives every one of them the identifier `self.DEFAULT_BATCH` -- so the index cannot
+    answer the one question it exists for: what do I get if I do not set this? The four wave-17
+    `*_BATCH` knobs sit on exactly this shape and one of them differs from the other three by 16x.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "base.py": '''
+            from .knobs import _env_positive_int
+
+
+            class BaseTerm:
+                BATCH_ENV = None
+                DEFAULT_BATCH = 32
+
+                def __init__(self):
+                    self.batch = _env_positive_int(self.BATCH_ENV, self.DEFAULT_BATCH)
+        ''',
+        "wide.py": '''
+            class WideTerm(BaseTerm):
+                BATCH_ENV = "NETT_TEST_WIDE_BATCH"
+                DEFAULT_BATCH = 512
+        ''',
+        "narrow.py": '''
+            class NarrowTerm(BaseTerm):
+                BATCH_ENV = "NETT_TEST_NARROW_BATCH"
+                DEFAULT_BATCH = 32
+        ''',
+    })
+    assert _defaults(found, "NETT_TEST_WIDE_BATCH") == {"512"}
+    assert _defaults(found, "NETT_TEST_NARROW_BATCH") == {"32"}
+    # Both still point at the real read site -- resolving the value must not lose the provenance.
+    assert found["NETT_TEST_WIDE_BATCH"][0][0] == "pkg/base.py"
+
+
+def test_a_default_that_is_a_function_parameter_resolves_to_its_signature(tmp_path, monkeypatch):
+    """SHAPE 1b: the identifier is a PARAMETER of the enclosing function, not a class attribute.
+    `decay` (NETT_AUX_EMA_DECAY) and a dozen older knobs print as bare parameter names today."""
+    found = _corpus(tmp_path, monkeypatch, {
+        "holder.py": '''
+            class Holder:
+                DECAY_ENV = "NETT_TEST_DECAY"
+
+                def __init__(self, decay: float = 0.996):
+                    self.decay = _env_unit_interval(self.DECAY_ENV, decay)
+        ''',
+    })
+    assert _defaults(found, "NETT_TEST_DECAY") == {"0.996"}
+
+
+def test_two_modules_binding_the_same_constant_name_do_not_share_provenance(tmp_path, monkeypatch):
+    """⛔ SHAPE 2: CROSS-FILE CONSTANT COLLISION.
+
+    Three wave-17 modules each bind `TEMP_ENV` in their own class. The whole-corpus resolution
+    pass matches the constant NAME in every file, so each of the three knobs is filed with all
+    three read sites and both defaults -- wrong provenance, and the same class of defect that
+    made NETT_AUX_BATCH's real multi-default hazard indistinguishable from an artefact.
+
+    ⚠ The cross-file pass must STAY, though: a constant bound in a subclass file and read in its
+    parent (NETT_AUX_CLTT_STACK_OFFSETS) is only found that way. Own module FIRST, others only
+    when the defining module reads it nowhere.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "x_term.py": '''
+            class XTerm:
+                TEMP_ENV = "NETT_TEST_X_TEMP"
+
+                def __init__(self):
+                    self.t = _env_positive_float(self.TEMP_ENV, 0.1)
+        ''',
+        "y_term.py": '''
+            class YTerm:
+                TEMP_ENV = "NETT_TEST_Y_TEMP"
+
+                def __init__(self):
+                    self.t = _env_positive_float(self.TEMP_ENV, 0.5)
+        ''',
+    })
+    assert _defaults(found, "NETT_TEST_X_TEMP") == {"0.1"}
+    assert _defaults(found, "NETT_TEST_Y_TEMP") == {"0.5"}
+    assert [rel for rel, _, _ in found["NETT_TEST_X_TEMP"]] == ["pkg/x_term.py"]
+    assert [rel for rel, _, _ in found["NETT_TEST_Y_TEMP"]] == ["pkg/y_term.py"]
+
+
+def test_a_constant_bound_where_it_is_not_read_still_resolves_across_files(tmp_path, monkeypatch):
+    """The other half of shape 2, pinned so the fix for the collision cannot delete it."""
+    found = _corpus(tmp_path, monkeypatch, {
+        "parent.py": '''
+            class Parent:
+                OFFSETS_ENV = None
+                DEFAULT_OFFSETS = "1,2"
+
+                def __init__(self):
+                    self.off = os.environ.get(self.OFFSETS_ENV, self.DEFAULT_OFFSETS)
+        ''',
+        "child.py": '''
+            class Child(Parent):
+                OFFSETS_ENV = "NETT_TEST_CHILD_OFFSETS"
+                DEFAULT_OFFSETS = "2,4"
+        ''',
+    })
+    assert [rel for rel, _, _ in found["NETT_TEST_CHILD_OFFSETS"]] == ["pkg/parent.py"]
+    assert _defaults(found, "NETT_TEST_CHILD_OFFSETS") == {"'2,4'"}
+
+
+def test_env_flag_through_a_constant_is_False_not_required(tmp_path, monkeypatch):
+    """⛔ SHAPE 3: `_env_flag(NAME)` with no second argument defaults to False -- a real default.
+
+    The False rule lived only in the literal branch, so the SAME call reached through a constant
+    printed "(required / no literal default)" and sent the reader hunting for a value they must
+    supply. A knob reported as required is a knob a launcher may refuse to omit.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "flagger.py": '''
+            class Flagger:
+                FLAG_ENV = "NETT_TEST_FLAG"
+
+                def __init__(self):
+                    self.on = _env_flag(self.FLAG_ENV)
+                    self.off = _env_flag("NETT_TEST_FLAG_LITERAL")
+        ''',
+    })
+    assert _defaults(found, "NETT_TEST_FLAG") == {"False"}
+    assert _defaults(found, "NETT_TEST_FLAG_LITERAL") == {"False"}
+
+
+def test_a_closing_paren_inside_the_default_does_not_truncate_it(tmp_path, monkeypatch):
+    """⛔ SHAPE 4: the default was captured with `[^)]*?`, so the FIRST `)` ended it.
+
+    `max(1, self.n_tokens // 2)` printed as `max(1, self.n_tokens // 2` -- an expression a reader
+    cannot evaluate and cannot paste, and one that looks like a scanner artefact exactly when it
+    is not. Nesting must be counted, not excluded.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "topg.py": '''
+            class Topg:
+                TOPG_ENV = "NETT_TEST_TOPG"
+
+                def __init__(self):
+                    self.g = _env_positive_int(self.TOPG_ENV, max(1, self.n_tokens // 2))
+                    self.h = _env_positive_int("NETT_TEST_TOPG_LITERAL", max(1, 40 // 2))
+        ''',
+    })
+    assert _defaults(found, "NETT_TEST_TOPG") == {"max(1, self.n_tokens // 2)"}
+    assert _defaults(found, "NETT_TEST_TOPG_LITERAL") == {"max(1, 40 // 2)"}
+
+
+def test_an_unresolvable_identifier_says_caller_supplied_rather_than_printing_itself(
+        tmp_path, monkeypatch):
+    """⚠ THE HONEST ANSWER IS AN ACCEPTABLE ANSWER; A WRONG VALUE IS NOT.
+
+    When the default comes from something the scanner cannot see statically, the column must SAY
+    so. Printing the identifier reads as a value -- `cfg.batch` in the default column looks like
+    the default IS the string cfg.batch to anyone not reading the source beside it.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "opaque.py": '''
+            class Opaque:
+                OPAQUE_ENV = "NETT_TEST_OPAQUE"
+
+                def __init__(self, cfg):
+                    self.n = _env_positive_int(self.OPAQUE_ENV, cfg.batch)
+        ''',
+    })
+    (d,) = _defaults(found, "NETT_TEST_OPAQUE")
+    assert isinstance(d, gen.CallerSupplied), f"{d!r} was printed as if it were a value"
+    row = [ln for ln in gen.render(found).splitlines() if "NETT_TEST_OPAQUE" in ln][0]
+    assert "caller-supplied" in row and "pkg/opaque.py:" in row
+
+
+def test_no_default_anywhere_in_the_index_is_a_bare_identifier():
+    """The same rule over the REAL corpus: a bare name in the default column is always either a
+    resolution the generator owes the reader or a caller-supplied it must admit to."""
+    ident = re.compile(r"^(?:self\.|cls\.)?[A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*$")
+    keywords = {"True", "False", "None"}
+    bad = []
+    for name, sites in gen.scan().items():
+        for rel, line, d in sites:
+            if d is None or d in keywords or isinstance(d, gen.CallerSupplied):
+                continue
+            if ident.match(d):
+                bad.append(f"{name} -> {d!r} at {rel}:{line}")
+    assert not bad, ("these defaults print an identifier as if it were a value:\n  "
+                     + "\n  ".join(sorted(bad)))
