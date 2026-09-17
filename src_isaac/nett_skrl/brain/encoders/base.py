@@ -39,6 +39,25 @@ class NETTFeatureExtractor(nn.Module):
         finally:
             self._skip_prepare = prev
 
+    def encode_tokens(self, observations) -> tuple[torch.Tensor, tuple[int, int]]:
+        """Return spatial tokens (B, N, D) and their grid (n_h, n_w), N == n_h * n_w.
+
+        Only encoders whose trunk genuinely HAS a token sequence implement this. The default
+        raises, and `brain/aux/token_features.spatial_tokens` refuses on it: a pooled vector
+        reshaped into one "token" would still train and still report a loss, for a method
+        that no longer has positions to work over.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not implement encode_tokens")
+
+    def encode_tokens_prepared(self, prepared_image) -> tuple[torch.Tensor, tuple[int, int]]:
+        """``encode_tokens`` on a normalized BCHW image, without preparing it a second time."""
+        prev = self._skip_prepare
+        self._skip_prepare = True
+        try:
+            return self.encode_tokens(prepared_image)
+        finally:
+            self._skip_prepare = prev
+
     def encode_prepared(self, prepared_image):
         """Run ``forward`` on an already-prepared (B, C*T, H, W) float image.
 

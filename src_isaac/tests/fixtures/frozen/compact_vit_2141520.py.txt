@@ -285,26 +285,12 @@ class CompactViT(HWCFeatureExtractor):
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
 
-    def _trunk(self, prepared: torch.Tensor) -> torch.Tensor:
-        """The ONE trunk path: prepared (B, C, H, W) -> post-norm tokens (B, 1+N, D), CLS first.
-
-        ⛔ `forward` AND `encode_tokens` BOTH GO THROUGH HERE, AND NOTHING ELSE MAY. Wave 15's
-        live ViT arms are the only comparator wave 17 has, so `forward` must stay BITWISE the
-        pre-hook code (commit 2141520) for both readouts. A second copy of these lines for the
-        token hook would be free to drift from the one the policy reads -- and a hook that
-        trains a DIFFERENT trunk than the readout sees would be a silent method change.
-        tests/test_compact_vit_token_hook.py pins outputs AND parameter gradients against a
-        frozen copy of the pre-change file.
-
-        ⚠ The final LayerNorm is applied to the WHOLE sequence (CLS included) before anything
-        is sliced, exactly as the pre-hook code did. LayerNorm is per-token, so slicing first
-        would give the same values -- but "same values by an argument" is not what the
-        byte-identity test certifies, so the op order is kept literally.
-        """
-        B = prepared.shape[0]
+    def forward(self, observations: torch.Tensor) -> torch.Tensor:
+        x = self._prepare_image(observations)   # (B, C, H, W)
+        B = x.shape[0]
 
         # Patch embed → (B, embed_dim, nH, nW) → (B, N, embed_dim)
-        x = self.patch_embed(prepared).flatten(2).transpose(1, 2)
+        x = self.patch_embed(x).flatten(2).transpose(1, 2)
 
         # Prepend CLS token and add position embedding
         cls = self.cls_token.expand(B, -1, -1)
@@ -314,31 +300,7 @@ class CompactViT(HWCFeatureExtractor):
         for block in self.blocks:
             x = block(x)
 
-        return self.norm(x)
-
-    def encode_tokens(self, observations: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int]]:
-        """Post-transformer PATCH tokens (B, N, D) with the CLS token dropped, and (n_h, n_w).
-
-        Tokens are in row-major patch order (Conv2d output flattened over (nH, nW)), so
-        ``tokens.transpose(1, 2).reshape(B, D, n_h, n_w)`` is the patch grid -- the same fold
-        the spatial readout below performs.
-
-        ★ AFTER THE FINAL LayerNorm, ON PURPOSE. Both readouts consume the POST-norm tokens --
-        `cls` reads ``norm(x)[:, 0]`` and `spatial` reads ``norm(x)[:, 1:]``. A token-level
-        auxiliary loss taken before the norm would shape a tensor no readout ever sees: the
-        norm's affine gain/bias would sit between what the aux trains and what the policy
-        reads, free to undo it. Post-norm also gives every token a common scale, which the
-        similarity/affinity objectives planned on these tokens assume.
-
-        ⚠ The patch grid is fixed by construction (height//patch, width//patch); at the
-        campaign eye (80x128, patch 16) it is 5x8 = 40 tokens.
-        """
-        x = self._trunk(self._prepare_image(observations))
-        return x[:, 1:], (self._n_h, self._n_w)
-
-    def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        x = self._trunk(self._prepare_image(observations))   # (B, 1+N, D), post-norm
-        B = x.shape[0]
+        x = self.norm(x)
         if self.pool == "spatial":
             tok = self.token_reduce(x[:, 1:])                 # (B, N, rdim), drop CLS
             r = tok.shape[-1]
