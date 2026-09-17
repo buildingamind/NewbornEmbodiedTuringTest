@@ -31,10 +31,12 @@ from ..skrl_patches import (
     NETTBootstrapMixin,
     NETTSharedEncoderMixin,
     relaxed_determinism,
+    cached_features_update,
     strict_update,
     unique_parameters,
 )
 
+from ..models.utils.features import clear_feature_cache
 from .simclr_aux import SimCLRAuxLoss
 
 
@@ -265,6 +267,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     # The body below mirrors stock skrl PPO.update; the only change is the added
     # aux-loss term folded into the backward() of the existing optimizer step.
     @strict_update
+    @cached_features_update
     def update(self, *, timestep: int, timesteps: int) -> None:
         if self._aux is None:
             # Disabled path: identical to stock PPO (zero overhead, no risk).
@@ -451,6 +454,17 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
 
                 self.scaler.step(self.optimizer)
                 self.scaler.update()
+
+                # ⛔ RELEASE THE SHARED-ENCODER FEATURE CACHE, ONCE PER STEP AND HERE ONLY.
+                # features_forward caches the encoder output so the actor and critic share ONE
+                # forward per minibatch instead of two. That cached tensor OWNS ITS AUTOGRAD
+                # GRAPH -- ~15 GiB at a 500-sample minibatch -- so leaving it set past the step
+                # would pin for the next iteration exactly the memory the cache exists to save,
+                # and every test would still pass while the arm OOMed. The next minibatch is a
+                # different tensor and would miss anyway; this frees it NOW rather than at the
+                # next call. [[a-guard-protects-the-line-it-is-on]]
+                clear_feature_cache(getattr(self.policy, "encoder", None),
+                                    getattr(self.value, "encoder", None))
 
                 cumulative_policy_loss += policy_loss.item()
                 cumulative_value_loss += value_loss.item()

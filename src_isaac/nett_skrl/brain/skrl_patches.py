@@ -14,6 +14,8 @@ from contextlib import contextmanager
 
 import torch
 
+from .models.utils.features import shared_feature_cache
+
 
 @contextmanager
 def strict_determinism():
@@ -204,6 +206,34 @@ class NETTSharedEncoderMixin:
                 "optimizer; they would each have been stepped twice per update", removed,
             )
         return removed
+
+
+def cached_features_update(update_fn):
+    """Decorator: run an ``update`` with the shared-encoder feature cache ENABLED.
+
+    ⛔⛔⛔ APPLY THIS ONLY TO AN UPDATE THAT SATISFIES THE CONTRACT, WHICH IS NOT MOST OF THEM.
+    The cache lets the actor and the critic share ONE encoder forward per minibatch, which means
+    they also share ONE AUTOGRAD GRAPH. That is sound only where every consumer of the shared
+    tensor is backwarded together -- a single fused `backward()`, or a split one with
+    `retain_graph=True`.
+
+    skrl's SAC / DDPG / TD3 call `.backward()` separately on the critic loss and then the policy
+    loss, and under a shared graph the second raises:
+        RuntimeError: Trying to backward through the graph a second time
+    tests/test_brain.py's SAC and DDPG cases caught exactly that on the first version of this
+    change. The maths is identical under caching; the GRAPH LIFETIME is not, and "the gradients
+    are the same" reasoning does not reach that distinction. Hence a per-method opt-in rather
+    than a global switch -- and NOT a widening of `strict_update`, which also decorates
+    ppo_metrics' update.
+    """
+
+    @functools.wraps(update_fn)
+    def wrapper(self, *args, **kwargs):
+        encoders = (getattr(self.policy, "encoder", None), getattr(self.value, "encoder", None))
+        with shared_feature_cache(*encoders):
+            return update_fn(self, *args, **kwargs)
+
+    return wrapper
 
 
 def strict_update(update_fn):

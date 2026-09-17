@@ -6,7 +6,7 @@ from .gaussian_actor import GaussianActor
 from .model_cfg import ModelCfg, model_cfg_from
 from .multivariate_gaussian_actor import MultivariateGaussianActor
 from .q_critic import QCritic
-from .utils import features_forward, mlp_trunk
+from .utils import clear_feature_cache, features_forward, mlp_trunk, shared_feature_cache
 from .value_critic import ValueCritic
 
 __all__ = [
@@ -17,7 +17,9 @@ __all__ = [
     "QCritic",
     "ValueCritic",
     "build_models_for_algorithm",
+    "clear_feature_cache",
     "features_forward",
+    "shared_feature_cache",
     "mlp_trunk",
     "model_cfg_from",
 ]

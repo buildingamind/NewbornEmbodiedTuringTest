@@ -13,12 +13,12 @@ name in a queue row, a launcher, or a message, confirm it here or with
 more than one place the defaults can differ — every site is listed rather than collapsed,
 because a knob with two defaults is a real hazard and a single-row summary would hide it.
 
-172 variables.
+173 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:69`<br>`examples/probe_frozen_features.py:57` |
-| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:198` |
+| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:200` |
 | `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `max_samples` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:262`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_ref_aux.py:249` |
@@ -26,7 +26,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:263` |
 | `NETT_AUX_CLTT_STACK_OFFSETS` | `self.DEFAULT_OFFSETS` | `nett_skrl/brain/aux/cltt_ref_aux.py:252` |
 | `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:30`<br>`examples/campaign_train.py:716`<br>`examples/campaign_train.py:994` |
-| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:422` |
+| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:425` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:118` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:114` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:87` |
@@ -36,7 +36,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_CAMERA_FOV` | `""` | `examples/campaign_train.py:530` |
 | `NETT_CAMPAIGN_DIR` | `str(Path.home(` | `examples/campaign_run.py:37` |
 | `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:851`<br>`examples/campaign_train.py:852` |
-| `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:23` |
+| `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:24` |
 | `NETT_DESIGN_SHEET` | `sheet` | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:910` |
 | `NETT_DEVICE` | `"0 (default`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:636`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
 | `NETT_DEVICE_LOST_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/crash_guard.py:272`<br>`nett_skrl/runtime/crash_guard.py:317` |
@@ -47,6 +47,7 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_DIAG_DUMP` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:81` |
 | `NETT_DIAG_ENT_START` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:228` |
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90` |
+| `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:72` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
 | `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:101` |
 | `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:90` |
