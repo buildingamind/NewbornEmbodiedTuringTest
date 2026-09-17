@@ -241,7 +241,15 @@ class SlotFGTerm(TokenWindowTerm):
         if self.ego is not None:
             ego_loss, w, ego_scalars = self.ego.loss_and_objectness(encoder, window)
             ramp = min(1.0, self._calls / float(self.ramp_calls))
-            fg_bce = F.binary_cross_entropy(m_fg.clamp(1e-6, 1 - 1e-6), w)
+            # ⚠ WRITTEN OUT RATHER THAN F.binary_cross_entropy, WHICH IS AUTOCAST-UNSAFE. The aux
+            # runs inside `torch.autocast(enabled=cfg.mixed_precision)` (ppo_aux.py:384), and
+            # under CUDA autocast BCE raises unconditionally ("unsafe to autocast, use
+            # binary_cross_entropy_with_logits") whatever the input dtype. `mixed_precision`
+            # defaults False and nothing in this repo sets it, so the crash is latent -- and a
+            # latent crash on a knob someone may flip is worth two lines. The value is identical
+            # (tested); the mask is already clamped, so the logs are finite.
+            m = m_fg.clamp(1e-6, 1 - 1e-6)
+            fg_bce = -(w * m.log() + (1 - w) * (1 - m).log()).mean()
             stuff = self._stuff(z_t, w)
             total = total + ego_loss + ramp * (fg_bce - self.lambda_stuff * stuff)
             scalars.update({"ego_loss": float(ego_loss.detach()), "ramp": float(ramp),

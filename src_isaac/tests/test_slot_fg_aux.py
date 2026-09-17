@@ -259,6 +259,16 @@ def test_the_ego_knob_composes_P3_inside_P4_on_ONE_window(monkeypatch):
     assert s["fg_objectness_corr"] != NOT_MEASURED
 
 
+def test_the_foreground_bce_equals_torchs_but_is_autocast_safe():
+    """⛔ F.binary_cross_entropy RAISES under CUDA autocast whatever the dtype, and the aux runs
+    inside torch.autocast(enabled=cfg.mixed_precision). The written-out form must give the same
+    number, or the swap traded a crash for a wrong loss."""
+    m = torch.rand(4, N).clamp(1e-6, 1 - 1e-6)
+    w = torch.rand(4, N)
+    manual = -(w * m.log() + (1 - w) * (1 - m).log()).mean()
+    assert float(manual) == pytest.approx(float(F.binary_cross_entropy(m, w)), rel=1e-6)
+
+
 def test_row_05_refuses_the_ego_window_knobs_that_it_would_ignore(monkeypatch):
     monkeypatch.setenv("NETT_AUX_SLOTFG_EGO", "1")
     monkeypatch.setenv("NETT_AUX_EGO_BATCH", "64")
