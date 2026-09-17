@@ -242,3 +242,22 @@ class UnityViT(HWCFeatureExtractor):
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         return self.model(self._prepare_image(observations))
+
+    def encode_tokens(self, observations: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int]]:
+        """SimpleViT's post-transformer tokens (B, N, D) and the patch grid (n_h, n_w).
+
+        ⛔ WRITTEN OUT HERE, NOT BY EDITING SimpleViT.forward. The verbatim block above must stay
+        the upstream module, so these lines re-run its first three steps on its OWN submodules
+        and stop before ``mean(dim=1)``. That makes this a second copy of the trunk path, which
+        is exactly how a hook drifts from the readout; tests/test_token_features.py therefore
+        pins ``linear_head(tokens.mean(1))`` BITWISE to ``forward``. SimpleViT has no CLS token
+        (it mean-pools), so there is nothing to drop. ``transformer`` ends in its own
+        LayerNorm, so these are post-norm tokens -- the tensor the mean-pool readout consumes.
+        """
+        img = self._prepare_image(observations)
+        m = self.model
+        x = m.to_patch_embedding(img)
+        x += m.pos_embedding.to(img.device, dtype=x.dtype)
+        x = m.transformer(x)
+        ph, pw = m.patch_size
+        return x, (img.shape[-2] // ph, img.shape[-1] // pw)
