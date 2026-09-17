@@ -13,15 +13,15 @@ name in a queue row, a launcher, or a message, confirm it here or with
 more than one place the defaults can differ — every site is listed rather than collapsed,
 because a knob with two defaults is a real hazard and a single-row summary would hide it.
 
-188 variables.
+200 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:69`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:153` |
 | `NETT_AUX_AFF_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:154` |
-| `NETT_AUX_AFF_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:69`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80` |
-| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:230` |
+| `NETT_AUX_AFF_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:69`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
+| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:237` |
 | `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `max_samples`, `self.DEFAULT_BATCH` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:262`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+8 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:154` |
@@ -39,9 +39,21 @@ because a knob with two defaults is a real hazard and a single-row summary would
 | `NETT_AUX_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:154` |
 | `NETT_AUX_PATCH_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:153` |
 | `NETT_AUX_PATCH_M` | `8` | `nett_skrl/brain/aux/cltt_patch_aux.py:68` |
-| `NETT_AUX_PATCH_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:69`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80` |
+| `NETT_AUX_PATCH_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:69`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
 | `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2` | `nett_skrl/brain/aux/cltt_patch_aux.py:67` |
-| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:455` |
+| `NETT_AUX_SLOTFG_BATCH` | `self.DEFAULT_BATCH` | `nett_skrl/brain/aux/token_term.py:153` |
+| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:99` |
+| `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:86` |
+| `NETT_AUX_SLOTFG_EGO` | *(required / no literal default)* | `nett_skrl/brain/aux/slot_fg_aux.py:92` |
+| `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:91` |
+| `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:90` |
+| `NETT_AUX_SLOTFG_OFFSET` | `self.DEFAULT_OFFSET` | `nett_skrl/brain/aux/token_term.py:154` |
+| `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:97` |
+| `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:85` |
+| `NETT_AUX_SLOTFG_TEMP` | `0.1`, `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:69`<br>`nett_skrl/brain/aux/patch_affinity_aux.py:80`<br>`nett_skrl/brain/aux/slot_fg_aux.py:87` |
+| `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:89` |
+| `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:88` |
+| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:462` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |

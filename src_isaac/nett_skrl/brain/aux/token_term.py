@@ -211,6 +211,37 @@ class TokenWindowTerm(nn.Module):
                            a_bar=win.actions.sum(dim=1), mean_turn=win.mean_turn,
                            env=win.env, t0=win.t0)
 
+    def draw_mixed(self, encoder: nn.Module, *, transit_frac: float,
+                   batch: int | None = None) -> TokenWindow:
+        """Half the batch transit-weighted, half uniform, as TWO draws of the shared sampler.
+
+        ⛔ TWO HALF-SLABS, NOT ONE COIN FLIP PER UPDATE. A uniform slab contains zero transit
+        steps 63.3% of the time (measured over 35 archived parsing arms; vicreg_tt_aux.py:151),
+        so a per-update Bernoulli choice would leave most updates with one mode only -- and every
+        diagnostic here is split parked/transit at the batch median, which is degenerate when a
+        stratum is empty. Mixing WITHIN the batch keeps both strata populated every call.
+        """
+        total = batch or self.batch
+        n_transit = int(round(float(transit_frac) * total))
+        parts, turns = [], []
+        for size, weighted in ((n_transit, True), (total - n_transit, False)):
+            if size <= 0:
+                continue
+            win = self.draw(encoder, transit_weighted=weighted, batch=size)
+            parts.append(win)
+            if weighted:
+                turns.append(win.mean_turn)
+        if len(parts) == 1:
+            return parts[0]
+        return TokenWindow(
+            prepared_t=torch.cat([p.prepared_t for p in parts]),
+            prepared_tk=torch.cat([p.prepared_tk for p in parts]),
+            actions=torch.cat([p.actions for p in parts]),
+            a_bar=torch.cat([p.a_bar for p in parts]),
+            # The transit half's sampler state: that is the half whose weighting can fall back.
+            mean_turn=turns[0] if turns else parts[0].mean_turn,
+            env=parts[0].env, t0=parts[0].t0)
+
     def _core(self, encoder: nn.Module, window: TokenWindow):
         raise NotImplementedError
 

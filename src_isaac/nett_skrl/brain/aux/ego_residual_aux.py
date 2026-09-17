@@ -154,30 +154,8 @@ class EgoResidualTerm(TokenWindowTerm):
 
     # -- sampling -------------------------------------------------------------------
 
-    def draw_mixed(self, encoder: nn.Module) -> TokenWindow:
-        """Half the batch transit-weighted, half uniform, as TWO draws of the shared sampler."""
-        n_transit = int(round(self.transit_frac * self.batch))
-        parts, turns = [], []
-        for size, weighted in ((n_transit, True), (self.batch - n_transit, False)):
-            if size <= 0:
-                continue
-            win = self.draw(encoder, transit_weighted=weighted, batch=size)
-            parts.append(win)
-            if weighted:
-                turns.append(win.mean_turn)
-        if len(parts) == 1:
-            return parts[0]
-        return TokenWindow(
-            prepared_t=torch.cat([p.prepared_t for p in parts]),
-            prepared_tk=torch.cat([p.prepared_tk for p in parts]),
-            actions=torch.cat([p.actions for p in parts]),
-            a_bar=torch.cat([p.a_bar for p in parts]),
-            # The transit half's sampler state: that is the half whose weighting can fall back.
-            mean_turn=turns[0] if turns else parts[0].mean_turn,
-            env=parts[0].env, t0=parts[0].t0)
-
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
-        window = self.draw_mixed(encoder)
+        window = self.draw_mixed(encoder, transit_frac=self.transit_frac)
         loss, _w, scalars = self.loss_and_objectness(encoder, window)
         self.last_window_turn = float(window.mean_turn)
         self.last_scalars = {"B": float(window.prepared_t.shape[0]), "k": float(self.offset),

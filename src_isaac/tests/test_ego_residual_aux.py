@@ -137,7 +137,7 @@ def test_gradient_reaches_the_trunk_and_both_heads_but_never_the_teacher():
 def test_the_loss_falls_on_a_fixture_built_from_a_known_shift():
     enc, comp = _composite()
     term = comp.term
-    window = term.draw_mixed(enc)
+    window = term.draw_mixed(enc, transit_frac=term.transit_frac)
     opt = torch.optim.Adam([*enc.parameters(), *term.head.parameters()], lr=3e-3)
     losses = []
     for _ in range(12):
@@ -317,7 +317,7 @@ def test_the_window_is_a_half_transit_half_uniform_mixture(monkeypatch):
         return real_draw(encoder, transit_weighted=transit_weighted, batch=batch)
 
     comp.term.draw = spy
-    window = comp.term.draw_mixed(enc)
+    window = comp.term.draw_mixed(enc, transit_frac=comp.term.transit_frac)
     assert draws == [(True, 4), (False, 4)]
     assert window.prepared_t.shape[0] == window.a_bar.shape[0] <= 8
 
@@ -331,7 +331,7 @@ def test_transit_fraction_one_draws_only_weighted_windows(monkeypatch):
     comp.term.draw = lambda e, *, transit_weighted=None, batch=None: (
         draws.append(transit_weighted) or real_draw(e, transit_weighted=transit_weighted,
                                                     batch=batch))
-    comp.term.draw_mixed(enc)
+    comp.term.draw_mixed(enc, transit_frac=comp.term.transit_frac)
     assert draws == [True]
 
 

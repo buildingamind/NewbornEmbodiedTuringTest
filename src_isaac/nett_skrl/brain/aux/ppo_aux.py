@@ -133,6 +133,12 @@ def _build_cltt_patch(encoder):
     return _wave17(CLTTPatchTerm, "cltt_patch")(encoder)
 
 
+def _build_slot_fg(encoder):
+    """Row 04, and row 05 under NETT_AUX_SLOTFG_EGO=1 (the ego residual as the fg target)."""
+    from .slot_fg_aux import SlotFGTerm
+    return _wave17(SlotFGTerm, "slot_fg")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -159,6 +165,7 @@ AUX_LOSSES = {
     "cltt_patch": _build_cltt_patch,
     "patch_affinity": _build_patch_affinity,
     "ego_residual": _build_ego_residual,
+    "slot_fg": _build_slot_fg,
 }
 
 
