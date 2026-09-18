@@ -630,3 +630,36 @@ def test_a_width_knob_the_running_decoder_does_not_read_is_refused(monkeypatch):
         SlotFGTerm(_encoder())
     monkeypatch.setenv("NETT_AUX_SLOTFG_DECODER", "tokmlp")
     assert SlotFGTerm(_encoder()).head["decoder"][0].out_features == 512
+
+
+def test_the_ego_branch_publishes_THE_SAME_KEYS_whether_or_not_it_runs(monkeypatch):
+    """⛔ THE WAVE'S LAST PLACE WHERE "DID NOT RUN" AND "RAN AND FOUND NOTHING" WERE ONE ABSENCE.
+
+    `fg_objectness_corr` was written only inside `if self.ego is not None`, so row 04 emitted 6 of
+    this family's 7 keys and the 7th was simply missing. A reader -- and the provenance column
+    built to tell those two states apart -- cannot distinguish a tag that was never emitted from
+    one that fired and measured nothing; the sentinel-aware aggregation in ppo_aux can only
+    publish a fire rate for a key it was told about.
+
+    ⚠ Pinned against `EGO_BRANCH_KEYS` rather than a literal list, on BOTH paths, so a key added
+    to the branch tomorrow cannot be sentinel-less on one of them -- the same source-of-truth
+    shape as `DIAG_KEYS` in cltt_ref/cltt_patch, whose third instance this is.
+    """
+    from nett_skrl.brain.aux.slot_fg_aux import EGO_BRANCH_KEYS
+
+    enc, comp = _composite()
+    comp.term.compute(enc, None)
+    off = comp.term.last_scalars
+    assert set(EGO_BRANCH_KEYS) <= set(off), sorted(set(EGO_BRANCH_KEYS) - set(off))
+    assert all(off[k] == NOT_MEASURED for k in EGO_BRANCH_KEYS), (
+        {k: off[k] for k in EGO_BRANCH_KEYS})
+
+    monkeypatch.setenv("NETT_AUX_SLOTFG_EGO", "1")
+    enc2, comp2 = _composite()
+    comp2.term.compute(enc2, None)
+    on = comp2.term.last_scalars
+    assert set(EGO_BRANCH_KEYS) <= set(on), sorted(set(EGO_BRANCH_KEYS) - set(on))
+    # The two paths differ ONLY by the ego term's own namespaced scalars, which belong to a term
+    # that does not exist on row 04 -- not by any key this term itself owns.
+    assert {k for k in on if not k.startswith("ego_")} == {k for k in off if not k.startswith("ego_")}
+    assert on["ego_loss"] != NOT_MEASURED, "the branch really ran on the ego path"

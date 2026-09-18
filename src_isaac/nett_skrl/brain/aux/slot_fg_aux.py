@@ -104,6 +104,16 @@ from .slot_contrast_aux import SlotAttention, slot_contrast_diagnostics
 from .token_term import NOT_MEASURED, TokenWindow, TokenWindowTerm, rank_corr, window_turn_scalar
 
 
+#: Every scalar the EGO BRANCH of `SlotFGTerm._core` owns. ⛔ ONE LIST, BOTH PATHS, and it is
+#: this file's third instance of the same defect: `fg_objectness_corr` was written only inside
+#: `if self.ego is not None`, so at NETT_AUX_SLOTFG_EGO=0 it was ABSENT rather than sentinel and
+#: row 04 published 6 of these 7 keys. An absent key and a sentinel are different facts -- "the
+#: branch did not run" against "it ran and measured nothing" -- and the provenance column that
+#: exists to tell them apart cannot see a tag that was never emitted. A second hand-written copy
+#: of this list is how the two paths drift again, so both read it and a test pins them equal.
+EGO_BRANCH_KEYS = ("ego_loss", "fg_bce", "stuff", "fg_target_engaged", "fg_objectness_corr")
+
+
 class SlotFGTerm(TokenWindowTerm):
     """Slots over tokens + temporal slot contrast + reconstruction + a foreground indicator."""
 
@@ -503,8 +513,7 @@ class SlotFGTerm(TokenWindowTerm):
                    "target": float(self.TARGETS.index(self.target_kind)),
                    "decode_scale": float(self.decode_scale),
                    "head_params": float(sum(p.numel() for p in self.head.parameters())),
-                   "fg_bce": NOT_MEASURED, "stuff": NOT_MEASURED,
-                   "ego_loss": NOT_MEASURED, "fg_target_engaged": NOT_MEASURED}
+                   **{k: NOT_MEASURED for k in EGO_BRANCH_KEYS}}
         m_fg = attn_t[:, 0, :]                                        # slot 0's per-token mass
         if self.ego is not None:
             ego_loss, w, ego_scalars = self.ego.loss_and_objectness(encoder, window)

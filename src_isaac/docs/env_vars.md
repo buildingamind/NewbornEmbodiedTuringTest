@@ -47,20 +47,20 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_PATCH_TEMP` | `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:91` |
 | `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2)` | `nett_skrl/brain/aux/cltt_patch_aux.py:89` |
 | `NETT_AUX_SLOTFG_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:222` |
-| `NETT_AUX_SLOTFG_DECODER` | `"convsbd"` | `nett_skrl/brain/aux/slot_fg_aux.py:164` |
-| `NETT_AUX_SLOTFG_DECODE_SCALE` | `"2"` | `nett_skrl/brain/aux/slot_fg_aux.py:166`<br>`nett_skrl/brain/aux/slot_fg_aux.py:190` |
-| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:176`<br>`nett_skrl/brain/aux/slot_fg_aux.py:206` |
-| `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:148` |
-| `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:154` |
-| `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:153` |
-| `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:152` |
+| `NETT_AUX_SLOTFG_DECODER` | `"convsbd"` | `nett_skrl/brain/aux/slot_fg_aux.py:174` |
+| `NETT_AUX_SLOTFG_DECODE_SCALE` | `"2"` | `nett_skrl/brain/aux/slot_fg_aux.py:176`<br>`nett_skrl/brain/aux/slot_fg_aux.py:200` |
+| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:186`<br>`nett_skrl/brain/aux/slot_fg_aux.py:216` |
+| `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:158` |
+| `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:164` |
+| `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:163` |
+| `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:162` |
 | `NETT_AUX_SLOTFG_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
-| `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:159` |
-| `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:147` |
-| `NETT_AUX_SLOTFG_TARGET` | `"pixels"` | `nett_skrl/brain/aux/slot_fg_aux.py:165` |
-| `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:149` |
-| `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:151` |
-| `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:150` |
+| `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:169` |
+| `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:157` |
+| `NETT_AUX_SLOTFG_TARGET` | `"pixels"` | `nett_skrl/brain/aux/slot_fg_aux.py:175` |
+| `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:159` |
+| `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:161` |
+| `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:160` |
 | `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:519` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
