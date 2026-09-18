@@ -148,8 +148,10 @@ def same_frame_mask(batch: int, offset: int, device=None) -> tuple[torch.Tensor,
     ⚠ THE DIAGONAL IS NOT THIS. `fill_diagonal_` masks a row against its own embedding; this
     masks a row against ANOTHER INDEX holding the same frame. Both are needed and they are
     different facts -- the diagonal is exact self-similarity, this is an exact duplicate whose
-    two encodings can differ (and if they do, the tie breaks and the loss can fall below
-    n_offsets*ln2 without any temporal invariance being learned).
+    two encodings can differ. ⚠ THE ln2 TIE THAT USED TO HANG ON THIS IS THE POSITIVE'S TWIN'S,
+    not this one's: see `nt_xent_same_frame_masked`. This mask removes an entry that is the
+    anchor itself; the p(positive) <= 1/2 cap came from the OTHER copy, and is removed by
+    `mask_positive_twin`.
     """
     cols, exists = same_frame_columns(batch, offset, device=device)
     return _mask_from_columns(cols, exists), int(exists.sum())
@@ -356,9 +358,10 @@ def random_floor(batch: int, offset: int, *, mask_positive_twin: bool, device=No
     """The cross-entropy a UNIFORM GUESS over each row's own candidate set pays: mean_r ln|C_r|.
 
     ⚠ MEAN OF ln, NOT ln OF THE MEAN. The rows do not share a candidate set (the edge rows have
-    one more), and cross_entropy averages the per-row -log p, so the floor is the mean of the
-    per-row logs. They differ by ~1e-5 at B=498 and by 2% at B=8, which is exactly the regime
-    the unit fixtures run in.
+    more candidates), and cross_entropy averages the per-row -log p, so the floor is the mean of
+    the per-row logs. The two agree to 5e-09 at B=498 and differ by 1.5e-03 (0.06%) at B=8, k=1
+    with the twin masked -- measured, not estimated: the point is the derivation, and the gap is
+    small enough that a number quoted for it would only ever be quoted wrong.
     """
     return float(torch.log(candidate_counts(batch, offset,
                                             mask_positive_twin=mask_positive_twin,
@@ -497,7 +500,8 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     2. **TOO HARD / ACTIVELY WRONG.** The module docstring already raises this: negatives are
        near-in-time frames of the SAME two-object world, so NT-Xent pushes apart the same
        object at a different viewpoint -- penalising the invariance under test. If `pos_acc`
-       sits at chance (1/(2B-1)) the pairing is unusable.
+       sits at `pos_chance` (the mean of 1/|C_r| over rows -- NOT 1/(2B-1), which counts
+       columns this objective does not offer) the pairing is unusable.
 
     `shuffled_acc` is the null: the same embeddings scored against a RANDOM VALID WRONG
     candidate. `pos_acc` at or below it means the temporal offset carried no information --
@@ -524,9 +528,10 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     only while the positive's twin is still a candidate: a pair holding the SAME frame twice can
     be driven under it by embedding that frame DIFFERENTLY in the two views -- breaking the tie
     rather than learning invariance, measured on a real arm (C72, all seven brains). With
-    `mask_positive_twin` that escape route is gone and so is the floor; below ln2 then means
-    sim(t, t+k) > sim(t, t-k), which is a direction asymmetry and not a broken tie. `dup_sim`
-    separates the two readings in either regime and is the one to look at first.
+    `mask_positive_twin` that cap is gone, and so is the reading: an encoder that is a pure
+    function of the image reaches 0.35 (B=12, k=2) under the masked objective, so below ln2 is
+    then an ordinary number and says nothing about view dependence. `dup_sim` is what answers
+    that question in either regime, and is the one to look at first.
 
     ⛔ THE CANDIDATE SET HERE IS THE LOSS'S, FROM THE LOSS'S OWN DERIVATION. `mask_positive_twin`
     is required exactly when `duplicate_offset` is given, so no caller can half-specify it: with
@@ -679,7 +684,7 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     return {
         "pos_acc": pos_acc,
         "shuffled_acc": shuffled_acc,
-        # ⛔ NOT "chance". That key is the LOSS floor, n_offsets*ln(2B-1), and this dict is
+        # ⛔ NOT "chance". That key is the LOSS floor, n_offsets*mean_r ln|C_r|, and this dict is
         # merged into the same `last_scalars`: the diagnostic's probability silently overwrote
         # it, so the loss floor was lost on exactly the arms carrying the diagnostic.
         "pos_chance": chance,
@@ -906,7 +911,7 @@ class CLTTReferenceAuxLoss(nn.Module):
             # through the wrong divisor is reported in the log line below as fact.
             self.num_frames = views[0].shape[1] // resolve_channels_per_frame()
             # ⛔ THE BATCH BELONGS HERE. Every level claim about this objective depends on
-            # B -- NT-Xent chance is 2*ln(2B-1) summed over two offsets -- and this line
+            # B -- the NT-Xent floor is mean_r ln|C_r| summed over the offsets -- and this line
             # used to emit the offsets and the stack depth and NOT the one parameter the
             # level turns on. A read protocol was published against an assumed B=96 while
             # the realised B at update 1 was ~45, because t_max is the memory FILL INDEX
@@ -915,7 +920,7 @@ class CLTTReferenceAuxLoss(nn.Module):
             # run DIED. ⚠ B is not constant, so this one-time line calibrates update 1
             # only; the per-update series is published through `last_scalars`.
             # ⚠ ln(2B-1) IS NOT THIS OBJECTIVE'S FLOOR and has not been since 2e30ad2. The
-            # candidate set is smaller than 2B-1 by one or two columns per row, so the line
+            # candidate set is smaller than 2B-1 by up to three columns per row, so the line
             # reports the REALISED count and the floor derived from it -- the same pair
             # `last_scalars` publishes per update, so the startup line and the series agree.
             per_offset = [(k, float(candidate_counts(
