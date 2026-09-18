@@ -55,11 +55,18 @@ signature is unchanged and the other four losses are untouched. The incumbent
 ``cltt`` also stays byte-identical: already-scored arms must keep their definition.
 
 ⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
+
+⛔ AND ITS FOLLOW-UP, THE SAME DAY (owner, relayed by commander): the POSITIVE's own frame leaves
+the negatives too. A contiguous slab puts the frame at t+k in BOTH halves, so the unmasked
+objective told one minibatch that f_t and f_{t+k} should be close (the positive term) and far
+(that column) -- a contradiction, not a negative, and one whose only solution is to encode ONE
+frame differently in the two views. `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` (default ON) is the knob;
+`mask_regime` in last_scalars is how a reader tells the THREE objectives apart afterwards. So
+cltt_ref has now run three different losses, and a loss VALUE means nothing without the regime.
 """
 
 from __future__ import annotations
 
-import math
 import os
 
 import torch
@@ -70,8 +77,24 @@ from skrl import logger
 # Deliberately do NOT port the reference's `neg - math.e`: the self term is
 # exp(1/T), equal to e only at T=1. At its T=0.5, exp(2)=7.3891 minus 2.7183
 # leaves 4.67 of self-similarity per row. Our nt_xent masks the diagonal exactly.
-from .knobs import NOT_MEASURED
+from .knobs import NOT_MEASURED, _env_flag_strict
 from .cltt_views import current_frame_stack, resolve_channels_per_frame
+
+#: ⛔ THE CANDIDATE SET IS THE OBJECTIVE, AND IT HAS CHANGED TWICE IN ONE DAY. These are the
+#: three losses `cltt_ref` has run, in order, and the value published as `mask_regime`:
+#:   0  NONE              -- every index is a negative, including two copies of the anchor's own
+#:                           frame and of its positive's. Everything before 2e30ad2.
+#:   1  ANCHOR            -- the anchor's own frame leaves (owner decision, 2026-09-17).
+#:                           2e30ad2..2f4c96b, and this build with MASK_POSITIVE_TWIN off.
+#:   2  ANCHOR_AND_TWIN   -- the positive's own frame leaves as well (owner follow-up, same day).
+#:                           This build's default.
+#: ⚠ A FOURTH STATE IS "ABSENT", AND IT IS NOT 0. An arm that predates the tag emits no
+#: `mask_regime` at all; reading a missing tag as 0 would be right only by luck, because
+#: `same_frame_masked` (emitted from 2e30ad2) tells regime 0 and regime 1 apart on its own.
+#: The four-way decode is written out at the emission site in `compute`.
+MASK_REGIME_NONE = 0.0
+MASK_REGIME_ANCHOR = 1.0
+MASK_REGIME_ANCHOR_AND_TWIN = 2.0
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -187,9 +210,16 @@ def positive_alias_mask(batch: int, offset: int, device=None) -> tuple[torch.Ten
 
     ⇒ The diagnostic counts a hit when the argmax lands on ANY column holding the positive's
     frame -- the question it exists to ask is "did the encoder rank the frame at t+k above every
-    OTHER frame", and both columns are that frame. It is deliberately NOT removed from the loss:
-    doing that would delete real negatives from the objective, which is a second owner decision
-    and not the one taken on 2026-09-17.
+    OTHER frame", and both columns are that frame.
+
+    ⛔ AND SINCE THE OWNER'S FOLLOW-UP OF 2026-09-17 IT LEAVES THE LOSS TOO, under
+    `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` (default ON). The earlier note here said removing it
+    "would delete real negatives"; that was wrong about WHICH negatives. This column is not
+    another frame that happens to look like the positive -- it IS the positive's frame, so the
+    same minibatch was asking for f_t close to f_{t+k} (the positive term) and far from it (this
+    column). ⚠ With the twin masked the diagnostic's hit rule and the loss's candidate set
+    AGREE; with the knob off they still disagree, deliberately, because that is the objective
+    the comparison arm runs. Both are derived from this one function -- see `excluded_columns`.
     """
     cols, exists = positive_alias_columns(batch, offset, device=device)
     return _mask_from_columns(cols, exists), int(exists.sum())
@@ -212,30 +242,191 @@ def positive_alias_columns(batch: int, offset: int,
     return torch.where(exists, cols, rows), exists
 
 
+def transposed_columns(cols: torch.Tensor, exists: torch.Tensor) -> tuple[torch.Tensor,
+                                                                            torch.Tensor]:
+    """The TRANSPOSE of a one-column-per-row relation, INVERTED from it -- not re-derived.
+
+    ⛔ "Mask it, and its transpose" (owner, 2026-09-17). The relation "this column holds my
+    positive's frame" is DIRECTIONAL: row i excludes column i+k, but row i+k does not thereby
+    exclude column i, so the mask built from it alone is not symmetric and the loss pushes that
+    pair apart from one side. The contradiction the decision is about belongs to the PAIR --
+    nothing in this matrix may push two frames apart that the positive term pulls together -- so
+    both entries go.
+
+    ⚠ INVERTED, NOT WRITTEN OUT AGAIN. `row i -> column i+k` transposed is `row i+k -> column i`,
+    which is a second index formula one edit away from disagreeing with the first. Scattering
+    the relation into its inverse cannot disagree with it. Safe because the relation is an
+    injection (exactly one column per row, all distinct); where the inverse is undefined the
+    column is the row itself, which is already masked as the diagonal.
+    """
+    n = cols.shape[0]
+    rows = torch.arange(n, device=cols.device)
+    t_cols, t_exists = rows.clone(), torch.zeros(n, dtype=torch.bool, device=cols.device)
+    t_cols[cols[exists]] = rows[exists]
+    t_exists[cols[exists]] = True
+    return t_cols, t_exists
+
+
+def excluded_columns(batch: int, offset: int, *, mask_positive_twin: bool,
+                     device=None) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """Every (row -> column) pair that LEAVES the candidate set, in index form. ONE DERIVATION.
+
+    ⛔ THE LOSS AND THE DIAGNOSTIC MUST NOT DERIVE THIS TWICE. They did not drift only because
+    the second consumer was written the same afternoon as the first; the next edit is where a
+    "which columns are excluded" written in two places stops agreeing, and the failure is
+    silent -- the loss trains on one candidate set while the diagnostic reports another's
+    chance level. Everything downstream (the mask, the per-row candidate count, the loss floor,
+    the diagnostic's argmax exclusions and its hit rule) is built from this list.
+
+    Each entry is (column per row, exists per row) exactly as its deriving function returns it:
+      * `same_frame_columns`     -- the ANCHOR's own frame  (owner decision, 2026-09-17)
+      * `positive_alias_columns` -- the POSITIVE's own frame (owner follow-up, same day), and
+      * its transpose            -- the same pair from the other side, so the mask is symmetric
+                                    and no row pushes apart a pair the objective pulls together.
+    The last two only when `mask_positive_twin`.
+
+    ⚠ WHAT IS DELIBERATELY STILL A NEGATIVE: the frame at t - k, which is a DIFFERENT frame and
+    a real negative. Its first-half copy leaves row i as the transpose above (that entry is the
+    pair {f_{i-k}, f_i}, which IS a positive pair), but its second-half copy at B + (i - 2k)
+    stays. Masking THAT too -- every lag-k pair everywhere -- drives the attainable loss to
+    exactly 0.0000 (measured, B+k free embeddings at (8,1) and (12,2)): the task becomes
+    trivially solvable and the objective teaches nothing, which is failure mode 1 in
+    `nt_xent_diagnostics`. So the line is drawn where the owner drew it.
+
+    ⚠ THE FAMILIES ARE PAIRWISE DISJOINT, AND THAT IS CHECKED HERE rather than assumed, because
+    the per-row candidate count SUBTRACTS each: for row i < B the anchor's twin is at B + (i - k)
+    and the positive's at i + k and the transpose at i - k -- opposite halves, and k > 0 apart
+    within the half. If a future offset convention made two coincide, the count would silently
+    over-subtract and every chance level derived from it would be wrong.
+    """
+    out = [same_frame_columns(batch, offset, device=device)]
+    if mask_positive_twin:
+        alias = positive_alias_columns(batch, offset, device=device)
+        out.append(alias)
+        out.append(transposed_columns(*alias))
+        for i, (a_col, a_ex) in enumerate(out):
+            for b_col, b_ex in out[i + 1:]:
+                if bool((a_ex & b_ex & (a_col == b_col)).any()):
+                    raise AssertionError(
+                        f"at batch={batch}, offset={offset} two excluded families resolve to the "
+                        f"SAME column for some row; the candidate count subtracts both and would "
+                        f"over-subtract. The index derivations have to be re-read, not this "
+                        f"guard.")
+    return out
+
+
+def excluded_mask(batch: int, offset: int, *, mask_positive_twin: bool,
+                  device=None) -> tuple[torch.Tensor, int]:
+    """(2B, 2B) bool of every excluded entry, and how many. Only for callers wanting a matrix."""
+    n = 2 * batch
+    mask = torch.zeros(n, n, dtype=torch.bool, device=device)
+    count = 0
+    for cols, exists in excluded_columns(batch, offset, mask_positive_twin=mask_positive_twin,
+                                         device=device):
+        mask |= _mask_from_columns(cols, exists)
+        count += int(exists.sum())
+    return mask, count
+
+
+def candidate_counts(batch: int, offset: int, *, mask_positive_twin: bool,
+                     device=None) -> torch.Tensor:
+    """Per row, how many columns the softmax actually runs over -- THE POSITIVE INCLUDED.
+
+    ⛔ THIS IS THE NUMBER THAT MAKES A LOSS VALUE READABLE, and it is not 2B - 1. Start from
+    2B - 1 (every column but the row itself), then drop the excluded ones::
+
+        interior row      2B - 4   (its own frame, its positive's frame, and the transpose:
+                                    the row at t - k whose positive IS this row's frame)
+        edge rows         2B - 2 or 2B - 3   (one or two of the three are off the slab's end)
+        offset >= B       2B - 1   (none exists; the objective is the unmasked one)
+        twin knob OFF     2B - 2 interior, 2B - 1 at the k edge rows of each half
+
+    Returned per row, not averaged, because the edge rows really do face a bigger candidate set
+    and a reader who assumes one number for the whole batch is off by O(k/B).
+    """
+    n = 2 * batch
+    counts = torch.full((n,), n - 1, dtype=torch.long, device=device)
+    for _, exists in excluded_columns(batch, offset, mask_positive_twin=mask_positive_twin,
+                                      device=device):
+        counts = counts - exists.long()
+    return counts
+
+
+def random_floor(batch: int, offset: int, *, mask_positive_twin: bool, device=None) -> float:
+    """The cross-entropy a UNIFORM GUESS over each row's own candidate set pays: mean_r ln|C_r|.
+
+    ⚠ MEAN OF ln, NOT ln OF THE MEAN. The rows do not share a candidate set (the edge rows have
+    one more), and cross_entropy averages the per-row -log p, so the floor is the mean of the
+    per-row logs. They differ by ~1e-5 at B=498 and by 2% at B=8, which is exactly the regime
+    the unit fixtures run in.
+    """
+    return float(torch.log(candidate_counts(batch, offset,
+                                            mask_positive_twin=mask_positive_twin,
+                                            device=device).double()).mean())
+
+
 def nt_xent_same_frame_masked(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
-                              offset: int) -> tuple[torch.Tensor, int]:
-    """NT-Xent with each anchor's OWN FRAME removed from its negatives. -> (loss, masked count).
+                              offset: int, *,
+                              mask_positive_twin: bool) -> tuple[torch.Tensor, int]:
+    """NT-Xent over a candidate set defined by FRAME IDENTITY, not by index. -> (loss, masked).
 
-    ⛔ OWNER DECISION, 2026-09-17 (workspace DECISIONS): "the CLTT objective should exclude an
-    anchor's own frame from its negatives". Every cltt_ref arm trained BEFORE that decision ran
-    the unmasked objective and is NOT comparable to one trained after it.
+    ⛔ TWO OWNER DECISIONS, BOTH 2026-09-17, AND THEY ARE NOT THE SAME MASK.
+      * the ANCHOR's own frame leaves its negatives (workspace DECISIONS, morning). Always on:
+        no knob turns it off, because no arm is queued that wants it back.
+      * the POSITIVE's own frame leaves as well (owner follow-up, relayed by commander).
+        `NETT_AUX_CLTT_MASK_POSITIVE_TWIN`, default ON, one arm queued with it OFF to measure
+        the size of what it removes -- hence `mask_positive_twin` is a REQUIRED keyword here:
+        a call site that does not name its regime is a call site whose loss cannot be read.
+    Every cltt_ref arm is therefore one of three objectives; see MASK_REGIME_* and `compute`.
 
-    ⛔ WHAT IT CHANGES, AND WHY IT IS NOT COSMETIC. Unmasked, each anchor's own frame sat among
-    its negatives at the maximum similarity a temporally invariant encoder can produce, so the
-    objective was partly "push this frame away from itself at another index" -- and it could be
-    minimised by embedding ONE frame differently in the two views (breaking the tie) rather than
-    by learning invariance. With the duplicate removed that route is gone, and the
-    n_offsets*ln2 tie floor no longer applies: `chance` = n_offsets*ln(2B-1) is the only floor.
+    ⛔ WHY THE TWIN IS NOT A NEGATIVE. The views are contiguous slabs of ONE stream, so
+    `z1[i + k] IS z2[i]` -- the frame the positive term is pulling the anchor TOWARD also sits
+    in the first half as a column the same row is pushing AWAY. That is a contradiction, not a
+    hard negative, and it has exactly one solution: encode that one frame differently in the two
+    views. `dup_sim` is the statistic that catches it, and a wave-15 arm took the route -- 7/7 of
+    its brains drove the loss below n_offsets*ln2, which is only reachable by breaking the tie.
+
+    ⛔ THE FLOOR IS NOW n_offsets * ln(candidate count), AND THE CANDIDATE COUNT IS WHAT TO READ.
+    Not ln(2B - 1): that presumed 2B distinct samples, which a contiguous slab has never
+    supplied, and it overstated the floor under the anchor mask too. `random_floor` computes it
+    per row and `compute` publishes it as `chance` beside the realised `candidates`, so a reader
+    never has to know which regime ran in order to interpret a loss value.
+    ⚠ THE ln2 CAP AND THE ATTAINABLE FLOOR ARE DIFFERENT NUMBERS, AND BOTH ARE MEASURED.
+    While the twin is a candidate, p(positive) <= 1/2 for every row that has one -- an exact tie
+    against an exact copy, for ANY pure-function encoder -- so the loss cannot go under ln2
+    without encoding one frame two ways, which is the wave-15 route. Masking it removes the cap;
+    whether that is worth anything is a question about what is then ATTAINABLE, so it was
+    measured: minimise this loss directly over B+k free frame embeddings, the best any function
+    of the image alone can do (d=96, Adam, two seeds, T=0.05; identical to 4 dp at T=0.02):
+
+        (B, k)        (8,1)    (12,2)   (20,3)   (32,2)      ln2 = 0.6931
+        twin  in      1.2130   1.1553   1.1784   1.2997      -- every one ABOVE ln2
+        twin masked   0.4332   0.3466   0.3814   0.5634      -- every one BELOW it
+
+    ⛔ THE TRANSPOSE IS WHAT MAKES THAT TRUE, AND IT IS NOT TIDINESS. Masking only the forward
+    direction -- row i drops column i+k, row i+k keeps column i -- leaves the loss pushing that
+    pair apart from one side, and the attainable floor stays at 0.8431 (B=12, k=2), still above
+    ln2. Measured, after a symmetry assertion caught the half-mask. Both entries, or neither.
+
+    ⇒ A loss below n_offsets*ln2 is a VIEW-DEPENDENCE reading while the twin is in the candidate
+      set, and an ordinary reading once it is out; read it against `chance` and `candidates`
+      instead, and use `dup_sim` for the question ln2 used to answer -- a pure function of the
+      image gives exactly 1, and BatchNorm over two different slabs (z1 and z2 are separate
+      forward passes) is the live route away from it, in either regime.
 
     ⛔ THIS IS NOT `simclr_aux.nt_xent` AND MUST NOT BE FOLDED INTO IT. The SimCLR arms pair two
-    AUGMENTATIONS of one image; their 2B set contains no duplicate frame, so this mask would
+    AUGMENTATIONS of one image; their 2B set contains no duplicate frame, so these masks would
     remove real negatives from a live objective.
+
+    ⚠ The count is RETURNED, never assumed: at offset >= B nothing is masked and a caller that
+    logs "masked" while masking nothing is the failure this signature exists to prevent.
     """
     batch = z1.shape[0]
     z = torch.cat([z1, z2], dim=0)
     sim = torch.mm(z, z.t()) / temperature
     sim.fill_diagonal_(float("-inf"))
-    mask, count = same_frame_mask(batch, offset, device=z.device)
+    mask, count = excluded_mask(batch, offset, mask_positive_twin=mask_positive_twin,
+                                device=z.device)
     sim = sim.masked_fill(mask, float("-inf"))     # out-of-place: the graph keeps its gradient
     labels = (torch.arange(2 * batch, device=z.device) + batch) % (2 * batch)
     return F.cross_entropy(sim, labels), count
@@ -252,7 +443,8 @@ DIAG_NULL_ROUNDS = 8
 #: same keys as sentinels -- and a second hand-written copy of this list would go quiet on
 #: exactly the key that was added last.
 DIAG_KEYS = ("pos_acc", "shuffled_acc", "pos_chance", "pos_ceiling", "duplicates",
-             "positive_aliases", "dup_sim", "pos_sim", "neg_sim", "batch")
+             "positive_aliases", "dup_sim", "pos_sim", "neg_sim", "pos_candidates",
+             "batch")
 
 _DIAG_GENERATORS: dict = {}
 
@@ -284,7 +476,8 @@ def nt_xent_diagnostics_absent(batch: int) -> dict:
 
 
 def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
-                        *, duplicate_offset: int | None = None) -> dict:
+                        *, duplicate_offset: int | None = None,
+                        mask_positive_twin: bool | None = None) -> dict:
     """Is the contrastive task SOLVABLE, and is it solvable for the right reason?
 
     ⛔ THE LOSS VALUE CANNOT ANSWER EITHER, AND cltt_ref HAS TWO OPPOSITE FAILURE MODES that
@@ -325,11 +518,22 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     duplicate. `duplicates` reports how many rows had one, so this version's numbers are
     distinguishable from the old ones at a glance.
 
-    ⚠ READ THE LOSS AGAINST TWO FLOORS, NOT ONE. `chance` is n_offsets*ln(2B-1), the random
-    floor. But a pair that contains the SAME frame twice can be driven below n_offsets*ln2 by
-    embedding that one frame DIFFERENTLY in the two views -- breaking the tie rather than
-    learning invariance. A loss under the tie floor is therefore evidence AGAINST temporal
-    invariance, not for it; measured on a real arm (C72, all seven brains).
+    ⚠ READ THE LOSS AGAINST THE FLOOR ITS OWN REGIME HAS. The random floor is
+    n_offsets*mean_r ln|C_r| -- published as `chance`, with |C_r| published as `candidates`, so
+    it needs no outside knowledge of which mask ran. The SECOND floor, n_offsets*ln2, applies
+    only while the positive's twin is still a candidate: a pair holding the SAME frame twice can
+    be driven under it by embedding that frame DIFFERENTLY in the two views -- breaking the tie
+    rather than learning invariance, measured on a real arm (C72, all seven brains). With
+    `mask_positive_twin` that escape route is gone and so is the floor; below ln2 then means
+    sim(t, t+k) > sim(t, t-k), which is a direction asymmetry and not a broken tie. `dup_sim`
+    separates the two readings in either regime and is the one to look at first.
+
+    ⛔ THE CANDIDATE SET HERE IS THE LOSS'S, FROM THE LOSS'S OWN DERIVATION. `mask_positive_twin`
+    is required exactly when `duplicate_offset` is given, so no caller can half-specify it: with
+    the twin masked, this diagnostic's hit rule and the loss agree that the twin column is
+    neither a right answer nor a wrong one, because it is not an answer at all. With it unmasked
+    they disagree -- the loss scores that column wrong, this counts it a hit -- and that
+    disagreement is a property of the objective the OFF arm runs, not of this function.
 
     ⚠ Every field is emitted on EVERY call. A diagnostic written only where it succeeds makes
     "engaged" and "fell through" both present as absent, and absent reads as benign.
@@ -345,15 +549,32 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     # materialises a (2B, 2B) helper. cltt_patch calls this with 2BM = 7,872 rows, where each
     # dense helper is 62 MB (bool) or 248 MB (float32): measured +740 MiB of GPU peak on the row
     # that is already the wave's memory ceiling, for a diagnostic costing r00 only +22 MiB.
+    if (duplicate_offset is None) != (mask_positive_twin is None):
+        raise ValueError(
+            f"duplicate_offset={duplicate_offset!r} and mask_positive_twin="
+            f"{mask_positive_twin!r} must be given together. The candidate set is the objective: "
+            f"a caller that declares an overlap without saying whether the positive's twin is in "
+            f"the loss gets a chance level for a loss nobody is training.")
     if duplicate_offset is None:
         dup_col, has_dup = rows, torch.zeros(n, dtype=torch.bool, device=z.device)
         alias_col, has_alias = rows, torch.zeros(n, dtype=torch.bool, device=z.device)
         n_dup = n_alias = NOT_MEASURED        # the caller did not declare an overlap
+        twin_masked = False
+        excluded: list = []
+        candidates = torch.full((n,), n - 1, dtype=torch.long, device=z.device)
     else:
         k = int(duplicate_offset)
+        twin_masked = bool(mask_positive_twin)
         dup_col, has_dup = same_frame_columns(B, k, device=z.device)
         alias_col, has_alias = positive_alias_columns(B, k, device=z.device)
         n_dup, n_alias = float(int(has_dup.sum())), float(int(has_alias.sum()))
+        # ⛔ NOT `(n - 1) - has_dup - has_alias` WRITTEN OUT HERE. That is the loss's arithmetic,
+        # and a second copy of it is how the diagnostic ends up reporting the chance level of an
+        # objective nobody trained. `candidate_counts` is built from `excluded_columns`, which
+        # is what `excluded_mask` -- the loss's mask -- is built from.
+        excluded = excluded_columns(B, k, mask_positive_twin=twin_masked, device=z.device)
+        candidates = candidate_counts(B, k, mask_positive_twin=twin_masked, device=z.device)
+    twin_excluded = has_alias & twin_masked
 
     # ⛔ THE ARGMAX IS CHUNKED over rows. It is the one quantity that genuinely needs every
     # column, and a row block of DIAG_CHUNK_ROWS keeps the transient at 32 MB instead of 248 MB
@@ -364,20 +585,29 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
         block = torch.mm(z[lo:hi], z.t()) / temperature
         idx = rows[lo:hi]
         block.scatter_(1, idx[:, None], float("-inf"))                      # self
-        block.scatter_(1, dup_col[lo:hi][:, None], float("-inf"))           # its own frame
+        # ⛔ THE SAME EXCLUSIONS THE LOSS APPLIES, FROM THE LOSS'S OWN LIST. Naming the two
+        # families here instead cost exactly what this comment warns about: the transpose was
+        # missing, so the diagnostic's argmax ran over a LARGER set than the loss and reported
+        # 0.583 where the objective scored 0.750. Iterating the list cannot make that mistake.
+        # ⚠ Where a family does not exist for a row its column IS the row, already -inf from the
+        # line above -- the property `same_frame_columns` documents, and why this needs no gate.
+        for col, _ in excluded:
+            block.scatter_(1, col[lo:hi][:, None], float("-inf"))
         pred[lo:hi] = block.argmax(dim=1)
         del block
 
-    # A hit is the positive OR the other column holding the positive's frame; see
-    # `positive_alias_columns` for why the plain equality reads 0 for a perfect encoder.
-    hit = (pred == labels) | (has_alias & (pred == alias_col))
+    # ⛔ THE HIT RULE IS THE COMPLEMENT OF THE CANDIDATE SET, and it must be, or the two
+    # disagree about the same column. A hit is the positive OR another column holding the
+    # positive's frame WHILE THAT COLUMN IS STILL A CANDIDATE. With the twin masked it is not a
+    # candidate at all -- the argmax can never land there -- and the rule collapses to plain
+    # equality; with the knob off it is a candidate the loss scores wrong and this scores right,
+    # which is the OFF arm's objective and is stated as such in the docstring. See
+    # `positive_alias_columns` for why the plain equality reads 0 for a perfect encoder there.
+    hit = (pred == labels) | (has_alias & (not twin_masked) & (pred == alias_col))
     pos_acc = float(hit.float().mean())
-    # The candidate set is what is LEFT: 2B minus the row itself, minus its duplicate where one
-    # exists. Chance is the mean of 1/|candidates| over rows, not 1/(2B-1) -- that number
-    # presumed 2B distinct samples, which this slab has never supplied. The alias is a candidate
-    # the row can legitimately land on, so it stays in the count.
-    candidates = (n - 1) - has_dup.long()
-    chance = float((1.0 / candidates.float()).mean())
+    # Chance is the mean of 1/|candidates| over rows, not 1/(2B-1) -- that number presumed 2B
+    # distinct samples, which this slab has never supplied.
+    chance = float((1.0 / candidates.double()).mean())
 
     # ⛔ THE NULL IS A RANDOM VALID WRONG CANDIDATE, NOT `labels + 1`. The shift aliased the
     # duplicate exactly when k = 1 and never when k = 2, so the "null" averaged (B-1)/4B =
@@ -397,8 +627,11 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
         return (torch.rand(n, device=z.device, generator=gen) * n).long().clamp_(max=n - 1)
 
     def _invalid(c):
-        return ((c == rows) | (c == labels)
-                | (has_dup & (c == dup_col)) | (has_alias & (c == alias_col)))
+        bad = ((c == rows) | (c == labels)
+               | (has_dup & (c == dup_col)) | (has_alias & (c == alias_col)))
+        for col, ex in excluded:          # anything the loss removed is not a candidate either
+            bad = bad | (ex & (c == col))
+        return bad
 
     choice = _draw()
     bad = _invalid(choice)
@@ -432,11 +665,16 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
     # Measured on a 600-step fixture where the tie broke: dup_sim 0.9910 BELOW pos_sim 0.9943.
     dup_count = int(has_dup.sum())
     dup_sim = float(dup_dot.sum() / dup_count) if dup_count else NOT_MEASURED
-    # ⚠ The duplicate is not a negative in any sense the number is read for -- it is the anchor
-    # itself -- so it leaves `neg_sim` too, or the mean negative similarity is inflated by the
-    # single largest entry in the row.
-    neg_count = n * n - 2 * n - dup_count
-    neg_sim = ((total - diag_sum - float(pos_dot.sum()) - float(dup_dot.sum())) / neg_count
+    # ⚠ THE EXCLUDED COLUMNS LEAVE `neg_sim` TOO, or the mean negative similarity is inflated by
+    # the largest entries in the row. The duplicate is not a negative in any sense the number is
+    # read for -- it is the anchor itself -- and where the twin is masked it is not a negative in
+    # the loss either, so a `neg_sim` that still counted it would describe a different objective.
+    excluded_sum, excluded_count = 0.0, 0
+    for col, ex in excluded:
+        excluded_sum += float(((zd * zd[col]).sum(dim=-1) * ex.double()).sum())
+        excluded_count += int(ex.sum())
+    neg_count = n * n - 2 * n - excluded_count
+    neg_sim = ((total - diag_sum - float(pos_dot.sum()) - excluded_sum) / neg_count
                if neg_count > 0 else NOT_MEASURED)
     return {
         "pos_acc": pos_acc,
@@ -452,6 +690,20 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
         # so half the rows miss whatever the encoder has learned. Only the k rows at each half's
         # start have no backward twin, which gives the closed form
         #     ceiling = 0.5 + k / 2B
+        # ⛔ AND IT IS NOT THE SAME NUMBER IN THE TWO REGIMES -- carrying the first formula into
+        # the second would have published a ceiling a healthy encoder EXCEEDS, i.e. manufactured
+        # the direction-sensitivity reading below. Both are derived from the same three tied
+        # columns and both are verified exactly (orthonormal-basis stationary encoder, 8 shapes
+        # including k >= B/2):
+        #   twin IN the candidate set   ceiling = 0.5 + k / 2B
+        #       the positive's copy at i + k ties and wins by index, but the hit rule counts it,
+        #       so the misses are the second half's, except its k edge rows.
+        #   twin MASKED                 ceiling = 0.5 + min(2k, B) / 2B
+        #       that copy is gone and so is the first-half copy of f_{t-k} (the transpose), so
+        #       the surviving tie is the SECOND-half copy of f_{t-k} at column B + (i - 2k):
+        #       it exists for i >= 2k and always wins by index, leaving min(2k, B) hits in the
+        #       first half. Every second-half row hits, because there its positive is the lowest
+        #       of the tied indices.
         # verified to four decimals at (B,k) = (12,2), (20,3), (30,5) and (16,1) against a
         # lookup-table encoder whose similarity peaks exactly at lag k.
         # ⚠ IT IS A BOUND UNDER SYMMETRIC SIMILARITY, NOT A LAW. The fixture that verifies it is
@@ -460,13 +712,24 @@ def nt_xent_diagnostics(z1: torch.Tensor, z2: torch.Tensor, temperature: float,
         # means sim(t, t+k) > sim(t, t-k) systematically -- which a direction-sensitive STIMULUS
         # can produce as readily as a view-dependent encoder (approach and retreat are not
         # mirror images). Above the ceiling is a question to ask, not a verdict.
-        "pos_ceiling": (0.5 + duplicate_offset / (2.0 * B)) if duplicate_offset is not None
-                       else NOT_MEASURED,
+        "pos_ceiling": NOT_MEASURED if duplicate_offset is None else
+                       (0.5 + min(2 * int(duplicate_offset), B) / (2.0 * B)) if twin_masked
+                       else (0.5 + int(duplicate_offset) / (2.0 * B)),
         "duplicates": n_dup,
         "positive_aliases": n_alias if n_alias == NOT_MEASURED else float(n_alias),
         "dup_sim": dup_sim,
         "pos_sim": pos_sim,
         "neg_sim": neg_sim,
+        # ⛔ THE SIZE OF THE CANDIDATE SET, FROM THE LOSS'S DERIVATION, published so that
+        # `pos_chance` and the loss floor can be CHECKED by a reader rather than believed, and
+        # so that the two code paths (this and `compute`, which calls `random_floor`) can be
+        # asserted equal instead of assumed equal. Mean over rows: the edge rows of each half
+        # face more candidates than the interior.
+        # ⛔ NOT "candidates" -- `compute` publishes THAT key on every call, diagnostic or not,
+        # and this dict is merged into the same `last_scalars`. Under the old spelling the
+        # sentinel from the diagnostic-off path overwrote the loss's own count with -9.0, which
+        # is the identical collision `pos_chance` is named for. Same prefix, same reason.
+        "pos_candidates": float(candidates.double().mean()),
         "batch": B,
     }
 
@@ -558,12 +821,19 @@ class CLTTReferenceAuxLoss(nn.Module):
     # that gives a MOTION encoder something to read. [[a-knob-nothing-reads-runs-the-control]]
     OFFSETS_ENV = "NETT_AUX_CLTT_REF_OFFSETS"
     DEFAULT_OFFSETS = "1,2"
+    MASK_TWIN_ENV = "NETT_AUX_CLTT_MASK_POSITIVE_TWIN"
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
         # GATE A control, OFF unless asked for. One extra similarity matrix per offset, no
         # extra encoder forward -- it reuses embeddings the loss already computed.
         self.diag = _env_flag("NETT_AUX_CLTT_REF_DIAG")
+        # ⛔ OWNER FOLLOW-UP, 2026-09-17: the positive's own frame leaves the negatives. ON by
+        # default; one arm is queued with it OFF to measure how large the shortcut it removes
+        # was, so the OFF path is a supported objective and not a debug switch. Through the
+        # STRICT helper: this knob decides which of three losses the arm trains, and a
+        # misspelled ON that silently read as OFF would put that arm in the wrong comparison.
+        self.mask_twin = _env_flag_strict(self.MASK_TWIN_ENV, True)
         self.last_diag: dict | None = None
         self.last_scalars: dict = {}
         offsets = os.environ.get(self.OFFSETS_ENV, self.DEFAULT_OFFSETS)
@@ -644,35 +914,55 @@ class CLTTReferenceAuxLoss(nn.Module):
             # values, so the information existed in the file and was emitted only when the
             # run DIED. ⚠ B is not constant, so this one-time line calibrates update 1
             # only; the per-update series is published through `last_scalars`.
+            # ⚠ ln(2B-1) IS NOT THIS OBJECTIVE'S FLOOR and has not been since 2e30ad2. The
+            # candidate set is smaller than 2B-1 by one or two columns per row, so the line
+            # reports the REALISED count and the floor derived from it -- the same pair
+            # `last_scalars` publishes per update, so the startup line and the series agree.
+            per_offset = [(k, float(candidate_counts(
+                batch, k, mask_positive_twin=self.mask_twin).double().mean()),
+                random_floor(batch, k, mask_positive_twin=self.mask_twin))
+                for k in self.offsets]
             logger.info(
                 "CLTTReferenceAuxLoss: offsets=%s, stack depth T=%s, batch B=%s "
-                "(t_max=%s, avail=%s, NETT_AUX_BATCH=%s, memory filled=%s) -> "
-                "NT-Xent chance per offset ln(2B-1)=%.4f, summed over %s offsets=%.4f",
+                "(t_max=%s, avail=%s, NETT_AUX_BATCH=%s, memory filled=%s), "
+                "positive twin masked=%s -> candidates per row (mean) %s of 2B-1=%s, "
+"NT-Xent chance floor mean_r ln|C_r| per offset %s, summed over %s offsets=%.4f",
                 self.offsets, self.num_frames, batch, t_max, avail, self.max_samples,
-                bool(getattr(self._memory, "filled", False)),
-                math.log(2 * batch - 1), len(self.offsets),
-                len(self.offsets) * math.log(2 * batch - 1),
+                bool(getattr(self._memory, "filled", False)), self.mask_twin,
+                [round(c, 3) for _, c, _ in per_offset], 2 * batch - 1,
+                [round(f, 4) for _, _, f in per_offset], len(self.offsets),
+                sum(f for _, _, f in per_offset),
             )
         views = self._make_views(views, encoder)
 
         z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []
         masked_pairs = 0
+        candidates = 0.0
+        floor = 0.0
         for offset, view in zip(self.offsets, views[1:]):
             z_pos = self.head(encoder.encode_prepared(view))
-            # ⛔ OWNER DECISION 2026-09-17: the anchor's own frame is not one of its negatives.
-            # This CHANGES THE OBJECTIVE -- see `nt_xent_same_frame_masked`. Arms trained before
-            # this commit are not comparable to arms trained after it.
+            # ⛔ TWO OWNER DECISIONS OF 2026-09-17: the anchor's own frame is not one of its
+            # negatives, and (under MASK_TWIN_ENV, default on) neither is the positive's. This
+            # CHANGES THE OBJECTIVE -- see `nt_xent_same_frame_masked`. Arms trained under a
+            # different `mask_regime` are not comparable to these.
             offset_loss, masked = nt_xent_same_frame_masked(
-                z_anchor, z_pos, self.temperature, offset)
+                z_anchor, z_pos, self.temperature, offset,
+                mask_positive_twin=self.mask_twin)
             total = total + offset_loss
             masked_pairs += masked
+            candidates += float(candidate_counts(batch, offset, mask_positive_twin=self.mask_twin,
+                                                 device=z_anchor.device).double().mean())
+            floor += random_floor(batch, offset, mask_positive_twin=self.mask_twin,
+                                  device=z_anchor.device)
             if self.diag:
                 with torch.no_grad():
                     # The offset IS the overlap: view_offset[i] is view_0[i + offset], the same
-                    # frame. The diagnostic needs it to know which candidates are duplicates.
+                    # frame. The diagnostic needs it to know which candidates are duplicates --
+                    # and the regime, because the candidate set IS the objective.
                     diags.append(nt_xent_diagnostics(z_anchor, z_pos, self.temperature,
-                                                     duplicate_offset=offset))
+                                                     duplicate_offset=offset,
+                                                     mask_positive_twin=self.mask_twin))
         # Averaged over offsets, and emitted whether or not the diagnostic is on, so a reader
         # can tell "off" from "on and degenerate". See nt_xent_diagnostics.
         self.last_diag = ({k: sum(d[k] for d in diags) / len(diags) for k in diags[0]}
@@ -683,17 +973,35 @@ class CLTTReferenceAuxLoss(nn.Module):
         # are what makes any level claim about this loss checkable, and because they vary
         # across updates while the startup log fires once.
         # ⛔ THE REGIME GOES OUT ON EVERY CALL, so an old arm and a new one are distinguishable
-        # from tfevents alone -- the objective changed mid-wave and the loss VALUE alone cannot
-        # say which one produced it. `masked_pairs` is the realised count, not the intent: at
-        # offset >= B it is legitimately 0, and a regime flag without its count would report
-        # masking that did not happen.
+        # from tfevents alone -- this objective has changed TWICE in one day and the loss VALUE
+        # alone cannot say which of the three produced it. `masked_pairs` is the realised count,
+        # not the intent: at offset >= B it is legitimately 0, and a regime flag without its
+        # count would report masking that did not happen.
+        #
+        # ⛔ THE FOUR-WAY DECODE, WHICH IS WHAT FLEET PROVENANCE KEYS ON. `mask_regime` names
+        # three objectives; a missing tag is a FOURTH state and must not be read as 0:
+        #     same_frame_masked ABSENT, mask_regime ABSENT  -> pre-2e30ad2: regime 0, no mask
+        #     same_frame_masked 1.0,    mask_regime ABSENT  -> 2e30ad2..2f4c96b: anchor only
+        #     same_frame_masked 1.0,    mask_regime 1.0     -> this build, twin knob OFF
+        #     same_frame_masked 1.0,    mask_regime 2.0     -> this build, twin knob ON (default)
+        # `same_frame_masked` is kept for exactly this reason -- it is what separates the first
+        # two rows, and dropping it would collapse "no mask" and "anchor mask" into one absence.
+        #
+        # ⛔ `chance` IS THE REALISED FLOOR, NOT ln(2B-1), and this is a CORRECTION as well as a
+        # change: ln(2B-1) was already wrong at regime 1, where interior rows had 2B-2
+        # candidates. A 2f4c96b arm and a knob-OFF arm here therefore publish DIFFERENT `chance`
+        # for the SAME objective; `mask_regime` is what tells them apart, and `candidates` is
+        # what makes either number checkable. Reported beside the loss so that reading a loss
+        # value never requires knowing which regime ran -- that is the point of publishing it.
         self.last_scalars = {"B": float(batch), "t_max": float(t_max),
                              "same_frame_masked": 1.0,
+                             "mask_regime": (MASK_REGIME_ANCHOR_AND_TWIN if self.mask_twin
+                                             else MASK_REGIME_ANCHOR),
                              "masked_pairs": float(masked_pairs),
                              "masked_frac": float(masked_pairs)
                              / float(len(self.offsets) * (2 * batch) ** 2),
-                             "chance": float(len(self.offsets)
-                                             * math.log(2 * batch - 1))}
+                             "candidates": candidates / float(len(self.offsets)),
+                             "chance": floor}
         # ⛔ THE SENTINELS GO OUT ON THE OFF PATH TOO, and this class was left behind when the
         # sibling was fixed. With the diagnostic off these nine keys were simply ABSENT from the
         # tag list -- which is the failure `nt_xent_diagnostics_absent` exists to name: a key

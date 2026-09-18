@@ -105,7 +105,7 @@ def test_buildingamind_three_frame_positives_and_summed_loss(monkeypatch, frames
     # reference, so the distance is a number somebody can read rather than a lost property.
     from nett_skrl.brain.aux.cltt_ref_aux import nt_xent_same_frame_masked
 
-    expected = sum(nt_xent_same_frame_masked(zs[0], z, .5, k)[0]
+    expected = sum(nt_xent_same_frame_masked(zs[0], z, .5, k, mask_positive_twin=aux.mask_twin)[0]
                    for k, z in zip(aux.offsets, zs[1:]))
     torch.testing.assert_close(loss, expected)
     reference = sum(nt_xent(zs[0], z, .5) for z in zs[1:])

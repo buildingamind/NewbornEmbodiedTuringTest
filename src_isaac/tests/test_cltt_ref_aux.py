@@ -21,8 +21,14 @@ from nett_skrl.brain.aux.knobs import NOT_MEASURED
 from nett_skrl.brain.aux.cltt_ref_aux import (
     CLTTReferenceAuxLoss,
     CLTTReferenceProjectionHead,
+    MASK_REGIME_ANCHOR,
+    MASK_REGIME_ANCHOR_AND_TWIN,
+    candidate_counts,
+    excluded_columns,
+    excluded_mask,
     nt_xent_same_frame_masked,
     positive_alias_mask,
+    random_floor,
     same_frame_mask,
 )
 from nett_skrl.brain.aux.knobs import NOT_MEASURED
@@ -210,7 +216,8 @@ def test_both_offsets_are_summed(monkeypatch):
     # ⛔ THE REFERENCE IS THE MASKED FORM NOW. The objective changed on 2026-09-17 (the anchor's
     # own frame left its own negatives), and this line is where that change is visible: against
     # plain `nt_xent` the module reads 1.8461 where the unmasked objective gives 2.1058 at B=4.
-    terms = [nt_xent_same_frame_masked(z[0], positive, 0.5, k)[0]
+    terms = [nt_xent_same_frame_masked(z[0], positive, 0.5, k,
+                                       mask_positive_twin=aux.mask_twin)[0]
              for k, positive in zip((2, 4), z[1:])]
     torch.testing.assert_close(one_loss, terms[0])
     torch.testing.assert_close(two_loss, terms[0] + terms[1])
@@ -738,49 +745,81 @@ def test_removing_the_duplicate_moves_the_loss_and_the_positive_gains_the_mass()
     batch, offset, temp = 12, 2, 0.1
     z1, z2 = _sliced(batch, offset)
     unmasked = float(_plain_nt_xent(z1, z2, temp))
-    masked, count = nt_xent_same_frame_masked(z1, z2, temp, offset)
+    masked, count = nt_xent_same_frame_masked(z1, z2, temp, offset,
+                                              mask_positive_twin=False)
     assert float(masked) < unmasked
     assert count == 2 * (batch - offset)
     # the fraction of the candidate set removed, per row that has a duplicate: 1 of (2B - 1)
     assert count / float((2 * batch) ** 2) < 0.05
 
 
-def test_the_ln2_floor_is_NOT_removed_by_this_mask_and_here_is_why():
-    """⛔ I DISAGREE WITH ONE LINE OF THE SPEC, AND THIS IS THE DERIVATION.
+def _forward_biased(batch, offset, lo=0.35, hi=1.9):
+    """A PURE-FUNCTION encoder over one stream whose lag-k similarity RISES along the slab.
 
-    The claim was that with the anchor's own frame excluded, the n_offsets*ln2 tie floor no
-    longer applies. It still does. Row i's positive is z2[i] = frame t0+k+i -- and THAT FRAME
-    ALSO SITS IN THE FIRST HALF, at column i+k, whenever i+k < B. It is not the anchor's frame,
-    so this mask does not touch it, and its similarity to the anchor is EXACTLY the positive's
-    (same two frames). A tie at the maximum caps p(positive) at 1/2, so the loss cannot go below
-    ln2 for those rows either way.
+    Orthonormal support, so every pair that is not a lag-k pair reads 0 and the only competitor
+    for row i is the backward frame at column i - k. Because its lag-k similarity is c_{i-k} and
+    the positive's is c_i, a rising c makes the first half's positive the strict maximum -- the
+    one thing a lag-STATIONARY encoder can never do, and the reason the twin tie is structural
+    while this one is not.
+    """
+    n = batch + offset
+    e = torch.eye(n + offset)
+    a = torch.linspace(lo, hi, n)
+    f = torch.stack([_F.normalize(e[j] + a[j] * e[j + offset], dim=-1) for j in range(n)])
+    return f[:batch], f[offset:offset + batch]
 
-    ⇒ Going below n_offsets*ln2 still means the tie was broken, i.e. one frame embedded two
-    ways. Removing that floor as well would mean masking (i, i+k) and (B+j, B+j-k) -- the
-    POSITIVE's frame rather than the anchor's -- which removes real negatives and is a second
-    owner decision, not this one.
+
+def test_the_twin_tie_caps_p_pos_at_one_half_with_the_knob_OFF_and_the_cap_is_gone_with_it_ON():
+    """⛔ THE TIE THE OWNER'S FOLLOW-UP REMOVES, MEASURED ON BOTH SIDES OF ITS KNOB.
+
+    Row i's positive is z2[i] = frame t0+k+i -- and THAT FRAME ALSO SITS IN THE FIRST HALF, at
+    column i+k whenever i+k < B. Its similarity to the anchor is EXACTLY the positive's (the same
+    two frames), so while it is a candidate, p(positive) <= 1/2 for every row that has one, for
+    ANY pure-function encoder. That is the cap, and it is what a wave-15 arm bought its way under
+    by embedding one frame two ways.
+
+    With `mask_positive_twin` the column is not a candidate and the cap does not exist: the
+    fixture below puts p_pos at 0.74 on rows that have a twin -- impossible in the other regime.
+
+    ⚠ THE CAP IS NOT THE ATTAINABLE FLOOR, and this test pins only the cap -- the floor is a
+    minimisation, too slow for a unit test, and its numbers are recorded in
+    `nt_xent_same_frame_masked`: 1.16 with the twin in and 0.35 with it masked at this shape,
+    i.e. the cap is what stood between the objective and ln2.
     """
     batch, offset, temp = 12, 2, 0.1
     z1, z2 = _sliced(batch, offset)
-    z = torch.cat([z1, z2])
     for i in range(batch - offset):
         assert torch.equal(z1[i + offset], z2[i]), "the positive's frame is in the first half"
         assert float(torch.dot(z1[i], z1[i + offset])) == pytest.approx(
             float(torch.dot(z1[i], z2[i])), abs=1e-6), "and it ties the positive exactly"
-    sim = torch.mm(z, z.t()) / temp
-    sim.fill_diagonal_(float("-inf"))
-    mask, _ = same_frame_mask(batch, offset)
-    p = torch.softmax(sim.masked_fill(mask, float("-inf")), dim=1)
-    labels = (torch.arange(2 * batch) + batch) % (2 * batch)
-    p_pos = p.gather(1, labels[:, None]).squeeze(1)
-    assert float(p_pos[:batch - offset].max()) <= 0.5 + 1e-6
-    assert float(nt_xent_same_frame_masked(z1, z2, temp, offset)[0]) >= math.log(2)
+
+    def p_pos(z1, z2, mask_twin):
+        z = torch.cat([z1, z2])
+        sim = torch.mm(z, z.t()) / temp
+        sim.fill_diagonal_(float("-inf"))
+        mask, _ = excluded_mask(batch, offset, mask_positive_twin=mask_twin)
+        p = torch.softmax(sim.masked_fill(mask, float("-inf")), dim=1)
+        labels = (torch.arange(2 * batch) + batch) % (2 * batch)
+        return p.gather(1, labels[:, None]).squeeze(1), positive_alias_mask(batch, offset)[0].any(1)
+
+    # (a) the cap, on the module's own slicing, for every row that has a twin
+    capped, has_twin = p_pos(z1, z2, False)
+    assert float(capped[has_twin].max()) <= 0.5 + 1e-6
+    assert float(nt_xent_same_frame_masked(z1, z2, temp, offset,
+                                           mask_positive_twin=False)[0]) >= math.log(2)
+    # (b) and its absence: an encoder whose lag-k similarity rises breaks 0.5 once the twin is
+    # out of the candidate set, and CANNOT while it is in.
+    f1, f2 = _forward_biased(batch, offset)
+    free, has_twin = p_pos(f1, f2, True)
+    still_capped, _ = p_pos(f1, f2, False)
+    assert float(free[has_twin].max()) > 0.6, float(free[has_twin].max())
+    assert float(still_capped[has_twin].max()) <= 0.5 + 1e-6
 
 
 def test_an_offset_at_or_above_the_batch_masks_nothing_and_reports_that_it_did_not():
     """⛔ "Masked" must never be claimed where nothing was masked -- the count is what says so."""
     z1, z2 = _sliced(4, 4)
-    loss, count = nt_xent_same_frame_masked(z1, z2, 0.1, 4)
+    loss, count = nt_xent_same_frame_masked(z1, z2, 0.1, 4, mask_positive_twin=True)
     assert count == 0
     assert torch.equal(loss, _plain_nt_xent(z1, z2, 0.1)), (
         "with no duplicate in range the objective is the unmasked one, exactly")
@@ -799,17 +838,73 @@ def test_the_masked_loss_still_carries_gradient_to_the_encoder():
         assert p.grad is not None and float(p.grad.norm()) > 0, name
 
 
-def test_the_regime_and_the_mask_count_go_out_on_every_call():
-    """From tfevents alone a reader must be able to tell an old arm from a new one."""
+@pytest.mark.parametrize("knob,regime,per_offset", [("0", MASK_REGIME_ANCHOR, 2),
+                                                    ("1", MASK_REGIME_ANCHOR_AND_TWIN, 6)])
+def test_the_regime_and_the_mask_count_go_out_on_every_call(monkeypatch, knob, regime,
+                                                            per_offset):
+    """⛔ FROM tfevents ALONE A READER MUST BE ABLE TO TELL WHICH OF THREE OBJECTIVES RAN.
+
+    The loss VALUE cannot say: `cltt_ref` has been three different losses in one day, and a
+    lower number under a smaller candidate set is not a better encoder. So the regime goes out
+    as a code, the realised mask count goes out beside it (a flag without its count would claim
+    masking that did not happen at offset >= B), and `chance` is the floor of THE CANDIDATE SET
+    THAT RAN -- not ln(2B-1), which was already wrong under the anchor mask alone.
+
+    ⚠ `same_frame_masked` is kept deliberately. It is what separates a pre-2e30ad2 arm (no tag
+    at all) from an anchor-only one (tag, no `mask_regime`); dropping it would collapse those
+    two into one absence.
+    """
+    monkeypatch.setenv("NETT_AUX_CLTT_MASK_POSITIVE_TWIN", knob)
     encoder = IdentityEncoder()
     aux = CLTTReferenceAuxLoss(encoder)
     aux.attach_memory(identity_memory())
     aux.compute(encoder, torch.empty(0))
     s = aux.last_scalars
+    b = int(s["B"])
     assert s["same_frame_masked"] == 1.0
-    assert s["masked_pairs"] == float(sum(max(0, 2 * (int(s["B"]) - k)) for k in aux.offsets))
+    assert s["mask_regime"] == regime
+    assert s["masked_pairs"] == float(sum(max(0, per_offset * (b - k)) for k in aux.offsets))
     assert 0.0 < s["masked_frac"] < 1.0
-    assert s["chance"] == pytest.approx(len(aux.offsets) * math.log(2 * s["B"] - 1))
+    # the floor is the candidate set's own, per row, averaged the way cross_entropy averages
+    expected = sum(random_floor(b, k, mask_positive_twin=(knob == "1")) for k in aux.offsets)
+    assert s["chance"] == pytest.approx(expected)
+    assert s["chance"] < len(aux.offsets) * math.log(2 * b - 1), (
+        "ln(2B-1) presumes 2B distinct samples; a contiguous slab never supplied them")
+    assert s["candidates"] == pytest.approx(
+        sum(float(candidate_counts(b, k, mask_positive_twin=(knob == "1")).double().mean())
+            for k in aux.offsets) / len(aux.offsets))
+
+
+def test_the_positive_twin_knob_is_on_by_default_runs_off_and_refuses_a_spelling(monkeypatch):
+    """⛔ ONE ARM IS QUEUED WITH THIS OFF, so OFF is a supported objective, not a debug switch --
+    and a misspelled ON that read as OFF would put that arm in the wrong comparison silently."""
+    encoder = IdentityEncoder()
+    monkeypatch.delenv("NETT_AUX_CLTT_MASK_POSITIVE_TWIN", raising=False)
+    assert CLTTReferenceAuxLoss(encoder).mask_twin is True, "the owner's follow-up is the default"
+    monkeypatch.setenv("NETT_AUX_CLTT_MASK_POSITIVE_TWIN", "off")
+    off = CLTTReferenceAuxLoss(encoder)
+    assert off.mask_twin is False
+    off.attach_memory(identity_memory())
+    off.compute(encoder, torch.empty(0)).backward()      # the OFF path really trains
+    assert off.last_scalars["mask_regime"] == MASK_REGIME_ANCHOR
+    monkeypatch.setenv("NETT_AUX_CLTT_MASK_POSITIVE_TWIN", "ture")
+    with pytest.raises(ValueError, match="not a boolean"):
+        CLTTReferenceAuxLoss(encoder)
+
+
+def _stationary_encoder(batch, offset):
+    """EXACTLY time-homogeneous: sim depends on |Δt| alone, with no noise to break a tie.
+
+    Orthonormal support means every cross term is exactly 0, so the lag-k pairs tie to the last
+    bit -- which is the situation `pos_ceiling` is a closed form for. Padded on both sides so the
+    kernel is the same at every position, edges included.
+    """
+    pad = 3 * offset
+    e = torch.eye(batch + offset + 2 * pad)
+    f = _F.normalize(torch.stack([e[j + pad] + 0.9 * e[j + pad + offset]
+                                  + 0.9 * e[j + pad - offset]
+                                  for j in range(batch + offset)]), dim=-1)
+    return f[:batch], f[offset:offset + batch]
 
 
 def _lookup_encoder(batch, offset, dim=48, seed=3):
@@ -822,8 +917,10 @@ def _lookup_encoder(batch, offset, dim=48, seed=3):
     return f[:batch], f[offset:offset + batch]
 
 
+@pytest.mark.parametrize("mask_twin", [False, True])
 @pytest.mark.parametrize("batch,offset", [(12, 2), (20, 3), (30, 5), (16, 1)])
-def test_a_perfect_encoder_reads_at_the_ATTAINABLE_ceiling_which_is_not_one(batch, offset):
+def test_a_perfect_encoder_reads_at_the_ATTAINABLE_ceiling_which_is_not_one(batch, offset,
+                                                                           mask_twin):
     """⛔ THE REQUESTED CONTROL WAS "pos_acc ~ 1.0 FOR A PERFECT ENCODER". IT CANNOT BE, AND THE
     CEILING HAS A CLOSED FORM.
 
@@ -837,10 +934,26 @@ def test_a_perfect_encoder_reads_at_the_ATTAINABLE_ceiling_which_is_not_one(batc
 
     ⇒ `pos_ceiling` is emitted beside `pos_acc` so the comparison is against what is attainable.
     A reading materially ABOVE it is not a better encoder: it is a direction-sensitive one.
+
+    ⛔ AND IT IS A DIFFERENT CEILING IN THE TWO REGIMES, WHICH IS WHY THIS IS PARAMETRISED.
+    Masking the positive's twin also removes the FIRST-half copy of f_{t-k} (it goes as the
+    transpose of somebody else's positive pair), so a first-half row only misses when the
+    SECOND-half copy at B + (i - 2k) exists: min(2k, B) hits instead of k, and the ceiling rises
+    to 0.5 + min(2k, B)/2B. Carrying the old formula across would have published a ceiling that
+    a perfectly healthy encoder EXCEEDS -- and "above the ceiling" is the direction-sensitivity
+    reading, so the error would have arrived as a finding about the stimulus.
+
+    ⚠ ON AN EXACTLY STATIONARY ENCODER, NOT A NEARLY ONE. The earlier fixture built its frames
+    from RANDOM basis vectors, whose O(1/sqrt(d)) cross terms break the very ties this closed
+    form is about: it agreed at 4 shapes and disagreed at 2 once the twin was masked, which
+    reads as a wrong formula and was a noisy fixture. Orthonormal basis, ties exact, 8 shapes.
     """
-    z1, z2 = _lookup_encoder(batch, offset)
-    d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
-    assert d["pos_ceiling"] == pytest.approx(0.5 + offset / (2.0 * batch))
+    z1, z2 = _stationary_encoder(batch, offset)
+    d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset,
+                            mask_positive_twin=mask_twin)
+    expected = ((0.5 + min(2 * offset, batch) / (2.0 * batch)) if mask_twin
+                else (0.5 + offset / (2.0 * batch)))
+    assert d["pos_ceiling"] == pytest.approx(expected)
     assert d["pos_acc"] == pytest.approx(d["pos_ceiling"], abs=1e-6), d
     assert d["shuffled_acc"] < d["pos_acc"]
 
@@ -850,7 +963,8 @@ def test_a_random_encoder_reads_at_chance_on_the_signal_and_on_the_null():
     batch, offset = 64, 2
     g = torch.Generator().manual_seed(11)
     f = _F.normalize(torch.randn(batch + offset, 48, generator=g), dim=-1)
-    d = nt_xent_diagnostics(f[:batch], f[offset:offset + batch], 0.1, duplicate_offset=offset)
+    d = nt_xent_diagnostics(f[:batch], f[offset:offset + batch], 0.1, duplicate_offset=offset,
+                            mask_positive_twin=True)
     rows = 2 * batch
     tol = 3.0 * math.sqrt(d["pos_chance"] * (1 - d["pos_chance"]) / rows)
     assert abs(d["pos_acc"] - d["pos_chance"]) <= tol + 1.0 / rows, d
@@ -868,15 +982,120 @@ def test_dup_sim_is_what_separates_invariance_from_a_broken_tie():
     """
     batch, offset = 12, 2
     z1, z2 = _lookup_encoder(batch, offset)
-    invariant = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
     g = torch.Generator().manual_seed(5)
     view_bias = 0.25 * _F.normalize(torch.randn(1, z2.shape[-1], generator=g), dim=-1)
-    broken = nt_xent_diagnostics(z1, _F.normalize(z2 + view_bias, dim=-1), 0.1,
-                                 duplicate_offset=offset)
-    assert invariant["dup_sim"] == pytest.approx(1.0, abs=1e-6)
-    assert broken["dup_sim"] < 0.999
-    # ... and pos_acc alone does NOT separate them, which is why dup_sim is emitted.
-    assert abs(broken["pos_acc"] - invariant["pos_acc"]) < 0.2
+    z2_broken = _F.normalize(z2 + view_bias, dim=-1)
+    for twin in (False, True):
+        invariant = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset,
+                                        mask_positive_twin=twin)
+        broken = nt_xent_diagnostics(z1, z2_broken, 0.1, duplicate_offset=offset,
+                                     mask_positive_twin=twin)
+        assert invariant["dup_sim"] == pytest.approx(1.0, abs=1e-6)
+        assert broken["dup_sim"] < 0.999
+        # ... and pos_acc alone does NOT separate them, which is why dup_sim is emitted.
+        assert abs(broken["pos_acc"] - invariant["pos_acc"]) < 0.2
+    # ⚠ AND IT IS THE SAME NUMBER IN BOTH REGIMES, WHICH IS THE POINT OF THE STATISTIC AND A
+    # TRAP FOR THE REPORT. `dup_sim` is a property of the EMBEDDINGS; the twin knob changes the
+    # LOSS. On any fixed fixture, ON and OFF give bitwise-identical dup_sim, so "dup_sim moved
+    # when we masked the twin" can only be measured on an encoder TRAINED under each regime --
+    # comparing them on one forward pass would report a difference that cannot exist.
+    for key in ("dup_sim", "pos_sim"):
+        a = nt_xent_diagnostics(z1, z2_broken, 0.1, duplicate_offset=offset,
+                                mask_positive_twin=False)[key]
+        b = nt_xent_diagnostics(z1, z2_broken, 0.1, duplicate_offset=offset,
+                                mask_positive_twin=True)[key]
+        assert a == b, key
+
+
+@pytest.mark.parametrize("twin", [False, True])
+@pytest.mark.parametrize("batch,offset", [(12, 2), (20, 3), (9, 4), (6, 6)])
+def test_the_loss_AND_the_diagnostic_read_ONE_candidate_set_and_are_pinned_to_each_other(
+        batch, offset, twin):
+    """⛔ THE CANDIDATE SET IS THE OBJECTIVE, AND TWO PLACES COMPUTE THINGS FROM IT.
+
+    The loss masks columns; the diagnostic excludes them from its argmax, counts them for its
+    chance level, and decides from them what counts as a hit. Those are four consumers of one
+    derivation, and the failure mode if they drift is silent: a chance level reported for a loss
+    nobody trained. Before this commit they DID disagree -- the diagnostic scored the positive's
+    twin as a right answer while the loss scored it wrong -- which is the asymmetry the owner's
+    follow-up exposed.
+
+    This pins them by identity, not by count: counts can agree by accident. The pred below is
+    computed from the LOSS'S OWN MASK, so if the diagnostic excluded a different set its pos_acc
+    could not match the rule applied here.
+
+    ⚠ (9,4) and (6,6) are the edge cases: k < B with edge rows lacking one of the two twins, and
+    k >= B where neither exists and the objective is the unmasked one.
+    """
+    z1, z2 = _lookup_encoder(batch, offset)
+    n = 2 * batch
+    labels = (torch.arange(n) + batch) % n
+    z = torch.cat([z1, z2])
+    sim = torch.mm(z, z.t()) / 0.1
+    sim.fill_diagonal_(float("-inf"))
+    mask, count = excluded_mask(batch, offset, mask_positive_twin=twin)
+
+    # (1) the loss IS the cross-entropy of that masked matrix -- the mask is not decorative
+    loss, reported = nt_xent_same_frame_masked(z1, z2, 0.1, offset, mask_positive_twin=twin)
+    masked_sim = sim.masked_fill(mask, float("-inf"))
+    assert torch.equal(loss, _F.cross_entropy(masked_sim, labels))
+    assert reported == count
+
+    # (2) the per-row candidate count is that matrix's finite entries, counted a different way
+    counts = candidate_counts(batch, offset, mask_positive_twin=twin)
+    assert torch.equal(torch.isfinite(masked_sim).sum(1), counts)
+    assert float(torch.log(counts.double()).mean()) == pytest.approx(
+        random_floor(batch, offset, mask_positive_twin=twin))
+
+    # (3) the diagnostic's argmax runs over the SAME set and its hit rule is that set's
+    # complement: a column that is not a candidate can be neither right nor wrong.
+    d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset, mask_positive_twin=twin)
+    pred = masked_sim.argmax(dim=1)
+    alias, _ = positive_alias_mask(batch, offset)
+    alias_col = alias.float().argmax(dim=1)
+    has_alias = alias.any(dim=1)
+    landed_on_twin = has_alias & (pred == alias_col)
+    hit = (pred == labels) | (landed_on_twin if not twin else torch.zeros_like(has_alias))
+    assert d["pos_acc"] == pytest.approx(float(hit.float().mean()))
+    assert d["pos_candidates"] == pytest.approx(float(counts.double().mean()))
+    assert d["pos_chance"] == pytest.approx(float((1.0 / counts.double()).mean()))
+    if twin:
+        assert not bool(landed_on_twin.any()), (
+            "with the twin masked the argmax CANNOT land there, so the hit rule needs no "
+            "special case and the loss and the diagnostic agree about that column")
+    elif offset < batch:
+        assert bool(landed_on_twin.any()), (
+            "with the twin in the candidate set a perfect encoder lands on it by index tie -- "
+            "the diagnostic counts it, the loss scores it wrong, and that IS the OFF objective")
+
+
+@pytest.mark.parametrize("batch,offset", list(itertools.product((3, 5, 8, 12, 498), (1, 2, 4, 8))))
+def test_the_two_excluded_families_are_disjoint_so_the_candidate_count_can_subtract_both(
+        batch, offset):
+    """⛔ `(2B-1) - dup - alias` SILENTLY ASSUMES THEY NEVER COINCIDE. They do not -- for row
+    i < B the anchor's frame is at B+(i-k) and the positive's at i+k, opposite halves -- but the
+    subtraction would over-count if a future offset convention broke that, and every chance
+    level in this loss is derived from it. Checked here, and guarded at the derivation."""
+    families = excluded_columns(batch, offset, mask_positive_twin=True)
+    assert len(families) == 3, "own frame, the positive's frame, and that pair's transpose"
+    for i, (a_col, a_ex) in enumerate(families):
+        for b_col, b_ex in families[i + 1:]:
+            assert not bool((a_ex & b_ex & (a_col == b_col)).any())
+    rows = torch.arange(2 * batch)
+    labels = (rows + batch) % (2 * batch)
+    for col, ex in families:                      # and neither is the row itself or its positive
+        assert not bool((ex & (col == rows)).any())
+        assert not bool((ex & (col == labels)).any())
+    mask, count = excluded_mask(batch, offset, mask_positive_twin=True)
+    assert count == sum(int(ex.sum()) for _, ex in families) == max(0, 6 * (batch - offset))
+    assert int(mask.sum()) == count, "no entry was counted twice"
+    assert bool((mask == mask.t()).all()), (
+        "⛔ THE MASK MUST BE SYMMETRIC. The 'this column holds my positive's frame' relation is "
+        "DIRECTIONAL -- masking it alone leaves the loss pushing that pair apart from one side, "
+        "and the attainable floor then stays ABOVE ln2 (0.84 against 0.35 at B=12, k=2, "
+        "measured). This assertion is what caught that; it is the owner's 'and its transpose'.")
+    assert torch.equal(candidate_counts(batch, offset, mask_positive_twin=True),
+                       (2 * batch - 1) - mask.sum(1))
 
 
 def test_the_null_cannot_land_on_a_duplicate_or_on_a_copy_of_the_positive():
@@ -889,7 +1108,8 @@ def test_the_null_cannot_land_on_a_duplicate_or_on_a_copy_of_the_positive():
     alias, _ = positive_alias_mask(batch, offset)
     labels = (torch.arange(2 * batch) + batch) % (2 * batch)
     for _ in range(20):
-        d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset)
+        d = nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=offset,
+                                mask_positive_twin=True)
         assert d["shuffled_acc"] <= 0.5
     # The draw itself: reconstruct the valid set and confirm it excludes all three.
     valid = torch.ones(2 * batch, 2 * batch, dtype=torch.bool)
@@ -899,6 +1119,20 @@ def test_the_null_cannot_land_on_a_duplicate_or_on_a_copy_of_the_positive():
     assert not bool((valid & dup).any()) and not bool((valid & alias).any())
     assert not bool(valid.diagonal().any())
     assert not bool(valid.gather(1, labels[:, None]).any())
+
+
+def test_the_diagnostic_refuses_to_describe_a_candidate_set_it_was_not_told():
+    """⛔ HALF A SPECIFICATION IS THE FAILURE THIS RAISES ON. A caller that declares the overlap
+    but not whether the positive's twin is in the loss would get a chance level, a hit rule and
+    a neg_sim for an objective nobody is training -- silently, and plausibly."""
+    z1, z2 = _lookup_encoder(8, 2)
+    with pytest.raises(ValueError, match="must be given together"):
+        nt_xent_diagnostics(z1, z2, 0.1, duplicate_offset=2)
+    with pytest.raises(ValueError, match="must be given together"):
+        nt_xent_diagnostics(z1, z2, 0.1, mask_positive_twin=True)
+    # cltt_patch declares no overlap at all, and that call stays exactly as it was
+    d = nt_xent_diagnostics(z1, z2, 0.1)
+    assert d["duplicates"] == NOT_MEASURED and d["pos_candidates"] == float(2 * 8 - 1)
 
 
 def test_the_diagnostic_cannot_move_training_bitwise(monkeypatch):
@@ -955,6 +1189,14 @@ def test_the_diagnostic_keys_are_the_same_set_on_both_paths(monkeypatch):
     assert set(DIAG_KEYS) <= set(off), sorted(set(DIAG_KEYS) - set(off))
     assert set(DIAG_KEYS) <= set(on), sorted(set(DIAG_KEYS) - set(on))
     assert set(off) == set(on), "the two paths must publish the SAME tags, not overlapping ones"
+    # ⛔ AND THE DIAGNOSTIC MUST NOT OWN A KEY THE LOSS PUBLISHES. Both dicts land in one
+    # `last_scalars`, so a shared spelling means the off path's SENTINEL overwrites a measured
+    # number -- which is how `chance` was lost to `pos_chance` and `candidates` to
+    # `pos_candidates`. The next key to collide is caught here rather than in a tfevents read.
+    loss_side = {"B", "t_max", "same_frame_masked", "mask_regime", "masked_pairs",
+                 "masked_frac", "candidates", "chance"}
+    assert loss_side <= set(off), sorted(loss_side - set(off))
+    assert not (loss_side & set(DIAG_KEYS)), sorted(loss_side & set(DIAG_KEYS))
     for key in DIAG_KEYS:
         if key == "batch":
             assert off[key] == on[key] > 0, "the batch is known whether or not the diag ran"

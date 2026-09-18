@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-201 variables.
+202 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -27,14 +27,15 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:51`<br>`nett_skrl/brain/aux/ppo_aux.py:293` |
-| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:579`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
+| `NETT_AUX_BATCH` | `"0"`, `"256"`, `"512"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:66`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:849`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
+| `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:836` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
-| `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_patch_aux.py:98`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:566` |
-| `NETT_AUX_CLTT_REF_OFFSETS` | `'1,2'` | `nett_skrl/brain/aux/cltt_ref_aux.py:569` |
-| `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:580` |
+| `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_patch_aux.py:98`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:830` |
+| `NETT_AUX_CLTT_REF_OFFSETS` | `'1,2'` | `nett_skrl/brain/aux/cltt_ref_aux.py:839` |
+| `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:850` |
 | `NETT_AUX_CLTT_REF_WEIGHT` | `1.0` | `nett_skrl/brain/aux/with_cltt_ref.py:79` |
-| `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:569` |
+| `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:839` |
 | `NETT_AUX_EGO_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:222` |
 | `NETT_AUX_EGO_IDENTITY_BIAS` | `4.0` | `nett_skrl/brain/aux/ego_residual_aux.py:122` |
 | `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
