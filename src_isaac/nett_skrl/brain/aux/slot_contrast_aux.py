@@ -528,7 +528,29 @@ class SlotContrastAuxLoss(nn.Module):
         # would pair the null to the wrong draw -- cancelling nothing while looking like a
         # working fix. Returning the init makes that mistake unrepresentable rather than merely
         # guarded: this call cannot reach the previous pass's init.
-        slots_n, _, _, _, _ = self._slots_for(encoder, prep_n)
+        # ⛔⛔⛔ THE t+1 PASS STARTS FROM `slots_t`, AND THE LOSS IS MEANINGLESS WITHOUT IT.
+        # This call used to omit `slots_init`, so `_slots_for`'s `None` default drew a FRESH
+        # random init for t+1 -- while the target three lines below is `torch.eye`, i.e. "slot k
+        # at t must match slot k at t+1". With independent draws there is no such k: `self.mu`
+        # and `self.log_sigma` are (1, 1, slot_dim), ONE distribution shared by every slot
+        # (:138-139), so slot index carries no identity and there is not even a permutation to
+        # recover. The diagonal named a correspondence nothing created.
+        # ⛔ AND THE GRADIENT WAS NOT INERT. An arbitrary target still backprops into the shared
+        # encoder, so an arm ran with its encoder shaped by NOISE -- worse than running without
+        # the aux loss, and it reads in results as an ordinary null. I77 (insect,
+        # CNN2F+SlotContrast) is that arm: all 7 brains sat at chance `ss_pos_acc_x_batch`
+        # (0.245-0.252 against 1/128) for all 125 updates, never descending.
+        # ⭐ THE REFERENCE BUILDS THE CORRESPONDENCE BY RECURRENCE, NOT BY A PREDICTOR (read
+        # first-hand at martius-lab/slotcontrast@main by insect, 2026-09-17): models.py:244 draws
+        # the init ONCE per sequence; modules/video.py ScanOverTime carries `state` forward at
+        # every step; LatentProcessor uses the predictor's output when one is configured and the
+        # corrected state otherwise -- in BOTH branches t+1 starts from the t slots, and
+        # losses.py:200 takes `torch.eye` over consecutive steps OF THAT CHAIN. The port kept the
+        # target and dropped the recurrence.
+        # ⚠ NOT DETACHED, deliberately: the reference lets the gradient flow along the chain, and
+        # detaching here would make the recurrence a stop-gradient the reference does not have.
+        # FINDINGS §4bv, §4bv.1.
+        slots_n, _, _, _, _ = self._slots_for(encoder, prep_n, slots_init=slots_t)
 
         # --- slot-slot temporal contrast (the reference's Slot_Slot_Contrastive_Loss) ---
         s1 = F.normalize(slots_t, p=2.0, dim=-1)

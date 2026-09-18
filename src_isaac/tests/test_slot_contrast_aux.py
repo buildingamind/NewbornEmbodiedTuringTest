@@ -780,3 +780,75 @@ def test_input_dependence_alone_is_a_weak_conjunct_and_the_kill_rule_needs_both(
     """
     fires = sum(abs(_chance_draw(32, 4, s)["ss_input_dependence"]) < 1e-6 for s in range(400))
     assert 0.15 < fires / 400 < 0.50, f"input_dep==0 fired {fires}/400; the rule's shape assumed ~0.31"
+
+
+# ---------------------------------------------------------------------------
+# The t+1 pass must START FROM the t slots (FINDINGS §4bv, §4bv.1)
+# ---------------------------------------------------------------------------
+# ⛔ THE DEFECT THIS PINS, MEASURED ON A SHIPPED ARM. `compute()` called `_slots_for` twice
+# with no `slots_init`, so t+1 drew a FRESH random init while the loss target is `torch.eye`
+# ("slot k at t matches slot k at t+1"). `mu`/`log_sigma` are (1, 1, slot_dim) -- ONE
+# distribution shared by every slot -- so slot index carries no identity and the diagonal was
+# arbitrary. The gradient was NOT inert: it shaped the encoder with noise. I77 ran this way.
+# The reference builds the correspondence by RECURRENCE (init drawn once per sequence, carried
+# forward), not by a predictor.
+
+
+def _record_inits(aux, monkeypatch):
+    """Record the `slots_init` every attention pass receives, in call order."""
+    seen, real = [], aux.head.attn.forward
+
+    def spy(tokens, slots_init=None, return_init=False):
+        seen.append(slots_init)
+        return real(tokens, slots_init, return_init=return_init)
+
+    monkeypatch.setattr(aux.head.attn, "forward", spy)
+    return seen
+
+
+def test_the_t_plus_1_pass_starts_from_the_t_slots(monkeypatch):
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    seen = _record_inits(aux, monkeypatch)
+    aux.compute(enc, obs[0])
+
+    assert len(seen) == 2, f"expected one pass per frame, got {len(seen)}"
+    assert seen[0] is None, "the t pass draws the init; it must not inherit one"
+    assert seen[1] is not None, (
+        "the t+1 pass drew a FRESH init: the eye() target then names a correspondence "
+        "nothing created, and the gradient still reaches the encoder")
+
+
+def test_the_t_plus_1_init_is_the_t_slots_themselves_not_a_copy(monkeypatch):
+    # ⛔ Identity, not allclose: a detached or cloned init would silently cut the recurrence's
+    # gradient, which the reference does not do. `is` cannot pass by coincidence.
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    captured = {}
+    real = aux.head.attn.forward
+    seen = []
+
+    def spy(tokens, slots_init=None, return_init=False):
+        out = real(tokens, slots_init, return_init=return_init)
+        seen.append(slots_init)
+        captured.setdefault("first_slots", out[0] if isinstance(out, tuple) else out)
+        return out
+
+    monkeypatch.setattr(aux.head.attn, "forward", spy)
+    aux.compute(enc, obs[0])
+    assert seen[1] is captured["first_slots"], (
+        "the t+1 init must BE the t slots tensor, so the gradient flows along the recurrence")
+
+
+def test_the_t_plus_1_init_carries_gradient(monkeypatch):
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+    obs = _obs()
+    aux.attach_memory(_FakeMemory(obs))
+    seen = _record_inits(aux, monkeypatch)
+    aux.compute(enc, obs[0])
+    assert seen[1].requires_grad, "a detached init makes the recurrence a stop-gradient"
