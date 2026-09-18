@@ -367,7 +367,7 @@ MODELS: dict[str, dict] = {
     # objective needs. cltt_ref's own 329,216-parameter projector is inside every one of them,
     # because each aux here is `cltt_ref + ONE new term` (brain/aux/with_cltt_ref.py).
     #
-    # ⚠ ALL FIVE DIFFER FROM ROW 00 BY EXACTLY ONE THING: the `aux` key (and, for SlotsFG-Ego,
+    # ⚠ ALL FIVE DIFFER FROM ROW 00 BY EXACTLY ONE THING: the `aux` key (and, for ViT-SlotsFG-Ego,
     # one env flag). Same experiment, imprint, offsets, budget, framestack, patch size and
     # aux_weight=1.0.
     #
@@ -390,17 +390,27 @@ MODELS: dict[str, dict] = {
     # loops deterministically, so a content-aware predictor would learn the object's own motion
     # and drive exactly the residual we want to zero.
     "ViT-EgoResidual":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="ego_residual",   aux_weight=1.0),  # aux head 516,784 (cltt_ref 329,216 + routing 104,192 + predictor 83,376)
-    # R4 (row 04): slots over the 40 ViT tokens with a fg/bg indicator (Tian et al. CVPR 2025) and
-    # SlotContrast's temporal slot contrast. ⛔ THE I77 FIX IS IN THIS TERM: the slot init at t is
-    # a FIXED LEARNED vector and the init at t+k is predictor(slots_t), so "slot k at t" and
+    # R4 (row 04): slots over the 40 ViT tokens, SlotContrast's temporal slot contrast, a pixel
+    # reconstruction and the separation entropy. ⛔ THE I77 FIX IS IN THIS TERM: the slot init at t
+    # is a FIXED LEARNED vector and the init at t+k is predictor(slots_t), so "slot k at t" and
     # "slot k at t+k" are a correspondence by construction rather than two independent draws.
-    # ⚠ WITHOUT THE EGO RESIDUAL THERE IS NO FG/BG SYMMETRY BREAKER (C4: the background never
-    # varies), so read this row as "2-slot-family SA + temporal contrast" and expect fg_centre_corr
-    # at chance as the null, not as a bug. L_sep's axis is UNVERIFIED against the paper.
-    "ViT-SlotsFG":       dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 616,593 (cltt_ref 329,216 + slot_fg 287,377)
+    # ⛔⛔ THE NAME IS "ViT-Slots" AND NOT "ViT-SlotsFG". DO NOT "RESTORE" IT. This row runs NO
+    # foreground indicator: `fg_bce` and `stuff` -- Tian et al.'s fg/bg pair, against the ego
+    # term's objectness -- sit inside `if self.ego is not None` in slot_fg_aux._core and never
+    # execute at NETT_AUX_SLOTFG_EGO=0. Confirmed on the apparatus: 6 sentinels at fire_rate 0
+    # across 7/7 brains over 6,720 aux steps. The separation entropy IS active (it is outside
+    # that branch), so the row is "slot contrast + pixel reconstruction + separation entropy" --
+    # and the model key travels into results/*.csv and the scoreboards, where this comment does
+    # not follow it. A name that promises a mechanism the row does not run is a label that
+    # survives every later reading of the numbers.
+    # ⚠ The MODULE, the knob family and the aux key stay `slot_fg`: they are SHARED with row 05,
+    # where the indicator does exist, and renaming them would break the knob-to-row mapping to
+    # fix a label. ⚠ C4 (the background never varies) is why no symmetry breaker exists here, so
+    # expect fg_centre_corr at chance as the NULL. L_sep's axis is UNVERIFIED against the paper.
+    "ViT-Slots":         dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 675,012 (cltt_ref 329,216 + slot_fg 345,796 at the screened convsbd/pixels/scale-2 default)
     # R5 (row 05): the composition -- the ego residual's per-token objectness as the FOREGROUND
     # TARGET for row 04's slots. This is the symmetry breaker C4 denies row 04.
-    # ⛔⛔ THIS ENTRY IS BYTE-IDENTICAL TO "ViT-SlotsFG" AND THAT IS NOT A MISTAKE -- IT IS ALSO
+    # ⛔⛔ THIS ENTRY IS BYTE-IDENTICAL TO "ViT-Slots" AND THAT IS NOT A MISTAKE -- IT IS ALSO
     # NOT SELF-SUFFICIENT. The composition is selected by NETT_AUX_SLOTFG_EGO=1, an ENV knob, and
     # MODELS has no per-model env field (nothing in this file reads one; see `spec.get` uses
     # around agent_factory). Exactly the ViT3F hazard documented below: launching this entry
@@ -411,7 +421,9 @@ MODELS: dict[str, dict] = {
     # keys on the model string.
     # ⚠ Its head is LARGER than row 04's (the ego routing + predictor live inside slot_fg's head
     # so they reach the optimizer), which is a property of the composition, not a capacity knob.
-    "ViT-SlotsFG-Ego":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 804,161 WITH NETT_AUX_SLOTFG_EGO=1 (= row 04's 616,593 + ego 187,568); 616,593 WITHOUT IT
+    # ⚠ THIS ONE KEEPS THE "FG": with the knob on, the indicator really runs, and the FG is the
+    # whole difference between the two rows.
+    "ViT-SlotsFG-Ego":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="slot_fg",        aux_weight=1.0),  # aux head 862,580 WITH NETT_AUX_SLOTFG_EGO=1 (= row 04's 675,012 + ego 187,568); 675,012 WITHOUT IT, i.e. row 04 wearing this label
     # ══════════════════════════════════════════════════════════════════════════════════════════
 
     # ⭐ 3DCNN-CLTT-Ref: the ONE-FACTOR cross of the two arms that currently top the two
