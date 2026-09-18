@@ -694,6 +694,18 @@ class CLTTReferenceAuxLoss(nn.Module):
                              / float(len(self.offsets) * (2 * batch) ** 2),
                              "chance": float(len(self.offsets)
                                              * math.log(2 * batch - 1))}
-        if self.last_diag:
-            self.last_scalars.update({k: float(v) for k, v in self.last_diag.items()})
+        # ⛔ THE SENTINELS GO OUT ON THE OFF PATH TOO, and this class was left behind when the
+        # sibling was fixed. With the diagnostic off these nine keys were simply ABSENT from the
+        # tag list -- which is the failure `nt_xent_diagnostics_absent` exists to name: a key
+        # that disappears when a flag is off makes "did not run" and "ran and found nothing" the
+        # same absence, and the sentinel-aware aggregation in ppo_aux can only publish a fire
+        # rate of 0 for a key it was told about.
+        #
+        # ⚠ THIS IS VISIBLE TO READERS OF OLD TFEVENTS, in the same way the regime flag is. An
+        # arm run BEFORE this commit has these tags absent whenever the diagnostic was off; an
+        # arm run after it has them present at -9.0. Absent therefore means "old arm", not "no
+        # diagnostic", and the two must not be read as the same thing.
+        self.last_scalars.update(
+            {k: float(v) for k, v in self.last_diag.items()} if self.last_diag
+            else nt_xent_diagnostics_absent(batch))
         return total

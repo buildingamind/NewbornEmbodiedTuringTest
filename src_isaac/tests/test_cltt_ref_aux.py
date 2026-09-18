@@ -927,3 +927,40 @@ def test_the_diagnostic_cannot_move_training_bitwise(monkeypatch):
     assert set(grads[0]) == set(grads[1]) and len(grads[0]) > 1
     for name in grads[0]:
         assert torch.equal(grads[0][name], grads[1][name]), name
+
+
+def _diag_scalars(monkeypatch, diag: str) -> dict:
+    monkeypatch.setenv("NETT_AUX_CLTT_REF_DIAG", diag)
+    encoder = IdentityEncoder()
+    aux = CLTTReferenceAuxLoss(encoder)
+    aux.attach_memory(identity_memory())
+    aux.compute(encoder, torch.empty(0))
+    return aux.last_scalars
+
+
+def test_the_diagnostic_keys_are_the_same_set_on_both_paths(monkeypatch):
+    """⛔ ONE SOURCE OF TRUTH FOR THE KEY SET, CHECKED ON BOTH PATHS. With the flag off, these
+    nine keys used to be ABSENT from the tag list -- the exact failure the sentinel exists to
+    prevent: "did not run" and "ran and found nothing" become the same absence, and the
+    sentinel-aware aggregation cannot publish a fire rate for a key it never saw.
+
+    ⚠ Pinned against `DIAG_KEYS` rather than a literal list, so a key added to the diagnostic
+    tomorrow cannot be sentinel-less on one of the two paths. cltt_patch is held to the same
+    list by its own test; this is the sibling that was left behind when that one was fixed.
+    """
+    from nett_skrl.brain.aux.cltt_ref_aux import DIAG_KEYS
+
+    off = _diag_scalars(monkeypatch, "0")
+    on = _diag_scalars(monkeypatch, "1")
+    assert set(DIAG_KEYS) <= set(off), sorted(set(DIAG_KEYS) - set(off))
+    assert set(DIAG_KEYS) <= set(on), sorted(set(DIAG_KEYS) - set(on))
+    assert set(off) == set(on), "the two paths must publish the SAME tags, not overlapping ones"
+    for key in DIAG_KEYS:
+        if key == "batch":
+            assert off[key] == on[key] > 0, "the batch is known whether or not the diag ran"
+        else:
+            assert off[key] == NOT_MEASURED, key
+    assert on["pos_acc"] != NOT_MEASURED and 0.0 <= on["pos_acc"] <= 1.0
+    # ⚠ The LOSS floor is not a diagnostic key and must survive on both paths -- it was the
+    # collision that started this (`chance` overwritten by the diagnostic's own probability).
+    assert off["chance"] == on["chance"] > 0 and "pos_chance" in off
