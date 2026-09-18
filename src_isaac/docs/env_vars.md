@@ -49,7 +49,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_SLOTFG_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:222` |
 | `NETT_AUX_SLOTFG_DECODER` | `"convsbd"` | `nett_skrl/brain/aux/slot_fg_aux.py:137` |
 | `NETT_AUX_SLOTFG_DECODE_SCALE` | `"1"` | `nett_skrl/brain/aux/slot_fg_aux.py:139` |
-| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:158` |
+| `NETT_AUX_SLOTFG_DEC_HIDDEN` | *(required / no literal default)* | `nett_skrl/brain/aux/slot_fg_aux.py:149` |
 | `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:121` |
 | `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:127` |
 | `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:126` |

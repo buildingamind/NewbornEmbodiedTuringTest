@@ -583,3 +583,34 @@ def test_the_cell_goes_out_in_the_scalars(monkeypatch):
     enc2, comp2 = _cell(monkeypatch, "tokmlp", "ema_tokens", None)
     comp2.term.compute(enc2, None)
     assert (comp2.term.last_scalars["decoder"], comp2.term.last_scalars["target"]) == (0.0, 0.0)
+
+
+@pytest.mark.parametrize("scale", [1, 2, 4])
+def test_decode_scale_moves_the_resolution_and_HOLDS_THE_DEPTH(monkeypatch, scale):
+    """⛔ THE SCALE SCREEN MUST BE ABLE TO CONCLUDE SOMETHING. Decoding at half resolution by
+    DELETING a ConvTranspose removes two layers along with the pixels, so "binds at 2, not at 4"
+    would not say whether it was the resolution or the depth -- and the answer the knob exists to
+    produce would need another port to interpret. Same discipline as the screen's own "alpha
+    resolution is held with the target": move one thing.
+    """
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODER", "convsbd")
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", "pixels")
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODE_SCALE", str(scale))
+    term = SlotFGTerm(_encoder())
+    convs = [m for m in term.head["sbd"] if isinstance(m, (torch.nn.Conv2d,
+                                                           torch.nn.ConvTranspose2d))]
+    assert len(convs) == 4, [type(m).__name__ for m in convs]
+    strided = [m for m in convs if getattr(m, "stride", (1,))[0] == 2]
+    assert len(strided) == 3 - int(math.log2(scale)), "only the STRIDES may move with the scale"
+
+
+def test_a_width_knob_the_running_decoder_does_not_read_is_refused(monkeypatch):
+    """⛔ DEC_HIDDEN SIZES THE PER-TOKEN MLP AND NOTHING ELSE. Under the default cell the
+    spatial-broadcast decoder's width is a module constant, so a config that set DEC_HIDDEN would
+    train the unmodified model while its launch line said otherwise -- the silent no-op this
+    class already refuses for the ego window knobs and for DECODE_SCALE on a token target."""
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DEC_HIDDEN", "512")
+    with pytest.raises(ValueError, match="sizes the per-token MLP decoder"):
+        SlotFGTerm(_encoder())
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODER", "tokmlp")
+    assert SlotFGTerm(_encoder()).head["decoder"][0].out_features == 512

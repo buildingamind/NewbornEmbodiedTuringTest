@@ -141,6 +141,17 @@ class SlotFGTerm(TokenWindowTerm):
         # the 5x8 TOKEN grid, where a resolution divisor means nothing -- so a run that set it
         # would train the full-resolution model while its config, its log line and whoever reads
         # them all believed otherwise. An unread knob is a control that is not there.
+        # ⛔ AND THE DECODER'S OWN WIDTH KNOB IS READ BY ONLY ONE DECODER. `DEC_HIDDEN` sizes the
+        # per-token MLP; the spatial-broadcast decoder's width is SBD_HIDDEN. Left ignorable, a
+        # config that set it under the DEFAULT cell would train the unmodified model while its
+        # launch line said otherwise -- the same silent no-op this class already refuses for the
+        # ego window knobs, and now for DECODE_SCALE below.
+        if self.decoder_kind != "tokmlp" and os.environ.get(self.DEC_HIDDEN_ENV) is not None:
+            raise ValueError(
+                f"{self.DEC_HIDDEN_ENV} sizes the per-token MLP decoder, and this arm runs "
+                f"{self.DECODER_ENV}={self.decoder_kind}, whose width is the module constant "
+                f"SBD_HIDDEN={self.SBD_HIDDEN}. Set {self.DECODER_ENV}=tokmlp if the MLP is "
+                f"what you meant to resize; refusing to accept a knob this cell does not read.")
         if self.decode_scale != 1 and self.target_kind != "pixels":
             raise ValueError(
                 f"{self.DECODE_SCALE_ENV}={self.decode_scale} needs {self.TARGET_ENV}=pixels: "
@@ -290,10 +301,28 @@ class SlotFGTerm(TokenWindowTerm):
                 f"the pixel spatial-broadcast decoder starts at {self.img_h}/{div} x "
                 f"{self.img_w}/{div}, which is not whole. Use {self.TARGET_ENV}=ema_tokens or an "
                 f"image size divisible by {div}.")
-        stages = 3 - int(math.log2(self.decode_scale))
+        # ⛔ THE SCALE KNOB CHANGES RESOLUTION AND NOTHING ELSE, WHICH IS WHAT IT IS FOR. Three
+        # ways to decode at half: shrink the start grid (needs H/32 whole -- it is 2.5 here),
+        # DROP a ConvTranspose (cheapest, and what this was first written as), or keep all three
+        # and make the tail STRIDE-1. The first two were rejected for the same reason the screen
+        # holds alpha resolution with the target: dropping a stage removes two layers as well as
+        # the resolution, so a screen that found "binds at 2, not at 4" could not say whether it
+        # was the pixels or the depth, and the answer it was run to get would need another port.
+        # Depth is 3 + 1 in every cell; only the strides move. ⚠ AND HOLDING IT IS NOT FREE --
+        # measured, not assumed, because the first draft of this comment guessed that it "barely
+        # moves" and it does not (first-step peak RSS at B=32, CPU, one aux step):
+        #                       drop a stage        keep depth, stride-1 tail
+        #     scale 2        409.3 MiB / 309k        570.6 MiB / 346k
+        #     scale 4        198.9 MiB / 243k        296.9 MiB / 317k
+        # i.e. isolating resolution costs 39-49% of the saving. It is still a 2.4x cut at scale 2
+        # against the 1,373.6 MiB full-resolution step, which the apparatus needs and can afford;
+        # the confounded version is one stride away if the real 7-brain footprint says otherwise.
+        doublings = 3 - int(math.log2(self.decode_scale))
         layers, ch = [], s_dim
-        for _ in range(stages):
-            layers += [nn.ConvTranspose2d(ch, hid, 4, 2, 1), nn.ReLU()]
+        for i in range(3):
+            layers += ([nn.ConvTranspose2d(ch, hid, 4, 2, 1)] if i < doublings
+                       else [nn.ConvTranspose2d(ch, hid, 3, 1, 1)])
+            layers += [nn.ReLU()]
             ch = hid
         layers += [nn.Conv2d(ch, self.cpf + 1, 3, 1, 1)]
         return {"sbd_pos": _Holder(torch.nn.Parameter(
