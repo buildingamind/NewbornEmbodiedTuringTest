@@ -50,13 +50,39 @@ lower seed spread. So `NETT_AUX_SLOTFG_DECODER` and `NETT_AUX_SLOTFG_TARGET` exi
 FOUR cells reproducible, not because any half-move is a fallback. ⚠ And K stays 4: K=3 x
 pixel-SBD reads 0.439 +/- 0.030, 3.6 se BELOW pixel-SBD at K=4, so the two do not compose.
 
-⛔ MEMORY IS THE BINDING CONSTRAINT, AND `NETT_AUX_SLOTFG_DECODE_SCALE` IS THE HONEST FALLBACK.
-One slot-term step at patch 16, aux only: the shipped pair peaks at 161 MiB at B=32, the winner
-at 1,659 MiB -- 10.3x, linear in B (844 MiB at B=16). Seven brains is ~11.6 GB of aux
-activations before PPO's own rollouts, on a 24 GiB card where row 04 already peaks at 15,314
-MiB. If it does not fit, the fallback is DECODING AT LOWER RESOLUTION AND UPSAMPLING, never one
-of the half-moves: each half loses most of the effect, so a half-move buys memory by deleting
-the finding.
+⛔ MEMORY IS THE BINDING CONSTRAINT, AND THE RESOLUTION IS WHAT PAYS FOR IT. One slot-term step
+at patch 16, aux only: the shipped pair peaks at 161 MiB at B=32, the winner at full resolution
+at 1,659 MiB -- 10.3x, linear in B. Seven brains is ~11.6 GB of aux activations before PPO's own
+rollouts, on a 24 GiB card where row 04 already peaks at 15,314 MiB. The screen then measured
+where that can be bought back (held-out fg-ARI, held-out batch fixed at 32 in every row so the
+metric's own sample size never moved):
+
+    scale 1,   B=32   0.531 +/- 0.033 (n=3)   1,659 MiB
+    scale 1/2, B=32   0.520 +/- 0.068 (n=9)     749 MiB   <- DEFAULT: full-resolution binding,
+    scale 1/2, B=16   0.450 +/- 0.063 (n=6)     392 MiB      +7.2 se over the shipped row
+    scale 1/4, B=32   0.446 +/- 0.123 (n=6)     299 MiB   <- UNRESOLVED, do not take
+
+⛔ RESOLUTION AND BATCH FAIL DIFFERENTLY, SO ONLY ONE OF THEM IS A LEVER. Halving the decode
+resolution costs neither binding nor correspondence. Halving B costs CORRESPONDENCE first
+(pos_acc 0.70 -> 0.34 -> 0.15 at B = 32/16/8 against chances 0.0078/0.0156/0.0312), which is the
+contrastive denominator shrinking -- so `NETT_AUX_SLOTFG_BATCH` stays at 32 and is not the place
+to find memory. ⚠ And never a half-move of the decoder/target pair: each half loses most of the
+effect, so it buys memory by deleting the finding.
+
+⚠ THE STAGE-DROPPING VARIANT IS CHEAPER AND IS LEFT ON THE TABLE DELIBERATELY. `DECODE_SCALE`
+holds the decoder's DEPTH constant and moves only the strides, so its answer is attributable to
+resolution; the screen confirmed depth was not doing the work (1/2: 0.5211 constant-depth against
+0.5199 stage-dropping; 1/4: 0.4487 against 0.4426). Dropping the stages instead would cost 505
+MiB rather than 749 for the same measured binding. That is the trade a future seat under memory
+pressure can make -- 33% less memory, and a scale result that can no longer be attributed to
+resolution alone.
+
+⛔⛔ THESE SDs ARE A REPRODUCIBILITY FLOOR, NOT A SEED FLOOR, AND ANY FUTURE SLOT COMPARISON MUST
+BE SIZED AGAINST IT. Re-running ONE configuration at the SAME seeds gave 0.5399 +/- 0.0717 and
+then 0.4999 +/- 0.0478: CUDA convolution backward is nondeterministic, so a seed does not pin the
+result and two runs of the same config differ by ~0.04. ⇒ n >= 6 per configuration, and an n=3
+row sitting within ~2 se of its comparator is UNRESOLVED, not a result. The 1/4 row above is
+exactly that and is why the default is 1/2 and not 1/4.
 
 ⛔ OBJECTIVE CHANGE 2026-09-17 (owner, workspace DECISIONS): `cltt_ref` now excludes each anchor's OWN FRAME from its negatives, so every cltt_ref arm trained before this commit ran a different objective and is NOT comparable to one trained after it.
 """
@@ -101,9 +127,10 @@ class SlotFGTerm(TokenWindowTerm):
     #: The screen's 2x2. `tokmlp`/`ema_tokens` is the shipped pair; the defaults are the winner.
     DECODERS = ("tokmlp", "convsbd")
     TARGETS = ("ema_tokens", "pixels")
-    #: 1 = full resolution, 2 = half, 4 = quarter -- pixel targets only. Expressed as the
-    #: DIVISOR because that is what the memory scales with, and because "scale=2" reading as
+    #: 1 = full resolution, 2 = half, 4 = quarter -- pixel targets only, DEFAULT 2. Expressed as
+    #: the DIVISOR because that is what the memory scales with, and because "scale=2" reading as
     #: "twice as big" is the kind of ambiguity a screen result gets filed under.
+    #: ⚠ A TOKEN TARGET RESOLVES IT TO 1 rather than inheriting the default; see __init__.
     DECODE_SCALES = ("1", "2", "4")
     #: The SBD broadcast grid is the image divided by this, doubled once per ConvTranspose.
     SBD_START_DIV = 8
@@ -136,7 +163,7 @@ class SlotFGTerm(TokenWindowTerm):
         # a result whose configuration can no longer be built is a result nobody can check.
         self.decoder_kind = _env_choice(self.DECODER_ENV, "convsbd", self.DECODERS)
         self.target_kind = _env_choice(self.TARGET_ENV, "pixels", self.TARGETS)
-        self.decode_scale = int(_env_choice(self.DECODE_SCALE_ENV, "1", self.DECODE_SCALES))
+        self.decode_scale = int(_env_choice(self.DECODE_SCALE_ENV, "2", self.DECODE_SCALES))
         # ⛔ AND THE COMBINATION IS VALIDATED, NOT JUST THE VALUES. A token target decodes onto
         # the 5x8 TOKEN grid, where a resolution divisor means nothing -- so a run that set it
         # would train the full-resolution model while its config, its log line and whoever reads
@@ -152,12 +179,22 @@ class SlotFGTerm(TokenWindowTerm):
                 f"{self.DECODER_ENV}={self.decoder_kind}, whose width is the module constant "
                 f"SBD_HIDDEN={self.SBD_HIDDEN}. Set {self.DECODER_ENV}=tokmlp if the MLP is "
                 f"what you meant to resize; refusing to accept a knob this cell does not read.")
-        if self.decode_scale != 1 and self.target_kind != "pixels":
-            raise ValueError(
-                f"{self.DECODE_SCALE_ENV}={self.decode_scale} needs {self.TARGET_ENV}=pixels: "
-                f"it divides the resolution of a PIXEL reconstruction, and a token target "
-                f"decodes onto the {self.grid[0]}x{self.grid[1]} token grid, which this knob "
-                f"cannot change. Refusing to accept a knob this configuration does not read.")
+        if self.target_kind != "pixels":
+            # ⛔ REFUSE WHAT WAS ASKED FOR; DO NOT REFUSE A DEFAULT NOBODY CHOSE. Since the scale
+            # default became 2, a token-target cell inherits a divisor it cannot use -- and
+            # raising on that would make two of the screen's four cells UNBUILDABLE by anyone who
+            # did not know to spell the scale back to 1, which is the reproducibility these knobs
+            # exist to protect. So: an EXPLICIT scale on a token target still raises (the knob
+            # would be unread), and a defaulted one silently resolves to 1, which is the only
+            # resolution a 5x8 token grid has.
+            if os.environ.get(self.DECODE_SCALE_ENV) is not None and self.decode_scale != 1:
+                raise ValueError(
+                    f"{self.DECODE_SCALE_ENV}={self.decode_scale} needs {self.TARGET_ENV}="
+                    f"pixels: it divides the resolution of a PIXEL reconstruction, and a token "
+                    f"target decodes onto the {self.grid[0]}x{self.grid[1]} token grid, which "
+                    f"this knob cannot change. Refusing to accept a knob this cell does not "
+                    f"read.")
+            self.decode_scale = 1
         # ⛔ WHICH TERMS USE THE SHARED EMA TEACHER, DECLARED PER INSTANCE. `cltt_ref` itself
         # uses NO teacher (verified: zero references in cltt_ref_aux.py); the composite builds
         # one only because a TERM asks for it, and the askers are cltt_patch, patch_affinity,

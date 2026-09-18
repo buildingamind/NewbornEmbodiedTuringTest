@@ -457,7 +457,7 @@ def test_the_defaults_are_the_WINNING_PAIR_and_every_spelling_is_validated(monke
     comparison it was launched for, and nothing downstream could tell.
     """
     term = SlotFGTerm(_encoder())
-    assert (term.decoder_kind, term.target_kind, term.decode_scale) == ("convsbd", "pixels", 1)
+    assert (term.decoder_kind, term.target_kind, term.decode_scale) == ("convsbd", "pixels", 2)
     for knob, bad in (("NETT_AUX_SLOTFG_DECODER", "conv_sbd"),
                       ("NETT_AUX_SLOTFG_DECODER", "sbd"),
                       ("NETT_AUX_SLOTFG_TARGET", "pixel"),
@@ -475,6 +475,13 @@ def test_the_defaults_are_the_WINNING_PAIR_and_every_spelling_is_validated(monke
     monkeypatch.setenv("NETT_AUX_SLOTFG_DECODE_SCALE", "2")
     with pytest.raises(ValueError, match="needs NETT_AUX_SLOTFG_TARGET=pixels"):
         SlotFGTerm(_encoder())
+    # ⛔ BUT A DEFAULT NOBODY CHOSE IS NOT AN ASK. The scale default is 2 now, and if a token
+    # target inherited it and raised, two of the screen's four cells would be unbuildable by
+    # anyone who did not know to spell the scale back -- the reproducibility these knobs exist
+    # for, lost to the default of an unrelated one.
+    monkeypatch.delenv("NETT_AUX_SLOTFG_DECODE_SCALE")
+    tok = SlotFGTerm(_encoder())
+    assert (tok.target_kind, tok.decode_scale) == ("ema_tokens", 1)
 
 
 @pytest.mark.parametrize("decoder,target", CELLS)
@@ -537,7 +544,16 @@ def test_the_pixel_target_is_the_TENSOR_THE_ENCODER_SAW(monkeypatch):
         z_t = spatial_tokens(enc, window.prepared_t)[0]
         init = term.head["init"].value.expand(z_t.shape[0], -1, -1)
         slots_t, _ = term._slots(z_t, init, term.ITERS_FIRST)
-        expected = F.mse_loss(term._decode(slots_t), window.prepared_t[:, -term.cpf:])
+        target = window.prepared_t[:, -term.cpf:]
+        # ⚠ THE UPSAMPLE IS ON THE PREDICTION SIDE, and re-deriving it here pins that too: at the
+        # default scale of 2 the decode is 40x64 and the target stays 80x128, so a version that
+        # resized the TARGET instead would fail this equality rather than quietly changing the
+        # task. (An earlier draft compared the raw decode to the target and only passed because
+        # the default was then scale 1 -- the shapes agreed by accident.)
+        pred = F.interpolate(term._decode(slots_t), size=target.shape[-2:], mode="bilinear",
+                             align_corners=False)
+        expected = F.mse_loss(pred, target)
+    assert term.decode_hw == (H // 2, W // 2), "this runs on the DEFAULT cell, not a special one"
     assert torch.equal(term._reconstruction(window, slots_t), expected)
     assert term.cpf == 3 and window.prepared_t.shape[1] == 6, (
         "at the campaign eye the current frame is channels 3:6 == -3:, which is what was screened")

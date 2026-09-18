@@ -316,11 +316,21 @@ def scan() -> dict[str, list[tuple[str, int, str | None]]]:
         # NETT_AUX_BATCH's genuine multi-default hazard indistinguishable from an artefact.
         # The cross-file fallback stays for the subclass-binds/parent-reads case above.
         own = [r for r in reads if r[0] == brel]
-        seen: set[str] = set()
+        # ⛔ ONE SITE PER (FILE, DEFAULT), NOT ONE PER FILE. Collapsing to the first read in a
+        # file makes whichever read comes FIRST the reported default -- and a PRESENCE PROBE
+        # (`os.environ.get(NAME) is not None`, used to refuse a knob the running configuration
+        # cannot read) has no default at all, so a probe written above the real read turned a
+        # knob with a documented default into "*(required / no literal default)*". Measured on
+        # NETT_AUX_SLOTFG_DEC_HIDDEN, whose default is 256. Keying on the default keeps the
+        # probe AND the real read, and the renderer already drops the None, so the row reads
+        # 256 and its provenance column names both lines -- which is what the file does.
+        # ⚠ It also stops hiding the genuine two-defaults-in-one-file hazard the header warns
+        # about: that case used to collapse to the first read as well.
+        seen: set[tuple[str, str | None]] = set()
         for rrel, rline, callee, default in (own or reads):
-            if rrel in seen:
+            if (rrel, default) in seen:
                 continue
-            seen.add(rrel)
+            seen.add((rrel, default))
             site = (rrel, rline,
                     _resolve_default(callee, default, (brel, bline), (rrel, rline)))
             if site not in found.setdefault(cname, []):

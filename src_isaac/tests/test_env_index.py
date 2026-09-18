@@ -386,3 +386,70 @@ def test_no_default_anywhere_in_the_index_is_a_bare_identifier():
                 bad.append(f"{name} -> {d!r} at {rel}:{line}")
     assert not bad, ("these defaults print an identifier as if it were a value:\n  "
                      + "\n  ".join(sorted(bad)))
+
+
+def test_a_presence_probe_beside_a_real_read_does_not_erase_the_default(tmp_path, monkeypatch):
+    """⛔ SHAPE: ONE FILE, TWO READS OF ONE KNOB -- a bare `os.environ.get(NAME)` used to REFUSE a
+    knob the running configuration cannot read, and the real read that supplies the default.
+
+    The refusal probe has no default by construction: it is asking "did a human set this?", not
+    "what is the value?". Collapsing a file's reads to the FIRST one therefore made the answer
+    depend on which line came first, and a probe written above the real read turned a knob with a
+    documented default into `*(required / no literal default)*` -- an index row that tells a
+    launcher the knob MUST be set when in fact it must not be.
+
+    Written against the SHAPE, not the name: any file that guards a knob and then reads it.
+    """
+    found = _corpus(tmp_path, monkeypatch, {
+        "term.py": '''
+            import os
+            from .knobs import _env_positive_int
+
+            class Term:
+                WIDTH_ENV = "NETT_SHAPE_WIDTH"
+
+                def __init__(self, kind):
+                    if kind != "mlp" and os.environ.get(self.WIDTH_ENV) is not None:
+                        raise ValueError("that decoder does not read a width")
+                    self.width = _env_positive_int(self.WIDTH_ENV, 256)
+        ''',
+        "knobs.py": '''
+            import os
+
+            def _env_positive_int(name, default):
+                return int(os.environ.get(name, default))
+        ''',
+    })
+    assert _defaults(found, "NETT_SHAPE_WIDTH") == {"256"}
+    lines = sorted(line for _, line, _ in found["NETT_SHAPE_WIDTH"])
+    assert len(lines) == 2, ("both reads belong in the provenance column -- the probe is a real "
+                             f"read of the knob, it just has nothing to say about the default: "
+                             f"{found['NETT_SHAPE_WIDTH']}")
+
+
+def test_the_probe_ordering_does_not_decide_the_answer(tmp_path, monkeypatch):
+    """The same two reads in the other order must give the same row. A rule whose answer depends
+    on line order is not a rule, and this is the half of the defect that made it invisible: on
+    every knob where the real read happened to come first, the index was right by luck."""
+    src = '''
+        import os
+        from .knobs import _env_positive_int
+
+        class Term:
+            WIDTH_ENV = "NETT_SHAPE_WIDTH"
+
+            def __init__(self, kind):
+                self.width = _env_positive_int(self.WIDTH_ENV, 256)
+                if kind != "mlp" and os.environ.get(self.WIDTH_ENV) is not None:
+                    raise ValueError("that decoder does not read a width")
+    '''
+    found = _corpus(tmp_path, monkeypatch, {
+        "term.py": src,
+        "knobs.py": '''
+            import os
+
+            def _env_positive_int(name, default):
+                return int(os.environ.get(name, default))
+        ''',
+    })
+    assert _defaults(found, "NETT_SHAPE_WIDTH") == {"256"}
