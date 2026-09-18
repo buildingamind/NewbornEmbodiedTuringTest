@@ -14,12 +14,206 @@
 #   * the EXTERNAL PREREQUISITES -- built assets and the compiled frame cache, delegated to
 #     scripts/prepare_test_env.py so the hook and the tests share one source of truth.
 #
+#   * the RESIDENT LIBRARY -- torch loads a libstdc++ into the process before isaacsim asks
+#     for one, and if that copy is too old the Kit bootstrap fails, the e2e tree marks itself
+#     skip, and the leg exits 0 in under two seconds. See the LD_PRELOAD block in the e2e
+#     section: on chicken, EVERY green e2e line this hook ever printed was that.
+#
+# ⛔ AND THE RULE THAT FOLLOWS FROM IT: a gate that reports success without executing is worse
+# than no gate, because it also retires the suspicion that would have caught it. `e2e_verdict`
+# below therefore COUNTS what ran and refuses loudly when the answer is "nothing", and the
+# NETT_SKIP_E2E path says so in the final line instead of printing a bare OK.
+#
 # Install with:  scripts/install_git_hooks.sh
+# Self-test:     scripts/hooks/pre-push --self-test [python]   (no repo, no GPU, no push)
 # Bypass once:   NETT_SKIP_HOOKS=1 git push        (or git push --no-verify)
-# Skip e2e only: NETT_SKIP_E2E=1 git push          (unit suite still runs)
+# Skip e2e only: NETT_SKIP_E2E=1 git push          (unit suite still runs; the hook SAYS so)
+# Long push:     GIT_SSH_COMMAND='ssh -o ServerAliveInterval=60 -o ServerAliveCountMax=30' git push
+#     The e2e leg idles the push's ALREADY-OPEN socket for ~15 minutes, and without keepalives
+#     the push can die at exit 141 (SIGPIPE) AFTER this hook prints OK, with nothing pushed.
+#     ⚠ THE HOOK CANNOT SET THIS FOR THE PUSH THAT IS INVOKING IT -- git chose the transport and
+#     opened the connection before the hook ran, so an export here would be a silent no-op. It
+#     can only advise, and it does, in the e2e section, when `ssh -G` says keepalives are off.
 set -uo pipefail
 
 [ -n "${NETT_SKIP_HOOKS:-}" ] && { echo "pre-push: skipped (NETT_SKIP_HOOKS)"; exit 0; }
+
+# --- testable detectors ---------------------------------------------------------------
+# ⛔ A GATE THAT CANNOT BE TESTED WITHOUT A PUSH GETS TESTED BY PUSHING, and this one then
+# reported OK over an e2e leg that never executed. Everything below is a pure function of its
+# arguments so that `scripts/hooks/pre-push --self-test` can exercise it on synthetic inputs --
+# including the branch that must NOT fire. Run it after editing this file.
+
+_has_glibcxx_3_4_30() {
+  # Does this libstdc++ provide the version isaacsim's libcarb.so asks for?
+  # ⚠ THE LITERAL IS A MEASUREMENT, NOT A GUESS: the bootstrap failure names it verbatim --
+  # "version `GLIBCXX_3.4.30' not found (required by .../isaacsim/kit/libcarb.so)". A
+  # libstdc++ carries every version it provides as a plain string, so grep answers exactly the
+  # question the dynamic loader will ask. `strings` would read better and is not installed
+  # everywhere; grep -a is.
+  [ -e "$1" ] && LC_ALL=C grep -aqE 'GLIBCXX_3\.4\.30' "$1" 2>/dev/null
+}
+
+_mapped_libstdcxx() {
+  # Which libstdc++ this interpreter ACTUALLY ends up with, asked of the interpreter itself.
+  # ⛔ NOT a guess from a path, and NOT "is there a conda in $PATH". torch loads libstdc++ into
+  # the process before isaacsim asks for one, and no path variable moves a library that is
+  # already resident -- so the only honest question is which file got mapped, and /proc/self/maps
+  # is where the answer is. Empty output means "could not tell", which is a third answer and is
+  # treated as one by the caller.
+  "$1" -c '
+import sys
+try:
+    import torch  # noqa: F401  -- torch is what pulls libstdc++ in; that IS the mechanism
+except Exception:
+    sys.exit(0)
+try:
+    for line in open("/proc/self/maps"):
+        if "libstdc++" in line:
+            print(line.rsplit(" ", 1)[-1].strip()); break
+except OSError:
+    pass' 2>/dev/null
+}
+
+_system_libstdcxx() {
+  # The newest libstdc++ the SYSTEM offers that actually provides the symbol. ldconfig is the
+  # loader's own answer and is distro-agnostic; the two literal paths are the fallback for a
+  # host whose cache is stale. Prints nothing and returns 1 when the system cannot help, which
+  # is a real state on a host that simply does not have a new enough libstdc++.
+  local cand
+  for cand in "$(ldconfig -p 2>/dev/null | awk '/libstdc\+\+\.so\.6 /{print $NF; exit}')" \
+              /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib64/libstdc++.so.6; do
+    if [ -n "$cand" ] && _has_glibcxx_3_4_30 "$cand"; then printf '%s' "$cand"; return 0; fi
+  done
+  return 1
+}
+
+e2e_jobs_for_plugin() {
+  # $1 = the job count the GPUs justify, $2 = 1 if pytest-xdist is importable. Prints the count
+  # to actually use.
+  #
+  # ⚠ WITHOUT THE PLUGIN, `-n` DOES NOT RUN SERIALLY -- pytest exits 4 with "unrecognized
+  # arguments: -n 8 --dist loadgroup" having run ZERO tests, which was reported as "e2e tests
+  # failed" (2026-08-12) and sent the reader hunting for a broken test that did not exist.
+  # ⇒ DEGRADE, NAMING THE PACKAGE, RATHER THAN BLOCK OR GUESS. Serial is slower (~17 min against
+  # ~4) and never wrong, and a host that cannot install a plugin should still push behind a gate
+  # that RUNS. Measured on chicken 2026-09-18: the `nett-private` venv has no xdist, so under the
+  # old rule an activated one blocked every push from a 4-GPU node.
+  if [ "$1" -gt 1 ] && [ "${2:-0}" != 1 ]; then
+    echo "pre-push: ⚠ pytest-xdist is NOT importable from" >&2
+    echo "    ${PY:-<interpreter>}" >&2
+    echo "  so the $1-way parallel e2e path is unavailable; degrading to NETT_E2E_JOBS=1" >&2
+    echo "  (serial, ~17 min instead of ~4). The gate still runs IN FULL." >&2
+    echo "  Install it with:  ${PY:-<python>} -m pip install -e '${SRC:-<src_isaac>}[test]'" >&2
+    printf '1'
+    return 0
+  fi
+  printf '%s' "$1"
+}
+
+e2e_verdict() {
+  # Did the e2e leg RUN, or did it merely exit 0? Sets E2E_PASSED / E2E_SKIPPED; rc 1 = blocked.
+  #
+  # ⛔⛔ THE DEFECT THIS EXISTS FOR: "20 skipped in 1.60s" is rc 0, and for months every green
+  # e2e line this hook printed on chicken was that. A gate that reports success without
+  # executing is worse than no gate, because it also retires the suspicion that would have
+  # caught it. Two rules, and the first is the precise one:
+  #   * the tree-wide prerequisite gate fired => the HARNESS refused, and however many tests
+  #     "passed", the ones it skipped were never run. tests/e2e/conftest.py marks them with
+  #     the literal reason matched below, so this is a signature and not a heuristic;
+  #   * zero passed => nothing ran at all. Every test here is a real training run.
+  # A per-test skip (a missing FULL design sheet, say) is a different animal -- a deliberate
+  # asset guard, not a broken harness -- so it warns loudly and does not block. Blocking on it
+  # would teach --no-verify, which is how a gate dies.
+  local log="$1" summary prereq
+  summary="$(grep -aE '[0-9]+ (passed|failed|skipped|error|deselected)' "$log" 2>/dev/null \
+             | tail -1 | sed 's/\x1b\[[0-9;]*m//g')"
+  E2E_PASSED="$(printf '%s' "$summary" | grep -oE '[0-9]+ passed' | grep -oE '[0-9]+')"
+  E2E_SKIPPED="$(printf '%s' "$summary" | grep -oE '[0-9]+ skipped' | grep -oE '[0-9]+')"
+  [ -n "$E2E_PASSED" ] || E2E_PASSED=0
+  [ -n "$E2E_SKIPPED" ] || E2E_SKIPPED=0
+  # ⚠ grep -c PRINTS 0 and EXITS 1 when it matches nothing, so `|| echo 0` would append a
+  # SECOND zero and make "0" into "0 0". The substitution already has the value.
+  prereq="$(grep -ac 'e2e prerequisites missing' "$log" 2>/dev/null)"
+  case "$prereq" in ''|*[!0-9]*) prereq=0 ;; esac
+  echo "pre-push: e2e ran ${E2E_PASSED} training test(s), skipped ${E2E_SKIPPED}${summary:+  [${summary}]}"
+  if [ "$prereq" -gt 0 ]; then
+    echo "pre-push: BLOCKED -- the e2e HARNESS refused: tests/e2e's prerequisite gate fired," >&2
+    echo "  so those tests were marked skip at collection and never ran. This exits 0 from" >&2
+    echo "  pytest and is exactly the silent rot this gate exists to stop." >&2
+    grep -aE 'e2e prerequisites missing' "$log" | head -3 >&2
+    return 1
+  fi
+  if [ "$E2E_PASSED" -eq 0 ]; then
+    echo "pre-push: BLOCKED -- the e2e tree exited 0 but NOTHING RAN: ${summary:-<no summary line>}" >&2
+    echo "  Every test in this tree is a real training run, so zero passed means the harness" >&2
+    echo "  refused, not that the code is good. Skip reasons:" >&2
+    grep -aE "^SKIPPED" "$log" | head -10 >&2
+    return 1
+  fi
+  if [ "$E2E_SKIPPED" -gt 0 ]; then
+    echo "pre-push: ⚠ ${E2E_SKIPPED} e2e test(s) SKIPPED -- that part of the gate did not run:" >&2
+    grep -aE "^SKIPPED" "$log" | head -5 >&2
+  fi
+  return 0
+}
+
+# --- self-test ------------------------------------------------------------------------
+# `scripts/hooks/pre-push --self-test` -- git never passes this ($1 is the remote name), and it
+# exits before the hook touches a repository, an interpreter or a GPU.
+if [ "${1:-}" = "--self-test" ]; then
+  _st_fail=0
+  _st() { if [ "$1" = ok ]; then echo "  ok   $2"; else echo "  FAIL $2"; _st_fail=1; fi; }
+  _t="$(mktemp -d)"; trap 'rm -rf "$_t"' EXIT
+  # (1) the library predicate, on a good and a bad library -- synthetic first, so the test
+  #     means the same thing on a host that has neither of the real ones.
+  printf 'GLIBCXX_3.4.29\nGLIBCXX_3.4.30\n' > "$_t/good.so"
+  printf 'GLIBCXX_3.4.28\nGLIBCXX_3.4.29\n' > "$_t/bad.so"
+  _has_glibcxx_3_4_30 "$_t/good.so" && _st ok "good library recognised" || _st no "good library recognised"
+  _has_glibcxx_3_4_30 "$_t/bad.so" && _st no "bad library rejected" || _st ok "bad library rejected"
+  _has_glibcxx_3_4_30 "$_t/absent.so" && _st no "absent library rejected" || _st ok "absent library rejected"
+  # and on the real pair, when this host has them: a predicate that passes on fixtures and
+  # disagrees with the loader is worth nothing.
+  for _real in /usr/lib/x86_64-linux-gnu/libstdc++.so.6 /usr/lib64/libstdc++.so.6; do
+    [ -e "$_real" ] || continue
+    if _has_glibcxx_3_4_30 "$_real"; then echo "  info $_real HAS GLIBCXX_3.4.30 (would be preloaded)"
+    else echo "  info $_real lacks GLIBCXX_3.4.30 (this host cannot repair it that way)"; fi
+  done
+  _sys="$(_system_libstdcxx)" && echo "  info system libstdc++ resolves to $_sys" \
+                              || echo "  info no system libstdc++ provides GLIBCXX_3.4.30"
+  # ⚠ AND THE LIVE DECISION, DRY, when an interpreter is named: `--self-test <python>` reports
+  # which library that python actually maps and which branch the e2e leg would take. The
+  # synthetic pair above proves the predicate; this proves it against the library the loader
+  # really picks, which is the only one that can skip the gate.
+  if [ -n "${2:-}" ]; then
+    _m="$(_mapped_libstdcxx "$2")"
+    if [ -z "$_m" ]; then
+      echo "  info $2 -> libstdc++ undeterminable; the hook would apply NO preload"
+    elif _has_glibcxx_3_4_30 "$_m"; then
+      echo "  info $2 -> maps $_m, which HAS GLIBCXX_3.4.30; the hook would apply NO preload"
+    else
+      echo "  info $2 -> maps $_m, which LACKS GLIBCXX_3.4.30; the hook would preload ${_sys:-<nothing available>}"
+    fi
+  fi
+  # (2) the e2e verdict, on the four shapes of log that matter
+  printf 'SKIPPED [20] tests/e2e/conftest.py:341: e2e prerequisites missing: isaacsim import failed: bootstrap\n20 skipped in 1.60s\n' > "$_t/rot.log"
+  printf '20 passed, 3 deselected, 15 warnings in 935.89s (0:15:35)\n' > "$_t/real.log"
+  printf 'SKIPPED [1] tests/e2e/test_full_run.py:129: full design sheet not found\n19 passed, 1 skipped in 900.00s\n' > "$_t/partial.log"
+  : > "$_t/empty.log"
+  e2e_verdict "$_t/rot.log"     >/dev/null 2>&1 && _st no "all-skipped log BLOCKS" || _st ok "all-skipped log BLOCKS"
+  e2e_verdict "$_t/real.log"    >/dev/null 2>&1 && _st ok "a real 20-passed run is accepted" || _st no "a real 20-passed run is accepted"
+  [ "${E2E_PASSED:-}" = 20 ] && _st ok "the passed count is read (20)" || _st no "the passed count is read (20)"
+  e2e_verdict "$_t/partial.log" >/dev/null 2>&1 && _st ok "a per-test asset skip warns, does not block" || _st no "a per-test asset skip warns, does not block"
+  [ "${E2E_SKIPPED:-}" = 1 ] && _st ok "the skipped count is read (1)" || _st no "the skipped count is read (1)"
+  e2e_verdict "$_t/empty.log"   >/dev/null 2>&1 && _st no "an empty log BLOCKS" || _st ok "an empty log BLOCKS"
+  # (3) the xdist degrade, in both directions -- including the one that must NOT fire
+  [ "$(e2e_jobs_for_plugin 4 1 2>/dev/null)" = 4 ] && _st ok "4 GPUs + xdist stays 4-way" || _st no "4 GPUs + xdist stays 4-way"
+  [ "$(e2e_jobs_for_plugin 4 0 2>/dev/null)" = 1 ] && _st ok "4 GPUs, no xdist degrades to serial" || _st no "4 GPUs, no xdist degrades to serial"
+  [ "$(e2e_jobs_for_plugin 1 0 2>/dev/null)" = 1 ] && _st ok "1 GPU, no xdist is untouched (no -n was coming)" || _st no "1 GPU, no xdist is untouched"
+  e2e_jobs_for_plugin 4 0 2>&1 >/dev/null | grep -q "pytest-xdist" && _st ok "the degrade NAMES the missing package" || _st no "the degrade NAMES the missing package"
+  [ "$_st_fail" -eq 0 ] && echo "pre-push --self-test: OK" || echo "pre-push --self-test: FAILED" >&2
+  exit "$_st_fail"
+fi
 
 ROOT="$(git rev-parse --show-toplevel)"
 SRC="$ROOT/src_isaac"
@@ -50,13 +244,29 @@ export PYTHONPATH="$SRC:$REPO_A/isaac_lab/source"
 # rather than as the wrong python. Hence: discover candidates, then PROBE each by importing
 # what the suite actually needs. An interpreter that cannot import them is not a candidate,
 # however executable it is.
-PROBE='import pytest, psutil, yaml, jsonschema, torch, skrl'
+# ⚠ REQUIRED AND OPTIONAL IN ONE PROBE, not two. pytest-xdist is NOT required -- a
+# single-GPU host never passes `-n` and must not be rejected for lacking a plugin it will not
+# use -- but both legs below need to KNOW, and a second `$PY -c 'import xdist'` somewhere else
+# is a second answer that can disagree with this one (and did: the unit leg degraded while the
+# e2e leg blocked). The probe reports it; the legs read the report.
+PROBE='import pytest, psutil, yaml, jsonschema, torch, skrl
+try:
+    import xdist  # optional: parallelism, never correctness
+    _x = "1"
+except Exception:
+    _x = "0"
+print("probe-ok xdist=" + _x)'
 _probe_fail=""      # remembers WHY the last candidate was rejected, for the error message
+_probe_caps=""      # ... and what the ACCEPTED one can do
 
 py_ok() {
-  [ -x "$1" ] || { _probe_fail="not executable"; return 1; }
-  _probe_fail="$("$1" -c "$PROBE" 2>&1 | tail -1)"
-  [ -z "$_probe_fail" ]
+  [ -x "$1" ] || { _probe_fail="not executable"; _probe_caps=""; return 1; }
+  local out
+  out="$("$1" -c "$PROBE" 2>&1)"
+  case "$out" in
+    *probe-ok*) _probe_fail=""; _probe_caps="${out##*probe-ok }"; return 0 ;;
+    *)          _probe_fail="$(printf '%s' "$out" | tail -1)"; _probe_caps=""; return 1 ;;
+  esac
 }
 
 # NETT_PYTHON is an ANSWER, not a hint: if it is set and fails the probe, say so and stop
@@ -100,7 +310,8 @@ if [ -z "$PY" ]; then
   echo "  <venv>/bin/python -m pip install -e '$SRC[test]'" >&2
   exit 1
 fi
-echo "pre-push: python $PY"
+case "$_probe_caps" in *xdist=1*) HAVE_XDIST=1 ;; *) HAVE_XDIST=0 ;; esac
+echo "pre-push: python $PY (pytest-xdist: $([ "$HAVE_XDIST" = 1 ] && echo present || echo ABSENT))"
 
 # --- native libs ----------------------------------------------------------------------
 # libGLU.so.1 is absent from the system linker path on the NETT hosts and lives in a
@@ -142,7 +353,7 @@ _ucores=$(nproc 2>/dev/null || echo 1)
 # "unrecognized arguments" having run ZERO tests. The unit suite is only slower without
 # xdist, never wrong, so a host missing it should still be able to push.
 _unit_jobs_args=""
-if [ "$UNIT_JOBS" -gt 1 ] && "$PY" -c 'import xdist' 2>/dev/null; then
+if [ "$UNIT_JOBS" -gt 1 ] && [ "$HAVE_XDIST" = 1 ]; then
   _unit_jobs_args="-n $UNIT_JOBS"
 else
   UNIT_JOBS=1
@@ -176,6 +387,40 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
   # the latter with the comment "importing isaacsim without it stops at an interactive EULA
   # prompt". Every ARM was fine; only this hook was missing it, so the gate never gated.
   export OMNI_KIT_ACCEPT_EULA=YES
+  # ⛔ AND THE SECOND REASON THE WHOLE TREE SKIPPED, WHICH THE EULA FIX DID NOT COVER. On this
+  # host `import torch` maps miniconda's libstdc++.so.6.0.29 into the process BEFORE isaacsim
+  # asks for one, and isaacsim/kit/libcarb.so needs GLIBCXX_3.4.30, which 6.0.29 does not
+  # provide: "Unable to bootstrap inner kit kernel: .../libstdc++.so.6: version `GLIBCXX_3.4.30'
+  # not found". conftest's prerequisite gate catches that as "isaacsim import failed" and marks
+  # the tree skip, so the leg exits 0 in 1.6s. Reproduced three ways (chicken, 2026-09-17/18):
+  #     python -c "import torch, isaacsim"  -> bootstrap failure
+  #     python -c "import isaacsim"         -> OK          (torch is what loads the bad one)
+  #     LD_PRELOAD=<system libstdc++> python -c "import torch, isaacsim" -> OK
+  # ⛔ NO PATH VARIABLE FIXES AN ALREADY-RESIDENT LIBRARY. LD_LIBRARY_PATH changes where the
+  # loader LOOKS; by the time isaacsim asks, the wrong one is already mapped. LD_PRELOAD is the
+  # only lever that gets in first.
+  # ⛔⛔ GATED ON THE CONDITION, NEVER ON THE HOST. `_mapped_libstdcxx` asks the interpreter
+  # which file it actually ends up with, and the preload happens only when that file lacks the
+  # symbol AND a system library has it. lion probes a different venv and has never measured
+  # this; a host whose libstdc++ is already fine must not be handed a preload it does not need,
+  # because then the first symptom of a wrong one is an unrelated crash inside Kit.
+  _mapped_lib="$(_mapped_libstdcxx "$PY")"
+  _sys_lib="$(_system_libstdcxx)"
+  if [ -z "$_mapped_lib" ]; then
+    echo "pre-push: libstdc++ check INCONCLUSIVE (no /proc/self/maps, or torch did not import);"
+    echo "pre-push:   no preload applied. If the e2e leg skips, this is the first thing to check."
+  elif _has_glibcxx_3_4_30 "$_mapped_lib"; then
+    echo "pre-push: libstdc++ ok -- $_mapped_lib provides GLIBCXX_3.4.30; no preload needed."
+  elif [ -n "$_sys_lib" ]; then
+    export LD_PRELOAD="$_sys_lib${LD_PRELOAD:+:$LD_PRELOAD}"
+    echo "pre-push: ⚠ $_mapped_lib (the one torch loads) LACKS GLIBCXX_3.4.30, which isaacsim's"
+    echo "pre-push:   libcarb.so requires -- preloading $_sys_lib for the e2e leg only."
+  else
+    echo "pre-push: ⛔ $_mapped_lib lacks GLIBCXX_3.4.30 and NO system libstdc++ provides it" >&2
+    echo "  either, so the e2e tree will not boot Kit on this host. Install a newer libstdc++," >&2
+    echo "  or point the venv at one. The e2e verdict below will block the push rather than" >&2
+    echo "  let this report as a pass." >&2
+  fi
   # Build what the e2e tree needs from outside both repositories BEFORE running it: the
   # versioned USD assets are verified, and the frame cache (~/.cache/nett_frame_cache) is
   # compiled. Doing it here rather than letting the tests do it lazily is deliberate --
@@ -239,6 +484,12 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
     echo "pre-push:    more than one Kit process on a card. Lower it, or widen CUDA_VISIBLE_DEVICES." >&2
     exit 1
   fi
+  # The plugin answer comes from the interpreter probe above, so it is the SAME answer the unit
+  # leg used; the decision itself is a function so `--self-test` can exercise both directions.
+  E2E_JOBS="$(e2e_jobs_for_plugin "$E2E_JOBS" "$HAVE_XDIST")"
+  # ⚠ THE DEGRADE ABOVE MUST COME FIRST: the budget below divides the cores by E2E_JOBS, so
+  # computing it against a job count that is about to become 1 would hand a serial run
+  # cores/8 threads and make the slow path slower still.
   # ⚠ EACH CELL MUST GET A CPU BUDGET OR THE PARALLEL RUN IS SLOWER THAN THE SERIAL ONE.
   # Kit's carb pool, torch's intra-op pool and the process pool each size themselves to
   # the WHOLE host per cell, so N cells oversubscribe the box N-fold and collapse. One
@@ -266,20 +517,6 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
   # rounds. `loadgroup` distributes per TEST but honours @pytest.mark.xdist_group, which
   # test_outputs.py uses to keep its 4 tests (sharing one module-scoped training run) on a
   # single worker instead of rebuilding that fixture four times.
-  # ⚠ PROBE FOR xdist HERE, NOT IN $PROBE ABOVE. The interpreter probe deliberately does
-  # not require pytest-xdist, because a single-GPU host never passes `-n` and should not be
-  # rejected for lacking a plugin it will not use. But when E2E_JOBS > 1 we are about to
-  # pass `-n`, and a pytest without the plugin does not run the tree serially -- it exits 4
-  # with "unrecognized arguments: -n 8 --dist loadgroup" having run ZERO tests. That was
-  # then reported as "e2e tests failed" (measured 2026-08-12), which sent the reader hunting
-  # for a broken test that did not exist. Fail on the real cause instead.
-  if [ "$E2E_JOBS" -gt 1 ] && ! "$PY" -c 'import xdist' 2>/dev/null; then
-    echo "pre-push: BLOCKED -- $E2E_JOBS GPUs detected but pytest-xdist is missing from" >&2
-    echo "  $PY" >&2
-    echo "  Install the test extra:  $PY -m pip install -e '$SRC[test]'" >&2
-    echo "  Or force the (much slower, ~17 min) serial path:  NETT_E2E_JOBS=1 git push" >&2
-    exit 1
-  fi
   [ "$E2E_JOBS" -gt 1 ] && _jobs_args="-n $E2E_JOBS --dist loadgroup"
   # ⛔ THE PUSH'S CONNECTION IS ALREADY OPEN AND WILL NOW SIT IDLE FOR THE WHOLE RUN. git contacts
   # the remote for the ref advertisement BEFORE running this hook, so that socket idles for as long
@@ -387,22 +624,24 @@ if [ -z "${NETT_SKIP_E2E:-}" ]; then
     echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
     exit 1
   fi
-  _e2e_summary=$(grep -E "[0-9]+ (passed|failed|skipped|error)" /tmp/nett_repob_prepush_e2e.log | tail -1)
-  echo "$_e2e_summary"
-  # ⛔ rc 0 IS NOT EVIDENCE THE TREE RAN. The rc ladder above catches "collected NOTHING" (rc 5)
-  # but a tree that collects 23 and SKIPS 23 exits 0, and that is the same rot wearing a pass:
-  # every skip reason here is an environment prerequisite, so an all-skip means the harness is
-  # broken, never that the code is fine. Require at least one test to have actually PASSED.
-  _e2e_passed=$(printf '%s' "$_e2e_summary" | grep -oE "[0-9]+ passed" | grep -oE "[0-9]+")
-  if [ -z "$_e2e_passed" ] || [ "$_e2e_passed" -eq 0 ]; then
-    echo "pre-push: BLOCKED -- the e2e tree exited 0 but NOTHING RAN: ${_e2e_summary:-<no summary line>}" >&2
-    echo "  Every test in this tree is a real training run, so zero passed means the harness" >&2
-    echo "  refused, not that the code is good. Skip reasons:" >&2
-    grep -E "^SKIPPED" /tmp/nett_repob_prepush_e2e.log | head -10 >&2
+  # ⛔ rc 0 IS NOT EVIDENCE THE TREE RAN -- see `e2e_verdict`, which is where that judgement
+  # lives so that it can be tested without a push (`scripts/hooks/pre-push --self-test`).
+  if ! e2e_verdict /tmp/nett_repob_prepush_e2e.log; then
     echo "  full log: /tmp/nett_repob_prepush_e2e.log" >&2
     exit 1
   fi
+  _gate="unit + e2e (${E2E_PASSED} real training run(s))"
+else
+  # ⛔ AND A SKIPPED e2e MUST NOT READ AS A PASS EITHER. This branch printed nothing at all and
+  # then "pre-push: OK", so a push gated by the unit suite alone was indistinguishable in the
+  # output from one that had run 15 minutes of training. Same defect as the silent all-skip,
+  # one level up.
+  echo "pre-push: ⚠⚠ e2e SKIPPED by NETT_SKIP_E2E -- NO training test ran." >&2
+  echo "  This push is gated by the unit suite ALONE. Unset NETT_SKIP_E2E to gate for real." >&2
+  _gate="unit ONLY -- e2e skipped by NETT_SKIP_E2E"
 fi
 
-echo "pre-push: OK"
+# ⚠ THE FINAL LINE NAMES WHAT GATED, because "pre-push: OK" is the only line most readers keep,
+# and it has to be able to say the e2e did not run.
+echo "pre-push: OK ($_gate)"
 exit 0
