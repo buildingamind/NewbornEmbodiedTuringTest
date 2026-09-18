@@ -47,6 +47,27 @@ def _env_flag_strict(name: str, default: bool = False) -> bool:
     )
 
 
+def _env_choice(name: str, default: str, options: tuple[str, ...]) -> str:
+    """One of a fixed set of spellings; unset -> ``default``; anything else raises.
+
+    ⛔ THE NEAREST-MATCH TEMPTATION IS THE WHOLE REASON THIS RAISES. A knob that selects an
+    ARCHITECTURE has no safe fallback: quietly resolving "conv_sbd" or "pixel" to the default
+    trains a different model than the config names, and the arm is then filed under the wrong
+    cell of a screen whose entire value is that its cells differ by one factor.
+    """
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    value = raw.strip()
+    if value in options:
+        return value
+    raise ValueError(
+        f"{name}={raw!r} is not one of {list(options)}. Refusing to guess: this knob selects "
+        f"which model is trained, and a misspelling that resolved to the default would put the "
+        f"arm in the wrong cell of the comparison it was launched for."
+    )
+
+
 def _env_positive_int(name: str, default: int) -> int:
     """Integer knob > 0; unset -> ``default``; anything else raises."""
     raw = os.environ.get(name)

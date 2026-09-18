@@ -31,6 +31,7 @@ KNOBS = ("NETT_AUX_SLOTFG_BATCH", "NETT_AUX_SLOTFG_OFFSET", "NETT_AUX_SLOTFG_SLO
          "NETT_AUX_SLOTFG_DIM", "NETT_AUX_SLOTFG_DEC_HIDDEN", "NETT_AUX_SLOTFG_TEMP",
          "NETT_AUX_SLOTFG_W_SS", "NETT_AUX_SLOTFG_W_REC", "NETT_AUX_SLOTFG_LAMBDA",
          "NETT_AUX_SLOTFG_GAMMA", "NETT_AUX_SLOTFG_EGO", "NETT_AUX_SLOTFG_RAMP_CALLS",
+         "NETT_AUX_SLOTFG_DECODER", "NETT_AUX_SLOTFG_TARGET", "NETT_AUX_SLOTFG_DECODE_SCALE",
          "NETT_AUX_EGO_BATCH", "NETT_AUX_EGO_OFFSET", "NETT_AUX_EGO_TRANSIT_FRAC")
 
 
@@ -183,14 +184,41 @@ def test_the_separation_term_prefers_a_spread_slot_marginal_to_one_slot_taking_e
 
 # ------------------------------------------------------------------ gradients and training
 
-def test_gradient_reaches_the_trunk_and_every_live_head_parameter():
-    enc, comp = _composite()
+CELLS = [("tokmlp", "ema_tokens"), ("tokmlp", "pixels"),
+         ("convsbd", "ema_tokens"), ("convsbd", "pixels")]
+
+
+def _cell(monkeypatch, decoder, target, scale=None):
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODER", decoder)
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", target)
+    # ⚠ DELETED, not left: a scale set by an earlier call in the same test would otherwise carry
+    # into a token-target cell and raise -- the leak this helper exists to make impossible.
+    if scale is None:
+        monkeypatch.delenv("NETT_AUX_SLOTFG_DECODE_SCALE", raising=False)
+    else:
+        monkeypatch.setenv("NETT_AUX_SLOTFG_DECODE_SCALE", str(scale))
+    return _composite()
+
+
+@pytest.mark.parametrize("decoder,target", CELLS)
+def test_gradient_reaches_the_trunk_and_every_live_head_parameter(monkeypatch, decoder, target):
+    """⛔ ALL FOUR CELLS OF THE SCREEN, TRAINABLE. The screen's result is only checkable if the
+    configuration it screened can still be BUILT and RUN from the shipped code -- and a cell
+    whose decoder gets no gradient is not the cell that was measured, however it is spelled.
+
+    `dead == []` is the other half: this file already refuses dead parameters in an optimizer
+    param group (see `attn.mu`), and the decoder modules are now built per cell precisely so
+    that the unused one is ABSENT rather than present-and-untrained.
+    """
+    enc, comp = _cell(monkeypatch, decoder, target)
     comp.term.compute(enc, None).backward()
     assert enc.patch_embed.weight.grad.abs().sum() > 0
     dead = [n for n, p in comp.term.head.named_parameters()
             if p.requires_grad and (p.grad is None or p.grad.abs().sum() == 0)]
     assert dead == [], dead
-    assert all(p.grad is None and not p.requires_grad for p in comp._teacher.module.parameters())
+    if comp._teacher is not None:
+        assert all(p.grad is None and not p.requires_grad
+                   for p in comp._teacher.module.parameters())
 
 
 def test_the_loss_falls_on_a_fixed_window():
@@ -353,10 +381,44 @@ def test_defaults_are_the_spec_values():
     assert term.offset == 8 and term.use_ego is False
 
 
-def test_the_row_is_registered_and_carries_the_shared_teacher():
+def test_the_row_is_registered_and_carries_the_shared_teacher_ONLY_WHERE_ONE_IS_USED(
+        monkeypatch):
+    """⛔ THE TEACHER IS OWNED BY WHOEVER NEEDS IT, AND UNDER THE SHIPPED DEFAULT NOBODY DOES.
+
+    `cltt_ref` reads no teacher at all (zero references in its module); the composite builds one
+    only because a TERM asks. With a pixel target and the ego off, this row's reconstruction is
+    against the observation, so the row asks for none -- and a teacher nobody reads is a deepcopy
+    of the trunk plus an EMA step and a teacher forward per minibatch, paid for nothing.
+
+    ⚠ AND `ema_updates` GOES SENTINEL, WHICH IS A VISIBLE CHANGE FOR A READER: on this row it now
+    means "no term uses an EMA target", not "the EMA failed to step".
+    """
     aux = AUX_LOSSES["slot_fg"](_encoder())
     assert isinstance(aux, WithCLTTRef) and isinstance(aux.term, SlotFGTerm)
-    assert aux.name == "slot_fg" and aux._teacher is not None
+    assert aux.name == "slot_fg"
+    assert aux._teacher is None and aux.term._teacher is None, (
+        "the winning cell reconstructs PIXELS; nothing in the row reads an EMA teacher")
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", "ema_tokens")
+    tok = AUX_LOSSES["slot_fg"](_encoder())
+    assert tok._teacher is not None and tok.term._teacher is tok._teacher
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", "pixels")
+    monkeypatch.setenv("NETT_AUX_SLOTFG_EGO", "1")
+    ego = AUX_LOSSES["slot_fg"](_encoder())
+    assert ego._teacher is not None, "row 05's ego residual has its own EMA token target"
+
+
+def test_the_ema_teacher_is_not_stepped_by_a_term_that_does_not_use_it(monkeypatch):
+    """⛔ NOT MERELY UNUSED -- NOT STEPPED, AND NOT BUILT. A teacher that is stepped but unread
+    still costs a trunk-sized deepcopy and an EMA pass per minibatch, and still publishes an
+    `ema_updates` series that a reader would take as evidence that some target used it."""
+    enc, comp = _cell(monkeypatch, "convsbd", "pixels")
+    comp.compute(enc, None)
+    assert comp._teacher is None
+    assert comp.last_scalars["ema_updates"] == NOT_MEASURED
+    enc2, comp2 = _cell(monkeypatch, "convsbd", "ema_tokens")
+    comp2.compute(enc2, None)
+    assert comp2._teacher is not None and comp2._teacher.updates == 1
+    assert comp2.last_scalars["ema_updates"] == 1.0
 
 
 def test_the_foreground_correlation_is_withheld_exactly_when_the_target_is_not_established(
@@ -382,3 +444,142 @@ def test_the_foreground_correlation_is_withheld_exactly_when_the_target_is_not_e
         s = term.last_scalars
         assert s["fg_target_engaged"] == flag
         assert (s["fg_objectness_corr"] != NOT_MEASURED) is expect_number
+
+
+# ------------------------------------------------------------------ the screened configuration
+
+def test_the_defaults_are_the_WINNING_PAIR_and_every_spelling_is_validated(monkeypatch):
+    """⛔ THE DEFAULT IS A RESULT, NOT A PREFERENCE (FINDINGS §4by.1: 0.531 +/- 0.033 against the
+    shipped 0.320 +/- 0.028), and the knobs exist so the other three cells stay reproducible.
+
+    Every value raises rather than falling back, because these select WHICH MODEL IS TRAINED: a
+    misspelling that resolved to the default would file the arm under the wrong cell of the very
+    comparison it was launched for, and nothing downstream could tell.
+    """
+    term = SlotFGTerm(_encoder())
+    assert (term.decoder_kind, term.target_kind, term.decode_scale) == ("convsbd", "pixels", 1)
+    for knob, bad in (("NETT_AUX_SLOTFG_DECODER", "conv_sbd"),
+                      ("NETT_AUX_SLOTFG_DECODER", "sbd"),
+                      ("NETT_AUX_SLOTFG_TARGET", "pixel"),
+                      ("NETT_AUX_SLOTFG_TARGET", "tokens"),
+                      ("NETT_AUX_SLOTFG_DECODE_SCALE", "3"),
+                      ("NETT_AUX_SLOTFG_DECODE_SCALE", "0"),
+                      ("NETT_AUX_SLOTFG_DECODE_SCALE", "half")):
+        monkeypatch.setenv(knob, bad)
+        with pytest.raises(ValueError, match="is not one of"):
+            SlotFGTerm(_encoder())
+        monkeypatch.delenv(knob)
+    # ⛔ AND THE COMBINATION, not just the values: a token target decodes onto the token grid,
+    # where a resolution divisor is a knob nothing reads -- which is a control that is not there.
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", "ema_tokens")
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODE_SCALE", "2")
+    with pytest.raises(ValueError, match="needs NETT_AUX_SLOTFG_TARGET=pixels"):
+        SlotFGTerm(_encoder())
+
+
+@pytest.mark.parametrize("decoder,target", CELLS)
+def test_only_the_modules_this_cell_uses_are_built(monkeypatch, decoder, target):
+    """The unused decoder is ABSENT, not present-and-frozen: a parameter in the optimizer's group
+    receiving no gradient is indistinguishable from a pathway meant to train and silently not."""
+    monkeypatch.setenv("NETT_AUX_SLOTFG_DECODER", decoder)
+    monkeypatch.setenv("NETT_AUX_SLOTFG_TARGET", target)
+    keys = set(SlotFGTerm(_encoder()).head.keys())
+    assert ({"sbd", "sbd_pos"} <= keys) == (decoder == "convsbd")
+    assert ({"decoder", "pos"} <= keys) == (decoder == "tokmlp")
+    assert not ({"sbd"} & keys and {"decoder"} & keys), "one decoder per cell, never both"
+
+
+def test_the_pixel_target_is_the_TENSOR_THE_ENCODER_SAW(monkeypatch):
+    """⛔ HOW THE ALIGNMENT IS VERIFIED, IN TWO INDEPENDENT WAYS.
+
+    (1) VALUE: the reconstruction loss equals, to the bit, the MSE of this cell's decode against
+        `window.prepared_t[:, -cpf:]` -- the exact tensor object `spatial_tokens` was handed in
+        `_core`, sliced. Not a tensor with the same values: the same tensor.
+    (2) PROVENANCE: the tensor handed to `mse_loss` SHARES STORAGE with `window.prepared_t`, so
+        it is a view of that very buffer and not a copy that merely matches today. A target
+        built from a second preparation could differ in normalisation, resize or which frame is
+        current, and would still look plausible.
+        ⚠ COUNTING `_prepare_image` CALLS DOES NOT WORK HERE, and the first version of this test
+        did: `encode_tokens_prepared` calls it under `_skip_prepare`, where it is a pass-through,
+        so the call count is 3 on the correct code. Storage identity is the question actually
+        being asked.
+
+    ⚠ `-cpf:` and not `3:6`: preparation orders channels [oldest, ..., current], so the CURRENT
+    frame is at the END. They coincide at the campaign eye's 6 RGB channels -- which is what the
+    screen measured -- and differ under dvs_polarity, where one frame is two channels.
+    """
+    enc, comp = _cell(monkeypatch, "convsbd", "pixels")
+    term = comp.term
+    window = term.draw(enc)
+    from nett_skrl.brain.aux import slot_fg_aux
+
+    seen = {}
+    real_mse = slot_fg_aux.F.mse_loss
+
+    def spy(pred, target, **kw):
+        seen["target"] = target
+        return real_mse(pred, target, **kw)
+
+    # ⚠ RESTORED BY NAME, NOT BY `monkeypatch.undo()`: `slot_fg_aux.F` IS torch.nn.functional,
+    # so this patch is global while it is up, and undo() would also roll back the env this
+    # fixture and helper set -- a teardown that reaches further than the thing it is undoing.
+    monkeypatch.setattr(slot_fg_aux.F, "mse_loss", spy)
+    try:
+        term._core(enc, window)
+    finally:
+        monkeypatch.setattr(slot_fg_aux.F, "mse_loss", real_mse)
+    got = seen["target"]
+    assert got.untyped_storage().data_ptr() == window.prepared_t.untyped_storage().data_ptr(), (
+        "the target must be a VIEW of the tensor the encoder consumed, not a copy of it")
+    assert torch.equal(got, window.prepared_t[:, -term.cpf:])
+    from nett_skrl.brain.aux.token_features import spatial_tokens
+    with torch.no_grad():
+        z_t = spatial_tokens(enc, window.prepared_t)[0]
+        init = term.head["init"].value.expand(z_t.shape[0], -1, -1)
+        slots_t, _ = term._slots(z_t, init, term.ITERS_FIRST)
+        expected = F.mse_loss(term._decode(slots_t), window.prepared_t[:, -term.cpf:])
+    assert torch.equal(term._reconstruction(window, slots_t), expected)
+    assert term.cpf == 3 and window.prepared_t.shape[1] == 6, (
+        "at the campaign eye the current frame is channels 3:6 == -3:, which is what was screened")
+
+
+@pytest.mark.parametrize("decoder", ["convsbd", "tokmlp"])
+@pytest.mark.parametrize("scale", [1, 2, 4])
+def test_decode_scale_changes_the_decoders_resolution_and_NOT_the_loss_scale(
+        monkeypatch, decoder, scale):
+    """⛔ THE FALLBACK MUST NOT QUIETLY BECOME A DIFFERENT OBJECTIVE. Decoding at half resolution
+    is a memory choice; DOWNSAMPLING THE TARGET to meet it would be a change of task, and the
+    loss would shift by a factor nobody asked for -- so a screen comparing scales would be
+    comparing two things at once and would report the wrong one.
+
+    The prediction is upsampled to the target instead. The proof is a CONSTANT prediction: its
+    upsample is the same constant at every scale, so the MSE against the same target must be
+    IDENTICAL, bitwise, across scales. Any target-side rescaling shows up here immediately.
+    """
+    enc, comp = _cell(monkeypatch, decoder, "pixels", scale)
+    term = comp.term
+    window = term.draw(enc)
+    assert term.decode_hw == (H // scale, W // scale)
+    slots = torch.randn(window.prepared_t.shape[0], term.slots, term.slot_dim)
+    out = term._decode(slots)
+    assert out.shape == (window.prepared_t.shape[0], term.cpf, H // scale, W // scale)
+    assert torch.isfinite(term._reconstruction(window, slots))
+    # the scale-invariance of the loss units, on a prediction the upsample cannot change
+    term._decode = lambda s: torch.full((s.shape[0], term.cpf, *term.decode_hw), 0.25)
+    pinned = float(term._reconstruction(window, slots))
+    expected = float(F.mse_loss(torch.full_like(window.prepared_t[:, -term.cpf:], 0.25),
+                                window.prepared_t[:, -term.cpf:]))
+    assert pinned == expected, (scale, pinned, expected)
+
+
+def test_the_cell_goes_out_in_the_scalars(monkeypatch):
+    """A `rec` series is unreadable without its cell: token targets and pixel targets are
+    different tensors in different units, so the number alone cannot say which loss it is."""
+    enc, comp = _cell(monkeypatch, "convsbd", "pixels", 2)
+    comp.term.compute(enc, None)
+    s = comp.term.last_scalars
+    assert (s["decoder"], s["target"], s["decode_scale"]) == (1.0, 1.0, 2.0)
+    assert s["head_params"] == float(sum(p.numel() for p in comp.term.head.parameters()))
+    enc2, comp2 = _cell(monkeypatch, "tokmlp", "ema_tokens", None)
+    comp2.term.compute(enc2, None)
+    assert (comp2.term.last_scalars["decoder"], comp2.term.last_scalars["target"]) == (0.0, 0.0)

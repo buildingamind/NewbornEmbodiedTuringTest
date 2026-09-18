@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-202 variables.
+205 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -47,17 +47,20 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_PATCH_TEMP` | `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:91` |
 | `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2)` | `nett_skrl/brain/aux/cltt_patch_aux.py:89` |
 | `NETT_AUX_SLOTFG_BATCH` | `32` | `nett_skrl/brain/aux/token_term.py:222` |
-| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:101` |
-| `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:88` |
-| `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:94` |
-| `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:93` |
-| `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:92` |
+| `NETT_AUX_SLOTFG_DECODER` | `"convsbd"` | `nett_skrl/brain/aux/slot_fg_aux.py:137` |
+| `NETT_AUX_SLOTFG_DECODE_SCALE` | `"1"` | `nett_skrl/brain/aux/slot_fg_aux.py:139` |
+| `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:158` |
+| `NETT_AUX_SLOTFG_DIM` | `64` | `nett_skrl/brain/aux/slot_fg_aux.py:121` |
+| `NETT_AUX_SLOTFG_EGO` | `False` | `nett_skrl/brain/aux/slot_fg_aux.py:127` |
+| `NETT_AUX_SLOTFG_GAMMA` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:126` |
+| `NETT_AUX_SLOTFG_LAMBDA` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:125` |
 | `NETT_AUX_SLOTFG_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
-| `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:99` |
-| `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:87` |
-| `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:89` |
-| `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:91` |
-| `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:90` |
+| `NETT_AUX_SLOTFG_RAMP_CALLS` | `2000` | `nett_skrl/brain/aux/slot_fg_aux.py:132` |
+| `NETT_AUX_SLOTFG_SLOTS` | `4` | `nett_skrl/brain/aux/slot_fg_aux.py:120` |
+| `NETT_AUX_SLOTFG_TARGET` | `"pixels"` | `nett_skrl/brain/aux/slot_fg_aux.py:138` |
+| `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:122` |
+| `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:124` |
+| `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:123` |
 | `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:519` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
