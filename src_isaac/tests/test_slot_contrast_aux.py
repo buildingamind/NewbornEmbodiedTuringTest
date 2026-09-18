@@ -137,12 +137,56 @@ def test_the_ema_target_is_not_in_the_aux_parameter_set():
     assert not (tgt_ids & {id(p) for p in aux.parameters()})
 
 
-def test_slot_count_does_not_change_the_parameter_count():
-    """Slot attention shares weights across slots, so K is free to pick on the scene."""
+def test_slot_count_changes_the_parameter_count_by_exactly_the_per_slot_init():
+    """⛔ INVERTED 2026-09-18, AND DELIBERATELY NOT DELETED. This asserted the OPPOSITE --
+    "K does not change the parameter count" -- which was true only because `mu`/`log_sigma`
+    were `(1, 1, slot_dim)`: ONE distribution broadcast to every slot. That is the defect that
+    made identical slots an absorbing state (softmax over slots + identical slots => uniform
+    attention => identical update), and it is now fixed to `(1, K, slot_dim)`.
+
+    ⭐ THE INVERTED TEST IS STRICTLY STRONGER THAN THE ONE IT REPLACES. The old form passed for
+    ANY K-independent parameterisation, including the broken one; this pins the slope to the
+    exact per-slot cost, so a future revert to a shared init FAILS here rather than silently
+    restoring the collapse. A test that merely allowed the new count would not have done that.
+    """
     enc = _encoder()
     sizes = {k: sum(p.numel() for p in slotc.SlotContrastAuxLoss(enc, slots=k).parameters())
              for k in (4, 6, 8)}
-    assert len(set(sizes.values())) == 1, sizes
+    slot_dim = slotc.SlotContrastAuxLoss(enc, slots=4).slot_dim
+    per_slot = 2 * slot_dim                       # mu and log_sigma, one row each per slot
+    assert sizes[6] - sizes[4] == 2 * per_slot, sizes
+    assert sizes[8] - sizes[6] == 2 * per_slot, sizes
+    assert len(set(sizes.values())) == 3, sizes
+
+
+def test_slots_do_not_collapse_when_the_init_noise_vanishes():
+    """⛔⛔ THE REGRESSION TEST FOR THE ABSORBING STATE, and the reason the fix exists.
+
+    `attn = logits.softmax(dim=1)` is a softmax OVER SLOTS, so identical slots give every
+    position a uniform 1/K attention and an identical GRU update: once the slots coincide they
+    can never separate. With a SHARED `mu`, the only thing that ever distinguished slot k from
+    slot j was the random draw -- so the partition decays to nothing as `log_sigma` trains down.
+
+    Measured on chicken with the shared init, across-slot variance of the attention map:
+        log_sigma  0.0 -> 5.02e-03   -6.0 -> 4.32e-06   -12.0 -> 2.68e-11   (i.e. one slot)
+    and with the per-slot init it PLATEAUS at ~4.7e-04 instead of decaying.
+
+    ⚠ The assertion is about the LIMIT, not about a magnitude: driving `log_sigma` to -12 makes
+    the init noise negligible, so anything left is carried by the learned per-slot means. A
+    shared init scores ~0 here by construction, which is what makes this discriminating.
+    """
+    import torch
+    torch.manual_seed(1)
+    sa = slotc.SlotAttention(64, 64, 4)
+    with torch.no_grad():
+        sa.log_sigma.fill_(-12.0)                 # init noise ~ 0: only learned means remain
+    torch.manual_seed(0)
+    with torch.no_grad():
+        _, attn = sa(torch.randn(8, 40, 64))
+    across_slot = float(attn.var(dim=1).mean())
+    assert across_slot > 1e-5, (
+        f"slots collapsed to one: across-slot attention variance {across_slot:.3e}. "
+        "This is what a shared (1, 1, slot_dim) init produces (~1e-11).")
 
 
 # ---------------------------------------------------------------------------
@@ -378,7 +422,11 @@ def test_the_head_holds_every_trainable_tensor_the_module_has():
     optimises the former, the promotion note counts the latter."""
     aux = slotc.SlotContrastAuxLoss(_encoder())
     assert {id(p) for p in aux.head.parameters()} == {id(p) for p in aux.parameters()}
-    assert sum(p.numel() for p in aux.head.parameters()) == 137_025
+    # ⛔ 137_025 until 2026-09-18. `mu`/`log_sigma` went from (1, 1, slot_dim) to (1, K, slot_dim),
+    # which adds 2 * (K - 1) * slot_dim = 2 * 5 * 64 = 640 at the default K=6. The literal is
+    # UPDATED rather than loosened: this number is what the promotion note counts, so a test that
+    # stopped pinning it exactly would stop catching the thing it exists to catch.
+    assert sum(p.numel() for p in aux.head.parameters()) == 137_665
 
 
 def test_the_whole_trainable_set_lands_on_the_encoders_device():

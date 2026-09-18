@@ -127,16 +127,40 @@ def spatial_features(encoder: nn.Module, prepared: torch.Tensor) -> torch.Tensor
 class SlotAttention(nn.Module):
     """Slot attention (Locatello et al. 2020), the reference's iterative form.
 
-    ⚠ Weights are SHARED across slots -- only `mu`/`log_sigma` are per-slot-distribution --
-    so the slot count K does not change the parameter count. K is therefore chosen on the
-    scene (2 objects + background + bezel -> K=6), not on the budget.
+    ⚠ Weights are SHARED across slots -- only `mu`/`log_sigma` are per-slot-distribution.
+    ⛔ CORRECTED 2026-09-18: that sentence was true of the INTENT and false of the code until
+    today (`mu`/`log_sigma` were `(1, 1, slot_dim)`), and the rest of this paragraph used to
+    read "so the slot count K does not change the parameter count". IT NOW DOES, by
+    `2 * K * slot_dim`. K is still chosen on the scene (2 objects + background + bezel -> K=6)
+    rather than on the budget -- that reasoning never depended on the count being flat, and
+    the added parameters are ~0.4% of this head. See the block on `self.mu` for the measurement.
     """
 
     def __init__(self, in_dim: int, slot_dim: int, slots: int, iters: int = 3) -> None:
         super().__init__()
         self.slots, self.iters, self.scale = slots, iters, slot_dim ** -0.5
-        self.mu = nn.Parameter(torch.randn(1, 1, slot_dim) * 0.02)
-        self.log_sigma = nn.Parameter(torch.zeros(1, 1, slot_dim))
+        # ⛔⛔⛔ PER-SLOT, NOT SHARED (1, K, D) -- FIXED 2026-09-18. These were `(1, 1, slot_dim)`:
+        # ONE distribution broadcast to every slot, so the ONLY thing distinguishing slot k from
+        # slot j at initialisation was the random draw. Since `attn = logits.softmax(dim=1)` is a
+        # softmax OVER SLOTS, identical slots produce identical logits, hence a uniform 1/K
+        # attention for every position, hence an identical GRU update -- **identical slots are an
+        # ABSORBING STATE**, and the run walks into it as `log_sigma` trains down.
+        # MEASURED on chicken before the fix, across-slot variance of the attention map (exactly
+        # zero iff every slot has the same map), K=4, B=8, N=40, D=64, untrained module:
+        #     log_sigma   0.0 -> 5.02e-03      -6.0 -> 4.32e-06
+        #                -2.0 -> 1.76e-03     -12.0 -> 2.68e-11
+        # ⇒ the partition the softmax-over-slots exists to create is carried ENTIRELY by init
+        # noise, and it vanishes as that noise shrinks. The module docstring above already claimed
+        # "only `mu`/`log_sigma` are per-slot-distribution"; the shapes made that FALSE, and this
+        # makes the code match the sentence that was already there.
+        # ⭐ The correct form was in this same tree the whole time: `motok_aux.py:152` declares
+        # `self.slot_mu = nn.Parameter(torch.randn(1, num_slots, slot_dim))`.
+        # ⚠ K NOW CHANGES THE PARAMETER COUNT (by 2*K*slot_dim), which the docstring's "K does not
+        # change the parameter count" denied. That sentence is corrected there.
+        # ⚠ NOT CLAIMED: that this is SUFFICIENT for binding. It removes a defect measured to be
+        # sufficient to PREVENT it. Whether something else also prevents it is untested.
+        self.mu = nn.Parameter(torch.randn(1, slots, slot_dim) * 0.02)
+        self.log_sigma = nn.Parameter(torch.zeros(1, slots, slot_dim))
         self.norm_in = nn.LayerNorm(in_dim)
         self.norm_slots = nn.LayerNorm(slot_dim)
         self.norm_mlp = nn.LayerNorm(slot_dim)

@@ -180,14 +180,14 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
-| `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:393` |
-| `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:382` |
-| `NETT_SLOTC_EMA` | `0.996` | `nett_skrl/brain/aux/slot_contrast_aux.py:386` |
-| `NETT_SLOTC_NO_DETACH` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:392` |
-| `NETT_SLOTC_SLOTS` | `6` | `nett_skrl/brain/aux/slot_contrast_aux.py:381` |
-| `NETT_SLOTC_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_contrast_aux.py:383` |
-| `NETT_SLOTC_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_contrast_aux.py:385` |
-| `NETT_SLOTC_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_contrast_aux.py:384` |
+| `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:417` |
+| `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:406` |
+| `NETT_SLOTC_EMA` | `0.996` | `nett_skrl/brain/aux/slot_contrast_aux.py:410` |
+| `NETT_SLOTC_NO_DETACH` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:416` |
+| `NETT_SLOTC_SLOTS` | `6` | `nett_skrl/brain/aux/slot_contrast_aux.py:405` |
+| `NETT_SLOTC_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_contrast_aux.py:407` |
+| `NETT_SLOTC_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_contrast_aux.py:409` |
+| `NETT_SLOTC_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_contrast_aux.py:408` |
 | `NETT_STAGGER_SECS` | `"12"` | `examples/campaign_retest_launch.py:53`<br>`examples/campaign_run.py:211` |
 | `NETT_STALL_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/stall_guard.py:298` |
 | `NETT_STALL_EXIT_CODE` | `"77"`, `77` | `nett_skrl/runtime/reap.py:744`<br>`nett_skrl/runtime/stall_guard.py:188`<br>`nett_skrl/runtime/stall_guard.py:332`<br>`nett_skrl/runtime/stall_guard.py:345` |
