@@ -81,6 +81,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..models.utils.features import _CACHE_ATTR
 from .cltt_ref_aux import episode_window_batch, draw_episode_window
 
 
@@ -482,9 +483,37 @@ class SlotContrastAuxLoss(nn.Module):
         """EMA the target toward the live trunk. No gradient, by construction."""
         import copy
         if not self._target:
-            tgt = copy.deepcopy(encoder).eval()
+            # ⛔⛔ NEUTRALISE THE SHARED FEATURE CACHE AROUND THE COPY, OR THIS DIES AT UPDATE 1 ON
+            # EVERY GPU ARM. Inside `AuxLossPPO.update` the actor and critic have already run under
+            # `shared_feature_cache`, so the encoder carries `_nett_shared_feature_cache = (x, feats)`
+            # with `feats` a NON-LEAF tensor holding the minibatch graph. `copy.deepcopy(module)`
+            # copies `__dict__`, and `Tensor.__deepcopy__` raises
+            #   RuntimeError: Only Tensors created explicitly by the user (graph leaves) support the
+            #   deepcopy protocol
+            # ⛔ IT NEVER REPRODUCES ON CPU OR IN THE UNIT SUITE, because the cache path is inactive
+            # there — 1627 tests pass with this bug live. It reproduces only in a real training run.
+            # ⭐ THIS IS A BACK-PORT, AND THE ASYMMETRY IS THE POINT: `ema_teacher.py` documents this
+            # exact failure in its own module docstring, and credits THIS file with having
+            # "established the form (deepcopy, requires_grad_(False), no_grad EMA)". The fix was
+            # applied to the derived shared teacher and never brought back to the original, so the
+            # module that the documentation names as the source of the pattern was the one left
+            # broken. A fix written for a descendant does not reach its ancestor.
+            # ⚠ EMATeacher additionally copies at CONSTRUCTION rather than lazily at update 1.
+            # That is the stronger fix and is NOT adopted here: this target is built lazily by
+            # design, and changing when it is built changes which weights it starts from — a
+            # behaviour change, where this guard is not. Restores `prev` in a `finally` so an
+            # exception inside deepcopy cannot leave the live encoder without its cache.
+            prev = getattr(encoder, _CACHE_ATTR, None)
+            if prev is not None:
+                setattr(encoder, _CACHE_ATTR, None)
+            try:
+                tgt = copy.deepcopy(encoder).eval()
+            finally:
+                if prev is not None:
+                    setattr(encoder, _CACHE_ATTR, prev)
             for p in tgt.parameters():
                 p.requires_grad_(False)
+            setattr(tgt, _CACHE_ATTR, None)
             self._target.append(tgt)
             return
         tgt = self._target[0]

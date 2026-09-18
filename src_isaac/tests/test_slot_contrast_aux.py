@@ -900,3 +900,46 @@ def test_the_t_plus_1_init_carries_gradient(monkeypatch):
     seen = _record_inits(aux, monkeypatch)
     aux.compute(enc, obs[0])
     assert seen[1].requires_grad, "a detached init makes the recurrence a stop-gradient"
+
+
+def test_update_target_survives_a_live_shared_feature_cache():
+    """⛔⛔ THE FAILURE THAT KILLED THE FIRST REAL RUN OF THIS MODULE, AND THAT 1627 UNIT TESTS MISS.
+
+    Inside `AuxLossPPO.update` the actor and critic have already run under `shared_feature_cache`,
+    so the encoder carries `_nett_shared_feature_cache = (x, feats)` with `feats` a NON-LEAF tensor
+    holding the minibatch graph. `_update_target` deepcopies the encoder on the FIRST update, and
+    `copy.deepcopy(module)` copies `__dict__`, so `Tensor.__deepcopy__` raises:
+
+        RuntimeError: Only Tensors created explicitly by the user (graph leaves) support the
+        deepcopy protocol
+
+    ⛔ IT CANNOT REPRODUCE BY ACCIDENT ON CPU — the cache path is inactive in the suite, which is
+    exactly why the whole suite passed while the module could not survive update 1 on a GPU arm.
+    So this test does not "run the module and hope": it CONSTRUCTS the condition, which is the only
+    way a CPU test can speak about it at all.
+
+    ⭐ The guard is a BACK-PORT. `ema_teacher.py` documents this exact crash in its own docstring
+    and credits this file with having "established the form" — the fix went into the derived shared
+    teacher and never came back to the original. A fix written for a descendant does not reach its
+    ancestor, and nothing failed until a real arm ran.
+    """
+    import torch
+    from nett_skrl.brain.models.utils.features import _CACHE_ATTR
+
+    enc = _encoder()
+    aux = slotc.SlotContrastAuxLoss(enc)
+
+    x = torch.zeros(2, 80, 128, 3, dtype=torch.uint8)
+    leaf = torch.zeros(2, 8, requires_grad=True)
+    non_leaf = leaf * 2                       # grad_fn set => NOT a graph leaf
+    assert non_leaf.grad_fn is not None, "fixture is inert: the tensor must be non-leaf"
+    setattr(enc, _CACHE_ATTR, (x, non_leaf))
+
+    aux._update_target(enc)                   # raises RuntimeError without the guard
+
+    assert aux._target, "no target was built"
+    # the LIVE encoder keeps its cache -- the guard restores it, it does not consume it
+    assert getattr(enc, _CACHE_ATTR, None) is not None
+    assert getattr(enc, _CACHE_ATTR)[1] is non_leaf
+    # and the COPY must not carry a stale cache into the target
+    assert getattr(aux._target[0], _CACHE_ATTR, None) is None
