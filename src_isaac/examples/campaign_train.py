@@ -66,6 +66,8 @@ mistake; body wrappers come from the arm's MODELS entry, never from the environm
   NETT_REWARD_TYPES comma-sep (default closeness); e.g. closeness,completeness
   NETT_DESIGN_SHEET / NETT_MEDIA_ROOT  override the per-experiment sheet/media defaults
   NETT_AUX_WEIGHT  unused for VICReg (driver forces 1.0 per user directive)
+  NETT_AUX_WEIGHT_OVERRIDE  diagnostic only: replaces the model spec's aux_weight (default unset)
+  NETT_LEARNING_RATE  PPO Adam learning rate (default 3e-4, the campaign value)
 """
 from __future__ import annotations
 from _paths import VIDEOS_ROOT
@@ -790,7 +792,11 @@ def main() -> int:
     aux_kind = spec.get("aux")
     if aux_kind:
         os.environ["NETT_AUX_LOSS"] = str(aux_kind)
-        os.environ["NETT_AUX_WEIGHT"] = str(spec.get("aux_weight", 1.0))
+        # NETT_AUX_WEIGHT_OVERRIDE: replaces the spec's aux_weight for a DIAGNOSTIC arm (2026-09-21
+        # owner diagnostic: aux-weight dose on a fixed model). Unset = the spec's value, unchanged.
+        # The spec stays the record of the model; the override is recorded by the launcher's environ
+        # capture and must be named in the queue row.
+        os.environ["NETT_AUX_WEIGHT"] = os.environ.get("NETT_AUX_WEIGHT_OVERRIDE") or str(spec.get("aux_weight", 1.0))
     else:
         # ensure no stray aux leaks in from a shared shell. BOTH keys: popping the
         # kind alone leaves a stale weight behind, which is inert (kind gates first
@@ -938,7 +944,10 @@ def main() -> int:
             "rollouts": _rollouts,
             # batch = rollouts / mini_batches = 8000 / 16 = 500 = ONE EPISODE.
             "mini_batches": int(os.environ.get("NETT_MINIBATCHES", "16")),
-            "learning_rate": 3e-4,
+            # NETT_LEARNING_RATE: PPO Adam learning rate. Default 3e-4 is the campaign value and is
+            # unchanged; the knob exists for the 2026-09-21 owner diagnostic (ViT-family policies show
+            # 2-4x the KL and clip fraction of the CNNs at the shared 3e-4). Unset = campaign default.
+            "learning_rate": float(os.environ.get("NETT_LEARNING_RATE", "3e-4")),
             "learning_epochs": 10,
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
