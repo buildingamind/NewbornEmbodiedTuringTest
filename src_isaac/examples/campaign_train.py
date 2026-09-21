@@ -260,6 +260,50 @@ VIVIT_1M_CFG = {**VIVIT_CFG, "embed_dim": 177}  # enc 993,128 @ 128x80, 2 frames
 #     embed_dim 144, 3 frames -> enc 914,912 / agent 916,453  frames AND +110,592 (CONFOUNDED)
 #     embed_dim 132, 3 frames -> enc 800,696 / agent 802,237  frames alone, size at ViT2F -0.45%
 VIT_3F_PM_CFG = {**VIT_CFG, "embed_dim": 132}  # enc 800,696 / agent 802,237 @ 128x80, 3 frames
+#
+# ── ⭐ CAPACITY LADDER, owner-requested 2026-09-21: "is there a sweet spot in parameter counts
+#    for performance and learnability?" Pre-registered at NETT_Global_Workspace
+#    `notes/commander/capacity-sweep-preregistration.md` BEFORE any row.
+#
+#    THE EXISTING SIZE SERIES IS NOT AN ANSWER TO IT. ViT2F 500K/800K/1M is a 1.95x span and
+#    published a NULL; the `CNNcap*` arms span 12.7%, which is a NON-MEASUREMENT rather than a
+#    null. A capacity question needs a span wide enough for capacity to bind, so this ladder is
+#    built on the 3DCNN -- the family whose NF readings are near-exchangeable across arms
+#    (§4dh.41e), i.e. the one where an arm-level contrast is cheapest to resolve.
+#
+#    ⚠ ONLY `conv_dim` varies. Every other field is "3DCNN"'s and framestack stays True, so the
+#    rungs differ in PARAMETER COUNT ALONE. Counts MEASURED at the LIVE eye (128x80) at
+#    _FRAMESTACK_N=2 by constructing the encoder through the arm's real body wrappers -- the
+#    same method and the same tool that reproduces the three ViT2F lines above TO THE DIGIT.
+#        conv_dim  26 -> enc   248,762 / agent   250,303   LOW
+#        conv_dim  77 -> enc   695,981 / agent   697,522   BASE == "3DCNN" exactly as it stands
+#        conv_dim 230 -> enc 2,037,638 / agent 2,039,179   HIGH      ⇒ 8.2x span LOW->HIGH
+#
+#    ⛔ OOM IS ACTIVATION-DRIVEN, NOT PARAMETER-DRIVEN (FINDINGS.md:17280): a 0.24M-param
+#    UnityViT once OOM'd a 24 GiB card, and at ~0.79M `depth 6` ran healthy while `patch 8`
+#    OOM'd. conv_dim 230 is ~3x BASE's channel width at every 3D conv, so HIGH's activation
+#    footprint is NOT predicted by its parameter count. It is FIT-probed with
+#    `mem_probe_condition.sh` on the node that will run it, flat across >=2 depths, BEFORE a
+#    row leaves `proposed`. A parameter count is not a memory budget.
+#
+#    ⛔ EVERY CAPACITY ROW LAUNCHES WITH NETT_CHECKPOINT_FREQ=6250. The score-vs-step curve
+#    this question really wants was never logged anywhere in the fleet (`eval_freq` is
+#    10000000 = off on every arm, and it CHUNKS TRAINING so it must not be switched on here --
+#    it would buy the curve at the price of making these arms non-comparable with the corpus
+#    they are placed against). The curve therefore comes from OFFLINE retests of retained
+#    checkpoints, which touch the training run not at all. Retention costs ~6 MB per
+#    checkpoint per brain and CANNOT BE ADDED AFTERWARDS AT ANY PRICE.
+_3DCNN_BASE_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}
+CNN3D_LOW_CFG   = {**_3DCNN_BASE_CFG, "conv_dim":  26}  # enc   248,762 / agent   250,303 @ 128x80, 2 frames
+CNN3D_HIGH_CFG  = {**_3DCNN_BASE_CFG, "conv_dim": 230}  # enc 2,037,638 / agent 2,039,179 @ 128x80, 2 frames
+#
+#    THE CROSS-ARCHITECTURE LEG. The owner asked whether a sweet spot "spans across
+#    architectures". ViT2F already has 500K/800K/1M, but those arms are Sep-4-era shas, so
+#    pairing a fresh HIGH against them is a sha-confounded contrast -- the exact confound
+#    L181/L182 are on lion to separate. ⇒ this entry exists so a ViT2F leg can be run BASE+HIGH
+#    AT ONE SHA if the 3DCNN ladder separates. It is NOT a fourth rung of the old ladder.
+#    ⚠ embed_dim must stay divisible by num_heads (4).
+VIT_2M_CFG   = {**VIT_CFG, "embed_dim": 256}   # enc 2,117,632 / agent 2,119,173 @ 128x80, 2 frames
 
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
@@ -459,6 +503,12 @@ MODELS: dict[str, dict] = {
     # ── owner-requested, 2026-09-03. Queued, NOT launched. See the block above the MODELS table.
     "ViT2F-500K":     dict(encoder="compact_vit",     cfg=dict(VIT_500K_CFG),                                                        framestack=True),   # enc 510,056 / agent 511,597 -- size series
     "ViT2F-1M":       dict(encoder="compact_vit",     cfg=dict(VIT_1M_CFG),                                                          framestack=True),   # enc 994,680 / agent 996,221 -- size series
+    # ⭐ CAPACITY LADDER 2026-09-21 -- see the CAPACITY LADDER block above. LOW/HIGH only: the
+    # BASE rung is "3DCNN" itself, unchanged, so the reference needs no entry and cannot drift
+    # from it. Comparisons are ENCODER counts; `agent` adds a constant 1,541.
+    "3DCNN-250K":     dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_LOW_CFG),                                                       framestack=True),   # enc   248,762 / agent   250,303 -- capacity LOW
+    "3DCNN-2M":       dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_HIGH_CFG),                                                      framestack=True),   # enc 2,037,638 / agent 2,039,179 -- capacity HIGH ⛔ FIT-PROBE BEFORE LAUNCH
+    "ViT2F-2M":       dict(encoder="compact_vit",     cfg=dict(VIT_2M_CFG),                                                          framestack=True),   # enc 2,117,632 / agent 2,119,173 -- capacity HIGH, cross-arch leg
     # ⛔⛔ THE 3F ARMS ARE NOT SELF-SUFFICIENT. Stack depth is GLOBAL: _FRAMESTACK_N reads
     # NETT_FRAMESTACK_N (default 2) and there is NO per-model field for it. Launching either
     # entry without NETT_FRAMESTACK_N=3 silently yields a 2-FRAME run wearing a 3F label --
@@ -557,6 +607,23 @@ MODELS: dict[str, dict] = {
     "CNN2F+LumNorm":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, pre=("lumnorm",)),
     "CNN2F+SlotContrast": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, aux="slot_contrast", aux_weight=1.0),
 }
+
+# ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
+# drift hazard wearing a convenience's clothes: edit one, and the capacity ladder quietly stops
+# being one-factor while every comment still says it is. This fails the IMPORT -- on every arm,
+# before a card is touched -- the moment the two disagree. A comment asserting they match is not
+# a check; this is.
+assert MODELS["3DCNN"]["cfg"] == _3DCNN_BASE_CFG, (
+    "capacity ladder is no longer one-factor: 3DCNN's cfg and _3DCNN_BASE_CFG have drifted.\n"
+    f"  MODELS['3DCNN']['cfg'] = {MODELS['3DCNN']['cfg']}\n"
+    f"  _3DCNN_BASE_CFG        = {_3DCNN_BASE_CFG}")
+for _lbl, _cfg in (("3DCNN-250K", CNN3D_LOW_CFG), ("3DCNN-2M", CNN3D_HIGH_CFG)):
+    _diff = {k for k in set(_cfg) | set(_3DCNN_BASE_CFG)
+             if _cfg.get(k) != _3DCNN_BASE_CFG.get(k)}
+    assert _diff == {"conv_dim"}, (
+        f"{_lbl} differs from the 3DCNN base in {sorted(_diff)}, not in conv_dim alone -- "
+        "the capacity rung would confound width with whatever else changed.")
+del _lbl, _cfg, _diff
 
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
 # viewinvariance use the .mov sheet variants: the base .webm sheets reference clips
