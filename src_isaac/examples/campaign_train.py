@@ -296,6 +296,17 @@ VIT_3F_PM_CFG = {**VIT_CFG, "embed_dim": 132}  # enc 800,696 / agent 802,237 @ 1
 _3DCNN_BASE_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}
 CNN3D_LOW_CFG   = {**_3DCNN_BASE_CFG, "conv_dim":  26}  # enc   248,762 / agent   250,303 @ 128x80, 2 frames
 CNN3D_HIGH_CFG  = {**_3DCNN_BASE_CFG, "conv_dim": 230}  # enc 2,037,638 / agent 2,039,179 @ 128x80, 2 frames
+#    ⭐ THE SAME TOTAL, IN A DIFFERENT PLACE. HIGH above is 92.5% ONE nn.Linear: `conv_dim`
+#    scales the last conv AND the flatten->features head together (flatten = conv_dim*16), so
+#    it cannot say whether a capacity effect is about the COUNT or about WHERE the parameters
+#    are. This rung holds conv_dim at the BASE value, so flatten (1,232) and the head
+#    (631,296) are BYTE-IDENTICAL to BASE, and widens the stack instead: conv share 7.5% ->
+#    68.5% at a total 1.56% BELOW HIGH. HIGH vs this rung is a matched-parameter 2x2 on
+#    placement. Counted from the edited encoder, not from a formula (prereg Amendment 7).
+#    ⚠ ITS MEMORY IS NOT HIGH'S: +2,796 MiB vs +526, and 95% activations rather than
+#    optimiser state, because mid_dim widens the largest feature map (32x20) while conv_dim
+#    only touches the one just before a (4,4) pool. IT NEEDS ITS OWN FIT FLOOR.
+CNN3D_CONV2M_CFG = {**_3DCNN_BASE_CFG, "stem_dim": 160, "mid_dim": 640}  # enc 2,005,933 / agent 2,007,474 @ 128x80, 2 frames
 #
 #    THE CROSS-ARCHITECTURE LEG. The owner asked whether a sweet spot "spans across
 #    architectures". ViT2F already has 500K/800K/1M, but those arms are Sep-4-era shas, so
@@ -508,6 +519,7 @@ MODELS: dict[str, dict] = {
     # from it. Comparisons are ENCODER counts; `agent` adds a constant 1,541.
     "3DCNN-250K":     dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_LOW_CFG),                                                       framestack=True),   # enc   248,762 / agent   250,303 -- capacity LOW
     "3DCNN-2M":       dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_HIGH_CFG),                                                      framestack=True),   # enc 2,037,638 / agent 2,039,179 -- capacity HIGH ⛔ FIT-PROBE BEFORE LAUNCH
+    "3DCNN-2M-conv":  dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_CONV2M_CFG),                                                    framestack=True),   # enc 2,005,933 / agent 2,007,474 -- capacity HIGH, CONV-wide at a matched total ⛔ FIT-PROBE SEPARATELY FROM 3DCNN-2M
     "ViT2F-2M":       dict(encoder="compact_vit",     cfg=dict(VIT_2M_CFG),                                                          framestack=True),   # enc 2,117,632 / agent 2,119,173 -- capacity HIGH, cross-arch leg
     # ⛔⛔ THE 3F ARMS ARE NOT SELF-SUFFICIENT. Stack depth is GLOBAL: _FRAMESTACK_N reads
     # NETT_FRAMESTACK_N (default 2) and there is NO per-model field for it. Launching either
@@ -617,13 +629,29 @@ assert MODELS["3DCNN"]["cfg"] == _3DCNN_BASE_CFG, (
     "capacity ladder is no longer one-factor: 3DCNN's cfg and _3DCNN_BASE_CFG have drifted.\n"
     f"  MODELS['3DCNN']['cfg'] = {MODELS['3DCNN']['cfg']}\n"
     f"  _3DCNN_BASE_CFG        = {_3DCNN_BASE_CFG}")
-for _lbl, _cfg in (("3DCNN-250K", CNN3D_LOW_CFG), ("3DCNN-2M", CNN3D_HIGH_CFG)):
+# ⛔ EACH RUNG DECLARES THE ONE AXIS IT IS ALLOWED TO MOVE, and the assertion is per-rung
+# rather than a single shared set. A shared set would let a HEAD rung silently acquire a CONV
+# key (or the reverse) and still pass -- which is the whole point of the 2x2 gone.
+_RUNG_AXIS = {
+    "3DCNN-250K":    ({"conv_dim"},            CNN3D_LOW_CFG),
+    "3DCNN-2M":      ({"conv_dim"},            CNN3D_HIGH_CFG),
+    "3DCNN-2M-conv": ({"stem_dim", "mid_dim"}, CNN3D_CONV2M_CFG),
+}
+for _lbl, (_axis, _cfg) in _RUNG_AXIS.items():
     _diff = {k for k in set(_cfg) | set(_3DCNN_BASE_CFG)
              if _cfg.get(k) != _3DCNN_BASE_CFG.get(k)}
-    assert _diff == {"conv_dim"}, (
-        f"{_lbl} differs from the 3DCNN base in {sorted(_diff)}, not in conv_dim alone -- "
+    assert _diff == _axis, (
+        f"{_lbl} differs from the 3DCNN base in {sorted(_diff)}, not in {sorted(_axis)} alone -- "
         "the capacity rung would confound width with whatever else changed.")
-del _lbl, _cfg, _diff
+    assert MODELS[_lbl]["cfg"] == _cfg, (
+        f"MODELS[{_lbl!r}] does not carry the cfg its rung declares -- the label and the\n"
+        "  arithmetic in the comment above would describe different models.")
+# ⛔ A CONV RUNG MUST NOT MOVE THE HEAD. flatten = conv_dim*16, so an equal conv_dim is an
+# equal head; asserted rather than trusted, because it is the claim the 2x2 rests on.
+assert CNN3D_CONV2M_CFG["conv_dim"] == _3DCNN_BASE_CFG["conv_dim"], (
+    "3DCNN-2M-conv moved conv_dim, so its head is NOT byte-identical to BASE and it is no "
+    "longer a matched-parameter placement contrast.")
+del _lbl, _axis, _cfg, _diff
 
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
 # viewinvariance use the .mov sheet variants: the base .webm sheets reference clips

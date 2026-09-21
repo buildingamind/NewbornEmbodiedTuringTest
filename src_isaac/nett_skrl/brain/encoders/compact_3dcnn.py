@@ -42,6 +42,8 @@ class Compact3DCNN(HWCFeatureExtractor):
         features_dim: int = 128,
         num_frames: int = 2,
         conv_dim: int = 64,
+        stem_dim: int = 32,
+        mid_dim: int = 64,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -52,7 +54,7 @@ class Compact3DCNN(HWCFeatureExtractor):
 
         # Temporal-spatial convolution: T×H×W kernel collapses time to 1
         self.conv3d = nn.Conv3d(
-            self.base_channels, 32,
+            self.base_channels, stem_dim,
             kernel_size=(self.num_frames, 3, 3),
             stride=(1, 2, 2),
             padding=(0, 1, 1),
@@ -63,9 +65,9 @@ class Compact3DCNN(HWCFeatureExtractor):
         # features_dim. Default 64 preserves the original architecture.
         self.cnn2d = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(stem_dim, mid_dim, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
-            nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(mid_dim, conv_dim, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             DeterministicAvgPool2d((4, 4)),
             nn.Flatten(),
