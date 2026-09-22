@@ -397,9 +397,28 @@ def run_nett(e2e_output_dir) -> Callable[[dict], Path]:
         # ⚠ Passing a non-zero PHYSICAL index here is safe only because `task_runner`
         # applies `visible_device_scope(device)` in the child, so the target card re-indexes
         # to cuda:0 and usdrt's constraint above is satisfied. That scope is load-bearing.
-        # examples/campaign_train.py passes devices=[device] the same way. To aim the
-        # tests at a specific physical GPU, set CUDA_VISIBLE_DEVICES in the SHELL: the
-        # single visible card re-indexes to cuda:0 and this pin still holds.
+        # examples/campaign_train.py passes devices=[device] the same way.
+        #
+        # ⛔⛔ TO AIM THE TESTS AT A SPECIFIC PHYSICAL GPU, SET `NETT_E2E_DEVICE=<physical
+        # card>`. DO NOT set CUDA_VISIBLE_DEVICES in the shell -- this comment used to say to,
+        # and that instruction is FALSE IN EVERY CASE, serial and xdist alike. A shell mask is
+        # not composed with; it is DESTROYED. `visible_device_scope(device)` (runtime/device.py)
+        # does an UNCONDITIONAL `os.environ["CUDA_VISIBLE_DEVICES"] = str(int(device))` around
+        # the child spawn, so whatever the shell set is overwritten before Kit boots:
+        #   serial  -- `_e2e_device()` returns 0 with no $NETT_E2E_DEVICE and no xdist, so the
+        #              scope writes CVD=0 and the child lands on PHYSICAL gpu0.
+        #   xdist   -- worse, not better. `_e2e_device()` takes `gwN % torch.cuda.device_count()`
+        #              and device_count RESPECTS the shell mask, so masking to one card makes
+        #              n=1, every worker computes 0, and ALL workers collapse onto physical
+        #              gpu0 -- defeating the per-worker card assignment this function exists for.
+        # ⭐ The mask fails for the same reason in both cases: once the scope overwrites CVD,
+        # its value is read as a PHYSICAL index, and the mask that would have made it relative
+        # is gone. The xdist path works only when NO shell mask is set, which is why the old
+        # advice could look correct to anyone who never combined the two.
+        # MEASURED 2026-09-22 (lion, e2e leg of sha 97ec2f95): `CUDA_VISIBLE_DEVICES=4 pytest
+        # tests/e2e` ran a full 20-test suite on physical gpu0 -- contending for ~15 min with a
+        # live training arm on that card -- while gpu4 sat flat at 50-52 MiB. Re-run with
+        # `NETT_E2E_DEVICE=4`: gpu4 rose to 3762 MiB, gpu0 stayed at baseline.
         # MEASURED: the same workload wedged >26 min unpinned, and COMPLETES IN ~110s here.
         # ★ SINCE 2026-07-28 THE RUNTIME PINS EVERY TASK ITSELF (task_runner.
         # _visible_device_scope + runtime/device.py), so an unpinned run no longer hangs --
