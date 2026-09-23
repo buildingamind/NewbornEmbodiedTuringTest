@@ -391,8 +391,10 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
     # Kit -- its signal is our own env-step counter -- so arming it early is safe, and the
     # startup grace (NETT_STALL_STARTUP_GRACE_S) exists precisely to span the boot it now
     # covers. Its exit is os._exit(), which works even when the process ignores signals.
+    seg_state = _seg_state_preflight(agent.body, mode, run_config)
     stall_guard.arm()
     loaded = agent.body.embed(agent.env, run_config)
+    _bind_segmenters(loaded, mode, run_config, seg_state)
     # Hand the env to _abort_worker: without this, a failure after embed() lost every
     # artifact, because _finalize_env_artifacts was on the success path only.
     state["loaded"] = loaded
@@ -437,11 +439,68 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
     if config.dry_run:
         _write_dry_run_mem_report(run_config)
 
+    if mode == "train" and not config.dry_run:
+        _save_segmenters(loaded, seg_state, run_config.logger)
+
     torch.cuda.empty_cache()
     # Must precede _exit_worker_cleanly: that ends in os._exit, which discards
     # anything not already on disk (see _finalize_env_artifacts).
     _finalize_env_artifacts(loaded, run_config.logger)
     _exit_worker_cleanly(run_config.logger)
+
+
+def _seg_state_preflight(body, mode: str, run_config):
+    """Where the body segmenter's state lives, checked BEFORE Kit boots.
+
+    ⛔ A test/record of a segmenter arm with no trained segmenter must fail HERE, in
+    seconds, not after a multi-minute Kit boot -- and never run silently, which is what
+    every segmenter test did before this existed (see SegmentationObservationWrapper.
+    bind_phase). Returns None for a body without a segmenter.
+    """
+    from ..body.wrappers.segmentation import body_has_segmenter, state_filename
+
+    if not body_has_segmenter(getattr(body, "wrappers", None)):
+        return None
+    path = Path(run_config.path) / state_filename(getattr(run_config, "brain_id_offset", 0))
+    needs = mode != "train" or bool(getattr(run_config, "train_start_step", None))
+    if needs and not path.exists() and not _seg_missing_allowed(run_config):
+        raise FileNotFoundError(
+            f"{mode} of a segmenter arm needs {path}, written by the train phase; it is "
+            "absent. NETT_SEG_ALLOW_UNTRAINED=1 reproduces the pre-fix untrained-mask test."
+        )
+    return path
+
+
+def _seg_missing_allowed(run_config) -> bool:
+    # A dry-run probe measures memory, not the mask; the env knob is the explicit escape.
+    return bool(getattr(run_config, "dry_run", False)) or os.environ.get(
+        "NETT_SEG_ALLOW_UNTRAINED", "0"
+    ) == "1"
+
+
+def _bind_segmenters(loaded, mode: str, run_config, seg_state) -> None:
+    if seg_state is None:
+        return
+    from ..body.wrappers.segmentation import find_segmenters
+
+    segs = find_segmenters(loaded)
+    if len(segs) != 1:
+        raise RuntimeError(f"expected exactly one body segmenter on the env chain, found {len(segs)}")
+    resume = mode == "train" and bool(getattr(run_config, "train_start_step", None))
+    segs[0].bind_phase(mode, seg_state, resume=resume,
+                       allow_missing=_seg_missing_allowed(run_config))
+    run_config.logger.info(
+        "segmenter %s: mode=%s resume=%s state=%s exists=%s",
+        type(segs[0]).__name__, mode, resume, seg_state, seg_state.exists())
+
+
+def _save_segmenters(loaded, seg_state, logger: logging.Logger) -> None:
+    if seg_state is None:
+        return
+    from ..body.wrappers.segmentation import find_segmenters
+
+    (seg,) = find_segmenters(loaded)
+    logger.info("segmenter state saved: %s", seg.save_state(seg_state))
 
 
 def _compute_eval_num_envs(task: Task) -> int:

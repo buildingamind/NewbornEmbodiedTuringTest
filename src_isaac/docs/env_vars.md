@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-207 variables.
+208 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -165,20 +165,21 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:972` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
+| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/runtime/task_runner.py:476` |
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
-| `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:28` |
-| `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:30` |
-| `NETT_SEG_DEVICE` | *(required / no literal default)* | `nett_skrl/body/wrappers/segmentation.py:46` |
-| `NETT_SEG_FG_SLOT` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:32` |
+| `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:53` |
+| `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:55` |
+| `NETT_SEG_DEVICE` | *(required / no literal default)* | `nett_skrl/body/wrappers/segmentation.py:71` |
+| `NETT_SEG_FG_SLOT` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:57` |
 | `NETT_SEG_FLOW_REG` | `"1e-4"` | `nett_skrl/body/wrappers/gwm_seg.py:103` |
-| `NETT_SEG_LR` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:26` |
-| `NETT_SEG_MASK_RULE` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:36` |
+| `NETT_SEG_LR` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:51` |
+| `NETT_SEG_MASK_RULE` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:61` |
 | `NETT_SEG_MODEL` | `"motok"` | `nett_skrl/body/wrappers/motok_seg.py:118` |
 | `NETT_SEG_QUERIES` | `"2"` | `nett_skrl/body/wrappers/gwm_seg.py:99`<br>`nett_skrl/body/wrappers/motok_seg.py:126`<br>`examples/campaign_train.py:883` |
-| `NETT_SEG_TRAIN_EVERY` | `"64"` | `nett_skrl/body/wrappers/segmentation.py:29` |
+| `NETT_SEG_TRAIN_EVERY` | `"64"` | `nett_skrl/body/wrappers/segmentation.py:54` |
 | `NETT_SEG_UPSAMPLE` | `"0"` | `nett_skrl/body/wrappers/motok_seg.py:127` |
 | `NETT_SEG_VQ_COEF` | `"0.1"` | `nett_skrl/body/wrappers/motok_seg.py:128` |
-| `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:27` |
+| `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:52` |
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
@@ -204,7 +205,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEARDOWN_BUDGET_S` | `300` | `nett_skrl/runtime/stall_guard.py:250` |
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
-| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:478` |
+| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:537` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:1125` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:377`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |

@@ -9,10 +9,35 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 
 import gymnasium as gym
 import numpy as np
 import torch
+
+
+def state_filename(brain_id_offset: int = 0) -> str:
+    """One segmenter spans every brain of ONE task's vectorized env, so there is one state
+    file per task: run path (``TaskConfig.path``) x brain_id_offset -- two tasks that split
+    brains across one run path must not overwrite each other's segmenter."""
+    return f"seg_state_off{int(brain_id_offset or 0)}.pt"
+
+
+def find_segmenters(env) -> list:
+    """Every SegmentationObservationWrapper on ``env``'s wrapper chain, outermost first."""
+    found, current, seen = [], env, set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if isinstance(current, SegmentationObservationWrapper):
+            found.append(current)
+        current = getattr(current, "_env", None) or getattr(current, "env", None)
+    return found
+
+
+def body_has_segmenter(wrappers) -> bool:
+    """True when a Body's wrapper classes include a segmenter -- checkable BEFORE Kit boots."""
+    return any(isinstance(w, type) and issubclass(w, SegmentationObservationWrapper)
+               for w in (wrappers or []))
 
 
 class SegmentationObservationWrapper(gym.ObservationWrapper):
@@ -50,6 +75,7 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         self._optim = None
         self._buf: list[torch.Tensor] = []
         self._seen = 0
+        self._pending_state: dict | None = None
         # ⛔ ALWAYS EMITTED, including when nothing has trained yet. A statistic
         # that vanishes exactly when its condition occurs cannot be gated on.
         self.last_stats: dict[str, float] = {
@@ -57,7 +83,92 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
             "seg/loss": float("nan"),
             "seg/fg_slot": -1.0,
             "seg/fg_area": float("nan"),
+            # 1.0 once test/record has frozen the segmenter; 1.0 once saved weights loaded.
+            "seg/frozen": 0.0,
+            "seg/loaded": 0.0,
         }
+
+    # ------------------------------------------------------------------
+    # ⛔ PERSISTENCE ACROSS THE MODE SUBPROCESSES. Every mode runs in a FRESH process
+    # (task_runner), and the segmenter lives in this wrapper, not in the skrl agent, so
+    # the agent checkpoint never carried it (measured 2026-09-23: final_agent.pt of a
+    # MoTokSeg arm holds policy/value/optimizer/value_preprocessor only). Before this,
+    # every test phase masked with a RANDOMLY INITIALISED segmenter that then kept
+    # training online on the test stimuli -- the policy was scored on inputs it never saw
+    # in training. Train now saves at its end; test/record load and freeze.
+    def bind_phase(self, phase: str, state_path, *, resume: bool = False,
+                   allow_missing: bool = False) -> None:
+        """Declare the mode before the first observation.
+
+        train, fresh  -> learn from scratch (a stale file is overwritten at the end).
+        train, resume -> a later eval_freq chunk: load weights AND optimizer, keep learning.
+        test / record -> load weights, freeze (no train_step). Missing file raises unless
+                         ``allow_missing`` (a dry-run probe, or the explicit legacy escape).
+        """
+        path = Path(state_path)
+        self._state_path = path
+        if phase == "train":
+            if resume:
+                self._pending_state = self._read_state(path, phase)
+        else:
+            self.train_every = 0
+            self.last_stats["seg/frozen"] = 1.0
+            if path.exists():
+                self._pending_state = self._read_state(path, phase)
+            elif not allow_missing:
+                raise FileNotFoundError(
+                    f"{type(self).__name__}: {phase} needs the segmenter trained in the train "
+                    f"phase, and {path} does not exist. Testing through an untrained mask "
+                    "measures the mask, not the agent. NETT_SEG_ALLOW_UNTRAINED=1 reproduces "
+                    "the pre-fix behaviour on purpose."
+                )
+            else:
+                logging.getLogger(f"nett.body.{self.kind}_seg").warning(
+                    "%s_seg: %s runs WITHOUT trained segmenter weights (%s absent); the mask "
+                    "is a random init, frozen", self.kind, phase, path)
+        if self._model is not None and self._pending_state is not None:
+            self._apply_pending_state()
+
+    def _read_state(self, path: Path, phase: str) -> dict:
+        state = torch.load(path, map_location="cpu", weights_only=False)
+        if state.get("cls") != type(self).__name__ or state.get("kind") != self.kind:
+            raise ValueError(
+                f"{path} holds a {state.get('cls')}/{state.get('kind')} segmenter; this "
+                f"{phase} phase runs {type(self).__name__}/{self.kind}."
+            )
+        return state
+
+    def _apply_pending_state(self) -> None:
+        state, self._pending_state = self._pending_state, None
+        # strict: a changed NETT_SEG_QUERIES or architecture is a shape error, not a skip
+        self._model.load_state_dict(state["model"], strict=True)
+        self._model.eval()
+        if self.train_every > 0 and state.get("optim") is not None and self._optim is not None:
+            self._optim.load_state_dict(state["optim"])
+        self.last_stats["seg/train_steps"] = float(state.get("train_steps", 0.0))
+        self.last_stats["seg/loaded"] = 1.0
+
+    def save_state(self, path=None) -> Path:
+        """Write weights (+ optimizer, for a resumed chunk) atomically."""
+        path = Path(path or self._state_path)
+        if self._model is None:
+            raise RuntimeError(
+                f"{type(self).__name__}: train ended without the segmenter ever seeing a "
+                "frame; there is nothing to save and the test phase would have no mask."
+            )
+        state = {
+            "cls": type(self).__name__,
+            "kind": self.kind,
+            "model": {k: v.detach().cpu() for k, v in self._model.state_dict().items()},
+            "optim": self._optim.state_dict() if self._optim is not None else None,
+            "train_steps": float(self.last_stats["seg/train_steps"]),
+            "seen": int(self._seen),
+            "env": {k: v for k, v in os.environ.items() if k.startswith("NETT_SEG_")},
+        }
+        tmp = path.with_name(path.name + ".tmp")
+        torch.save(state, tmp)
+        os.replace(tmp, path)
+        return path
 
     def _configure(self) -> None:
         raise NotImplementedError
@@ -239,6 +350,8 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         frames, samples = self._frames_and_samples(x)
 
         self._ensure(frames[0].shape[1])
+        if self._pending_state is not None:
+            self._apply_pending_state()
         out = []
         for f, sample in zip(frames, samples):
             fd = f.to(self.device)
