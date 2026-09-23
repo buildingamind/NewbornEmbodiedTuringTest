@@ -43,7 +43,11 @@ mistake; body wrappers come from the arm's MODELS entry, never from the environm
                    offsets 0..N-1 as N processes (folds the former orch_run_single.py)
   NETT_TRAIN_EPS   training episodes (default 2000)
   NETT_MAX_ENVS    max parallel envs, TOTAL across brains (default 112)
-  NETT_RES         input resolution (default 128)
+  NETT_RES         legacy SQUARE input_resolution (default 128). ⛔ It does NOT reach the
+                   camera: repo B ObservationCfg.eye_resolution=(128, 80) wins whenever set,
+                   so any value but 128 is refused. Use NETT_EYE_RES.
+  NETT_EYE_RES     eye camera WIDTHxHEIGHT (default unset = repo B's 128x80). Must keep
+                   16:10: the fisheye is isotropic, so the aspect ratio IS the vertical FOV.
   NETT_ROLLOUTS    per-brain transitions between PPO updates (default 8000)
   NETT_MINIBATCHES minibatches per update (default 16 -> batch 500 = 1 episode)
   NETT_CHECKPOINT_FREQ  timesteps between agent_{step}.pt snapshots (default: unset =
@@ -782,6 +786,33 @@ def _env_flag(name: str, default: bool = False) -> bool:
         f"Use one of {sorted(_ENV_TRUE)} or {sorted(_ENV_FALSE)}."
     )
 
+
+def eye_resolution_override(res: int):
+    """The eye camera ``(width, height)`` from ``NETT_EYE_RES``, or ``None`` = repo B's default.
+
+    ⛔ WHY THIS EXISTS: ``NETT_RES`` is copied to ``observation.input_resolution`` only. Repo B's
+    ``ObservationCfg.eye_resolution`` defaults to ``(128, 80)`` and ``lens.eye_resolution`` returns it
+    whenever it is set, so ``input_resolution`` never reaches the camera. A ``NETT_RES=256`` run
+    rendered 128x80 while its manifest and log said ``res=256`` -- so any value but 128 is refused.
+    """
+    raw = os.environ.get("NETT_EYE_RES", "").strip()
+    if not raw:
+        if res != 128:
+            raise SystemExit(
+                f"NETT_RES={res} does not reach the camera: repo B's ObservationCfg.eye_resolution "
+                "(128x80) wins over input_resolution. Set NETT_EYE_RES=WIDTHxHEIGHT (16:10) instead.")
+        return None
+    try:
+        w, h = (int(v) for v in raw.lower().split("x"))
+    except ValueError:
+        raise SystemExit(f"NETT_EYE_RES={raw!r}: expected WIDTHxHEIGHT, e.g. 256x160") from None
+    if w <= 0 or h <= 0 or w * 10 != h * 16:
+        raise SystemExit(
+            f"NETT_EYE_RES={raw!r}: must be positive and 16:10 (e.g. 256x160, 448x280). The fisheye "
+            "is isotropic, so another aspect ratio changes the vertical field of view, not only "
+            "the pixel count.")
+    return (w, h)
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s: %(message)s")
     log = logging.getLogger("nett.campaign")
@@ -815,6 +846,7 @@ def main() -> int:
     max_envs = int(os.environ.get("NETT_MAX_ENVS", "112"))
     # 128 stands by decision (see nett_env_cfg.ObservationCfg.input_resolution).
     res = int(os.environ.get("NETT_RES", "128"))
+    eye_res = eye_resolution_override(res)
     # Overridable (defaults preserve the existing campaign behavior; single-brain runs
     # that reproduce orch_run_single set these). reward_types default = closeness only.
     reward_types = [r.strip() for r in
@@ -914,7 +946,9 @@ def main() -> int:
     # ERROR_OUT_OF_DEVICE_MEMORY on the camera projection texture, with the card pinned
     # at 22.4 GB. The old policy ("single-frame -> GPU buffer") was written when the
     # buffer was 3.2 GB and is no longer safe on size alone, so size is now what decides.
-    _obs_bytes = res * res * 3
+    # res*res*3 over-counts the 128x80 eye (kept as-is: it decides the buffer device for every
+    # existing arm). An explicit NETT_EYE_RES is sized by what it renders.
+    _obs_bytes = eye_res[0] * eye_res[1] * 3 if eye_res else res * res * 3
     _buf_gb = brains * _rollouts_for_budget * _obs_bytes / 1e9
     _budget_gb = float(os.environ.get("NETT_GPU_BUFFER_BUDGET_GB", "4.0"))
     # ⚠ SIZE IS NECESSARY BUT NOT SUFFICIENT. The buffer fitting says nothing about the
@@ -1176,6 +1210,10 @@ def main() -> int:
     log.info("hidden_sizes=%s entropy=%s eval=%s", hidden_sizes, entropy,
              "stochastic" if eval_stochastic else "mean")
     t0 = time.time()
+    if eye_res is not None:
+        config["environment"]["eye_resolution"] = list(eye_res)
+    log.info("eye_resolution=%s (%s)", "x".join(map(str, eye_res)) if eye_res else "128x80",
+             "explicit NETT_EYE_RES" if eye_res else "deferred to nett_env_cfg.ObservationCfg.eye_resolution")
     if camera_fov_override is not None:
         config["environment"]["camera_fov"] = camera_fov_override
         log.warning("camera_fov OVERRIDDEN to %g deg, away from the declared aperture "
@@ -1196,6 +1234,7 @@ def main() -> int:
         {"name": name, "model": model, "experiment": exp, "imprint": imprint,
          "brain_offset": offset, "num_brains": brains, "device": device,
          "num_envs": max_envs, "res": res, "train_eps": train_eps,
+         "eye_resolution": list(eye_res) if eye_res else None,
          # ★ The three arm knobs, recorded so a score is never ambiguous about the protocol
          # that produced it. eval_stochastic especially: nothing evaluated under one value
          # pools with anything under the other.
