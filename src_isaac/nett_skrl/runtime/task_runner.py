@@ -441,6 +441,8 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
 
     if mode == "train" and not config.dry_run:
         _save_segmenters(loaded, seg_state, run_config.logger)
+    if not config.dry_run:
+        _record_segmenters(loaded, mode, seg_state, run_config)
 
     torch.cuda.empty_cache()
     # Must precede _exit_worker_cleanly: that ends in os._exit, which discards
@@ -501,6 +503,44 @@ def _save_segmenters(loaded, seg_state, logger: logging.Logger) -> None:
 
     (seg,) = find_segmenters(loaded)
     logger.info("segmenter state saved: %s", seg.save_state(seg_state))
+
+
+def _record_segmenters(loaded, mode: str, seg_state, run_config) -> None:
+    """Write what the segmenter DID this phase to ``seg_phase_<mode>_off<N>.json``.
+
+    ⛔ The bind/save INFO lines above never reach a log in production: the mode child's
+    Kit logging bridge forwards only a few logger names, and ``run_config.logger`` is not
+    one of them (measured on lion 2026-09-23, L192-L195: absent from the driver log AND
+    from Kit's logs). So the evidence that a test masked through the TRAINED, FROZEN
+    segmenter lives on disk: loaded/frozen/train_steps as the wrapper saw them at the
+    end of the phase, and the sha256 of the state file it bound to.
+    A failure here is logged, never raised: the phase's results are already on disk.
+    """
+    if seg_state is None:
+        return
+    import hashlib
+    import json
+    from datetime import datetime, timezone
+
+    from ..body.wrappers.segmentation import find_segmenters
+
+    out = Path(run_config.path) / f"seg_phase_{mode}_off{int(getattr(run_config, 'brain_id_offset', 0) or 0)}.json"
+    try:
+        (seg,) = find_segmenters(loaded)
+        stats = {k: float(v) for k, v in seg.last_stats.items()
+                 if k.startswith("seg/") and isinstance(v, (int, float))}
+        rec = {
+            "mode": mode, "segmenter": type(seg).__name__, "state": str(seg_state),
+            "state_exists": seg_state.exists(),
+            "state_sha256": hashlib.sha256(seg_state.read_bytes()).hexdigest() if seg_state.exists() else None,
+            "train_every": int(seg.train_every), "stats": stats,
+            "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        }
+        tmp = out.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(rec, indent=1, sort_keys=True))
+        os.replace(tmp, out)
+    except Exception as exc:  # noqa: BLE001 -- an instrument must not cost a finished phase
+        run_config.logger.error("segmenter phase record %s NOT written: %r", out, exc)
 
 
 def _compute_eval_num_envs(task: Task) -> int:

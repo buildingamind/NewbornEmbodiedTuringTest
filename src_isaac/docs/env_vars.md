@@ -166,7 +166,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:1006` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
-| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/runtime/task_runner.py:476` |
+| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/runtime/task_runner.py:478` |
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:53` |
 | `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:55` |
@@ -206,7 +206,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEARDOWN_BUDGET_S` | `300` | `nett_skrl/runtime/stall_guard.py:250` |
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
-| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:537` |
+| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:577` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:1159` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:377`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |

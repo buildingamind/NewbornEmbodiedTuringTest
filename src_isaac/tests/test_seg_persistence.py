@@ -216,6 +216,7 @@ def test_runner_round_trip_through_a_wrapper_chain(tmp_path, monkeypatch):
         train_env.step(0)
     task_runner._save_segmenters(train_env, path, cfg.logger)
     assert path.exists()
+    task_runner._record_segmenters(train_env, "train", path, cfg)
     seg = find_segmenters(train_env)[0]
     seg.train_every = 0
     expected = seg.observation(x)
@@ -226,6 +227,26 @@ def test_runner_round_trip_through_a_wrapper_chain(tmp_path, monkeypatch):
     tseg = find_segmenters(test_env)[0]
     np.testing.assert_array_equal(tseg.observation(x), expected)
     assert tseg.train_every == 0
+    task_runner._record_segmenters(test_env, "test", path, cfg)
+
+    import hashlib
+    import json
+    tr = json.loads((tmp_path / "seg_phase_train_off0.json").read_text())
+    te = json.loads((tmp_path / "seg_phase_test_off0.json").read_text())
+    sha = hashlib.sha256(path.read_bytes()).hexdigest()
+    assert tr["state_sha256"] == te["state_sha256"] == sha
+    assert tr["stats"]["seg/frozen"] == 0.0 and tr["train_every"] > 0
+    assert te["stats"]["seg/loaded"] == 1.0 and te["stats"]["seg/frozen"] == 1.0 and te["train_every"] == 0
+    assert te["stats"]["seg/train_steps"] == tr["stats"]["seg/train_steps"] > 0
+
+
+def test_phase_record_never_raises(tmp_path, caplog):
+    """An instrument must not cost a finished phase: a broken chain is logged, not raised."""
+    cfg = _cfg(tmp_path)
+    with caplog.at_level(logging.ERROR):
+        task_runner._record_segmenters(object(), "test", tmp_path / "s.pt", cfg)
+    assert "NOT written" in caplog.text
+    task_runner._record_segmenters(object(), "test", None, cfg)  # no segmenter: inert
 
 
 def test_mode_body_wires_preflight_bind_and_save_in_order():
@@ -240,6 +261,7 @@ def test_mode_body_wires_preflight_bind_and_save_in_order():
         "agent.brain.train(",
         "agent.brain.test(",
         "_save_segmenters(loaded, seg_state, run_config.logger)",
+        "_record_segmenters(loaded, mode, seg_state, run_config)",
         "_finalize_env_artifacts(loaded, run_config.logger)",
     ]
     at = [src.find(s) for s in order]
