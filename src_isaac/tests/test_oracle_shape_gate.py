@@ -185,3 +185,16 @@ def test_resolved_knobs_are_logged(tmp_path, monkeypatch):
     monkeypatch.setenv("NETT_SHAPE_GATE_SIGMA", "0.3")
     w, _ = trained(tmp_path)
     assert w.last_stats["seg/gate_sigma"] == 0.3 and w.last_stats["seg/gate_min_px"] == 10.0
+
+
+def test_pre_gate_stats(tmp_path):
+    _, path = trained(tmp_path)
+    t = OracleShapeGate(Scene(("square", "plus")))
+    t.bind_phase("test", path)
+    t.observation(Scene(("square", "plus")).img)
+    _, pl = component_solidity(plus_mask().astype(np.uint8), 10)
+    g = math.exp(-0.5 * ((next(iter(pl.values())) - 1.0) / 0.15) ** 2)
+    n_sq, n_pl = 14 * 14, int(plus_mask().sum())
+    assert t.last_stats["seg/gate_raw_area"] == pytest.approx((n_sq + n_pl) / (32 * 64))
+    assert t.last_stats["seg/gate_kept_frac"] == pytest.approx((n_sq + g * n_pl) / (n_sq + n_pl), rel=1e-5)
+    assert t.last_stats["seg/gate_largest"] == pytest.approx(1.0)       # the square is the largest

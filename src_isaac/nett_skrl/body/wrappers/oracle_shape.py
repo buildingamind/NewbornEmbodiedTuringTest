@@ -14,10 +14,15 @@ mass". This wrapper changes WHAT MASS the policy sees, not the reward: each comp
 
 where ``template`` is the running mean solidity of the largest measurable component seen during the
 TRAIN phase (the imprint object -- the White monitor is masked out) and is frozen for test. During
-imprinting g ~= 1 on the only target, so training matches CNN2F+ORACLE-RedSeg; at test a component
+imprinting g ~= 1 on the only target IN THE CLIPS; at test a component
 unlike the imprint is attenuated, so "approach red mass" becomes "approach familiar mass" by
 construction. The gate is SOFT on purpose: a hard gate would make every test trial a Rest trial and
 say nothing about how much familiarity signal the policy needs.
+
+⚠ MEASURED 2026-09-24 (chicken probes, 256 train eps, FINDINGS §4dh.43j.5): in Isaac the train-phase
+gate is NOT neutral -- seg/gate_min .02-.37 with one object on screen -- so training does not match
+CNN2F+ORACLE-RedSeg. The pre-gate stats below (gate_raw_area, gate_kept_frac, gate_largest) exist
+to measure by how much.
 
 Components too small to measure (bounding box under ``NETT_SHAPE_GATE_MIN_PX`` on its long side;
 solidity collapses toward 1 below ~10 px, §4dh.43j.2 E17a) get the NEUTRAL gate ``g = 1``, so a
@@ -69,7 +74,8 @@ class _ShapeGateModel(nn.Module):
         self.register_buffer("template_sum", torch.tensor(0.0, dtype=torch.float64))
         # counts FRAMES x ENVS measured (after framestack each stacked frame counts), not env steps
         self.register_buffer("template_n", torch.tensor(0, dtype=torch.int64))
-        self.last = {"n_components": 0.0, "n_measured": 0.0, "gate_min": float("nan"), "gate_mean": float("nan")}
+        self.last = {"n_components": 0.0, "n_measured": 0.0, "gate_min": float("nan"), "gate_mean": float("nan"),
+                     "gate_raw_area": float("nan"), "gate_kept_frac": float("nan"), "gate_largest": float("nan")}
 
     @property
     def template(self) -> float:
@@ -82,6 +88,7 @@ class _ShapeGateModel(nn.Module):
         t = self.template
         ncomp = nmeas = 0
         gates = []
+        largest = []
         for b in range(fg.shape[0]):
             m = fg[b, 0].cpu().numpy().astype(np.uint8)
             lab, sol = component_solidity(m, self.min_px)
@@ -92,6 +99,7 @@ class _ShapeGateModel(nn.Module):
                 k_big = max(measured, key=lambda ks: int((lab == ks[0]).sum()))[0]
                 self.template_sum += sol[k_big]
                 self.template_n += 1
+            k_big_any = max(measured, key=lambda ks: int((lab == ks[0]).sum()))[0] if measured else None
             for k, s in sol.items():
                 if s is None or math.isnan(t):
                     gk = 1.0                                          # unmeasurable, or no template yet
@@ -99,6 +107,8 @@ class _ShapeGateModel(nn.Module):
                     gk = math.exp(-0.5 * ((s - t) / self.sigma) ** 2)
                     nmeas += 1
                 g[lab == k] = gk
+                if k == k_big_any:
+                    largest.append(gk)
                 gates.append(gk)
                 ncomp += 1
             gate[b, 0] = torch.from_numpy(g).to(gate.device)
@@ -108,6 +118,11 @@ class _ShapeGateModel(nn.Module):
             "gate_mean": float(np.mean(gates)) if gates else float("nan"),
         }
         kept = fg * gate
+        raw = float(fg.sum().item())
+        # PRE-gate: fg_area/kept_area downstream are both measured AFTER the gate
+        self.last["gate_raw_area"] = float(fg.mean().item())
+        self.last["gate_kept_frac"] = float(kept.sum().item()) / raw if raw > 0 else float("nan")
+        self.last["gate_largest"] = float(np.mean(largest)) if largest else float("nan")
         return torch.cat((kept, 1.0 - kept), dim=1)
 
 

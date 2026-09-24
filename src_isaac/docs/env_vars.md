@@ -166,7 +166,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:1016` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
-| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/body/wrappers/oracle_shape.py:141`<br>`nett_skrl/runtime/task_runner.py:478` |
+| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/body/wrappers/oracle_shape.py:156`<br>`nett_skrl/runtime/task_runner.py:478` |
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:53` |
 | `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:55` |
@@ -181,8 +181,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SEG_UPSAMPLE` | `"0"` | `nett_skrl/body/wrappers/motok_seg.py:127` |
 | `NETT_SEG_VQ_COEF` | `"0.1"` | `nett_skrl/body/wrappers/motok_seg.py:128` |
 | `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:52` |
-| `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:121` |
-| `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:120` |
+| `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:136` |
+| `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:135` |
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
