@@ -102,6 +102,7 @@ _MAPPING = {
     "brain.model.activation": lambda: _dataclass_default(ModelCfg, "activation"),
     "brain.model.initial_log_std": lambda: _dataclass_default(ModelCfg, "initial_log_std"),
     "brain.model.max_log_std": lambda: _dataclass_default(ModelCfg, "max_log_std"),
+    "brain.model.clip_log_std": lambda: _dataclass_default(ModelCfg, "clip_log_std"),
     "brain.model.clip_actions": lambda: _dataclass_default(ModelCfg, "clip_actions"),
     "brain.model.value_bound": lambda: _dataclass_default(ModelCfg, "value_bound"),
     "brain.model.orthogonal_init": lambda: _dataclass_default(ModelCfg, "orthogonal_init"),

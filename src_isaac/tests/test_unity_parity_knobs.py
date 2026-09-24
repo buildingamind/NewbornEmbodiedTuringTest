@@ -191,6 +191,12 @@ def test_log_std_model_cfg_from_env(monkeypatch, val, want):
     got = ct.log_std_model_cfg_from_env()
     assert got == want
     ModelCfg(**got)                                                    # keys are real ModelCfg fields
+    # ⛔ AND legal in schema.json: c5e60d9 passed the dataclass check and every NETT_MAX_LOG_STD=none
+    # launch then died at config validation ('clip_log_std' was unexpected, chicken 2026-09-24).
+    import jsonschema
+    from nett_skrl.nett import _load_schema
+    model_schema = _load_schema()["properties"]["brain"]["properties"]["model"]
+    jsonschema.validate({**got, "clip_actions": False}, model_schema)
 
 
 @pytest.mark.parametrize("val,want", [(None, True), ("on", True), ("off", False)])

@@ -204,6 +204,11 @@
               ],
               "default": null
             },
+            "clip_log_std": {
+              "type": "boolean",
+              "default": true,
+              "description": "False removes skrl's log-std clamp entirely (SB3 has none; NETT_MAX_LOG_STD=none). True keeps it, at max_log_std when set, else skrl's own bound (2)."
+            },
             "clip_actions": {
               "type": "boolean",
               "default": true
