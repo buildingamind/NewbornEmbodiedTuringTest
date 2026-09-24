@@ -32,7 +32,14 @@ DIVERGENCES FROM THE REFERENCE, DECLARED RATHER THAN DISCOVERED
    ``train_every`` observations. ``train_step()`` is also PUBLIC so a runner can
    drive it at true update boundaries later; the internal cadence is a
    stand-in, not a claim of equivalence. **The optimiser and its schedule are the
-   part a reviewer should check first.**
+   part a reviewer should check first.** ⭐ ``NETT_SEG_CADENCE=rollout`` +
+   ``NETT_SEG_TRAIN_ON=masked`` + ``NETT_SEG_QUANTIZE=floor`` now reproduce the
+   reference schedule (one ordered batch-8 pass over every rollout frame, on the
+   masked uint8 observation); see ``segmentation.py``. The online default is
+   ~3 optimiser steps per 3072-frame rollout against the reference's ~384-500.
+   ⚠ One-frame offset, declared not fixed: the pass fires on the rollout's LAST stored
+   observation, so the frame that opens the next rollout is masked with the NEW weights;
+   SB3 masked it with the old ones.
 2. ⚠ **LAYOUT.** Body wrappers run BEFORE ``ChannelsFirst``, so observations here
    are HWC ``(H,W,C)`` or batched ``(N,H,W,C)`` — the reference took CHW. Converted
    internally; the wrapper returns the layout it was given.
@@ -69,6 +76,11 @@ CONFIG (env vars — the launcher constructs body wrappers with the env ALONE)
     NETT_SEG_TRAIN_EVERY  64                     observations between train steps
     NETT_SEG_BUFFER       256                    ring-buffer capacity (frames)
     NETT_SEG_DEVICE       cuda | cpu             (default: cuda if available)
+    NETT_SEG_CADENCE      online | rollout       rollout = one ordered pass over each rollout (reference)
+    NETT_SEG_TRAIN_ON     raw | masked           masked = the policy's own observation (reference)
+    NETT_SEG_QUANTIZE     round | floor          floor = the reference's astype(uint8)
+    NETT_SEG_ROLLOUT_FRAMES  (NETT_ROLLOUTS)     frames per update; ONE BRAIN PER PROCESS --
+                                                 campaign_train refuses rollout at brains>1
 """
 
 from __future__ import annotations
@@ -114,6 +126,8 @@ def permutation_invariant_iou(masks: torch.Tensor, gt: torch.Tensor) -> tuple[fl
 class MoTokSeg(SegmentationObservationWrapper):
     """Multiply observations by a separately trained MoTok foreground mask."""
 
+    UNITY_TRAINING_KNOBS = True
+
     def _configure(self) -> None:
         kind = os.environ.get("NETT_SEG_MODEL", "motok").strip().lower()
         if kind != "motok":
@@ -144,8 +158,11 @@ class MoTokSeg(SegmentationObservationWrapper):
         # (55.5% of MoTokNet) toward zero. This port has no dorsal, so there is a
         # single param group and gwm_backbone_lr has no meaning here.
         logger.info(
-            "motok_seg: MoTok on %s, %d queries, lr=%g wd=%g, train every %d obs",
-            self.device, self.num_queries, self.lr, self.wd, self.train_every,
+            "motok_seg: MoTok on %s, %d queries, lr=%g wd=%g, cadence=%s (%s), train_on=%s, "
+            "quantize=%s, fg_slot=%s",
+            self.device, self.num_queries, self.lr, self.wd, self.cadence,
+            f"{self.rollout_frames} frames/update" if self.cadence == "rollout"
+            else f"every {self.train_every} obs", self.train_on, self.quantize, self.fg_slot,
         )
 
     def _loss(self, batch: torch.Tensor) -> torch.Tensor:

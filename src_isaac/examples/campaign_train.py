@@ -622,6 +622,12 @@ MODELS: dict[str, dict] = {
     # Kept Isaac-side, stated: value standardisation ON (agent_factory: OFF broke learning
     # here), kl_threshold 0.5. At 128x80 the flatten is 64x6x12 = 4608 -> 128.
     "CNN-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False),
+    # ⚠ The "segmenter did nothing usable" reading above is WITHDRAWN (FINDINGS §4dh.44a): the owner's
+    # plain-CNN Unity run never reached rA10's NF, so the bounded mask is not assumed inert. This is
+    # the rA10 arm itself: CNN-UnityRecipe's policy behind MoTokSeg, one frame. The parity schedule is
+    # ENV, set by the row: NETT_SEG_FG_SLOT=1 NETT_SEG_CADENCE=rollout NETT_SEG_TRAIN_ON=masked
+    # NETT_SEG_QUANTIZE=floor (MoTokNet itself matches the reference weight-for-weight).
+    "MoTok-Seg-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="motok_seg"),
 
     # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
     # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS
@@ -875,6 +881,11 @@ def main() -> int:
     # tiles 12x11 and distorts the fisheye (Isaac Sim #488).
     brains = int(os.environ.get("NETT_BRAINS", "7"))
     offset = int(os.environ.get("NETT_BRAIN_OFFSET", "0"))
+    # ⛔ The Unity-parity segmenter schedule (segmentation.py) counts frames through ONE wrapper,
+    # which sees every brain's envs: at brains > 1 it would fire num_brains x per PPO update, and
+    # the reference trained one segmenter per brain besides. One brain per process, refused else.
+    if os.environ.get("NETT_SEG_CADENCE", "online").strip().lower() == "rollout" and brains != 1:
+        raise ValueError(f"NETT_SEG_CADENCE=rollout needs NETT_BRAINS=1 (got {brains}).")
     train_eps = int(os.environ.get("NETT_TRAIN_EPS", "2000"))
     max_envs = int(os.environ.get("NETT_MAX_ENVS", "112"))
     # 128 stands by decision (see nett_env_cfg.ObservationCfg.input_resolution).

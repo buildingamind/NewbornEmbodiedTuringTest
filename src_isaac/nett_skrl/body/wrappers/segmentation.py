@@ -43,6 +43,8 @@ def body_has_segmenter(wrappers) -> bool:
 class SegmentationObservationWrapper(gym.ObservationWrapper):
     """Mask observations without coupling the perception model to the policy."""
 
+    UNITY_TRAINING_KNOBS = False     # NETT_SEG_CADENCE / TRAIN_ON / QUANTIZE honoured (MoTokSeg)
+
     def __init__(self, env: gym.Env) -> None:
         super().__init__(env)
         self.observation_space = env.observation_space   # masking preserves shape
@@ -53,6 +55,37 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         self.batch = int(os.environ.get("NETT_SEG_BATCH", "8"))
         self.train_every = int(os.environ.get("NETT_SEG_TRAIN_EVERY", "64"))
         self.buffer_cap = int(os.environ.get("NETT_SEG_BUFFER", "256"))
+        # ── UNITY-PARITY TRAINING KNOBS (replica audit C4, FINDINGS §4dh.44a). All unset = unchanged.
+        # Unity (trainParsing.py:343-380) trains the segmenter at each PPO update, BEFORE the policy
+        # update, over EVERY frame of the rollout buffer in stored order (T*E, time-major, no shuffle),
+        # one pass at batch 8 -- 500 optimiser steps per 4000-frame rollout. Those frames are
+        # `rollout_buffer.observations`, i.e. what the POLICY saw: already masked, truncated to uint8
+        # (seg_wrappers.py:213). The online default here trains one 8-SAMPLE step per `train_every`
+        # calls, where a sample is a whole env batch: ~3 steps per 3072-frame rollout, on raw frames.
+        #   NETT_SEG_CADENCE  online | rollout   rollout = the Unity schedule above
+        #   NETT_SEG_TRAIN_ON raw | masked       masked = train on the policy's own observation
+        #   NETT_SEG_QUANTIZE round | floor      floor = numpy astype(uint8) of the reference
+        #   NETT_SEG_ROLLOUT_FRAMES              frames per update (default NETT_ROLLOUTS, 8000)
+        self.cadence = os.environ.get("NETT_SEG_CADENCE", "online").strip().lower()
+        self.train_on = os.environ.get("NETT_SEG_TRAIN_ON", "raw").strip().lower()
+        self.quantize = os.environ.get("NETT_SEG_QUANTIZE", "round").strip().lower()
+        for name, val, ok in (("NETT_SEG_CADENCE", self.cadence, ("online", "rollout")),
+                              ("NETT_SEG_TRAIN_ON", self.train_on, ("raw", "masked")),
+                              ("NETT_SEG_QUANTIZE", self.quantize, ("round", "floor"))):
+            if val not in ok:
+                raise ValueError(f"{name}={val!r}: expected one of {ok}.")
+        self.rollout_frames = int(os.environ.get(
+            "NETT_SEG_ROLLOUT_FRAMES", os.environ.get("NETT_ROLLOUTS", "8000")))
+        if ((self.cadence, self.train_on, self.quantize) != ("online", "raw", "round")
+                and not self.UNITY_TRAINING_KNOBS):
+            # a knob this class never reaches would log the parity label and run the default
+            raise ValueError(
+                f"{type(self).__name__} does not implement NETT_SEG_CADENCE/TRAIN_ON/QUANTIZE "
+                "(ported for MoTokSeg only); unset them for this arm.")
+        if self.cadence == "rollout" and self.rollout_frames < 1:
+            raise ValueError(f"NETT_SEG_ROLLOUT_FRAMES={self.rollout_frames} must be >= 1.")
+        self._roll: list[torch.Tensor] = []          # uint8 (B,C,H,W), time-major
+        self._roll_n = 0
 
         fg = os.environ.get("NETT_SEG_FG_SLOT", "auto").strip().lower()
         if fg not in ("auto",) and not fg.isdigit():
@@ -86,6 +119,8 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
             # 1.0 once test/record has frozen the segmenter; 1.0 once saved weights loaded.
             "seg/frozen": 0.0,
             "seg/loaded": 0.0,
+            # optimiser steps taken at the most recent rollout boundary (cadence=rollout only)
+            "seg/rollout_steps": 0.0,
         }
 
     # ------------------------------------------------------------------
@@ -295,7 +330,25 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
             return None
         idx = torch.randperm(len(self._buf))[: self.batch]
         batch = torch.cat([self._buf[i] for i in idx.tolist()], dim=0).to(self.device)
+        return self._opt_step(batch)
 
+    def train_rollout(self) -> float | None:
+        """The Unity schedule: one ordered pass over the whole stored rollout, then clear it."""
+        if self._model is None or not self._roll:
+            return None
+        frames = torch.cat(self._roll, dim=0)                     # (T*E, C, H, W) uint8
+        self._roll, self._roll_n = [], 0
+        losses = []
+        for i in range(0, frames.shape[0], self.batch):
+            loss = self._opt_step(frames[i : i + self.batch].to(self.device).float().div_(255.0))
+            if loss is not None:
+                losses.append(loss)
+        self.last_stats["seg/rollout_steps"] = float(len(losses))
+        if losses:
+            self.last_stats["seg/loss"] = float(np.mean(losses))
+        return float(np.mean(losses)) if losses else None
+
+    def _opt_step(self, batch: torch.Tensor) -> float | None:
         # ⛔⛔⛔ `enable_grad` IS LOAD-BEARING AND ITS ABSENCE WAS THE ARM'S BLOCKER.
         # This runs on the ROLLOUT path: skrl's sequential trainer wraps the whole
         # interaction block -- `agent.act` AND `self.env.step(actions)` -- in
@@ -337,6 +390,18 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         self.last_stats["seg/loss"] = float(loss.item())
         return float(loss.item())
 
+    def _masked_levels(self, fd: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
+        """frame [0,1] (from uint8) x mask -> integer-valued float in [0,255].
+
+        `round` is this port's rule; `floor` is the reference's `(obs * M).clip(0,255).astype(uint8)`
+        (seg_wrappers.py:213) on the ORIGINAL integer levels. The round-first is a guard, not a
+        measured need: in fp32 (k/255)*255 == k for all 256 levels (checked 2026-09-24), so the
+        mutant without it is equivalent; it protects a future non-uint8 source.
+        """
+        if self.quantize == "floor":
+            return ((fd * 255.0).round() * m).clamp(0.0, 255.0).floor()
+        return ((fd * m).clamp(0.0, 1.0) * 255.0).round()
+
     # ------------------------------------------------------------------
     def observation(self, obs):
         if isinstance(obs, dict):
@@ -368,17 +433,34 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
                     "than an auxiliary loss."
                 )
             m = self._keep_mask(masks)
-            out.append((fd * m).clamp(0.0, 1.0).cpu())
+            masked = self._masked_levels(fd, m)                   # integer-valued, [0,255]
+            if self.train_on == "masked":
+                if sample is not f:
+                    raise ValueError(
+                        f"{type(self).__name__}: NETT_SEG_TRAIN_ON=masked needs the frame to be the "
+                        "training sample; this segmenter trains on something else (e.g. a pair).")
+                sample = masked / 255.0
+            out.append(masked.cpu())
 
             if sample is not None:
-                self._store_sample(sample)
+                if self.cadence == "rollout":
+                    if self.train_every > 0:
+                        # values are k/255 exactly up to float error: round, never floor, here
+                        self._roll.append((sample * 255.0).round().to(torch.uint8).cpu())
+                        self._roll_n += int(sample.shape[0])
+                else:
+                    self._store_sample(sample)
 
         self._seen += 1
-        if self.train_every > 0 and self._seen % self.train_every == 0:
-            self.train_step()
+        if self.train_every > 0:
+            if self.cadence == "rollout":
+                if self._roll_n >= self.rollout_frames:
+                    self.train_rollout()
+            elif self._seen % self.train_every == 0:
+                self.train_step()
 
         y = torch.cat(out, dim=1)
-        y = (y * 255.0).round().clamp(0, 255).to(torch.uint8)
+        y = y.clamp(0, 255).to(torch.uint8)
         y = y.permute(0, 2, 3, 1)                                  # back to NHWC
         if not batched:
             y = y[0]
