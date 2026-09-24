@@ -600,6 +600,11 @@ MODELS: dict[str, dict] = {
     "CNN2F+GWM-Seg":    dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=2),
     "CNN2F+GWM-Seg-Q3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=3),
     "CNN2F+GWM-Seg-Q5": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=5),
+    # ⛔ ORACLE = A DIAGNOSTIC CONTROL, NEVER A CANDIDATE MODEL. Same policy, encoder, framestack and
+    # seg position as CNN2F+GWM-Seg, but the mask is a fixed red-object colour rule (object AUC 0.983
+    # on real test frames). It asks what a PERFECT segmenter buys: NF/BU above 0.5 => the bottleneck
+    # is the segmenter; still a background chooser or at chance => it is downstream (FINDINGS §4dh.43).
+    "CNN2F+ORACLE-RedSeg": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="oracle_seg", seg_after=True),
 
     # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
     # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS

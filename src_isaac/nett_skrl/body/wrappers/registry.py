@@ -27,6 +27,9 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "motok_seg": ("nett_skrl.body.wrappers.motok_seg", "MoTokSeg"),
     # Frame-pair perception model: unlike MoTok, this goes AFTER framestack.
     "gwm_seg": ("nett_skrl.body.wrappers.gwm_seg", "GwmSeg"),
+    # DIAGNOSTIC CONTROL, not a model: a fixed red-object colour mask (the stimulus's objects are
+    # red), the upper bound on what a perfect segmenter would hand the policy. See oracle_seg.py.
+    "oracle_seg": ("nett_skrl.body.wrappers.oracle_seg", "OracleColorSeg"),
     # Removes the global brightness cue that separates BACKGROUNDS (50-70 grey
     # levels) while objects are matched to 0.1. Order it FIRST so every downstream
     # consumer, segmenters included, sees standardised frames.
