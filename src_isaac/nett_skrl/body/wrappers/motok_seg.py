@@ -79,6 +79,8 @@ CONFIG (env vars — the launcher constructs body wrappers with the env ALONE)
     NETT_SEG_CADENCE      online | rollout       rollout = one ordered pass over each rollout (reference)
     NETT_SEG_TRAIN_ON     raw | masked           masked = the policy's own observation (reference)
     NETT_SEG_QUANTIZE     round | floor          floor = the reference's astype(uint8)
+    NETT_SEG_ROLLOUT_ORDER   time | env          env = consecutive frames of one env per batch (the
+                                                 reference's single-env content); time = envs at one step
     NETT_SEG_ROLLOUT_FRAMES  (NETT_ROLLOUTS)     frames per update; ONE BRAIN PER PROCESS --
                                                  campaign_train refuses rollout at brains>1
 """

@@ -87,6 +87,14 @@ def test_rollout_cadence_one_ordered_pass_per_rollout(monkeypatch):
     assert w._roll == [] and w._roll_n == 0 and w._buf == []  # cleared; online buffer unused
 
 
+def test_rollout_order_env_is_each_env_in_time_order(monkeypatch):
+    w, seen, raws, _ = _run(monkeypatch, 4, NETT_SEG_ROLLOUT_ORDER="env", **PARITY)
+    got = torch.cat(seen, dim=0)                              # 16 frames = 4 envs x 4 steps
+    want = torch.cat([_nchw(np.stack([r[e] for r in raws])) for e in range(4)], dim=0)
+    assert torch.equal(got, want)
+    assert torch.equal(seen[0][:4], _nchw(np.stack([r[0] for r in raws])))   # batch 0 = env 0, t0..t3
+
+
 def test_rollout_cadence_waits_for_the_full_rollout(monkeypatch):
     w, seen, _, _ = _run(monkeypatch, 3, **PARITY)
     assert seen == [] and w._roll_n == 12
@@ -169,7 +177,8 @@ def test_test_phase_neither_stores_nor_trains(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize("name,val", [("NETT_SEG_CADENCE", "update"), ("NETT_SEG_TRAIN_ON", "mask"),
-                                      ("NETT_SEG_QUANTIZE", "trunc"), ("NETT_SEG_CADENCE", "")])
+                                      ("NETT_SEG_QUANTIZE", "trunc"), ("NETT_SEG_CADENCE", ""),
+                                      ("NETT_SEG_ROLLOUT_ORDER", "env_major")])
 def test_bad_values_refuse(monkeypatch, name, val):
     monkeypatch.setenv(name, val)
     with pytest.raises(ValueError, match="expected one of"):
@@ -185,7 +194,7 @@ def test_rollout_frames_must_be_positive(monkeypatch):
 
 @pytest.mark.parametrize("cls", [GwmSeg, OracleColorSeg])
 @pytest.mark.parametrize("name,val", [("NETT_SEG_CADENCE", "rollout"), ("NETT_SEG_TRAIN_ON", "masked"),
-                                      ("NETT_SEG_QUANTIZE", "floor")])
+                                      ("NETT_SEG_QUANTIZE", "floor"), ("NETT_SEG_ROLLOUT_ORDER", "env")])
 def test_other_segmenters_refuse_the_knobs(monkeypatch, cls, name, val):
     monkeypatch.setenv(name, val)
     with pytest.raises(ValueError, match="MoTokSeg only"):

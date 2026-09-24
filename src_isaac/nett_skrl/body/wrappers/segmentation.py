@@ -66,21 +66,28 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         #   NETT_SEG_TRAIN_ON raw | masked       masked = train on the policy's own observation
         #   NETT_SEG_QUANTIZE round | floor      floor = numpy astype(uint8) of the reference
         #   NETT_SEG_ROLLOUT_FRAMES              frames per update (default NETT_ROLLOUTS, 8000)
+        #   NETT_SEG_ROLLOUT_ORDER time | env    batch order of the rollout pass. ⚠ PARALLEL vs
+        #     SEQUENTIAL: the reference had ONE env, so its time-major batch of 8 was 8 CONSECUTIVE
+        #     frames of one agent. Here `time` is 8 DIFFERENT envs at the SAME step -- all in the same
+        #     episode phase and video frame, since fixed-length episodes keep the envs in lockstep.
+        #     `env` = each env's frames in time order, env after env: the reference's batch content.
         self.cadence = os.environ.get("NETT_SEG_CADENCE", "online").strip().lower()
         self.train_on = os.environ.get("NETT_SEG_TRAIN_ON", "raw").strip().lower()
         self.quantize = os.environ.get("NETT_SEG_QUANTIZE", "round").strip().lower()
+        self.rollout_order = os.environ.get("NETT_SEG_ROLLOUT_ORDER", "time").strip().lower()
         for name, val, ok in (("NETT_SEG_CADENCE", self.cadence, ("online", "rollout")),
                               ("NETT_SEG_TRAIN_ON", self.train_on, ("raw", "masked")),
-                              ("NETT_SEG_QUANTIZE", self.quantize, ("round", "floor"))):
+                              ("NETT_SEG_QUANTIZE", self.quantize, ("round", "floor")),
+                              ("NETT_SEG_ROLLOUT_ORDER", self.rollout_order, ("time", "env"))):
             if val not in ok:
                 raise ValueError(f"{name}={val!r}: expected one of {ok}.")
         self.rollout_frames = int(os.environ.get(
             "NETT_SEG_ROLLOUT_FRAMES", os.environ.get("NETT_ROLLOUTS", "8000")))
-        if ((self.cadence, self.train_on, self.quantize) != ("online", "raw", "round")
+        if ((self.cadence, self.train_on, self.quantize, self.rollout_order) != ("online", "raw", "round", "time")
                 and not self.UNITY_TRAINING_KNOBS):
             # a knob this class never reaches would log the parity label and run the default
             raise ValueError(
-                f"{type(self).__name__} does not implement NETT_SEG_CADENCE/TRAIN_ON/QUANTIZE "
+                f"{type(self).__name__} does not implement NETT_SEG_CADENCE/TRAIN_ON/QUANTIZE/ROLLOUT_ORDER "
                 "(ported for MoTokSeg only); unset them for this arm.")
         if self.cadence == "rollout" and self.rollout_frames < 1:
             raise ValueError(f"NETT_SEG_ROLLOUT_FRAMES={self.rollout_frames} must be >= 1.")
@@ -336,7 +343,12 @@ class SegmentationObservationWrapper(gym.ObservationWrapper):
         """The Unity schedule: one ordered pass over the whole stored rollout, then clear it."""
         if self._model is None or not self._roll:
             return None
-        frames = torch.cat(self._roll, dim=0)                     # (T*E, C, H, W) uint8
+        if self.rollout_order == "env" and len({t.shape for t in self._roll}) == 1:
+            frames = torch.stack(self._roll, dim=1).flatten(0, 1)  # (E*T, C, H, W): env-major
+        elif self.rollout_order == "env":
+            raise RuntimeError(f"{type(self).__name__}: NETT_SEG_ROLLOUT_ORDER=env needs one batch size per call.")
+        else:
+            frames = torch.cat(self._roll, dim=0)                 # (T*E, C, H, W) uint8
         self._roll, self._roll_n = [], 0
         losses = []
         for i in range(0, frames.shape[0], self.batch):

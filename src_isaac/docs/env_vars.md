@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-221 variables.
+222 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -167,7 +167,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
 | `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*")` | `examples/campaign_retest_launch.py:50` |
 | `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:897` |
-| `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:78`<br>`examples/campaign_train.py:933`<br>`examples/campaign_train.py:1080` |
+| `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:85`<br>`examples/campaign_train.py:933`<br>`examples/campaign_train.py:1080` |
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:1056` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
@@ -175,20 +175,21 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:55` |
 | `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:57` |
-| `NETT_SEG_CADENCE` | `"online"` | `nett_skrl/body/wrappers/segmentation.py:69`<br>`examples/campaign_train.py:887` |
-| `NETT_SEG_DEVICE` | *(required / no literal default)* | `nett_skrl/body/wrappers/segmentation.py:104` |
-| `NETT_SEG_FG_SLOT` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:90` |
+| `NETT_SEG_CADENCE` | `"online"` | `nett_skrl/body/wrappers/segmentation.py:74`<br>`examples/campaign_train.py:887` |
+| `NETT_SEG_DEVICE` | *(required / no literal default)* | `nett_skrl/body/wrappers/segmentation.py:111` |
+| `NETT_SEG_FG_SLOT` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:97` |
 | `NETT_SEG_FLOW_REG` | `"1e-4"` | `nett_skrl/body/wrappers/gwm_seg.py:103` |
 | `NETT_SEG_LR` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:53` |
-| `NETT_SEG_MASK_RULE` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:94` |
-| `NETT_SEG_MODEL` | `"motok"` | `nett_skrl/body/wrappers/motok_seg.py:132` |
-| `NETT_SEG_QUANTIZE` | `"round"` | `nett_skrl/body/wrappers/segmentation.py:71` |
-| `NETT_SEG_QUERIES` | `"2"` | `nett_skrl/body/wrappers/gwm_seg.py:99`<br>`nett_skrl/body/wrappers/motok_seg.py:140`<br>`examples/campaign_train.py:965` |
-| `NETT_SEG_ROLLOUT_FRAMES` | `os.environ.get("NETT_ROLLOUTS", "8000")` | `nett_skrl/body/wrappers/segmentation.py:77` |
+| `NETT_SEG_MASK_RULE` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:101` |
+| `NETT_SEG_MODEL` | `"motok"` | `nett_skrl/body/wrappers/motok_seg.py:134` |
+| `NETT_SEG_QUANTIZE` | `"round"` | `nett_skrl/body/wrappers/segmentation.py:76` |
+| `NETT_SEG_QUERIES` | `"2"` | `nett_skrl/body/wrappers/gwm_seg.py:99`<br>`nett_skrl/body/wrappers/motok_seg.py:142`<br>`examples/campaign_train.py:965` |
+| `NETT_SEG_ROLLOUT_FRAMES` | `os.environ.get("NETT_ROLLOUTS", "8000")` | `nett_skrl/body/wrappers/segmentation.py:84` |
+| `NETT_SEG_ROLLOUT_ORDER` | `"time"` | `nett_skrl/body/wrappers/segmentation.py:77` |
 | `NETT_SEG_TRAIN_EVERY` | `"64"` | `nett_skrl/body/wrappers/segmentation.py:56` |
-| `NETT_SEG_TRAIN_ON` | `"raw"` | `nett_skrl/body/wrappers/segmentation.py:70` |
-| `NETT_SEG_UPSAMPLE` | `"0"` | `nett_skrl/body/wrappers/motok_seg.py:141` |
-| `NETT_SEG_VQ_COEF` | `"0.1"` | `nett_skrl/body/wrappers/motok_seg.py:142` |
+| `NETT_SEG_TRAIN_ON` | `"raw"` | `nett_skrl/body/wrappers/segmentation.py:75` |
+| `NETT_SEG_UPSAMPLE` | `"0"` | `nett_skrl/body/wrappers/motok_seg.py:143` |
+| `NETT_SEG_VQ_COEF` | `"0.1"` | `nett_skrl/body/wrappers/motok_seg.py:144` |
 | `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:54` |
 | `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:136` |
 | `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:135` |
