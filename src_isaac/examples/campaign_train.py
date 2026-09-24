@@ -605,6 +605,11 @@ MODELS: dict[str, dict] = {
     # on real test frames). It asks what a PERFECT segmenter buys: NF/BU above 0.5 => the bottleneck
     # is the segmenter; still a background chooser or at chance => it is downstream (FINDINGS §4dh.43).
     "CNN2F+ORACLE-RedSeg": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="oracle_seg", seg_after=True),
+    # ⛔ DIAGNOSTIC CONTROL, NEVER A CANDIDATE. CNN2F+ORACLE-RedSeg with each red component scaled by
+    # its global-shape (solidity) familiarity to the train-phase template (oracle_shape.py). Asks whether
+    # a view-invariant familiarity code, handed to the policy as "familiar mass", turns the oracle's
+    # geometry chooser (FINDINGS §4dh.43j) into a familiar-object chooser. Only the seg entry differs.
+    "CNN2F+ORACLE-ShapeGate": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="oracle_shape", seg_after=True),
 
     # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
     # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS
