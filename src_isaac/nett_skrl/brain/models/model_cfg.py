@@ -20,6 +20,10 @@ class ModelCfg:
     # inflating std without bound on hard/long runs (the num_envs=16 side-lock
     # remediation). See workspace notes on entropy/sigma-runaway.
     max_log_std: float | None = None
+    # False = NO log-std clamp at all (SB3 DiagGaussianDistribution has none; the Unity rA10
+    # policies ended at log_std 4.4-5.3, i.e. std 80-208, near bang-bang after the env clamp).
+    # True (default) keeps skrl's clamp at max_log_std (or skrl's 2.0 when that is None).
+    clip_log_std: bool = True
     clip_actions: bool = True
     value_bound: float | None = 10.0
     orthogonal_init: bool = True

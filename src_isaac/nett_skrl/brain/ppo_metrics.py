@@ -88,6 +88,21 @@ def _peb_compute_gae(
             "time_limit_bootstrap": time_limit_bootstrap,
         }, _dump)
     mode = os.environ.get("NETT_DIAG_PEB", "off")  # default = stock skrl (see below)
+    if mode == "T":
+        # UNITY/SB3-via-ml-agents parity (2026-09-24 replica audit B20): ml-agents' gym wrapper
+        # reports the 192-step limit as a TRUE terminal (truncated=False), so SB3 never
+        # bootstraps it: return_T = r_T, and GAE resets there. Isolate, NO bootstrap. Distinct
+        # from skrl time_limit_bootstrap=True, whose record_transition ADDS gamma*V(next).
+        if time_limit_bootstrap:
+            raise ValueError("NETT_DIAG_PEB=T with time_limit_bootstrap=True: skrl would already "
+                             "have added gamma*V(next) into the rewards at every truncation")
+        return _orig_compute_gae(
+            rewards=rewards, terminated=terminated | truncated, truncated=truncated, values=values,
+            last_values=last_values, discount_factor=discount_factor,
+            lambda_coefficient=lambda_coefficient, time_limit_bootstrap=False,
+        )
+    if mode not in ("B", "A", "off"):
+        raise ValueError(f"NETT_DIAG_PEB={mode!r}: expected off (default), A, B or T")
     if mode not in ("B", "A"):
         return _orig_compute_gae(
             rewards=rewards,
@@ -242,6 +257,44 @@ def apply_diag_schedules(agent, *, timestep: int, timesteps: int) -> None:
             agent._lr_base = [float(g["lr"]) for g in agent.optimizer.param_groups]
         for g, base in zip(agent.optimizer.param_groups, agent._lr_base):
             g["lr"] = base * (1.0 - frac)
+    # NETT_ADAM_EPS: SB3's policy optimizer uses Adam eps 1e-5; skrl's is the torch 1e-8.
+    # Adam reads eps from the param group at every step, so setting it here covers whichever
+    # optimizer object the shared-encoder dedupe left in place. Unset = unchanged.
+    _eps = _os.environ.get("NETT_ADAM_EPS", "").strip()
+    if _eps:
+        for g in agent.optimizer.param_groups:
+            g["eps"] = float(_eps)
+
+
+def minibatch_advantage_norm(agent):
+    """NETT_ADV_NORM=minibatch: re-standardise advantages within each sampled minibatch, as
+    SB3 PPO does (``normalize_advantage=True``, per minibatch). skrl standardises once over the
+    whole rollout in compute_gae; standardisation is affine-invariant, so re-standardising
+    those per minibatch equals SB3's per-minibatch standardisation of the raw advantages.
+    Returns True when it installed the override; default ``rollout`` = unchanged (None)."""
+    import os as _os
+    mode = _os.environ.get("NETT_ADV_NORM", "rollout").strip().lower()
+    if mode == "rollout":
+        return None
+    if mode != "minibatch":
+        raise ValueError(f"NETT_ADV_NORM={mode!r}: expected 'rollout' (default) or 'minibatch'")
+    names = list(agent._tensors_names)
+    k = names.index("advantages")
+    orig = agent.memory.sample
+
+    def sample(*args, **kwargs):
+        batches = orig(*args, **kwargs)
+        out = []
+        for b in batches:
+            b = list(b)
+            a = b[k]
+            if a.numel() > 1:
+                b[k] = (a - a.mean()) / (a.std() + 1e-8)
+            out.append(b)
+        return out
+
+    agent.memory.sample = sample   # instance attribute; the caller deletes it after the update
+    return True
 
 
 class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
@@ -257,5 +310,10 @@ class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     @deduped_clip_update
     def update(self, *, timestep: int, timesteps: int) -> None:
         apply_diag_schedules(self, timestep=timestep, timesteps=timesteps)
-        super().update(timestep=timestep, timesteps=timesteps)
+        restore = minibatch_advantage_norm(self)
+        try:
+            super().update(timestep=timestep, timesteps=timesteps)
+        finally:
+            if restore is not None:
+                del self.memory.sample   # drop the instance override; the class method returns
         track_ppo_health_metrics(self)

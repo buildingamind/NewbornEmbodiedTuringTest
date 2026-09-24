@@ -835,6 +835,17 @@ def eye_resolution_override(res: int):
             "the pixel count.")
     return (w, h)
 
+def log_std_model_cfg_from_env() -> dict:
+    """NETT_MAX_LOG_STD -> extra ``model`` cfg keys. Unset = {} (skrl clamps log-std at 2);
+    "none" = no clamp (SB3 parity); a float = clamp there."""
+    v = os.environ.get("NETT_MAX_LOG_STD", "").strip().lower()
+    if not v:
+        return {}
+    if v == "none":
+        return {"clip_log_std": False}
+    return {"max_log_std": float(v)}
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s: %(message)s")
     log = logging.getLogger("nett.campaign")
@@ -892,6 +903,12 @@ def main() -> int:
     # both arms, p = 1.00), loosening |sp| exactly where the cue is unusable. A lever on the
     # measurability of the shape conditions, not on binding. SIDE_LOCK Phase 8.
     entropy = float(os.environ.get("NETT_ENTROPY", "0.01"))
+    # UNITY-PARITY KNOBS (2026-09-24, FINDINGS 4dh.44a; replica audit). Unset = unchanged.
+    # NETT_MAX_LOG_STD: policy log-std clamp. A float caps it there; "none" removes the clamp
+    # (SB3 has none: the Unity rA10 policies ended at log_std 4.4-5.3). Unset keeps skrl's 2.0.
+    # NETT_KL_THRESHOLD: skrl's KL early stop; "0" disables it (SB3 target_kl=None). Default 0.5.
+    log_std_model_cfg = log_std_model_cfg_from_env()
+    kl_threshold = float(os.environ.get("NETT_KL_THRESHOLD", "0.5"))
     # ★ RECORD THE EVALUATION ACTION MODE WITH THE RUN. NETT_EVAL_STOCHASTIC (read in
     # brain/trainer.py) decides whether test-time actions are the Gaussian policy's MEAN or
     # a SAMPLE, and with a fixed test start pose the mean makes every episode of a condition
@@ -1103,7 +1120,7 @@ def main() -> int:
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
             "entropy_loss_scale": entropy,
-            "kl_threshold": 0.5,
+            "kl_threshold": kl_threshold,
             "value_clip": 0,
         },
         "model": {
@@ -1111,6 +1128,7 @@ def main() -> int:
             "shared_encoder": True,
             "hidden_sizes": hidden_sizes,
             "clip_actions": False,
+            **log_std_model_cfg,
         },
         "wandb": {
             # ⛔ WAS HARDCODED "online". skrl calls wandb.init() unconditionally when
@@ -1231,6 +1249,10 @@ def main() -> int:
              os.environ.get("NETT_AUX_WEIGHT", "0"), out)
     log.info("hidden_sizes=%s entropy=%s eval=%s", hidden_sizes, entropy,
              "stochastic" if eval_stochastic else "mean")
+    log.info("unity_parity: log_std_cfg=%s kl_threshold=%g value_std=%s adam_eps=%s adv_norm=%s peb=%s",
+             log_std_model_cfg or "skrl-default(clip at 2)", kl_threshold,
+             os.environ.get("NETT_VALUE_STD", "on"), os.environ.get("NETT_ADAM_EPS", "skrl-default"),
+             os.environ.get("NETT_ADV_NORM", "rollout"), os.environ.get("NETT_DIAG_PEB", "off"))
     t0 = time.time()
     if eye_res is not None:
         config["environment"]["eye_resolution"] = list(eye_res)
@@ -1262,6 +1284,11 @@ def main() -> int:
          # pools with anything under the other.
          "hidden_sizes": hidden_sizes, "entropy_loss_scale": entropy,
          "eval_stochastic": eval_stochastic,
+         "unity_parity": {"log_std_cfg": log_std_model_cfg, "kl_threshold": kl_threshold,
+                          "value_std": os.environ.get("NETT_VALUE_STD", "on"),
+                          "adam_eps": os.environ.get("NETT_ADAM_EPS"),
+                          "adv_norm": os.environ.get("NETT_ADV_NORM", "rollout"),
+                          "peb": os.environ.get("NETT_DIAG_PEB", "off")},
          "train_secs": round(train_secs, 1), "finished": datetime.now().isoformat()}, indent=2))
     log.info("analyzing: %s", run_dir)
     result = analyze(run_dir)

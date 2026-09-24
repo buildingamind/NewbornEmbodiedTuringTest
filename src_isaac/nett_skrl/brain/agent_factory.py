@@ -104,6 +104,14 @@ def memory_size_for(brain) -> int:
     return brain.algorithm_cfg.agent_memory_size()
 
 
+def value_std_enabled() -> bool:
+    """NETT_VALUE_STD: 'on' (default) = RunningStandardScaler on value targets; 'off' = none (SB3)."""
+    v = os.environ.get("NETT_VALUE_STD", "on").strip().lower()
+    if v not in ("on", "off"):
+        raise ValueError(f"NETT_VALUE_STD={v!r}: expected 'on' (default) or 'off'")
+    return v == "on"
+
+
 def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     """Build one skrl agent per brain, each owning a contiguous env scope."""
     obs_space, act_space = env.observation_space, env.action_space
@@ -148,7 +156,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
         # learning — reward went flat and policy std rose instead of converging.
         # The RunningStandardScaler keeps the critic/advantages well-scaled given
         # the correctly-normalized [0,1] image input. Keep it ON.
-        if hasattr(cfg, "value_preprocessor"):
+        # ⚠ 2026-09-24: the Unity rA10 arm (SB3, no value scaling) DID learn, and its policy
+        # std ALSO rose without bound (1 -> 106) -- so "std rose" above may be the Unity regime,
+        # not a failure. NETT_VALUE_STD=off reproduces SB3 for the replication arms only.
+        if hasattr(cfg, "value_preprocessor") and value_std_enabled():
             cfg.value_preprocessor = RunningStandardScaler
             cfg.value_preprocessor_kwargs = {"size": 1, "device": device}
 
@@ -236,6 +247,14 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             from .ppo_metrics import MetricsPPO
             agent_cls = MetricsPPO
 
+        # The Unity-parity update hooks live in MetricsPPO.update only; an aux-loss agent would
+        # train WITHOUT them and record the knob as set. Refuse rather than no-op silently.
+        from .ppo_metrics import MetricsPPO as _MPPO
+        _hooks = {k: os.environ.get(k) for k in ("NETT_ADAM_EPS", "NETT_ADV_NORM", "NETT_DIAG_LR_ANNEAL")}
+        if not (isinstance(agent_cls, type) and issubclass(agent_cls, _MPPO)) and any(
+                v and v.strip().lower() not in ("", "rollout") for v in _hooks.values()):
+            raise ValueError(f"{sorted(k for k, v in _hooks.items() if v)} are applied in MetricsPPO.update "
+                             f"only; this agent is {getattr(agent_cls, '__name__', agent_cls)}")
         agent = agent_cls(
             models=models,
             memory=memory,

@@ -27,7 +27,9 @@ class GaussianActor(GaussianMixin, Model, FeatureBackbone):
             clip_actions=cfg.clip_actions,
             # Cap the exploration std when configured (default keeps skrl's max_log_std=2).
             **(
-                {"clip_log_std": True, "max_log_std": float(cfg.max_log_std)}
+                {"clip_log_std": False}
+                if not cfg.clip_log_std
+                else {"clip_log_std": True, "max_log_std": float(cfg.max_log_std)}
                 if cfg.max_log_std is not None
                 else {}
             ),
