@@ -207,6 +207,43 @@ def track_ppo_health_metrics(agent: PPO) -> None:
         pass
 
 
+def apply_diag_schedules(agent, *, timestep: int, timesteps: int) -> None:
+    """Env-gated linear schedules applied before each PPO update (default: no change).
+
+    Both use the same progress fraction ``timestep / timesteps`` of the CURRENT training
+    chunk (skrl restarts ``timestep`` per chunk; campaign_train pins one chunk).
+
+    * ``NETT_DIAG_ENT_START`` -- entropy coefficient anneals linearly from this start
+      value to the configured ``entropy_loss_scale`` (the final value). Constant high
+      entropy inflates the policy std without bound on long runs (measured: sigma
+      1.1->7.4 over 2M steps -> random policy); annealing from a high start (escape the
+      side-lock local optimum early) to the configured final lets the policy commit.
+    * ``NETT_DIAG_LR_ANNEAL=linear`` -- learning rate = base * (1 - frac), the SB3
+      ``progress_remaining * lr`` schedule the Unity rA10 arm ran (FINDINGS §4dh.44: 7.5e-4
+      -> 0). ``base`` is the optimizer's lr at the first update. Any other value is refused
+      rather than read as "off" -- a typo must not silently train at a constant rate.
+    """
+    import os as _os
+    frac = min(1.0, max(0.0, timestep / max(1, timesteps)))
+    _es = _os.environ.get("NETT_DIAG_ENT_START")
+    if _es is not None:
+        if not hasattr(agent, "_ent_end"):
+            agent._ent_end = float(agent.cfg.entropy_loss_scale)  # configured final
+            agent._ent_start = float(_es)
+        agent.cfg.entropy_loss_scale = agent._ent_start + (agent._ent_end - agent._ent_start) * frac
+    _la = _os.environ.get("NETT_DIAG_LR_ANNEAL", "").strip().lower()
+    if _la:
+        if _la != "linear":
+            raise ValueError(f"NETT_DIAG_LR_ANNEAL={_la!r}: only 'linear' is defined (unset = constant lr)")
+        if getattr(agent, "scheduler", None) is not None:
+            raise ValueError("NETT_DIAG_LR_ANNEAL=linear with a skrl learning_rate_scheduler set: "
+                             "two schedules would fight over the same optimizer")
+        if not hasattr(agent, "_lr_base"):
+            agent._lr_base = [float(g["lr"]) for g in agent.optimizer.param_groups]
+        for g, base in zip(agent.optimizer.param_groups, agent._lr_base):
+            g["lr"] = base * (1.0 - frac)
+
+
 class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     """skrl PPO that also logs the SB3/Unity-parity health metrics.
 
@@ -219,18 +256,6 @@ class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     @strict_update
     @deduped_clip_update
     def update(self, *, timestep: int, timesteps: int) -> None:
-        # Optional entropy-coefficient annealing (env-gated; default = no change).
-        # Constant high entropy inflates the policy std without bound on long runs
-        # (measured: sigma 1.1->7.4 over 2M steps -> random policy). Annealing from
-        # a high start (escape the side-lock local optimum early) down to the
-        # configured final value (let sigma settle so the policy commits) fixes that.
-        import os as _os
-        _es = _os.environ.get("NETT_DIAG_ENT_START")
-        if _es is not None:
-            if not hasattr(self, "_ent_end"):
-                self._ent_end = float(self.cfg.entropy_loss_scale)  # configured final
-                self._ent_start = float(_es)
-            frac = min(1.0, max(0.0, timestep / max(1, timesteps)))
-            self.cfg.entropy_loss_scale = self._ent_start + (self._ent_end - self._ent_start) * frac
+        apply_diag_schedules(self, timestep=timestep, timesteps=timesteps)
         super().update(timestep=timestep, timesteps=timesteps)
         track_ppo_health_metrics(self)

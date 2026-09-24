@@ -610,6 +610,18 @@ MODELS: dict[str, dict] = {
     # a view-invariant familiarity code, handed to the policy as "familiar mass", turns the oracle's
     # geometry chooser (FINDINGS §4dh.43j) into a familiar-object chooser. Only the seg entry differs.
     "CNN2F+ORACLE-ShapeGate": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="oracle_shape", seg_after=True),
+    # ── UNITY-RECIPE REPLICA (FINDINGS §4dh.44). The owner's Unity reference arm (rA10
+    # motok_recon_10k) was effectively SB3 CnnPolicy on raw RGB: its MoTok mask is bounded to
+    # [.39, .61], so the segmenter did nothing usable. This entry is that POLICY: SB3-legacy
+    # NatureCNN (32-64-64 convs, NO pooling, full flatten) -> Linear(., 128), one frame, linear
+    # head (NETT_HIDDEN_SIZES unset). The rest of the recipe is ENV, set by the row:
+    #   NETT_LEARNING_RATE=7.5e-4 NETT_DIAG_LR_ANNEAL=linear   (SB3 progress_remaining * 7.5e-4)
+    #   NETT_DIAG_ENT_START=0.15 NETT_ENTROPY=0                (entropy .15 -> 0 linear)
+    #   NETT_ROLLOUTS=4000 NETT_MINIBATCHES=10                 (n_steps 4000, batch 400)
+    #   NETT_EVAL_STOCHASTIC=0                                 (deterministic test)
+    # Kept Isaac-side, stated: value standardisation ON (agent_factory: OFF broke learning
+    # here), kl_threshold 0.5. At 128x80 the flatten is 64x6x12 = 4608 -> 128.
+    "CNN-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False),
 
     # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
     # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS

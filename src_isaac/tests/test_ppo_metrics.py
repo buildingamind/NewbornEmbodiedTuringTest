@@ -138,3 +138,62 @@ def test_best_effort_never_raises_on_broken_policy():
     assert "Loss / Explained variance" in agent.tracking_data
     assert "Learning / Learning rate" in agent.tracking_data
     assert "Loss / KL divergence" not in agent.tracking_data
+
+
+# ── env-gated linear schedules (apply_diag_schedules) ─────────────────────────
+from nett_skrl.brain.ppo_metrics import apply_diag_schedules
+
+
+def _sched_agent(lr=7.5e-4, ent=0.0):
+    return types.SimpleNamespace(
+        cfg=types.SimpleNamespace(entropy_loss_scale=ent),
+        optimizer=types.SimpleNamespace(param_groups=[{"lr": lr}]),
+        scheduler=None,
+    )
+
+
+def test_schedules_default_is_no_change(monkeypatch):
+    monkeypatch.delenv("NETT_DIAG_ENT_START", raising=False)
+    monkeypatch.delenv("NETT_DIAG_LR_ANNEAL", raising=False)
+    a = _sched_agent(lr=3e-4, ent=0.01)
+    apply_diag_schedules(a, timestep=500, timesteps=1000)
+    assert a.optimizer.param_groups[0]["lr"] == 3e-4 and a.cfg.entropy_loss_scale == 0.01
+
+
+def test_lr_linear_anneal_is_progress_remaining_times_base(monkeypatch):
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
+    a = _sched_agent(lr=7.5e-4)
+    for t, want in ((0, 7.5e-4), (250, 7.5e-4 * 0.75), (500, 3.75e-4), (1000, 0.0)):
+        apply_diag_schedules(a, timestep=t, timesteps=1000)
+        assert a.optimizer.param_groups[0]["lr"] == pytest.approx(want)   # base NOT re-read
+
+
+def test_entropy_anneal_start_to_configured_final(monkeypatch):
+    monkeypatch.setenv("NETT_DIAG_ENT_START", "0.15")
+    a = _sched_agent(ent=0.0)
+    apply_diag_schedules(a, timestep=0, timesteps=100)
+    assert a.cfg.entropy_loss_scale == pytest.approx(0.15)
+    apply_diag_schedules(a, timestep=50, timesteps=100)
+    assert a.cfg.entropy_loss_scale == pytest.approx(0.075)
+    apply_diag_schedules(a, timestep=100, timesteps=100)
+    assert a.cfg.entropy_loss_scale == pytest.approx(0.0)
+
+
+@pytest.mark.parametrize("val", ["cosine", "1", "on"])
+def test_lr_anneal_unknown_value_refuses(monkeypatch, val):
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", val)
+    with pytest.raises(ValueError, match="only 'linear'"):
+        apply_diag_schedules(_sched_agent(), timestep=0, timesteps=10)
+
+
+def test_lr_anneal_refuses_beside_a_skrl_scheduler(monkeypatch):
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
+    a = _sched_agent(); a.scheduler = object()
+    with pytest.raises(ValueError, match="fight"):
+        apply_diag_schedules(a, timestep=0, timesteps=10)
+
+
+def test_metrics_ppo_update_calls_the_schedules():
+    import inspect
+    src = inspect.getsource(MetricsPPO.update)
+    assert "apply_diag_schedules(self" in src and src.index("apply_diag_schedules") < src.index("super().update")
