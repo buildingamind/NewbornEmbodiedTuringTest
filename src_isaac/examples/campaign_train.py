@@ -48,6 +48,9 @@ mistake; body wrappers come from the arm's MODELS entry, never from the environm
                    so any value but 128 is refused. Use NETT_EYE_RES.
   NETT_EYE_RES     eye camera WIDTHxHEIGHT (default unset = repo B's 128x80). Must keep
                    16:10: the fisheye is isotropic, so the aspect ratio IS the vertical FOV.
+  NETT_EYE_ASPECT_FREE  1 = let NETT_EYE_RES take any aspect ratio (default 0 = 16:10 only). A
+                   different aspect is a different VERTICAL field, a new condition: 448x448 at
+                   NETT_CAMERA_FOV=150 is Unity rA10's square 150x150 eye (448x280 is 150x~90).
   NETT_ROLLOUTS    per-brain transitions between PPO updates (default 8000)
   NETT_MINIBATCHES minibatches per update (default 16 -> batch 500 = 1 episode)
   NETT_CHECKPOINT_FREQ  timesteps between agent_{step}.pt snapshots (default: unset =
@@ -834,11 +837,16 @@ def eye_resolution_override(res: int):
         w, h = (int(v) for v in raw.lower().split("x"))
     except ValueError:
         raise SystemExit(f"NETT_EYE_RES={raw!r}: expected WIDTHxHEIGHT, e.g. 256x160") from None
-    if w <= 0 or h <= 0 or w * 10 != h * 16:
-        raise SystemExit(
-            f"NETT_EYE_RES={raw!r}: must be positive and 16:10 (e.g. 256x160, 448x280). The fisheye "
-            "is isotropic, so another aspect ratio changes the vertical field of view, not only "
-            "the pixel count.")
+    if w <= 0 or h <= 0:
+        raise SystemExit(f"NETT_EYE_RES={raw!r}: must be positive and 16:10 (e.g. 256x160, 448x280).")
+    if w * 10 != h * 16:
+        if not _env_flag("NETT_EYE_ASPECT_FREE"):
+            raise SystemExit(
+                f"NETT_EYE_RES={raw!r}: must be positive and 16:10 (e.g. 256x160, 448x280). The fisheye "
+                "is isotropic, so another aspect ratio changes the vertical field of view, not only "
+                "the pixel count. Set NETT_EYE_ASPECT_FREE=1 to ask for that on purpose.")
+        logging.getLogger("nett.campaign").warning("NETT_EYE_ASPECT_FREE=1: eye %dx%d is not 16:10, so its VERTICAL field of view "
+                    "differs from every 16:10 arm (the fisheye is isotropic)", w, h)
     return (w, h)
 
 def log_std_model_cfg_from_env() -> dict:
