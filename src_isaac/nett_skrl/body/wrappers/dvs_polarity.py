@@ -199,7 +199,7 @@ class DVSPolarity(gym.Wrapper):
         # handles at `framestack.py:step`; a stateful wrapper that ignores `done` reports one
         # spurious full-field event per episode, on every env, forever.
         done = _done_mask(terminated, truncated)
-        if done is not None and self._prev is not None and self._prev.ndim == 3:
+        if self._prev is not None and self._prev.ndim == 3:
             idx = np.where(np.asarray(done).ravel())[0]
             if len(idx):
                 sel = torch.as_tensor(idx, device=events.device if isinstance(events, torch.Tensor)

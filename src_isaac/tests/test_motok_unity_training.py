@@ -211,6 +211,18 @@ def test_registered_replica_arm_is_the_recipe_policy_behind_motok(monkeypatch):
     assert campaign.segmentation_wrappers(spec) == ["motok_seg"]
 
 
+def test_temporal_recipe_arm_differs_from_the_recipe_in_framestack_alone(monkeypatch):
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "examples"))
+    import campaign_train as campaign
+
+    spec = campaign.MODELS["CNN2F-UnityRecipe"]
+    recipe = campaign.MODELS["CNN-UnityRecipe"]
+    assert spec["framestack"] is True and recipe["framestack"] is False
+    assert {k: v for k, v in spec.items() if k != "framestack"} == {k: v for k, v in recipe.items() if k != "framestack"}
+    assert campaign.segmentation_wrappers(recipe) == []
+    assert campaign.segmentation_wrappers(spec) == ["framestack"]
+
+
 @pytest.mark.parametrize("brains,refused", [("2", True), ("7", True), ("1", False)])
 def test_campaign_refuses_rollout_cadence_beside_several_brains(monkeypatch, brains, refused):
     monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "examples"))

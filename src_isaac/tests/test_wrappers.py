@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import gymnasium as gym
 import numpy as np
+import pytest
 import torch
 
 from nett_skrl.body.wrappers import Video
@@ -114,3 +115,39 @@ def test_framestack_stacks_batched_dict_policy_and_preserves_critic():
 
     assert obs["policy"].shape == (2, 4, 4, 6)
     assert obs["critic"].shape == (2, 5)
+
+
+class _BatchedTensorDoneEnv(_BatchedDictEnv):
+    """Like _BatchedDictEnv but returns terminated/truncated as torch tensors on `device`."""
+
+    def __init__(self, device):
+        super().__init__()
+        self.device = device
+
+    def step(self, action):
+        obs, rew, term, trunc, info = super().step(action)
+        return (obs, rew, torch.as_tensor(term, device=self.device),
+                torch.as_tensor(trunc, device=self.device), info)
+
+
+def _check_scrub(device):
+    env = FrameStack(_BatchedTensorDoneEnv(device), n_stack=2)
+    env.reset()                                  # frames: zeros
+    obs, *_ = env.step(np.zeros((2, 1), dtype=np.float32))  # env 0 done, env 1 not; new obs = ones
+    pol = obs["policy"]
+    # env 0 ended: BOTH stacked frames are the new episode's first obs (no straddle)
+    assert (pol[0] == 1).all()
+    # env 1 continues: old frame (zeros) then new frame (ones)
+    assert (pol[1, ..., :3] == 0).all() and (pol[1, ..., 3:] == 1).all()
+
+
+def test_framestack_scrubs_on_cpu_tensor_done_flags():
+    _check_scrub("cpu")
+
+
+def test_framestack_scrubs_on_cuda_tensor_done_flags():
+    # The live Isaac case: CUDA done flags. Before the fix _done_mask returned None here
+    # and the scrub silently never ran.
+    if not torch.cuda.is_available():
+        pytest.skip("no CUDA device: the live-Isaac case was NOT checked")
+    _check_scrub("cuda")

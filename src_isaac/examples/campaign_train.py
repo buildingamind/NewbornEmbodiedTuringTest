@@ -625,6 +625,13 @@ MODELS: dict[str, dict] = {
     # Kept Isaac-side, stated: value standardisation ON (agent_factory: OFF broke learning
     # here), kl_threshold 0.5. At 128x80 the flatten is 64x6x12 = 4608 -> 128.
     "CNN-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False),
+    # ── TEMPORAL-INPUT SCREEN (2026-09-27, researcher2). CNN-UnityRecipe's policy with framestack=True:
+    # the current and previous frame, channel-stacked (6 channels), and NOTHING else changed -- no aux
+    # loss, no segmenter. Unity's rA10 policy saw one frame; this asks whether two-frame motion, handed
+    # to the recipe policy as input, moves NF. Only the first conv should grow: +8*8*3*32 = 6,144 weights
+    # at _FRAMESTACK_N=2 (COMPUTED from the 8x8/32 first conv, not measured).
+    # The framestack scrub on episode boundaries is exercised on CUDA done flags (test_wrappers.py).
+    "CNN2F-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=True),
     # ⚠ The "segmenter did nothing usable" reading above is WITHDRAWN (FINDINGS §4dh.44a): the owner's
     # plain-CNN Unity run never reached rA10's NF, so the bounded mask is not assumed inert. This is
     # the rA10 arm itself: CNN-UnityRecipe's policy behind MoTokSeg, one frame. The parity schedule is

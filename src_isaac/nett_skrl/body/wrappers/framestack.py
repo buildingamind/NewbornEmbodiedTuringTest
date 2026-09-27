@@ -82,7 +82,7 @@ class FrameStack(gym.Wrapper):
 
         # For vectorised envs: reset per-env frame buffers when episodes end.
         done = _done_mask(terminated, truncated)
-        if done is not None and obs_np.ndim == 4 and done.any():
+        if obs_np.ndim == 4 and done.any():
             for env_id in np.where(done)[0]:
                 # Replace every stacked frame for this env with the new episode's
                 # first observation so stale frames from the previous episode
@@ -118,10 +118,19 @@ def _obs_to_numpy(obs) -> np.ndarray:
     return np.asarray(obs).copy()
 
 
-def _done_mask(terminated, truncated) -> np.ndarray | None:
-    try:
-        t = np.asarray(terminated).ravel()
-        tr = np.asarray(truncated).ravel()
-        return (t | tr).astype(bool)
-    except Exception:
-        return None
+def _flag_to_numpy(x) -> np.ndarray:
+    if isinstance(x, torch.Tensor):
+        return x.detach().cpu().numpy()
+    return np.asarray(x)
+
+
+def _done_mask(terminated, truncated) -> np.ndarray:
+    # ⛔ FIXED 2026-09-27 (lion C-L13, reproduced on three nodes). This used to be
+    # np.asarray(...) inside a bare `except Exception: return None`. A live Isaac env
+    # returns CUDA tensors, np.asarray raises on them, the except swallowed it, and
+    # step() skipped the scrub when done was None -- so the scrub NEVER ran on Isaac and
+    # stacks straddled episode boundaries. Convert tensors explicitly and let any
+    # other failure raise: a silently disabled scrub is worse than a crash.
+    t = _flag_to_numpy(terminated).ravel()
+    tr = _flag_to_numpy(truncated).ravel()
+    return (t | tr).astype(bool)
