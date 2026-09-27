@@ -56,6 +56,8 @@ mistake; body wrappers come from the arm's MODELS entry, never from the environm
   NETT_CHECKPOINT_FREQ  timesteps between agent_{step}.pt snapshots (default: unset =
                    NO periodic checkpointing; a crash loses the whole run)
   NETT_STEPS       steps_per_episode (default 500)
+  NETT_LOCOMOTION  wheeled | kinematic (default unset = not passed, Environment's "wheeled").
+                   kinematic = Unity rA10's body: position set per step, 3.0/20deg, start (0,-15).
   NETT_OUT_ROOT    campaign root (default ~/nett_campaign)
   NETT_RUN_NAME    pin the run directory name instead of stamping it with the wall
                    clock; REFUSES an existing directory. Only a resume needs this --
@@ -1214,6 +1216,18 @@ def main() -> int:
             # ⛔ DEFAULT UNCHANGED. Absent the env var this is False, exactly as before, so
             # no in-flight arm and no existing launcher changes behaviour. Opt in per launch.
             "train_step_logging": _env_flag("NETT_TRAIN_STEP_LOGGING"),
+            # UNITY-PARITY BODY (researcher2, 2026-09-27). Unity rA10's body is kinematic: the
+            # position is SET each step (move 3.0, turn 20 deg), clamped at x +-30.15 / y +-18,
+            # test start (0,-15). Isaac's "kinematic" mode is exactly that (motor_system.py
+            # MotorCfg defaults and clamp; reset_deterministic puts y at -15 because the
+            # wheeled +0.25 radius is absent), where "wheeled" gives 1.5/step, a PhysX wall and
+            # start (0,-14.5). ⛔ OPT-IN ONLY: unset, the key is NOT PASSED and Environment's
+            # own default ("wheeled") governs, so no existing arm or launcher changes. Kinematic
+            # disables NETT_MOVE_LIMIT / NETT_TURN_LIMIT / NETT_WHEELED_KEEPOUT (wheeled-only)
+            # and is the mode environment.py calls UNVALIDATED -- a row using it must show its
+            # probe ran the ROW before any read.
+            **({"locomotion": os.environ["NETT_LOCOMOTION"]}
+               if os.environ.get("NETT_LOCOMOTION") else {}),
         },
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each

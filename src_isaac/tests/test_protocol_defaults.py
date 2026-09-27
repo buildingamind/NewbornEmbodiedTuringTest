@@ -101,3 +101,20 @@ def test_the_hidden_sizes_parse_covers_linear_and_multi_layer():
         scope = {"_hs": env_value}
         exec(parse, {}, scope)  # noqa: S102 - the driver's own line, read from disk
         assert scope["hidden_sizes"] == expected, env_value
+
+
+def test_locomotion_is_opt_in_and_the_default_body_is_unchanged():
+    """NETT_LOCOMOTION (2026-09-27, researcher2) exists to run Unity rA10's kinematic body.
+
+    Unset, the driver must NOT pass ``locomotion`` at all, so ``Environment``'s own default
+    governs and every existing arm keeps its body. A literal default here (even "wheeled")
+    would be a second source of truth that can drift from the constructor's.
+    """
+    import inspect
+    from nett_skrl.environment.environment import Environment
+
+    src = _train_source()
+    assert '**({"locomotion": os.environ["NETT_LOCOMOTION"]}' in src
+    assert 'if os.environ.get("NETT_LOCOMOTION") else {})' in src
+    assert 'os.environ.get("NETT_LOCOMOTION", ' not in src, "no default literal in the driver"
+    assert inspect.signature(Environment.__init__).parameters["locomotion"].default == "wheeled"
