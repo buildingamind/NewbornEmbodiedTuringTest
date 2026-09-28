@@ -108,7 +108,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_EYE_H` | *(required / no literal default)* | `examples/count_params.py:68` |
 | `NETT_EYE_RES` | `""` | `examples/campaign_train.py:838` |
 | `NETT_EYE_W` | *(required / no literal default)* | `examples/count_params.py:68` |
-| `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:357` |
+| `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:370` |
 | `NETT_FRAMESTACK` | `"1"` | `examples/train_binding_8brain_targets.py:204` |
 | `NETT_FRAMESTACK_N` | `"2"` | `nett_skrl/body/wrappers/framestack.py:48`<br>`examples/campaign_train.py:190` |
 | `NETT_FRAME_FORMAT` | `"bc7"` | `examples/campaign_run.py:181`<br>`scripts/prepare_test_env.py:112` |
@@ -196,7 +196,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:136` |
 | `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:135` |
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
-| `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414` |
+| `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:427` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
 | `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:418` |
 | `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:407` |
@@ -222,7 +222,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
 | `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:577` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:1239` |
-| `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:377`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
+| `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:390`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
 | `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:203` |
 | `NETT_TRAIN_EPS` | `"2000"` | `examples/campaign_train.py:906`<br>`examples/train_binding_8brain_targets.py:42` |
