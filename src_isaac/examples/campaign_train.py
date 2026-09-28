@@ -643,6 +643,13 @@ MODELS: dict[str, dict] = {
     "CNN-UnityRecipe+VAC": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_vac",)),
     "CNN-UnityRecipe+VACnoRep": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_norep",)),
     "CNN-UnityRecipe+VACrev": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_rev",)),
+    # ── COLOUR vs BRIGHTNESS SCREEN (2026-09-28, researcher2; owner: "is this because of the texture
+    # of the background or its color? A B&W vision filter ..."). CNN-UnityRecipe plus ONE innermost
+    # wrapper and nothing else: +Gray hands the policy one BT.601 luminance channel (the first
+    # conv is built with in_channels=1 from the space); +LumNorm standardises each frame's
+    # brightness and contrast and keeps colour. No segmenter, so neither filter reshapes a mask's data.
+    "CNN-UnityRecipe+Gray": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("grayscale",)),
+    "CNN-UnityRecipe+LumNorm": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("lumnorm",)),
     # ⚠ The "segmenter did nothing usable" reading above is WITHDRAWN (FINDINGS §4dh.44a): the owner's
     # plain-CNN Unity run never reached rA10's NF, so the bounded mask is not assumed inert. This is
     # the rA10 arm itself: CNN-UnityRecipe's policy behind MoTokSeg, one frame. The parity schedule is

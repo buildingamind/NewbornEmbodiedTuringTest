@@ -44,6 +44,9 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "acuity_vac": ("nett_skrl.body.wrappers.acuity", "AcuityVAC"),
     "acuity_norep": ("nett_skrl.body.wrappers.acuity", "AcuityNoReplay"),
     "acuity_rev": ("nett_skrl.body.wrappers.acuity", "AcuityReversed"),
+    # Black-and-white eye: RGB -> one BT.601 luminance channel, every phase. Removes hue and
+    # saturation, keeps brightness and texture (owner 2026-09-28). ⚠ ORDER MATTERS: `pre`, innermost.
+    "grayscale": ("nett_skrl.body.wrappers.grayscale", "Grayscale"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }
