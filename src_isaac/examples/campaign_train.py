@@ -634,6 +634,15 @@ MODELS: dict[str, dict] = {
     # at _FRAMESTACK_N=2 (COMPUTED from the 8x8/32 first conv, not measured).
     # The framestack scrub on episode boundaries is exercised on CUDA done flags (test_wrappers.py).
     "CNN2F-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=True),
+    # ── ACUITY CURRICULUM (2026-09-28, researcher2; FINDINGS §4dh.44h.24). CNN-UnityRecipe's policy, one
+    # frame, with the visual-acuity curriculum of rajankita/Visual_Acuity_Curriculum @ 79772b08b0 on the
+    # policy frame during TRAINING only (test/record sharp): blur sigma [1/16, 1/32, 0] x width over stages
+    # of 13/27/160 parts. +VAC = replay (the published method), +VACnoRep = monotone (its ablation),
+    # +VACrev = VAC time-reversed (same exposure, reversed order). The final-stage-only control is plain
+    # CNN-UnityRecipe. Nothing else changes: no aux loss, no segmenter. See body/wrappers/acuity.py.
+    "CNN-UnityRecipe+VAC": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_vac",)),
+    "CNN-UnityRecipe+VACnoRep": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_norep",)),
+    "CNN-UnityRecipe+VACrev": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("acuity_rev",)),
     # ⚠ The "segmenter did nothing usable" reading above is WITHDRAWN (FINDINGS §4dh.44a): the owner's
     # plain-CNN Unity run never reached rA10's NF, so the bounded mask is not assumed inert. This is
     # the rA10 arm itself: CNN-UnityRecipe's policy behind MoTokSeg, one frame. The parity schedule is

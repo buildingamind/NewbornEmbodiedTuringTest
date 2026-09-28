@@ -37,6 +37,13 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # levels) while objects are matched to 0.1. Order it FIRST so every downstream
     # consumer, segmenters included, sees standardised frames.
     "lumnorm": ("nett_skrl.body.wrappers.lumnorm", "LumNorm"),
+    # Visual-acuity curriculum (blur scheduled over TRAINING; test/record sharp). One entry per
+    # schedule so the model name says which ran -- there is no env knob. ⚠ ORDER MATTERS: `pre`,
+    # innermost, like lumnorm: framestack and any segmenter must see the blurred frame. The runner
+    # binds phase and progress (task_runner._bind_acuity); unbound, the wrapper refuses to step.
+    "acuity_vac": ("nett_skrl.body.wrappers.acuity", "AcuityVAC"),
+    "acuity_norep": ("nett_skrl.body.wrappers.acuity", "AcuityNoReplay"),
+    "acuity_rev": ("nett_skrl.body.wrappers.acuity", "AcuityReversed"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }

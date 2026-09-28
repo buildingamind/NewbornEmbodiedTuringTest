@@ -395,6 +395,7 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
     stall_guard.arm()
     loaded = agent.body.embed(agent.env, run_config)
     _bind_segmenters(loaded, mode, run_config, seg_state)
+    _bind_acuity(loaded, mode, run_config, agent.brain)
     # Hand the env to _abort_worker: without this, a failure after embed() lost every
     # artifact, because _finalize_env_artifacts was on the success path only.
     state["loaded"] = loaded
@@ -494,6 +495,33 @@ def _bind_segmenters(loaded, mode: str, run_config, seg_state) -> None:
     run_config.logger.info(
         "segmenter %s: mode=%s resume=%s state=%s exists=%s",
         type(segs[0]).__name__, mode, resume, seg_state, seg_state.exists())
+
+
+def _bind_acuity(loaded, mode: str, run_config, brain) -> None:
+    """Hand an acuity-curriculum wrapper its phase and GLOBAL progress (body/wrappers/acuity.py).
+
+    Units are vectorised steps, as ``train_cfg_for`` computes them: this process starts at
+    ``train_start_step // envs_per_brain`` of ``train_iterations // envs_per_brain``, so an
+    ``eval_freq`` chunk resumes the schedule where the previous chunk left it.
+    """
+    from ..body.wrappers.acuity import find_acuity
+
+    found = find_acuity(loaded)
+    if not found:
+        return
+    if len(found) != 1:
+        raise RuntimeError(f"expected at most one acuity wrapper on the env chain, found {len(found)}")
+    envs_per_brain = max(1, getattr(brain, "envs_per_brain", 1))
+    total = int(getattr(brain, "train_iterations", 0) or 0) // envs_per_brain
+    start = int(getattr(run_config, "train_start_step", None) or 0) // envs_per_brain
+    offset = int(getattr(run_config, "brain_id_offset", 0) or 0)
+    seed = getattr(run_config, "seed", None)
+    found[0].bind_phase(mode, start_step=start, total_steps=max(1, total),
+                        log_dir=Path(run_config.path) / "logs", offset=offset,
+                        seed=None if seed is None else [int(seed), offset])
+    run_config.logger.info(
+        "acuity %s: mode=%s start=%d total=%d (vectorised steps) log=%s",
+        type(found[0]).__name__, mode, start, total, found[0]._log_path)
 
 
 def _save_segmenters(loaded, seg_state, logger: logging.Logger) -> None:
