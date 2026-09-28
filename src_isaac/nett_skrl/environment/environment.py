@@ -332,6 +332,19 @@ class Environment:
         cfg_kwargs = {}
         if self.asset_root is not None:
             cfg_kwargs["asset_root"] = str(self.asset_root)
+        # ⛔ KINEMATIC MUST BE KNOWN AT CONSTRUCTION. NETTEnvCfg.__post_init__ runs HERE,
+        # and MotorCfg.locomotion defaults to "wheeled", so a default-built cfg has
+        # already applied _apply_wheeled_overrides (body_move_speed_limit 1.5,
+        # agent_radius 3.25, replicate_physics) by the time _configure_cfg sets
+        # locomotion; re-running __post_init__ skips the wheeled block but does NOT undo
+        # it. Measured 2026-09-28 (U13-KIN FIT probe): "kinematic" moved exactly by the
+        # kinematic law but started every test episode at y=-14.500 (radius 3.25), not
+        # Unity's -15. Passing the mode in makes the FIRST __post_init__ see it. Wheeled
+        # (the default) adds no kwarg, so its construction is unchanged.
+        if getattr(self, "locomotion", "wheeled") != "wheeled":
+            from nett_isaac.motor_system import MotorCfg
+
+            cfg_kwargs["motor"] = MotorCfg(locomotion=self.locomotion)
         cfg = NETTEnvCfg(**cfg_kwargs)
         self._configure_cfg(cfg, config, seed)
         return NETTEnv(cfg)

@@ -118,3 +118,22 @@ def test_locomotion_is_opt_in_and_the_default_body_is_unchanged():
     assert 'if os.environ.get("NETT_LOCOMOTION") else {})' in src
     assert 'os.environ.get("NETT_LOCOMOTION", ' not in src, "no default literal in the driver"
     assert inspect.signature(Environment.__init__).parameters["locomotion"].default == "wheeled"
+
+
+def test_kinematic_is_passed_to_the_cfg_constructor_not_set_afterwards():
+    """U13-KIN FIT probe, 2026-09-28: a cfg built with the default MotorCfg has already run
+    the wheeled overrides in __post_init__ (speed 1.5, radius 3.25), and setting
+    locomotion="kinematic" afterwards does not undo them -- every test episode started at
+    y=-14.500 instead of Unity's -15. The construction site must hand the mode to
+    NETTEnvCfg itself, and only when it is not the wheeled default.
+    """
+    import inspect
+    from nett_skrl.environment import environment as env_mod
+
+    src = inspect.getsource(env_mod)
+    guard = 'if getattr(self, "locomotion", "wheeled") != "wheeled":'
+    passed = 'cfg_kwargs["motor"] = MotorCfg(locomotion=self.locomotion)'
+    built = "cfg = NETTEnvCfg(**cfg_kwargs)"
+    assert src.count(built) == 1, "exactly one NETTEnvCfg construction site"
+    assert guard in src and passed in src
+    assert src.index(guard) < src.index(passed) < src.index(built), "mode must reach the constructor"
