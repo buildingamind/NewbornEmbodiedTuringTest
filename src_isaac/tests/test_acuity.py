@@ -195,3 +195,31 @@ def test_find_acuity_walks_the_chain(tmp_path):
     inner = _bound(A.AcuityVAC, tmp_path)
     outer = gym.Wrapper(inner)
     assert A.find_acuity(outer) == [inner]
+
+
+# ── the pre-launch validation reset binds the wrapper (first Kit probe died here) ─────────────
+def test_validate_tasklist_binds_acuity_and_passes_frames_sharp(tmp_path):
+    """insect card 7, 2026-09-28T15:44Z: ``validate_tasklist`` reset the env outside task_runner,
+    the unbound wrapper refused, and the arm never reached training. Drive the real function."""
+    from types import SimpleNamespace
+    from nett_skrl.runtime import tasklist
+
+    stub, seen = _StubEnv(), {}
+
+    class _Body:
+        def adjust_to_agent(self, env, **kw):
+            pass
+
+        def wrap(self, loaded):
+            seen["wrapper"] = A.AcuityVAC(loaded)
+            return seen["wrapper"]
+
+    run_config = SimpleNamespace(brain_id_offset=4, seed=11)
+    config = SimpleNamespace(seed=11, path=tmp_path, num_brains=1, num_envs=4,
+                             for_mode=lambda mode: run_config)
+    agent = SimpleNamespace(body=_Body(), env=SimpleNamespace(load=lambda rc: stub))
+    tasklist.validate_tasklist([SimpleNamespace(config=config, agent=agent)], close_env=False)
+    w = seen["wrapper"]
+    assert w._bound and not w._train
+    assert (tmp_path / "logs" / "acuity_validate_off4.csv").exists()
+    assert not (tmp_path / "logs" / "acuity_train_off4.csv").exists()

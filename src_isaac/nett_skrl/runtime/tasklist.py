@@ -42,6 +42,23 @@ def build_tasks(
     ]
 
 
+def _bind_acuity_for_validation(loaded, run_config, log_path) -> None:
+    """Bind an acuity wrapper (body/wrappers/acuity.py) as phase ``validate`` before the reset.
+
+    The wrapper refuses an observation until the runner declares its phase, and this smoke
+    check resets the env outside task_runner, so without this every acuity label died here
+    (first Kit probe, insect card 7, 2026-09-28T15:44Z). ``validate`` is not ``train``: the
+    frame passes through sharp, and the header lands in ``acuity_validate_off<N>.csv``, apart
+    from the training log.
+    """
+    from ..body.wrappers.acuity import find_acuity
+
+    offset = int(getattr(run_config, "brain_id_offset", 0) or 0)
+    for wrapper in find_acuity(loaded):
+        wrapper.bind_phase("validate", start_step=0, total_steps=1, log_dir=log_path,
+                           offset=offset, seed=getattr(run_config, "seed", None))
+
+
 def validate_tasklist(tasks: list[Task], close_env: bool = True) -> None:
     """Smoke-validate by loading each task's env once through its body.
 
@@ -69,6 +86,7 @@ def validate_tasklist(tasks: list[Task], close_env: bool = True) -> None:
         loaded = task.agent.env.load(run_config)
         try:
             loaded = task.agent.body.wrap(loaded)
+            _bind_acuity_for_validation(loaded, run_config, log_path)
             obs, _ = loaded.reset()
             if not hasattr(obs, "shape") and not isinstance(obs, dict):
                 raise TypeError(f"Unexpected obs type from wrapped env: {type(obs)}")
