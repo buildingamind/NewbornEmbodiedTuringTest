@@ -885,6 +885,24 @@ def log_std_model_cfg_from_env() -> dict:
     return {"max_log_std": float(v)}
 
 
+def learning_epochs_from_env() -> int:
+    """NETT_LEARNING_EPOCHS -> PPO passes over each rollout. Unset = 10, the campaign value.
+
+    Exists for the owner's envs-per-brain probe (2026-09-28, FINDINGS §4dh.44h.33): doubling
+    envs per brain doubles the rollout and halves the number of updates, and doubling the
+    epochs restores the gradient-step count, at twice the update compute."""
+    raw = os.environ.get("NETT_LEARNING_EPOCHS", "").strip()
+    if not raw:
+        return 10
+    try:
+        n = int(raw)
+    except ValueError:
+        raise ValueError(f"NETT_LEARNING_EPOCHS={raw!r}: expected a positive integer") from None
+    if n < 1:
+        raise ValueError(f"NETT_LEARNING_EPOCHS={raw!r}: expected a positive integer")
+    return n
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s: %(message)s")
     log = logging.getLogger("nett.campaign")
@@ -1160,7 +1178,8 @@ def main() -> int:
             # unchanged; the knob exists for the 2026-09-21 owner diagnostic (ViT-family policies show
             # 2-4x the KL and clip fraction of the CNNs at the shared 3e-4). Unset = campaign default.
             "learning_rate": float(os.environ.get("NETT_LEARNING_RATE", "3e-4")),
-            "learning_epochs": 10,
+            # NETT_LEARNING_EPOCHS (learning_epochs_from_env): unset = 10, unchanged.
+            "learning_epochs": learning_epochs_from_env(),
             "value_loss_scale": 0.5,
             "grad_norm_clip": 0.5,
             "entropy_loss_scale": entropy,
@@ -1303,6 +1322,9 @@ def main() -> int:
              os.environ.get("NETT_MINIBATCHES", "16"), reward_types,
              os.environ.get("NETT_AUX_LOSS", "none"),
              os.environ.get("NETT_AUX_WEIGHT", "0"), out)
+    log.info("ppo: rollouts=%d mini_batches=%d learning_epochs=%d",
+             brain["algorithm_cfg"]["rollouts"], brain["algorithm_cfg"]["mini_batches"],
+             brain["algorithm_cfg"]["learning_epochs"])
     log.info("hidden_sizes=%s entropy=%s eval=%s", hidden_sizes, entropy,
              "stochastic" if eval_stochastic else "mean")
     log.info("unity_parity: log_std_cfg=%s kl_threshold=%g value_std=%s adam_eps=%s adv_norm=%s peb=%s",

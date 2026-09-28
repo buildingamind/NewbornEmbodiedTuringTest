@@ -214,3 +214,40 @@ def test_value_std_unknown_refuses(monkeypatch):
     monkeypatch.setenv("NETT_VALUE_STD", "0")
     with pytest.raises(ValueError, match="expected 'on'"):
         value_std_enabled()
+
+
+# ── NETT_LEARNING_EPOCHS (owner's envs-per-brain probe, FINDINGS §4dh.44h.33) ─
+@pytest.mark.parametrize("val,want", [(None, 10), ("", 10), ("10", 10), ("20", 20), (" 5 ", 5)])
+def test_learning_epochs_from_env(monkeypatch, val, want):
+    ct = _campaign(monkeypatch)
+    if val is None:
+        monkeypatch.delenv("NETT_LEARNING_EPOCHS", raising=False)
+    else:
+        monkeypatch.setenv("NETT_LEARNING_EPOCHS", val)
+    assert ct.learning_epochs_from_env() == want
+
+
+@pytest.mark.parametrize("val", ["0", "-1", "2.5", "ten"])
+def test_learning_epochs_refuses(monkeypatch, val):
+    ct = _campaign(monkeypatch)
+    monkeypatch.setenv("NETT_LEARNING_EPOCHS", val)
+    with pytest.raises(ValueError, match="positive integer"):
+        ct.learning_epochs_from_env()
+
+
+def test_learning_epochs_reaches_skrl_ppo_cfg():
+    """The value travels algorithm_cfg -> AlgorithmCfg.extra -> setattr on skrl's PPO cfg."""
+    from skrl.agents.torch.ppo import PPO
+    from nett_skrl.brain.config import OnPolicyAlgorithmCfg
+    from nett_skrl.brain.registry import algorithm_spec
+    spec = algorithm_spec(PPO)
+    cfg = spec.cfg_cls()
+    OnPolicyAlgorithmCfg.from_value({"rollouts": 6144, "mini_batches": 8, "learning_epochs": 20}).apply_to(cfg, spec)
+    assert cfg.learning_epochs == 20 and cfg.rollouts == 6144
+
+
+def test_campaign_brain_reads_the_epochs_knob():
+    from pathlib import Path
+    src = (Path(__file__).resolve().parents[1] / "examples" / "campaign_train.py").read_text()
+    assert '"learning_epochs": learning_epochs_from_env(),' in src
+    assert '"learning_epochs": 10,' not in src
