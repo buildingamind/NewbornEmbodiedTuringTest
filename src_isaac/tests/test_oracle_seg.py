@@ -83,6 +83,25 @@ def test_registered_arm_masks_after_framestack(monkeypatch):
         assert (f[:, :, ~keep] == 0).all()        # background and the white monitor are gone
 
 
+def test_unity_recipe_oracle_is_the_recipe_plus_the_mask_and_nothing_else(monkeypatch):
+    examples = Path(__file__).resolve().parents[1] / "examples"
+    monkeypatch.syspath_prepend(str(examples))
+    import campaign_train as campaign
+
+    spec = campaign.MODELS["CNN-UnityRecipe+ORACLE-RedSeg"]
+    base = campaign.MODELS["CNN-UnityRecipe"]
+    assert {k: v for k, v in spec.items() if k != "seg"} == base
+    assert campaign.segmentation_wrappers(spec) == ["oracle_seg"]
+    wrapped = Body(wrappers=campaign.segmentation_wrappers(spec)).wrap(Scene())
+    assert isinstance(wrapped.env, OracleColorSeg) and not isinstance(wrapped.env.env, FrameStack)
+    obs, _ = wrapped.reset()
+    obs = np.asarray(obs)
+    assert obs.shape == (2, 3, 24, 32)            # one frame, CHW (Body ends in ChannelsFirst)
+    keep = np.zeros((24, 32), bool); keep[10:18, 4:12] = True
+    assert (obs[:, :, keep] > 0).all()
+    assert (obs[:, :, ~keep] == 0).all()          # background and the white monitor are gone
+
+
 def test_no_training_and_state_round_trip(tmp_path):
     w = OracleColorSeg(Scene())
     w.bind_phase("train", tmp_path / "s.pt")

@@ -650,6 +650,13 @@ MODELS: dict[str, dict] = {
     # brightness and contrast and keeps colour. No segmenter, so neither filter reshapes a mask's data.
     "CNN-UnityRecipe+Gray": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("grayscale",)),
     "CNN-UnityRecipe+LumNorm": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("lumnorm",)),
+    # ⛔ ORACLE = A DIAGNOSTIC CONTROL, NEVER A CANDIDATE MODEL (2026-09-29, researcher2; owner, DECISIONS §53.1).
+    # CNN-UnityRecipe's policy, one frame, behind the fixed red-object mask of CNN2F+ORACLE-RedSeg, and
+    # nothing else changed. The earlier oracle arms ran a 128x80/300 deg eye where the objects are 7 and
+    # 4.5 px when the choice is made (FINDINGS §4dh.43j); at 448x280/150 deg they are ~27-37 x 41-49 px.
+    # It asks what a PERFECT mask buys once the objects are resolvable: a familiar-object chooser under
+    # both the fork-2 and ship-2 imprints puts the bottleneck at the background/boundary.
+    "CNN-UnityRecipe+ORACLE-RedSeg": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="oracle_seg"),
     # ⚠ The "segmenter did nothing usable" reading above is WITHDRAWN (FINDINGS §4dh.44a): the owner's
     # plain-CNN Unity run never reached rA10's NF, so the bounded mask is not assumed inert. This is
     # the rA10 arm itself: CNN-UnityRecipe's policy behind MoTokSeg, one frame. The parity schedule is
