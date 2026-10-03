@@ -10,17 +10,22 @@ from ..model_cfg import ModelCfg
 
 
 def conv3d_ortho_init_enabled() -> bool:
-    """NETT_CONV3D_ORTHO_INIT: '0' (default) = Conv3d keeps PyTorch's default init; '1' = orthogonal.
+    """NETT_CONV3D_ORTHO_INIT: '1' (default) = orthogonal Conv3d; '0' = PyTorch's default init.
 
-    orthogonal_init has matched only (Conv2d, Linear) since the first Isaac commit, so every Conv3d
-    stem (compact_3dcnn ``conv3d``, guess_what_moves ``moves_3d``, dual_stream) kept
+    orthogonal_init matched only (Conv2d, Linear) from the first Isaac commit until fb555b2, so every
+    Conv3d stem (compact_3dcnn ``conv3d``, guess_what_moves ``moves_3d``, dual_stream) kept
     kaiming_uniform(a=sqrt(5)) and a uniform bias: for the 3DCNN stem (fan_in 54) that is weight std
-    .079 against ~.192 under orthogonal at gain sqrt(2), and a nonzero bias. Opt-in so that every
-    existing arm rebuilds byte-identically when the variable is unset.
+    .079 against ~.192 under orthogonal at gain sqrt(2), and a nonzero bias.
+
+    ⚠ DEFAULT-ON since workspace DECISIONS §63 (owner, 2026-10-03; opt-in at fb555b2, §61). An arm
+    with a Conv3d policy encoder that leaves the key unset now gets the orthogonal init. '0'
+    rebuilds every model byte-identically to the old (Conv2d, Linear)-only rule, so an arm that
+    must keep the pre-§63 init sets it explicitly. Any other value -- including an empty string --
+    refuses.
     """
-    v = os.environ.get("NETT_CONV3D_ORTHO_INIT", "0").strip()
+    v = os.environ.get("NETT_CONV3D_ORTHO_INIT", "1").strip()
     if v not in ("0", "1"):
-        raise ValueError(f"NETT_CONV3D_ORTHO_INIT={v!r}: expected '0' (default) or '1'")
+        raise ValueError(f"NETT_CONV3D_ORTHO_INIT={v!r}: expected '1' (default) or '0'")
     return v == "1"
 
 
