@@ -529,6 +529,19 @@ MODELS: dict[str, dict] = {
     "3DCNN-250K":     dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_LOW_CFG),                                                       framestack=True),   # enc   248,762 / agent   250,303 -- capacity LOW
     "3DCNN-2M":       dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_HIGH_CFG),                                                      framestack=True),   # enc 2,037,638 / agent 2,039,179 -- capacity HIGH ⛔ FIT-PROBE BEFORE LAUNCH
     "3DCNN-2M-conv":  dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_CONV2M_CFG),                                                    framestack=True),   # enc 2,005,933 / agent 2,007,474 -- capacity HIGH, CONV-wide at a matched total ⛔ FIT-PROBE SEPARATELY FROM 3DCNN-2M
+    # ⭐ PRESENTER STEM ABLATIONS (owner-confirmed, workspace DECISIONS §63; presenter request
+    # 2026-10-02): separate the 3DCNN's temporal input from its spatial stem. Every field is
+    # "3DCNN"'s (via _3DCNN_BASE_CFG) except the one named.
+    #   3DCNN-1F : framestack=False, ONE frame duplicated into both temporal slots of the SAME
+    #              (2,3,3) Conv3d (duplicate_frame). Same layer, same init, same count; no time.
+    #              num_frames is pinned to 2 (the kernel depth), not _FRAMESTACK_N: no stack runs.
+    #   3DCNN-Sp1: stem kernel (2,1,1), stride (1,2,2) -- the temporal kernel without the spatial one.
+    #   3DCNN-Sp5: stem kernel (2,5,5), padding 2 -- the other direction.
+    # The encoder asserts the Sp stems' output grid equals the 3x3 stem's. Encoder counts MEASURED
+    # at 128x80 (and 256x160, identical): 1F 695,981 (== 3DCNN); Sp1 694,445; Sp5 699,053.
+    "3DCNN-1F":       dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "num_frames": 2, "duplicate_frame": True},             framestack=False),
+    "3DCNN-Sp1":      dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "stem_kernel_hw": 1},                                  framestack=True),
+    "3DCNN-Sp5":      dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "stem_kernel_hw": 5},                                  framestack=True),
     "ViT2F-2M":       dict(encoder="compact_vit",     cfg=dict(VIT_2M_CFG),                                                          framestack=True),   # enc 2,117,632 / agent 2,119,173 -- capacity HIGH, cross-arch leg
     # ⛔⛔ THE 3F ARMS ARE NOT SELF-SUFFICIENT. Stack depth is GLOBAL: _FRAMESTACK_N reads
     # NETT_FRAMESTACK_N (default 2) and there is NO per-model field for it. Launching either
@@ -924,6 +937,10 @@ def main() -> int:
         return 2
 
     spec = MODELS[model]
+    # NETT_FRAMESTACK_SHUFFLE is read by the FrameStack wrapper; an arm without one would log the
+    # shuffle label and run the CONTROL. Refuse it (DECISIONS §63).
+    if os.environ.get("NETT_FRAMESTACK_SHUFFLE", "").strip() and not spec["framestack"]:
+        raise ValueError(f"NETT_FRAMESTACK_SHUFFLE is set but {model} has no frame stack (framestack=False).")
     sheet, media, default_imprint = EXPERIMENTS[exp]
     imprint = os.environ.get("NETT_IMPRINT", default_imprint)
     # `brains_per_process` (NETT_BRAINS) brains run as skrl agents inside ONE process on
