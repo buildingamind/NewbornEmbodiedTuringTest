@@ -923,6 +923,37 @@ def learning_epochs_from_env() -> int:
     return n
 
 
+def feature_attn_from_env(hidden_sizes: list[int]) -> dict | None:
+    """NETT_FEATURE_ATTN -> the model cfg's ``feature_attn`` dict, fully resolved; unset = None.
+
+    "1" takes every default; "dim=64,heads=4,blocks=1,group=1,mlp_ratio=2" sets any subset. The
+    RESOLVED dict is returned (defaults filled) so the log and campaign_timing.json name every
+    value the arm ran with. Refuses alongside a non-empty NETT_HIDDEN_SIZES: the attention trunk
+    replaces the MLP trunk, so the pair would be ambiguous."""
+    raw = os.environ.get("NETT_FEATURE_ATTN", "").strip()
+    if not raw:
+        return None
+    from nett_skrl.brain.models.utils.feature_attn import resolve_feature_attn
+    if hidden_sizes:
+        raise ValueError(f"NETT_FEATURE_ATTN={raw!r} with NETT_HIDDEN_SIZES={hidden_sizes}: the attention "
+                         "head replaces the MLP trunk; unset NETT_HIDDEN_SIZES")
+    cfg: dict = {}
+    if raw != "1":
+        for part in raw.split(","):
+            k, sep, v = part.partition("=")
+            k, v = k.strip(), v.strip()
+            if not sep or not k or not v:
+                raise ValueError(f"NETT_FEATURE_ATTN={raw!r}: expected '1' or key=value pairs, e.g. "
+                                 "'dim=64,heads=4,blocks=1,group=1'")
+            if k in cfg:
+                raise ValueError(f"NETT_FEATURE_ATTN={raw!r}: {k} given twice")
+            try:
+                cfg[k] = float(v) if k == "mlp_ratio" else int(v)
+            except ValueError:
+                raise ValueError(f"NETT_FEATURE_ATTN={raw!r}: {k}={v!r} is not a number") from None
+    return resolve_feature_attn(cfg)
+
+
 def main() -> int:
     logging.basicConfig(level=logging.INFO, format="[%(name)s] %(levelname)s: %(message)s")
     log = logging.getLogger("nett.campaign")
@@ -984,6 +1015,15 @@ def main() -> int:
     # agents/arm would be needed. See NEXT_STEPS.md §G5 before running a head ladder.
     _hs = os.environ.get("NETT_HIDDEN_SIZES", "")
     hidden_sizes = [int(x) for x in _hs.split(",") if x.strip()] if _hs.strip() else []
+    # NETT_FEATURE_ATTN (owner request 2026-10-04): unset = no key in the model cfg at all, so the
+    # MLP trunk above is byte-identical. "1" = the defaults in feature_attn.FEATURE_ATTN_DEFAULTS;
+    # "dim=64,heads=4,blocks=1,group=1,mlp_ratio=2" sets any of them. Replaces the trunk with
+    # self-attention across the encoder feature's coordinates; refuses with NETT_HIDDEN_SIZES set.
+    feature_attn = feature_attn_from_env(hidden_sizes)
+    if feature_attn is not None and int(spec["cfg"].get("features_dim", 0)) % feature_attn["group"]:
+        # Fail here, before Kit boots, not inside the spawn child at model construction.
+        raise ValueError(f"NETT_FEATURE_ATTN group={feature_attn['group']} does not divide {model}'s "
+                         f"features_dim={spec['cfg'].get('features_dim')}")
     # NETT_ENTROPY: PPO entropy_loss_scale. 0.01 is the validated SB3/Unity value.
     # ⚠ 0.03 was tested at n=56: it moves the LOCK but not binding (`learn_frac` 12/56 in
     # both arms, p = 1.00), loosening |sp| exactly where the cue is unusable. A lever on the
@@ -1216,6 +1256,7 @@ def main() -> int:
             "hidden_sizes": hidden_sizes,
             "clip_actions": False,
             **log_std_model_cfg,
+            **({"feature_attn": feature_attn} if feature_attn is not None else {}),
         },
         "wandb": {
             # ⛔ WAS HARDCODED "online". skrl calls wandb.init() unconditionally when
@@ -1351,6 +1392,8 @@ def main() -> int:
              brain["algorithm_cfg"]["learning_epochs"])
     log.info("hidden_sizes=%s entropy=%s eval=%s", hidden_sizes, entropy,
              "stochastic" if eval_stochastic else "mean")
+    if feature_attn is not None:
+        log.info("feature_attn=%s (attention trunk replaces the MLP head)", feature_attn)
     log.info("unity_parity: log_std_cfg=%s kl_threshold=%g value_std=%s adam_eps=%s adv_norm=%s peb=%s",
              log_std_model_cfg or "skrl-default(clip at 2)", kl_threshold,
              os.environ.get("NETT_VALUE_STD", "on"), os.environ.get("NETT_ADAM_EPS", "skrl-default"),
@@ -1385,6 +1428,7 @@ def main() -> int:
          # that produced it. eval_stochastic especially: nothing evaluated under one value
          # pools with anything under the other.
          "hidden_sizes": hidden_sizes, "entropy_loss_scale": entropy,
+         **({"feature_attn": feature_attn} if feature_attn is not None else {}),
          "eval_stochastic": eval_stochastic,
          "unity_parity": {"log_std_cfg": log_std_model_cfg, "kl_threshold": kl_threshold,
                           "value_std": os.environ.get("NETT_VALUE_STD", "on"),

@@ -250,6 +250,22 @@
               ],
               "description": "Stochastic-actor distribution head. Defaults to 'gaussian', the independent per-component (diagonal) actor, since 2026-07-31; legacy null selects the same head. Use 'multivariate_gaussian' for the joint covariance, which can represent the correlation between the wheeled agent's two commands. This default has moved twice -- see docs/configuration.md and the DEFAULT-FLIP LEDGER in isaac/blueprint.md before relying on it.",
               "default": "gaussian"
+            },
+            "feature_attn": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "properties": {
+                "dim": {"type": "integer", "minimum": 1},
+                "heads": {"type": "integer", "minimum": 1},
+                "blocks": {"type": "integer", "minimum": 1},
+                "group": {"type": "integer", "minimum": 1},
+                "mlp_ratio": {"type": "number", "exclusiveMinimum": 0}
+              },
+              "additionalProperties": false,
+              "description": "Feature-token attention head (brain/models/utils/feature_attn.py). null (default) keeps the MLP trunk from hidden_sizes. An object replaces it with self-attention across the encoder feature's coordinates (features_dim/group tokens); hidden_sizes must then be [].",
+              "default": null
             }
           },
           "additionalProperties": false,

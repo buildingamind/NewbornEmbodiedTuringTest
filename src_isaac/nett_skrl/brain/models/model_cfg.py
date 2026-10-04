@@ -59,6 +59,11 @@ class ModelCfg:
     # Anything trained on a different default is not comparable; see the
     # DEFAULT-FLIP LEDGER in blueprint.md.
     actor_distribution: str | None = "gaussian"
+    # Feature-token attention head (utils/feature_attn.py; owner request 2026-10-04). None (default)
+    # = the MLP trunk from hidden_sizes, unchanged. A dict (keys dim/heads/blocks/group/mlp_ratio,
+    # all optional) replaces the trunk with self-attention across the encoder feature's
+    # coordinates; hidden_sizes must then be []. campaign_train reads it from NETT_FEATURE_ATTN.
+    feature_attn: dict[str, Any] | None = None
 
 
 def model_cfg_from(value: dict[str, Any] | None = None) -> ModelCfg:

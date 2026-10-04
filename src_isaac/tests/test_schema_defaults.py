@@ -110,6 +110,7 @@ _MAPPING = {
     "brain.model.output_gain": lambda: _dataclass_default(ModelCfg, "output_gain"),
     "brain.model.shared_encoder": lambda: _dataclass_default(ModelCfg, "shared_encoder"),
     "brain.model.actor_distribution": lambda: _dataclass_default(ModelCfg, "actor_distribution"),
+    "brain.model.feature_attn": lambda: _dataclass_default(ModelCfg, "feature_attn"),
     # --- brain.*_cfg: FlexibleCfg subclasses ------------------------------
     "brain.encoder_cfg.features_dim": lambda: _cfg_default(EncoderCfg, "features_dim"),
     "brain.encoder_cfg.trainable": lambda: _cfg_default(EncoderCfg, "trainable"),
