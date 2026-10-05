@@ -201,6 +201,30 @@ def test_term_trains_and_reports(campaign, monkeypatch, label, layout):
           f"aux head total {_params(aux.head):,}  mode {term.mode}  tube {term.tube}")
 
 
+@pytest.mark.parametrize("base", list(_MODULE))
+def test_mae_alone_trains_the_encoder_under_strict_determinism(campaign, base):
+    """MAE ALONE (no cltt_ref to supply encoder gradient): its own loss reaches the encoder and
+    the head. The forward runs under use_deterministic_algorithms(True) as AuxLossPPO runs it, and
+    two same-seed calls agree exactly. CPU only: CUDA-only nondeterministic ops are not exercised."""
+    enabled = torch.are_deterministic_algorithms_enabled()
+    warn = torch.is_deterministic_algorithms_warn_only_enabled()
+    enc = _build(campaign.MODELS[base]).train()
+    term = MAETerm(enc)
+    try:
+        torch.use_deterministic_algorithms(True)
+        losses = []
+        for _ in range(2):
+            torch.manual_seed(5)
+            losses.append(term.compute(enc, _obs(8)))
+    finally:
+        torch.use_deterministic_algorithms(enabled, warn_only=warn)
+    assert torch.equal(losses[0].detach(), losses[1].detach())
+    losses[0].backward()
+    assert sum(float(p.grad.abs().sum()) for p in enc.parameters() if p.grad is not None) > 0
+    assert all(p.grad is not None and p.grad.abs().sum() > 0 for p in term.head["dec"].parameters()
+               if p.requires_grad and p.dim() > 1)
+
+
 def test_ratio_knob_is_realised(campaign, monkeypatch):
     monkeypatch.setenv("NETT_AUX_MAE_RATIO", "0.5")
     enc = _build(campaign.MODELS["ViT-CLTT-Ref"])
