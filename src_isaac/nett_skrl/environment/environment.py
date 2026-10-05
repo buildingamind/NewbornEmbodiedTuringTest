@@ -430,6 +430,12 @@ class Environment:
         log = logger.warning if strategy.vram_warning else logger.info
         log("PhysX placement: %s (%s)", strategy.device, strategy.rationale)
         self._copy_env_cfg_fields(cfg)
+        # Positive provenance for the start-frame knob, one line per phase build: a close check
+        # counts these instead of inferring the setting from a config it cannot see applied.
+        _screens = getattr(cfg, "screens", None)
+        if _screens is not None and hasattr(_screens, "random_first_frame"):
+            print(f"[NETT screens] random_first_frame={bool(_screens.random_first_frame)} "
+                  f"phase={config.current_mode}", flush=True)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))
         _set_if_present(cfg, "seed", config.seed if seed is None else seed)

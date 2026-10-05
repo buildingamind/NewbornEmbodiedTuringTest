@@ -416,6 +416,15 @@ MODELS: dict[str, dict] = {
     # but so is every static cue, and the falsifier must be able to tell "motion is enough" from
     # "the encoder learned nothing".
     "ViT-CLTT-Ref-DVS":  dict(encoder="compact_vit", cfg=dict(VIT_CLTT_DVS_CFG),  framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    # OWNER REQUEST 2026-10-05 (researcher2): "the addition of a DVS filter to 3DCNN and
+    # ViT-CLTT-Ref might increase performance on NF in parsing". "3DCNN" fed EVENTS: the same
+    # dvs_polarity wrapper, innermost, so framestack hands the encoder 2 x 2 = 4 channels.
+    # channels_per_frame=2 is checked EXACTLY (temporal.validate_framestack_depth), so an RGB
+    # stack reaching this encoder refuses to build rather than reshaping colour into time.
+    # Capacity: conv_dim 77 held -> enc 695,405 vs "3DCNN" 695,981 (-0.083%); only the stem's
+    # input-channel count changes, so no re-solve is needed. No aux, so no
+    # NETT_AUX_CLTT_CHANNELS_PER_FRAME. Same stationary-scene blind spot as the ViT row above.
+    "3DCNN-DVS":         dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "channels_per_frame": 2}, framestack=True, pre=["dvs_polarity"]),   # enc 695,405
 
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # WAVE 17 -- OBJECT-CENTRIC PRESSURE ON THE TOKENS (owner request 2026-09-17).
@@ -1282,7 +1291,9 @@ def main() -> int:
                      # Tag the actual aux kind, not just vicreg -- otherwise the run
                      # name cannot record WHICH aux ran, and two arms differing only
                      # in their aux loss are indistinguishable in wandb.
-                     *( [str(spec["aux"])] if spec.get("aux") else [] )],
+                     *( [str(spec["aux"])] if spec.get("aux") else [] ),
+                     # Derived from the same flag that sets the env key, never typed.
+                     *( ["random-first-frame"] if _env_flag("NETT_RANDOM_FIRST_FRAME") else [] )],
         },
     }
 
@@ -1328,6 +1339,16 @@ def main() -> int:
             # probe ran the ROW before any read.
             **({"locomotion": os.environ["NETT_LOCOMOTION"]}
                if os.environ.get("NETT_LOCOMOTION") else {}),
+            # RANDOM START FRAME (owner request 2026-10-05, researcher2): "starting on a random
+            # frame for training and testing". The private screens subsystem already draws one
+            # per-episode offset for BOTH monitors (video/subsystem.load_episode), keyed by
+            # episode_seed (train: per brain; test: one stream shared across brains). ⛔ OPT-IN
+            # ONLY: unset/0, the key is NOT PASSED and Environment's default (False) governs, so
+            # no existing arm or launcher changes. ⚠ COST: it desynchronises the monitor cursors
+            # (2 -> 2 x num_envs distinct textures per step; measured 3.35x slower at 32 envs).
+            # Environment prints "[NETT screens] random_first_frame=... phase=..." per phase.
+            **({"random_first_frame": True}
+               if _env_flag("NETT_RANDOM_FIRST_FRAME") else {}),
         },
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each

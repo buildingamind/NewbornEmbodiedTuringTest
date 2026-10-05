@@ -46,6 +46,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         mid_dim: int = 64,
         duplicate_frame: bool = False,
         stem_kernel_hw: int = 3,
+        channels_per_frame: int | None = None,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -69,9 +70,11 @@ class Compact3DCNN(HWCFeatureExtractor):
                                  f"(the temporal kernel depth); got {num_frames!r}.")
             self.base_channels = total_channels
         else:
+            # channels_per_frame: None (every existing arm) keeps the 1/3/4 image-depth check;
+            # "3DCNN-DVS" states 2 (dvs_polarity's ON/OFF), which is checked EXACTLY.
             self.num_frames = validate_framestack_depth(
-                total_channels, num_frames, type(self).__name__)
-            self.base_channels = total_channels // self.num_frames  # 3 for RGB
+                total_channels, num_frames, type(self).__name__, channels_per_frame)
+            self.base_channels = total_channels // self.num_frames  # 3 for RGB, 2 for DVS
         k = int(stem_kernel_hw)
         if k < 1 or k % 2 == 0:
             raise ValueError(f"{type(self).__name__}: stem_kernel_hw must be a positive odd integer; got {stem_kernel_hw!r}.")

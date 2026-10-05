@@ -21,17 +21,33 @@ temporal signal at all. A startup error is cheap; a scrambled GPU-night is not.
 from __future__ import annotations
 
 
-def validate_framestack_depth(total_channels: int, num_frames: int, encoder_name: str) -> int:
+def validate_framestack_depth(total_channels: int, num_frames: int, encoder_name: str,
+                              channels_per_frame: int | None = None) -> int:
     """Return ``int(num_frames)``, or raise if it cannot describe ``total_channels``.
 
     The observation arriving at a temporal encoder is ``base_channels * num_frames``
     channels. ``base_channels`` must divide evenly and must be a plausible per-frame image
     depth (1 = grayscale, 3 = RGB, 4 = RGBA). Anything else means the wrapper and the
     encoder disagree about how many frames are stacked.
+
+    ``channels_per_frame`` (default None = the check above, unchanged): an encoder whose
+    per-frame depth is NOT an image depth -- ``dvs_polarity`` emits 2 (ON, OFF) -- states it
+    here, and the check becomes STRICTER, not looser: ``total_channels`` must equal
+    ``channels_per_frame * num_frames`` exactly, so a 6-channel RGB stack reaching a
+    2-per-frame encoder still refuses to build.
     """
     n = int(num_frames)
     if n < 1:
         raise ValueError(f"{encoder_name}: num_frames must be >= 1; got {num_frames!r}.")
+    if channels_per_frame is not None:
+        c = int(channels_per_frame)
+        if c < 1 or total_channels != c * n:
+            raise ValueError(
+                f"{encoder_name}: observation has {total_channels} channels, but the cfg "
+                f"states channels_per_frame={channels_per_frame!r} x num_frames={n} = {c * n}. "
+                f"The wrapper chain and the encoder cfg disagree; refusing to build."
+            )
+        return n
     if total_channels % n:
         raise ValueError(
             f"{encoder_name}: observation has {total_channels} channels, which is not "
