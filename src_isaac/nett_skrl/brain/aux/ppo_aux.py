@@ -140,6 +140,20 @@ def _build_slot_fg(encoder):
     return _wave17(SlotFGTerm, "slot_fg")(encoder)
 
 
+def _build_mae(encoder):
+    """Masked autoencoding ALONE (VideoMAE row): token MAE / masked-input / VideoMAE by encoder."""
+    from .mae_aux import MAETerm
+    return MAETerm(encoder)
+
+
+def _build_mae_with_cltt_ref(encoder):
+    """`cltt_ref` + MAE (owner request 2026-10-05): the row differs from its cltt_ref control by
+    the MAE term alone. Key is not `cltt_ref_mae`: WithCLTTRef refuses term names starting with
+    `cltt_ref` (their scalars would collide with the reference term's)."""
+    from .mae_aux import MAETerm
+    return _wave17(MAETerm, "mae")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -167,6 +181,9 @@ AUX_LOSSES = {
     "patch_affinity": _build_patch_affinity,
     "ego_residual": _build_ego_residual,
     "slot_fg": _build_slot_fg,
+    # ── U35 (owner request 2026-10-05): masked autoencoding, alone and composed with cltt_ref.
+    "mae": _build_mae,
+    "mae_with_cltt_ref": _build_mae_with_cltt_ref,
 }
 
 

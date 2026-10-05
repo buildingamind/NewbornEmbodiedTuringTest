@@ -141,3 +141,23 @@ class Compact3DCNN(HWCFeatureExtractor):
         x = self.conv3d(x).squeeze(2)          # (B, 32, H', W')
         x = self.cnn2d(x)
         return self.linear(x)
+
+    def encode_spatial(self, observations: torch.Tensor) -> torch.Tensor:
+        """The unpooled map (B, conv_dim, H/4, W/4): conv3d -> cnn2d up to its last ReLU.
+
+        Added for the masked-image term (owner request 2026-10-05, `brain/aux/mae_aux.py`), which
+        decodes pixels from positions and so cannot use the pooled 4x4 vector. Same modules, same
+        T-major frame split as `forward` (`cnn2d[:-2]` drops only DeterministicAvgPool2d and
+        Flatten); `forward` itself is untouched, so every existing 3DCNN label builds and runs as
+        before. tests/test_mae_aux.py pins that pooling this map reproduces forward's input to
+        `linear`.
+        """
+        x = self._prepare_image(observations)  # (B, C*T, H, W)
+        B, CT, H, W = x.shape
+        if self.duplicate_frame:
+            x = x.unsqueeze(2).expand(B, CT, self.num_frames, H, W).contiguous()
+        else:
+            x = x.view(B, self.num_frames, self.base_channels, H, W)
+            x = x.permute(0, 2, 1, 3, 4).contiguous()
+        x = self.conv3d(x).squeeze(2)
+        return self.cnn2d[:-2](x)
