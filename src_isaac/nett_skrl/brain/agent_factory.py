@@ -247,14 +247,27 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             from .ppo_metrics import MetricsPPO
             agent_cls = MetricsPPO
 
-        # The Unity-parity update hooks live in MetricsPPO.update only; an aux-loss agent would
-        # train WITHOUT them and record the knob as set. Refuse rather than no-op silently.
+        # The Unity-parity update hooks: MetricsPPO.update applies all of them; AuxLossPPO.update
+        # applies the schedules (apply_diag_schedules: NETT_DIAG_ENT_START, NETT_DIAG_LR_ANNEAL,
+        # NETT_ADAM_EPS) but NOT NETT_ADV_NORM=minibatch (its update samples on its own path).
+        # Any other agent applies none. A knob set on an agent that does not apply it would train
+        # WITHOUT it and record it as set, so refuse rather than no-op silently.
+        # ⛔ NETT_DIAG_ENT_START was missing from this list until 2026-10-05: an aux-loss agent
+        # silently skipped the entropy anneal (no arm ever ran that combination; the guard refused
+        # first on NETT_ADAM_EPS / NETT_DIAG_LR_ANNEAL, which every UnityRecipe env sets).
         from .ppo_metrics import MetricsPPO as _MPPO
-        _hooks = {k: os.environ.get(k) for k in ("NETT_ADAM_EPS", "NETT_ADV_NORM", "NETT_DIAG_LR_ANNEAL")}
-        if not (isinstance(agent_cls, type) and issubclass(agent_cls, _MPPO)) and any(
-                v and v.strip().lower() not in ("", "rollout") for v in _hooks.values()):
-            raise ValueError(f"{sorted(k for k, v in _hooks.items() if v)} are applied in MetricsPPO.update "
-                             f"only; this agent is {getattr(agent_cls, '__name__', agent_cls)}")
+        _hooks = {k: os.environ.get(k) for k in
+                  ("NETT_ADAM_EPS", "NETT_ADV_NORM", "NETT_DIAG_LR_ANNEAL", "NETT_DIAG_ENT_START")}
+        _set = {k for k, v in _hooks.items() if v and v.strip().lower() not in ("", "rollout")}
+        if isinstance(agent_cls, type) and issubclass(agent_cls, _MPPO):
+            _unapplied = set()
+        elif isinstance(agent_cls, type) and issubclass(agent_cls, AuxLossPPO):
+            _unapplied = _set & {"NETT_ADV_NORM"}
+        else:
+            _unapplied = _set
+        if _unapplied:
+            raise ValueError(f"{sorted(_unapplied)} are not applied by "
+                             f"{getattr(agent_cls, '__name__', agent_cls)}.update")
         agent = agent_cls(
             models=models,
             memory=memory,

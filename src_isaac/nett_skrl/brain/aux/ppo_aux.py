@@ -362,6 +362,12 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
     @strict_update
     @cached_features_update
     def update(self, *, timestep: int, timesteps: int) -> None:
+        # The Unity-recipe schedules (NETT_DIAG_ENT_START, NETT_DIAG_LR_ANNEAL, NETT_ADAM_EPS), the
+        # same call MetricsPPO.update makes first. Each knob unset = no-op, so the default path is
+        # unchanged. The aux head's param group is scheduled with the rest of the optimizer.
+        # NETT_ADV_NORM=minibatch is NOT applied here; agent_factory refuses it for this class.
+        from ..ppo_metrics import apply_diag_schedules
+        apply_diag_schedules(self, timestep=timestep, timesteps=timesteps)
         if self._aux is None:
             # Disabled path: identical to stock PPO (zero overhead, no risk).
             return super().update(timestep=timestep, timesteps=timesteps)
