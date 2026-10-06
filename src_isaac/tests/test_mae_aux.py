@@ -339,3 +339,20 @@ def test_vivit_cltt_ref_is_videomae_cltt_ref_minus_mae(campaign):
     enc_m = _build(campaign.MODELS["VideoMAE"])
     n_mae = sum(p.numel() for p in MAETerm(enc_m).parameters() if id(p) not in enc_ids(enc_m))
     assert n_mae > 0 and n_t - n_c == n_mae, (n_c, n_t, n_mae)
+
+
+_U35_AUX_LABELS = ("ViT-CLTT-Ref-MAE", "3DCNN-CLTT-Ref-MAE", "VideoMAE", "VideoMAE-CLTT-Ref",
+                   "ViT-CLTT-Ref-NextFrame", "3DCNN-NextFrame", "ViT-CLTT-Ref-DropAll",
+                   "ViT-CLTT-Ref-DropAux", "ViViT-CLTT-Ref", "3DCNN-CLTT-Ref")
+
+
+@pytest.mark.parametrize("label", _U35_AUX_LABELS)
+def test_aux_head_is_built_on_the_encoder_device(campaign, label):
+    """Every U35 aux head must live where the encoder lives. At d68c1e6 MAETerm left its decoder
+    on CPU: the CPU suite passed and the first GPU update raised cpu vs cuda:0 (U35 A1/C2 FIT
+    probes, 2026-10-06). `meta` stands in for cuda here: a head left behind stays on cpu."""
+    spec = campaign.MODELS[label]
+    enc = _build(spec).to("meta")
+    term = AUX_LOSSES[spec["aux"]](enc)
+    off = sorted({str(t.device) for t in [*term.head.parameters(), *term.head.buffers()]} - {"meta"})
+    assert not off, f"{label}: aux head tensors on {off}, encoder on meta"

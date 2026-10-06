@@ -183,6 +183,7 @@ class MAETerm(nn.Module):
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
         mode = next((m for cls, m in MODES.items() if type(encoder) is cls), None)
+        device = next(encoder.parameters()).device
         if mode is None:
             raise TypeError(
                 f"MAETerm supports CompactViT (token MAE), Compact3DCNN (masked input) and "
@@ -239,7 +240,7 @@ class MAETerm(nn.Module):
             if h % self.patch or w % self.patch:
                 raise ValueError(f"NETT_AUX_MAE_PATCH={self.patch} does not divide the {h}x{w} eye.")
             with torch.no_grad():
-                fmap = encoder.encode_spatial_prepared(torch.zeros(1, c * self.num_frames, h, w))
+                fmap = encoder.encode_spatial_prepared(torch.zeros(1, c * self.num_frames, h, w, device=device))
             fh, fw = fmap.shape[-2:]
             if h % fh or w % fw or h // fh != w // fw:
                 raise ValueError(f"3DCNN map {fh}x{fw} is not an integer downsampling of {h}x{w}.")
@@ -250,6 +251,10 @@ class MAETerm(nn.Module):
                 "dec": _ConvDecoder(fmap.shape[1], c * self.num_frames, self.scale, dec_dim),
                 "mask_value": _MaskValue(c),
             })
+        # The head is built on CPU; put it on the encoder's device, as every other term does
+        # (cltt_ref_aux, nextframe_aux). Missing at d68c1e6: the first GPU update raised
+        # cpu vs cuda:0 in the decoder (U35 A1 FIT probe 2026-10-06), a CPU-only suite cannot see it.
+        self.head.to(device)
         self.last_scalars: dict = {}
 
     # ---------------------------------------------------------------- masks
