@@ -32,6 +32,8 @@ def defaults(monkeypatch):
         torch.manual_seed(17)
         yield
     torch.set_num_threads(threads)
+    # export_seg_flow writes os.environ directly; never leak it into the rest of the session
+    os.environ.pop("NETT_GWM_FLOW", None)
 
 
 @pytest.fixture
@@ -135,6 +137,17 @@ def test_knobs_that_would_run_something_else_are_refused(env, match, monkeypatch
         monkeypatch.setenv(k, v)
     with pytest.raises(ValueError, match=match):
         GwmSpectralSeg(Frames())
+
+
+@pytest.mark.parametrize("env,flow", [
+    ({"NETT_EXPERT_FLOW": "1"}, "expert"),                    # the GWM-Seg row template, copied
+    ({"NETT_EXPERT_FLOW": "true", "NETT_GWM_FLOW": "expert"}, "expert"),
+    ({"NETT_EXPERT_FLOW": "0", "NETT_GWM_FLOW": "raft_scratch"}, "raft_scratch"),
+])
+def test_an_agreeing_expert_flow_knob_still_constructs(env, flow, monkeypatch):
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    assert GwmSpectralSeg(Frames()).flow_mode == flow
 
 
 # ───────────────────────────── the merge ─────────────────────────────
