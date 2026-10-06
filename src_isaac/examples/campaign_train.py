@@ -564,6 +564,22 @@ MODELS: dict[str, dict] = {
     "ViViT+VICReg":   dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True,  aux="vicreg"),
     "ViViT-VICReg-TT": dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="vicreg_tt", aux_weight=1.0),
     "ViViT-1M":       dict(encoder="compact_vivit",   cfg=dict(VIVIT_1M_CFG),                                                     framestack=True),   # enc 993,128 -- size series
+    # ── U35 MAE (owner request 2026-10-05, DECISIONS §71 follow-up). Each label is its base
+    # verbatim except `aux` (brain/aux/mae_aux.py chooses the masking scheme from the encoder):
+    #   ViT-CLTT-Ref-MAE   = ViT-CLTT-Ref   + token MAE (75%; a token spans BOTH stacked frames,
+    #                        so this is tube masking by construction)
+    #   3DCNN-CLTT-Ref-MAE = 3DCNN-CLTT-Ref + masked-input reconstruction, each frame of the stack
+    #                        masked INDEPENDENTLY (NETT_AUX_MAE_TUBE=0 default here): the owner's
+    #                        "partial masking of a stacked observation space"
+    #   VideoMAE           = ViViT          + VideoMAE alone (tube masking, 90%)
+    #   VideoMAE-CLTT-Ref  = ViViT          + cltt_ref + VideoMAE
+    # Both CLTT rows compose through WithCLTTRef, so each differs from its cltt_ref control by the
+    # MAE term only. ⚠ ViViT has no cltt_ref label of its own: VideoMAE-CLTT-Ref's one-term
+    # control would be "ViViT + cltt_ref", which is not registered.
+    "ViT-CLTT-Ref-MAE":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
+    "3DCNN-CLTT-Ref-MAE": dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
+    "VideoMAE":           dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae", aux_weight=1.0),
+    "VideoMAE-CLTT-Ref":  dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)

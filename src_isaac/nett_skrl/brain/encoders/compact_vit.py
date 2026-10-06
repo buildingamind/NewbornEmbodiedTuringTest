@@ -285,8 +285,15 @@ class CompactViT(HWCFeatureExtractor):
             if m.bias is not None:
                 nn.init.zeros_(m.bias)
 
-    def _trunk(self, prepared: torch.Tensor) -> torch.Tensor:
+    def _trunk(self, prepared: torch.Tensor, keep: torch.Tensor | None = None) -> torch.Tensor:
         """The ONE trunk path: prepared (B, C, H, W) -> post-norm tokens (B, 1+N, D), CLS first.
+
+        ``keep`` (MAE, owner request 2026-10-05, `brain/aux/mae_aux.py`): an optional (B, N_vis)
+        LongTensor of patch indices. When given, only those patch tokens (after the position
+        embedding, so each keeps its own position) and the CLS token enter the blocks, and the
+        result is (B, 1+N_vis, D) -- He et al. 2022's "encoder sees only visible patches". At
+        ``keep=None`` (forward, encode_tokens: every existing caller) the statements below are
+        the pre-change ones in the same order; the gather is a separate, skipped branch.
 
         ⛔ `forward` AND `encode_tokens` BOTH GO THROUGH HERE, AND NOTHING ELSE MAY. Wave 15's
         live ViT arms are the only comparator wave 17 has, so `forward` must stay BITWISE the
@@ -310,11 +317,22 @@ class CompactViT(HWCFeatureExtractor):
         cls = self.cls_token.expand(B, -1, -1)
         x = torch.cat([cls, x], dim=1)
         x = x + self.pos_embed
+        if keep is not None:
+            if self.attn_mode != "qk":
+                raise ValueError(
+                    f"CompactViT(attn_mode={self.attn_mode!r}) mixes a FIXED token count; a "
+                    f"visible-token subset would not fit it. MAE needs attn_mode='qk'.")
+            idx = keep.unsqueeze(-1).expand(-1, -1, x.shape[-1])
+            x = torch.cat([x[:, :1], torch.gather(x[:, 1:], 1, idx)], dim=1)
 
         for block in self.blocks:
             x = block(x)
 
         return self.norm(x)
+
+    def encode_visible_prepared(self, prepared: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """Post-norm (B, 1+N_vis, D) tokens of the patches in ``keep`` only (CLS first). MAE."""
+        return self._trunk(prepared, keep)
 
     def encode_tokens(self, observations: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int]]:
         """Post-transformer PATCH tokens (B, N, D) with the CLS token dropped, and (n_h, n_w).

@@ -335,6 +335,44 @@ class CompactViViT(HWCFeatureExtractor):
         # factored attention (ViViT Model 3).
         return self._encode_factored(tok)
 
+    def encode_visible_prepared(self, prepared: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """VideoMAE path (owner request 2026-10-05, `brain/aux/mae_aux.py`): post-norm tokens of
+        the visible joint-sequence positions only, CLS first -> (B, 1+N_vis, D).
+
+        ``keep`` is (B, N_vis) indices into the JOINT sequence, frame-major: index
+        ``t * n_spatial + s`` is frame t, patch s -- the order `forward`'s
+        ``tok.reshape(B, T * n_spatial, D)`` produces. Tokens are gathered AFTER both position
+        embeddings, so each keeps its own (t, s) position (Tong et al. 2022, as He et al. 2022).
+
+        ⛔ A MIRROR OF `forward`'s joint branch, not a refactor of it: `forward` is untouched so
+        every existing ViViT arm builds and runs as before. The mirror is pinned against drift by
+        tests/test_mae_aux.py (keep = every position reproduces `forward`'s pooled CLS exactly).
+        Joint mode with a CLS token only -- the configuration VIVIT_CFG ships; anything else
+        refuses rather than approximating.
+        """
+        if self.temporal_mode != "joint" or not self.use_cls:
+            raise ValueError(
+                f"CompactViViT.encode_visible_prepared needs temporal_mode='joint' and pool='cls'; "
+                f"got temporal_mode={self.temporal_mode!r}, pool={self.pool!r}.")
+        x = prepared                      # already normalized (B, C*T, H, W)
+        B = x.shape[0]
+        T = self.num_frames
+        frames = self._frames(x)
+        per_frame = [
+            self.patch_embed(_patchify(frames[:, t], self.patch_size))
+            for t in range(T)
+        ]
+        tok = torch.stack(per_frame, dim=1)
+        tok = tok + self.spatial_pos_embed.unsqueeze(1)
+        tok = tok + self.temporal_pos_embed.unsqueeze(2)
+        seq = tok.reshape(B, T * self.n_spatial, self.embed_dim)
+        seq = torch.gather(seq, 1, keep.unsqueeze(-1).expand(-1, -1, self.embed_dim))
+        cls = (self.cls_token + self.cls_pos_embed).expand(B, -1, -1)
+        seq = torch.cat([cls, seq], dim=1)
+        for block in self.blocks:
+            seq = block(seq)
+        return self.norm(seq)
+
     def _encode_single(self, tok: torch.Tensor) -> torch.Tensor:
         """Run the shared stack over (B, n_spatial, D) tokens -> (B, D) pooled."""
         B = tok.shape[0]
