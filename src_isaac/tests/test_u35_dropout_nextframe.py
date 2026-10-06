@@ -10,6 +10,10 @@ AND values for ViT-CLTT-Ref and 3DCNN at a fixed seed, and the forward is checke
 
 from __future__ import annotations
 
+import hashlib
+import importlib.machinery
+import importlib.util
+import sys
 from pathlib import Path
 
 import gymnasium as gym
@@ -161,9 +165,10 @@ def test_state_dict_keys_shapes_and_values_match_the_base(campaign, base, varian
         assert all(torch.equal(sd[k], v) for k, v in enc.state_dict().items()), lbl
 
 
-def test_base_forwards_are_bitwise_unchanged_and_deterministic(campaign):
-    """No dropout path is entered for an unscoped trunk (live_p == 0 skips F.dropout entirely),
-    and the 3DCNN refactor (`_temporal_stem`) runs the same ops as the inline code."""
+def test_base_forwards_are_deterministic_and_unscoped_vit_has_no_live_dropout(campaign):
+    """No dropout path is entered for an unscoped trunk (live_p == 0 skips F.dropout entirely).
+    Bitwise identity WITH THE PRE-EDIT CODE is pinned separately: ViT by
+    test_compact_vit_token_hook.py's frozen copy, 3DCNN by the frozen-fixture test below."""
     x = torch.randint(0, 255, (3, C, H, W), dtype=torch.uint8)
     for base in ("ViT-CLTT-Ref", "3DCNN"):
         enc = _build(campaign.MODELS[base], seed=5).train()
@@ -173,6 +178,55 @@ def test_base_forwards_are_bitwise_unchanged_and_deterministic(campaign):
         assert torch.equal(a, enc(x)), base
     vit = _build(campaign.MODELS["ViT-CLTT-Ref"], seed=5)
     assert all(b.live_p == 0.0 for b in vit.blocks)
+
+
+#: `git rev-parse 71a5fec:src_isaac/nett_skrl/brain/encoders/compact_3dcnn.py`, copied from the
+#: command's output when the fixture was cut (same pattern as test_compact_vit_token_hook.py).
+FROZEN_3DCNN = Path(__file__).resolve().parent / "fixtures" / "frozen" / "compact_3dcnn_71a5fec.py.txt"
+FROZEN_3DCNN_BLOB = "cfa6b9aa53b40b550264cdfed762a11b3288ab1f"
+
+
+def _load_frozen_3dcnn():
+    name = "nett_skrl.brain.encoders._frozen_compact_3dcnn_71a5fec"
+    if name in sys.modules:
+        return sys.modules[name]
+    loader = importlib.machinery.SourceFileLoader(name, str(FROZEN_3DCNN))
+    spec = importlib.util.spec_from_file_location(name, str(FROZEN_3DCNN), loader=loader)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[name] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_frozen_3dcnn_fixture_is_the_pre_u35_file():
+    data = FROZEN_3DCNN.read_bytes()
+    assert hashlib.sha1(b"blob %d\0" % len(data) + data).hexdigest() == FROZEN_3DCNN_BLOB
+    assert "_temporal_stem" not in vars(_load_frozen_3dcnn().Compact3DCNN)
+
+
+@pytest.mark.parametrize("label,channels", [
+    ("3DCNN", 6), ("3DCNN-1F", 3), ("3DCNN-Sp1", 6), ("3DCNN-DVS", 4), ("3DCNN-NextFrame", 6),
+])
+def test_3dcnn_forward_and_grads_are_bitwise_the_pre_u35_code(campaign, label, channels):
+    """⛔ BITWISE, against real pre-edit code: the `_temporal_stem` refactor must not move one bit
+    of output or gradient for any 3DCNN row (duplicate-frame and DVS paths included)."""
+    kwargs = EncoderCfg(**campaign.MODELS[label]["cfg"]).as_kwargs()
+    kwargs.pop("trainable", None)
+    space = _space(channels)
+    torch.manual_seed(0)
+    old = _load_frozen_3dcnn().Compact3DCNN(space, **kwargs)
+    torch.manual_seed(1)
+    new = encoder_mapping["compact_3dcnn"](space, **kwargs)
+    assert list(old.state_dict()) == list(new.state_dict())
+    new.load_state_dict(old.state_dict())
+    x = torch.randint(0, 256, (3, channels, H, W), generator=torch.Generator().manual_seed(5),
+                      dtype=torch.uint8)
+    a, b = old(x), new(x)
+    assert torch.equal(a, b), label
+    a.pow(2).sum().backward()
+    b.pow(2).sum().backward()
+    for (k, p), q in zip(old.named_parameters(), new.parameters()):
+        assert torch.equal(p.grad, q.grad), (label, k)
 
 
 def test_parameter_counts_per_label(campaign):
