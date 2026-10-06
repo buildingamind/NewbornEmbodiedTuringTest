@@ -67,6 +67,7 @@ cltt_ref has now run three different losses, and a loss VALUE means nothing with
 
 from __future__ import annotations
 
+import contextlib
 import os
 
 import torch
@@ -95,6 +96,17 @@ from .cltt_views import current_frame_stack, resolve_channels_per_frame
 MASK_REGIME_NONE = 0.0
 MASK_REGIME_ANCHOR = 1.0
 MASK_REGIME_ANCHOR_AND_TWIN = 2.0
+
+
+def aux_dropout_scope(encoder: nn.Module):
+    """The encoder's aux-only dropout scope (CompactViT ``dropout_scope='aux'``), or a no-op.
+
+    U35 (owner 2026-10-05, "dropout only CLTT aux loss"): only THIS objective's encoder passes are
+    wrapped, so the PPO update's policy/value forward stays dropout-free. Every encoder without the
+    hook -- every arm before U35 -- gets ``nullcontext`` and runs exactly as before.
+    """
+    hook = getattr(encoder, "aux_dropout", None)
+    return hook() if callable(hook) else contextlib.nullcontext()
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -940,13 +952,15 @@ class CLTTReferenceAuxLoss(nn.Module):
             )
         views = self._make_views(views, encoder)
 
-        z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
+        with aux_dropout_scope(encoder):
+            z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []
         masked_pairs = 0
         candidates = 0.0
         floor = 0.0
         for offset, view in zip(self.offsets, views[1:]):
-            z_pos = self.head(encoder.encode_prepared(view))
+            with aux_dropout_scope(encoder):
+                z_pos = self.head(encoder.encode_prepared(view))
             # ⛔ TWO OWNER DECISIONS OF 2026-09-17: the anchor's own frame is not one of its
             # negatives, and (under MASK_TWIN_ENV, default on) neither is the positive's. This
             # CHANGES THE OBJECTIVE -- see `nt_xent_same_frame_masked`. Arms trained under a

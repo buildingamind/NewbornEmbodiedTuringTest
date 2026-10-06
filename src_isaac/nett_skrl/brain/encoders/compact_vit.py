@@ -15,11 +15,13 @@ Architecture:
 
 from __future__ import annotations
 
+import contextlib
 import math
 
 import gymnasium as gym
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
@@ -135,8 +137,22 @@ class _TransformerBlock(nn.Module):
             nn.GELU(),
             nn.Linear(mlp_hidden, dim),
         )
+        #: The dropout probability IN FORCE for the next forward, set by CompactViT (U35, owner
+        #: 2026-10-05): its configured rate under scope "all", 0.0 under scope "aux" except
+        #: inside `CompactViT.aux_dropout()`. A plain float, not a module, so the state_dict and
+        #: the module tree are those of the pre-dropout block. ⚠ The `dropout` CONSTRUCTOR
+        #: argument above is the legacy attention-weight rate baked into nn.MultiheadAttention
+        #: (CompactViT has always passed 0.0); the runtime path below drives that same
+        #: attribute, so the two never both apply.
+        self.live_p = 0.0
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        p = self.live_p
+        if p > 0.0:
+            return self._forward_dropout(x, p)
+        # ⛔ p == 0 RUNS THE PRE-DROPOUT LINES LITERALLY -- no F.dropout(p=0) call, so outputs,
+        # gradients and the RNG stream of every existing ViT arm are untouched (pinned by
+        # tests/test_compact_vit_token_hook.py against the frozen pre-hook copy).
         normed = self.norm1(x)
         if self.attn_mode == "qk":
             attn_out, _ = self.attn(normed, normed, normed)
@@ -144,6 +160,29 @@ class _TransformerBlock(nn.Module):
             attn_out = self.attn(normed)
         x = x + attn_out
         x = x + self.mlp(self.norm2(x))
+        return x
+
+    def _forward_dropout(self, x: torch.Tensor, p: float) -> torch.Tensor:
+        """The same block with dropout at the standard ViT sites (Dosovitskiy et al. 2021 / timm):
+        attention weights, the attention branch output, the MLP hidden after GELU, and the MLP
+        branch output. Every site is gated by ``self.training``, so eval-mode rollouts are
+        deterministic whatever ``live_p`` says."""
+        normed = self.norm1(x)
+        if self.attn_mode == "qk":
+            # nn.MultiheadAttention reads `self.dropout` (a float) at every forward and applies
+            # it to the attention weights only when training; restored so nothing persists.
+            prev = self.attn.dropout
+            self.attn.dropout = p
+            try:
+                attn_out, _ = self.attn(normed, normed, normed)
+            finally:
+                self.attn.dropout = prev
+        else:
+            attn_out = self.attn(normed)
+        x = x + F.dropout(attn_out, p, self.training)
+        fc1, act, fc2 = self.mlp
+        h = F.dropout(act(fc1(self.norm2(x))), p, self.training)
+        x = x + F.dropout(fc2(h), p, self.training)
         return x
 
 
@@ -172,10 +211,36 @@ class CompactViT(HWCFeatureExtractor):
         spatial_reduce_dim: int = 16,
         stem: str = "linear",
         attn_mode: str = "qk",
+        dropout: float = 0.0,
+        dropout_scope: str | None = None,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
         channels, height, width = image_channels_hw(observation_space)
+        # ── DROPOUT (U35, owner 2026-10-05: "dropout everywhere, and dropout only CLTT aux loss").
+        # ⛔ EXPLICIT PARAMETERS, because `**_` below swallows every unknown cfg key: before this
+        # a `"dropout"` in a MODELS cfg was discarded in silence and the arm ran the control.
+        # ⛔ A RATE WITHOUT A SCOPE REFUSES. "where does it apply" changes the method -- scope
+        # "all" also perturbs the PPO update's policy forward (skrl rolls out in eval mode and
+        # updates in train mode, so new log-probs see dropout and the stored old ones did not),
+        # scope "aux" perturbs only the auxiliary objective's encoder pass -- so neither may be
+        # a default a row inherits without naming it.
+        dropout = float(dropout)
+        if dropout_scope is None:
+            if dropout != 0.0:
+                raise ValueError(
+                    f"CompactViT: dropout={dropout} needs dropout_scope='all' or 'aux'; refusing "
+                    f"to pick where it applies.")
+        else:
+            if dropout_scope not in ("all", "aux"):
+                raise ValueError(f"CompactViT: dropout_scope must be 'all' or 'aux'; got "
+                                 f"{dropout_scope!r}.")
+            if not (0.0 < dropout < 1.0):      # also refuses NaN
+                raise ValueError(
+                    f"CompactViT: dropout_scope={dropout_scope!r} needs 0 < dropout < 1; got "
+                    f"{dropout!r}. A scoped label at rate 0 is the control wearing a new name.")
+        self.dropout_p = dropout
+        self.dropout_scope = dropout_scope
 
         assert height % patch_size == 0 and width % patch_size == 0, (
             f"Image size ({height}×{width}) must be divisible by patch_size={patch_size}"
@@ -214,6 +279,7 @@ class CompactViT(HWCFeatureExtractor):
                                num_tokens=num_patches + 1, attn_mode=attn_mode)
              for _ in range(depth)]
         )
+        self._set_live_dropout(dropout if dropout_scope == "all" else 0.0)
         self.norm = nn.LayerNorm(embed_dim)
         if pool == "spatial":
             # Preserve object LOCATION (which CLS pooling destroys — the cause of
@@ -274,6 +340,28 @@ class CompactViT(HWCFeatureExtractor):
         for m in self.modules():
             if isinstance(m, _TokenMixer):
                 m.reset_parameters()
+
+    def _set_live_dropout(self, p: float) -> None:
+        for block in self.blocks:
+            block.live_p = float(p)
+
+    @contextlib.contextmanager
+    def aux_dropout(self):
+        """Dropout ON for the enclosed encoder passes when ``dropout_scope == 'aux'``; else a no-op.
+
+        Wraps ONLY the auxiliary objective's own encoder calls (cltt_ref_aux), so the PPO policy
+        and value forward in the same update run dropout-free. The masks are drawn at forward
+        time and saved by autograd, so a backward taken after the block exits uses them.
+        ⚠ Not re-entrant across threads; the update loop is single-threaded.
+        """
+        if self.dropout_scope != "aux":
+            yield
+            return
+        self._set_live_dropout(self.dropout_p)
+        try:
+            yield
+        finally:
+            self._set_live_dropout(0.0)
 
     def _init_weights(self, m: nn.Module) -> None:
         if isinstance(m, nn.Linear):
