@@ -685,6 +685,19 @@ MODELS: dict[str, dict] = {
     # ENV, set by the row: NETT_SEG_FG_SLOT=1 NETT_SEG_CADENCE=rollout NETT_SEG_TRAIN_ON=masked
     # NETT_SEG_QUANTIZE=floor (MoTokNet itself matches the reference weight-for-weight).
     "MoTok-Seg-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="motok_seg"),
+    # ── SLOTS FROM MOTION (U35, owner 2026-10-05: "try out the slots-from-motion MoToK you suggested on
+    # a card ... For slot attention ... https://arxiv.org/pdf/2006.15055"). MoTok-Seg-UnityRecipe in
+    # EVERY field but the segmenter; the row env is the MoTok row's. Same policy, one frame, mask
+    # multiplies the observation, no aux. The segmenters keep their own previous frame (motion_seg.py).
+    #   MoTokFlow: MoTokNet unchanged + NETT_SEG_MOTION_WEIGHT x GWM flow-reconstruction loss on its
+    #              own masks vs expert block flow prev->curr. Read against MoTok-Seg-UnityRecipe.
+    #   SA:        Locatello 2020 Slot Attention AE from scratch, reconstruction only (the control).
+    #   SAFlow:    SA + the same motion term on the decoder alphas. Read against SA.
+    # ⛔ Masks are chosen per frame by area for SA/SAFlow (slot indices carry no identity); score
+    # any slot-level readout permutation-invariantly.
+    "MoTokFlow-Seg-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="motokflow_seg"),
+    "SA-Seg-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="sa_seg"),
+    "SAFlow-Seg-UnityRecipe": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, seg="saflow_seg"),
 
     # ── THE 14-CONDITION WAVE (2026-09-15). Both entries hold the encoder at nature_cnn
     # and framestack=True so every arm in that wave differs from `CNN2F` in the AUX LOSS
