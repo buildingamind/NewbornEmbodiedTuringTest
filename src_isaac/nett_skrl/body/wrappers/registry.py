@@ -27,6 +27,14 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "motok_seg": ("nett_skrl.body.wrappers.motok_seg", "MoTokSeg"),
     # Frame-pair perception model: unlike MoTok, this goes AFTER framestack.
     "gwm_seg": ("nett_skrl.body.wrappers.gwm_seg", "GwmSeg"),
+    # ── SLOTS FROM MOTION (U35, owner 2026-10-05). Mask-multiplies-observation segmenters that ALSO
+    # train on (previous, current) RAW frame pairs; see motion_seg.py / sa_seg.py.
+    # ⚠ ORDER MATTERS: like "motok_seg" these precede "framestack" -- they take ONE frame, keep
+    # their OWN previous frame, and read the env's done flags in step() to drop pairs that straddle
+    # an episode reset. Behind framestack they refuse (more than 3 channels).
+    "motokflow_seg": ("nett_skrl.body.wrappers.motion_seg", "MoTokFlowSeg"),
+    "sa_seg": ("nett_skrl.body.wrappers.sa_seg", "SASeg"),
+    "saflow_seg": ("nett_skrl.body.wrappers.sa_seg", "SAFlowSeg"),
     # DIAGNOSTIC CONTROL, not a model: a fixed red-object colour mask (the stimulus's objects are
     # red), the upper bound on what a perfect segmenter would hand the policy. See oracle_seg.py.
     "oracle_seg": ("nett_skrl.body.wrappers.oracle_seg", "OracleColorSeg"),
