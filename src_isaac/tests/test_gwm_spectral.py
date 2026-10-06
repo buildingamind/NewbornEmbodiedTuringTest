@@ -15,7 +15,8 @@ from nett_skrl.body.wrappers.gwm_seg import GwmSeg
 from nett_skrl.body.wrappers.gwm_spectral import GwmSpectralSeg, spectral_bipartition
 from nett_skrl.brain.aux.raft_small import RAFTSmall, unsupervised_flow_loss
 
-LABELS = {"CNN2F+GWM-Seg-K4-Spectral": "expert", "CNN2F+GWM-Seg-K4-Spectral-RAFT": "raft_scratch"}
+LABELS = {"CNN2F+GWM-Seg-K4-Spectral": "expert", "CNN2F+GWM-Seg-K4-Spectral-RAFTS": "raft_scratch",
+          "CNN2F+GWM-Seg-K4-Spectral-RAFTPT": "raft_pretrained"}
 
 
 @pytest.fixture(autouse=True)
@@ -111,16 +112,10 @@ def test_existing_gwm_labels_are_unchanged(campaign, monkeypatch):
 def test_a_row_cannot_contradict_the_labels_flow(campaign, monkeypatch):
     monkeypatch.setenv("NETT_GWM_FLOW", "expert")
     with pytest.raises(ValueError, match="contradicts"):
-        campaign.export_seg_flow("CNN2F+GWM-Seg-K4-Spectral-RAFT", campaign.MODELS["CNN2F+GWM-Seg-K4-Spectral-RAFT"])
+        campaign.export_seg_flow("CNN2F+GWM-Seg-K4-Spectral-RAFTS", campaign.MODELS["CNN2F+GWM-Seg-K4-Spectral-RAFTS"])
 
 
 # ───────────────────────────── refusals ─────────────────────────────
-
-def test_raft_pretrained_refuses_and_names_decisions(monkeypatch):
-    monkeypatch.setenv("NETT_GWM_FLOW", "raft_pretrained")
-    with pytest.raises(ValueError, match="DECISIONS"):
-        GwmSpectralSeg(Frames())
-
 
 @pytest.mark.parametrize("env,match", [
     ({"NETT_GWM_FLOW": "raft"}, "expected one of"),
@@ -131,6 +126,13 @@ def test_raft_pretrained_refuses_and_names_decisions(monkeypatch):
     ({"NETT_GWM_FLOW": "raft_scratch", "NETT_EXPERT_FLOW": "1"}, "contradicts"),
     ({"NETT_GWM_FLOW": "expert", "NETT_EXPERT_FLOW": "0"}, "contradicts"),
     ({"NETT_GWM_SPECTRAL_TAU": "0"}, "must be > 0"),
+    ({"NETT_GWM_FLOW": "raft_pretrained", "NETT_GWM_RAFT_LR": "1e-4"}, "do not apply to the frozen"),
+    ({"NETT_GWM_FLOW": "raft_pretrained", "NETT_GWM_RAFT_ITERS": "8"}, "do not apply to the frozen"),
+    ({"NETT_GWM_FLOW": "raft_scratch", "NETT_GWM_RAFT_PT_ITERS": "12"}, "raft_pretrained only"),
+    ({"NETT_GWM_RAFT_PT_SCALE": "2"}, "raft_pretrained only"),
+    ({"NETT_GWM_FLOW": "raft_pretrained", "NETT_GWM_RAFT_PT_ITERS": "0"}, "must be >= 1"),
+    ({"NETT_GWM_FLOW": "raft_pretrained", "NETT_GWM_RAFT_PT_SCALE": "0.5"}, "UPsampling"),
+    ({"NETT_GWM_FLOW": "raft_pretrained", "NETT_EXPERT_FLOW": "1"}, "contradicts"),
 ])
 def test_knobs_that_would_run_something_else_are_refused(env, match, monkeypatch):
     for k, v in env.items():

@@ -29,9 +29,12 @@ WHAT IS NEW
      expert          ``ExpertBlockFlow`` (parameter-free block matching), the GWM-Seg baseline.
      raft_scratch    RAFT-S (``brain/aux/raft_small.py``), NO checkpoint, trained IN THIS WRAPPER
                      by its own unsupervised photometric objective and its own AdamW group.
-     raft_pretrained REFUSED. Pretrained RAFT weights (and the supervised flow labels behind
-                     them) are excluded in this campaign; using them is an owner ruling for
-                     DECISIONS, not a knob.
+     raft_pretrained FROZEN torchvision raft_large C_T_V2 (``brain/aux/raft_pretrained.py``):
+                     the owner's scoped exception to the no-pretrained-weights rule (DECISIONS §73,
+                     2026-10-06: "A pretrained exception is warranted here. The idea is to see if
+                     this approach works at all."). Flow TARGETS only: no gradient, no optimizer
+                     group, never the policy's input, never in seg_state. Label ``...-RAFTPT``;
+                     it is not a compliant solution.
    ⛔ RAFT IS NEVER TRAINED THROUGH THE SEGMENTATION LOSS AND NEVER BY PPO. The quadratic
    reconstruction loss is homogeneous of degree 2 in the flow, so a flow net trained through it
    shrinks its own output to zero (GWM-PAPER cell E). Each segmenter step is TWO separate
@@ -41,7 +44,7 @@ WHAT IS NEW
    RAFT moments with no new persistence path.
 
 Settings (beyond GwmSeg's NETT_SEG_*):
-    NETT_GWM_FLOW            expert    expert | raft_scratch (raft_pretrained refuses)
+    NETT_GWM_FLOW            expert    expert | raft_scratch | raft_pretrained (DECISIONS §73)
     NETT_GWM_SPECTRAL_TAU    0.1       affinity temperature on cosine similarity
     NETT_GWM_RAFT_LR         4e-4      RAFT-S AdamW lr (weight decay NETT_SEG_WD); the reference's
                                        FlyingChairs lr. Measured on random-shift textures (80x128,
@@ -52,6 +55,13 @@ Settings (beyond GwmSeg's NETT_SEG_*):
     NETT_GWM_RAFT_SMOOTH     4.0       edge-aware smoothness weight
     NETT_GWM_RAFT_OCC_AFTER  300       segmenter steps before the occlusion mask switches on
     NETT_GWM_RAFT_CHUNK      256       pairs per no-grad chunk when computing the ventral's flow
+                                       (both RAFT modes)
+    NETT_GWM_RAFT_PT_ITERS   12        raft_pretrained only: RAFT update iterations (torchvision's
+                                       default and the reference's eval setting)
+    NETT_GWM_RAFT_PT_SCALE   2.0       raft_pretrained only: minimum UPsampling before RAFT (short
+                                       side also >= 128, sides /8): 80x128 -> 160x256
+NETT_GWM_RAFT_{LR,ITERS,BATCH,SMOOTH,OCC_AFTER} apply to raft_scratch only and are REFUSED under
+raft_pretrained (a frozen net has no lr); NETT_GWM_RAFT_PT_* are refused under any other mode.
 NETT_SEG_BACKBONE_LR does not apply (there is no slow learned dorsal) and is refused if set.
 NETT_SEG_MASK_RULE and NETT_SEG_FG_SLOT must be 'auto': the merge IS the mask rule.
 """
@@ -181,6 +191,7 @@ class GwmSpectralSeg(GwmSeg):
             "seg/spectral_ncut_exact_gap": float("nan"),
             "seg/spectral_eig2": float("nan"),
             "seg/flow_mode_raft": float(self.flow_mode == "raft_scratch"),
+            "seg/flow_mode_raft_pretrained": float(self.flow_mode == "raft_pretrained"),
         })
         if self.flow_mode == "raft_scratch":
             self.last_stats.update({k: float("nan") for k in (
@@ -204,13 +215,17 @@ class GwmSpectralSeg(GwmSeg):
         self.flow_reg = float(os.environ.get("NETT_SEG_FLOW_REG", "1e-4"))
         mode = os.environ.get("NETT_GWM_FLOW", "expert").strip().lower()
         if mode not in _FLOW_MODES:
-            raise ValueError(f"NETT_GWM_FLOW={mode!r}: expected one of {_FLOW_MODES[:2]}.")
-        if mode == "raft_pretrained":
+            raise ValueError(f"NETT_GWM_FLOW={mode!r}: expected one of {_FLOW_MODES}.")
+        scratch_only = [k for k in ("NETT_GWM_RAFT_LR", "NETT_GWM_RAFT_ITERS", "NETT_GWM_RAFT_BATCH",
+                                    "NETT_GWM_RAFT_SMOOTH", "NETT_GWM_RAFT_OCC_AFTER") if k in os.environ]
+        pt_only = [k for k in ("NETT_GWM_RAFT_PT_ITERS", "NETT_GWM_RAFT_PT_SCALE") if k in os.environ]
+        if mode == "raft_pretrained" and scratch_only:
             raise ValueError(
-                "NETT_GWM_FLOW=raft_pretrained is REFUSED: pretrained RAFT weights (trained on "
-                "supervised flow labels) are excluded in this campaign. Whether to admit them is "
-                "an owner ruling to be recorded in DECISIONS, not a knob; until then use "
-                "raft_scratch (RAFT-S from scratch, unsupervised) or expert.")
+                f"NETT_GWM_FLOW=raft_pretrained: {scratch_only} configure RAFT-S training and do not "
+                "apply to the frozen pretrained RAFT; unset them (use NETT_GWM_RAFT_PT_*).")
+        if mode != "raft_pretrained" and pt_only:
+            raise ValueError(
+                f"NETT_GWM_FLOW={mode!r}: {pt_only} apply to raft_pretrained only; unset them.")
         ef = os.environ.get("NETT_EXPERT_FLOW")
         if ef is not None and (ef.strip().lower() in _TRUTHY) != (mode == "expert"):
             raise ValueError(
@@ -228,6 +243,12 @@ class GwmSpectralSeg(GwmSeg):
         self.raft_chunk = int(os.environ.get("NETT_GWM_RAFT_CHUNK", "256"))
         if min(self.raft_iters, self.raft_batch, self.raft_chunk) < 1:
             raise ValueError("NETT_GWM_RAFT_ITERS/BATCH/CHUNK must be >= 1")
+        self.raft_pt_iters = int(os.environ.get("NETT_GWM_RAFT_PT_ITERS", "12"))
+        self.raft_pt_scale = float(os.environ.get("NETT_GWM_RAFT_PT_SCALE", "2.0"))
+        if self.raft_pt_iters < 1:
+            raise ValueError(f"NETT_GWM_RAFT_PT_ITERS={self.raft_pt_iters} must be >= 1")
+        if not self.raft_pt_scale >= 1.0:
+            raise ValueError(f"NETT_GWM_RAFT_PT_SCALE={self.raft_pt_scale} must be >= 1 (an UPsampling factor)")
 
     def _ensure(self, in_ch):
         if self._model is not None:
@@ -236,6 +257,10 @@ class GwmSpectralSeg(GwmSeg):
         if self.flow_mode == "raft_scratch":
             from ...brain.aux.raft_small import RAFTSmall
             dorsal = RAFTSmall(iters=self.raft_iters)
+        elif self.flow_mode == "raft_pretrained":
+            from ...brain.aux.raft_pretrained import FrozenRAFTLarge, PretrainedFlow
+            dorsal = PretrainedFlow(FrozenRAFTLarge(iters=self.raft_pt_iters, scale=self.raft_pt_scale,
+                                                    chunk=self.raft_chunk, device=self.device))
         else:
             from ...brain.aux.expert_flow import ExpertBlockFlow
             dorsal = ExpertBlockFlow()

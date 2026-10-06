@@ -15,9 +15,9 @@ over BOTH directions, with occlusion from forward-backward consistency (UnFlow, 
 iteration's flows and DETACHED, switched on after a warm-up and floored per sample (see
 ``unsupervised_flow_loss``). SSIM is not used: census is UFlow's illumination-robust term.
 
-⛔ NO PRETRAINED PATH EXISTS HERE AND NONE MAY BE ADDED SILENTLY. `NETT_GWM_FLOW=raft_pretrained`
-is reserved in gwm_spectral.py and REFUSES, naming DECISIONS: loading published RAFT weights is an
-owner ruling, not an implementation choice.
+⛔ NO PRETRAINED PATH EXISTS HERE AND NONE MAY BE ADDED. This module is RAFT-S from scratch only.
+The owner's scoped pretrained exception (DECISIONS §73) is a SEPARATE module, ``raft_pretrained.py``
+(frozen torchvision raft_large C_T_V2, flow targets only), reached by `NETT_GWM_FLOW=raft_pretrained`.
 
 ⛔ WHY ITS OWN OBJECTIVE AND NEVER THE SEGMENTATION LOSS. gwm_seg.py's docstring: the quadratic
 flow-reconstruction loss is homogeneous of degree 2 in the flow, so a flow net trained THROUGH it

@@ -28,7 +28,7 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # Frame-pair perception model: unlike MoTok, this goes AFTER framestack.
     "gwm_seg": ("nett_skrl.body.wrappers.gwm_seg", "GwmSeg"),
     # U35: GwmSeg with K>=3 slots merged to figure/ground by a spectral normalized cut over
-    # ventral-CNN region features; flow source NETT_GWM_FLOW (expert | raft_scratch). After framestack.
+    # ventral-CNN region features; flow source NETT_GWM_FLOW (expert | raft_scratch | raft_pretrained, DECISIONS §73). After framestack.
     "gwm_seg_spectral": ("nett_skrl.body.wrappers.gwm_spectral", "GwmSpectralSeg"),
     # DIAGNOSTIC CONTROL, not a model: a fixed red-object colour mask (the stimulus's objects are
     # red), the upper bound on what a perfect segmenter would hand the policy. See oracle_seg.py.
