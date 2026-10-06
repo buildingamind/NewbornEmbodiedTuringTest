@@ -189,6 +189,26 @@ VIT_MIXER_CFG = {**VIT_CFG, "embed_dim": 160, "attn_mode": "mixer"}    # ENCODER
 # ⚠ DEFAULT 2 -- every arm run before 2026-09-02 used 2, and this preserves that exactly.
 _FRAMESTACK_N = int(os.environ.get("NETT_FRAMESTACK_N", "2"))
 
+
+def _vit_dropout() -> float:
+    """NETT_VIT_DROPOUT: the rate of the two U35 dropout labels (scope is the LABEL's, never a knob).
+
+    Read for every import but USED only by "ViT-CLTT-Ref-DropAll"/"-DropAux", so every other label
+    is unaffected. ⛔ Refuses an unparseable value or one outside (0, 1) -- NaN included -- rather
+    than clamping: a rate of 0 is "ViT-CLTT-Ref" filed under a dropout label, and 1 zeroes the trunk.
+    """
+    raw = os.environ.get("NETT_VIT_DROPOUT", "0.1")
+    try:
+        p = float(raw)
+    except ValueError:
+        raise ValueError(f"NETT_VIT_DROPOUT={raw!r} is not a number.") from None
+    if not 0.0 < p < 1.0:
+        raise ValueError(f"NETT_VIT_DROPOUT={raw!r} must lie strictly inside (0, 1).")
+    return p
+
+
+_VIT_DROPOUT = _vit_dropout()
+
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
 VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
@@ -425,6 +445,34 @@ MODELS: dict[str, dict] = {
     # input-channel count changes, so no re-solve is needed. No aux, so no
     # NETT_AUX_CLTT_CHANNELS_PER_FRAME. Same stationary-scene blind spot as the ViT row above.
     "3DCNN-DVS":         dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "channels_per_frame": 2}, framestack=True, pre=["dvs_polarity"]),   # enc 695,405
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # U35 -- DROPOUT AND NEXT-FRAME PREDICTIVE CODING (owner request 2026-10-05: "dropout
+    # everywhere, and dropout only CLTT aux loss ... for ViT-CLTT-Ref"; "Implement your suggested
+    # predictive coding model in Isaac").
+    #
+    # DROPOUT. Both rows are "ViT-CLTT-Ref" plus the two dropout fields, nothing else: same
+    # 804,320-parameter encoder (dropout has no parameters; the state_dict is key- and
+    # shape-identical), same cltt_ref head. Rate NETT_VIT_DROPOUT (default 0.1); the SCOPE is
+    # fixed by the label. Sites: attention weights, attention output, MLP hidden, MLP output
+    # (compact_vit._TransformerBlock).
+    #   * DropAll: live whenever the trunk is in train mode. ⚠ skrl rolls out in EVAL mode and
+    #     updates in TRAIN mode (ppo.py:323), so the update's log_prob(a|s) comes from a
+    #     dropped-out network while the rollout's came from the full one: the PPO ratio starts
+    #     each epoch away from 1 by the dropout noise, and clipping absorbs part of the step.
+    #     That is what "dropout everywhere" means for an on-policy learner; it is the row's
+    #     treatment, not a defect.
+    #   * DropAux: live ONLY inside cltt_ref's two encoder passes (CompactViT.aux_dropout), so
+    #     rollouts and the PPO policy/value forward are deterministic and the ratio is untouched.
+    "ViT-CLTT-Ref-DropAll": dict(encoder="compact_vit", cfg={**VIT_CFG, "dropout": _VIT_DROPOUT, "dropout_scope": "all"}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "ViT-CLTT-Ref-DropAux": dict(encoder="compact_vit", cfg={**VIT_CFG, "dropout": _VIT_DROPOUT, "dropout_scope": "aux"}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # NEXT-FRAME (brain/aux/nextframe_aux.py): decode the newest frame of obs[t+1] from the
+    # trunk's spatial map at t and a_t (FiLM). Encoders are byte-identical to their bases; only
+    # the aux differs. 3DCNN-NextFrame reads the 3-D stem + conv map BEFORE the 4x4 pool and is
+    # fed the REAL two-frame stack (not cltt_views' repeated current frame, the reason
+    # 3DCNN+CLTT is unsound -- see "CNN2F+CLTT-Ref" below). ViT-CLTT-Ref-NextFrame is cltt_ref +
+    # nextframe via WithCLTTRef, one term off "ViT-CLTT-Ref", reading the 5x8 patch-token grid.
+    "3DCNN-NextFrame":        dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="nextframe", aux_weight=1.0),
+    "ViT-CLTT-Ref-NextFrame": dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="nextframe_with_cltt_ref", aux_weight=1.0),
 
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # WAVE 17 -- OBJECT-CENTRIC PRESSURE ON THE TOKENS (owner request 2026-09-17).
@@ -757,6 +805,13 @@ assert CNN3D_CONV2M_CFG["conv_dim"] == _3DCNN_BASE_CFG["conv_dim"], (
     "3DCNN-2M-conv moved conv_dim, so its head is NOT byte-identical to BASE and it is no "
     "longer a matched-parameter placement contrast.")
 del _lbl, _axis, _cfg, _diff
+# ⛔ U35 ROWS ARE ONE FACTOR OFF THEIR BASES. Asserted at import, like the ladder above.
+assert MODELS["3DCNN-NextFrame"]["cfg"] == MODELS["3DCNN"]["cfg"]
+for _lbl in ("ViT-CLTT-Ref-DropAll", "ViT-CLTT-Ref-DropAux"):
+    assert {k: v for k, v in MODELS[_lbl]["cfg"].items() if k not in ("dropout", "dropout_scope")} \
+        == MODELS["ViT-CLTT-Ref"]["cfg"], _lbl
+assert MODELS["ViT-CLTT-Ref-NextFrame"]["cfg"] == MODELS["ViT-CLTT-Ref"]["cfg"]
+del _lbl
 
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
 # viewinvariance use the .mov sheet variants: the base .webm sheets reference clips

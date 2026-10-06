@@ -136,37 +136,8 @@ class Compact3DCNN(HWCFeatureExtractor):
         # whatsoever. The parameter count is identical either way, which is why no
         # capacity check could ever have seen it.
         # T-major data must be viewed T-major and then transposed.
-        x = self._temporal_stem(x)             # (B, 32, H', W')
-        x = self.cnn2d(x)
-        return self.linear(x)
-
-    def _temporal_stem(self, x: torch.Tensor) -> torch.Tensor:
-        """Prepared T-major (B, C*T, H, W) -> the Conv3d stem's (B, stem_dim, H', W') map.
-
-        ⛔ THE ONE COPY of the T-major view + Conv3d. `forward` and `encode_spatial` both
-        call it, so an auxiliary loss reading the spatial map can never see a different temporal
-        layout than the policy (the C-major scramble above was exactly such a drift). Same ops in
-        the same order as the inline code it replaced, so `forward` is unchanged bitwise.
-        """
-        B, _, H, W = x.shape
         x = x.view(B, self.num_frames, self.base_channels, H, W)
         x = x.permute(0, 2, 1, 3, 4).contiguous()
-        return self.conv3d(x).squeeze(2)
-
-    def encode_spatial(self, observations: torch.Tensor) -> torch.Tensor:
-        """(B, conv_dim, h, w): the trunk map BEFORE the 4x4 pool (the base `encode_spatial` hook).
-
-        For spatial auxiliary heads (U35 next-frame prediction; `encode_spatial_prepared` is the
-        base wrapper). Runs the same stem and the same 2-D stages as `forward`, cut at the first
-        pooling module (located by type, not index).
-        ⛔ The duplicate-frame ablation is refused: its stem path differs and no U35 row uses it.
-        """
-        if self.duplicate_frame:
-            raise NotImplementedError(
-                f"{type(self).__name__}(duplicate_frame=True) does not implement encode_spatial")
-        x = self._temporal_stem(self._prepare_image(observations))
-        for m in self.cnn2d:
-            if "Pool" in type(m).__name__ or isinstance(m, nn.Flatten):
-                break
-            x = m(x)
-        return x
+        x = self.conv3d(x).squeeze(2)          # (B, 32, H', W')
+        x = self.cnn2d(x)
+        return self.linear(x)

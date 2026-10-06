@@ -154,6 +154,19 @@ def _build_mae_with_cltt_ref(encoder):
     return _wave17(MAETerm, "mae")(encoder)
 
 
+def _build_nextframe(encoder):
+    """Next-frame predictive coding ALONE (U35, owner 2026-10-05): decode frame t+1 from the
+    trunk's spatial map at t and a_t. The standalone row is "3DCNN-NextFrame"."""
+    from .nextframe_aux import NextFrameTerm
+    return NextFrameTerm(encoder)
+
+
+def _build_nextframe_with_cltt_ref(encoder):
+    """`cltt_ref` + next-frame, so the row differs from ViT-CLTT-Ref by exactly ONE term."""
+    from .nextframe_aux import NextFrameTerm
+    return _wave17(NextFrameTerm, "nextframe")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -184,6 +197,9 @@ AUX_LOSSES = {
     # ── U35 (owner request 2026-10-05): masked autoencoding, alone and composed with cltt_ref.
     "mae": _build_mae,
     "mae_with_cltt_ref": _build_mae_with_cltt_ref,
+    # ── U35 (owner 2026-10-05). Next-frame predictive coding (brain/aux/nextframe_aux.py).
+    "nextframe": _build_nextframe,
+    "nextframe_with_cltt_ref": _build_nextframe_with_cltt_ref,
 }
 
 
