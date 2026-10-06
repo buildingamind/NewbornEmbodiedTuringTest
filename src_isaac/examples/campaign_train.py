@@ -692,6 +692,16 @@ MODELS: dict[str, dict] = {
     "CNN2F+GWM-Seg":    dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=2),
     "CNN2F+GWM-Seg-Q3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=3),
     "CNN2F+GWM-Seg-Q5": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg", seg_after=True, seg_queries=5),
+    # U35 (owner 2026-10-05): GWM-Seg with K=4 regions merged to figure/ground by a spectral
+    # normalized cut over the segmenter's own ventral-CNN features (gwm_spectral.py). `seg_flow`
+    # is exported to NETT_GWM_FLOW: expert = ExpertBlockFlow; raft_scratch = RAFT-S, no checkpoint,
+    # trained in the wrapper on an unsupervised photometric loss (raft_small.py); raft_pretrained =
+    # FROZEN torchvision raft_large C_T_V2 as the flow target only (raft_pretrained.py) -- the owner's
+    # scoped exception to the no-pretrained-weights rule, DECISIONS §73. ⛔ -RAFTPT is NOT a compliant
+    # solution; it asks whether the approach works at all. -RAFTS stays buildable but is not placed.
+    "CNN2F+GWM-Seg-K4-Spectral":         dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg_spectral", seg_after=True, seg_queries=4, seg_flow="expert"),
+    "CNN2F+GWM-Seg-K4-Spectral-RAFTPT": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg_spectral", seg_after=True, seg_queries=4, seg_flow="raft_pretrained"),
+    "CNN2F+GWM-Seg-K4-Spectral-RAFTS":  dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, seg="gwm_seg_spectral", seg_after=True, seg_queries=4, seg_flow="raft_scratch"),
     # ⛔ ORACLE = A DIAGNOSTIC CONTROL, NEVER A CANDIDATE MODEL. Same policy, encoder, framestack and
     # seg position as CNN2F+GWM-Seg, but the mask is a fixed red-object colour rule (object AUC 0.983
     # on real test frames). It asks what a PERFECT segmenter buys: NF/BU above 0.5 => the bottleneck
@@ -859,6 +869,24 @@ def segmentation_wrappers(spec: dict) -> list[str]:
     stack = ["framestack"] if spec["framestack"] else []
     body = stack + seg if spec.get("seg_after") else seg + stack
     return pre + body
+
+
+def export_seg_flow(model: str, spec: dict) -> None:
+    """Export the arm's U35 flow source (`seg_flow`) to NETT_GWM_FLOW, the only place it is set.
+
+    Same contract as `seg_queries`: the arm's spec decides, never a shell. A row setting
+    NETT_GWM_FLOW to anything else, or on an arm with no `seg_flow`, is REFUSED rather than popped
+    -- either would run a different flow source under this label.
+    """
+    row = os.environ.get("NETT_GWM_FLOW")
+    if spec.get("seg_flow") is not None:
+        if row is not None and row.strip().lower() != spec["seg_flow"]:
+            raise ValueError(f"arm {model!r} fixes seg_flow={spec['seg_flow']!r}; NETT_GWM_FLOW={row!r} "
+                             "contradicts it. The model NAME carries the flow source -- unset the knob.")
+        os.environ["NETT_GWM_FLOW"] = str(spec["seg_flow"])
+    elif row is not None:
+        raise ValueError(f"NETT_GWM_FLOW={row!r} is set but arm {model!r} has no seg_flow; nothing "
+                         "would read it and the arm would run under a flow label it does not have.")
 
 
 def _slug(s: str) -> str:
@@ -1174,6 +1202,7 @@ def main() -> int:
         os.environ["NETT_SEG_QUERIES"] = str(spec["seg_queries"])
     else:
         os.environ.pop("NETT_SEG_QUERIES", None)
+    export_seg_flow(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

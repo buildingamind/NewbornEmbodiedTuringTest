@@ -35,6 +35,9 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "motokflow_seg": ("nett_skrl.body.wrappers.motion_seg", "MoTokFlowSeg"),
     "sa_seg": ("nett_skrl.body.wrappers.sa_seg", "SASeg"),
     "saflow_seg": ("nett_skrl.body.wrappers.sa_seg", "SAFlowSeg"),
+    # U35: GwmSeg with K>=3 slots merged to figure/ground by a spectral normalized cut over
+    # ventral-CNN region features; flow source NETT_GWM_FLOW (expert | raft_scratch | raft_pretrained, DECISIONS §73). After framestack.
+    "gwm_seg_spectral": ("nett_skrl.body.wrappers.gwm_spectral", "GwmSpectralSeg"),
     # DIAGNOSTIC CONTROL, not a model: a fixed red-object colour mask (the stimulus's objects are
     # red), the upper bound on what a perfect segmenter would hand the policy. See oracle_seg.py.
     "oracle_seg": ("nett_skrl.body.wrappers.oracle_seg", "OracleColorSeg"),
