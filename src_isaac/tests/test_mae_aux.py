@@ -316,3 +316,26 @@ def test_patchify_matches_vit_token_order(campaign):
 def test_mae_module_has_no_pretrained_loading():
     src = Path(mae_aux.__file__).read_text()
     assert "load_state_dict" not in src and "torch.hub" not in src
+
+
+# ---------------------------------------------------------------- ViViT-CLTT-Ref control (integration)
+
+def test_vivit_cltt_ref_is_videomae_cltt_ref_minus_mae(campaign):
+    """VideoMAE-CLTT-Ref's one-term control: same encoder spec, aux cltt_ref instead of
+    mae_with_cltt_ref, and its aux heads are VideoMAE-CLTT-Ref's minus the MAE head."""
+    ctl, trt = dict(campaign.MODELS["ViViT-CLTT-Ref"]), dict(campaign.MODELS["VideoMAE-CLTT-Ref"])
+    assert ctl.pop("aux") == "cltt_ref" and trt.pop("aux") == "mae_with_cltt_ref"
+    assert ctl == trt
+    enc_c, enc_t = _build(campaign.MODELS["ViViT-CLTT-Ref"]), _build(campaign.MODELS["VideoMAE-CLTT-Ref"])
+    assert _params(enc_c) == _params(enc_t)
+    torch.manual_seed(0)
+    head_c = AUX_LOSSES["cltt_ref"](enc_c)
+    torch.manual_seed(0)
+    head_t = AUX_LOSSES["mae_with_cltt_ref"](enc_t)
+    enc_ids = lambda e: {id(p) for p in e.parameters()}
+    n_c = sum(p.numel() for p in head_c.parameters() if id(p) not in enc_ids(enc_c))
+    n_t = sum(p.numel() for p in head_t.parameters() if id(p) not in enc_ids(enc_t))
+    torch.manual_seed(0)
+    enc_m = _build(campaign.MODELS["VideoMAE"])
+    n_mae = sum(p.numel() for p in MAETerm(enc_m).parameters() if id(p) not in enc_ids(enc_m))
+    assert n_mae > 0 and n_t - n_c == n_mae, (n_c, n_t, n_mae)

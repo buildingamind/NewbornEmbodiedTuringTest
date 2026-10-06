@@ -622,12 +622,13 @@ MODELS: dict[str, dict] = {
     #   VideoMAE           = ViViT          + VideoMAE alone (tube masking, 90%)
     #   VideoMAE-CLTT-Ref  = ViViT          + cltt_ref + VideoMAE
     # Both CLTT rows compose through WithCLTTRef, so each differs from its cltt_ref control by the
-    # MAE term only. ⚠ ViViT has no cltt_ref label of its own: VideoMAE-CLTT-Ref's one-term
-    # control would be "ViViT + cltt_ref", which is not registered.
+    # MAE term only. ViViT-CLTT-Ref (below) is VideoMAE-CLTT-Ref's one-term control: the same
+    # encoder and cltt_ref with no MAE term (added at U35 integration).
     "ViT-CLTT-Ref-MAE":   dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
     "3DCNN-CLTT-Ref-MAE": dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
     "VideoMAE":           dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae", aux_weight=1.0),
     "VideoMAE-CLTT-Ref":  dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
+    "ViViT-CLTT-Ref":     dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
