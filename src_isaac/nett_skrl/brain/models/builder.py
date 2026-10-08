@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import json
+import os
+
 import torch.nn as nn
 
 from .deterministic_actor import DeterministicActor
@@ -76,4 +79,23 @@ def build_models_for_algorithm(
     models: dict[str, nn.Module] = {}
     for key in spec.model_keys:
         models[key] = actor() if "policy" in key else critic()
+    _announce_nas_encoder(shared_enc if shared_enc is not None else next(
+        (m.encoder for m in models.values() if hasattr(m, "encoder")), None))
     return models
+
+
+def _announce_nas_encoder(encoder) -> None:
+    """NAS labels (examples/campaign_train.py NAS_LABELS): one line per encoder build, naming the cfg
+    and its EXACT parameter count. Inert unless NETT_NAS_CFG is set, which campaign_train refuses on
+    every registered label.
+
+    stdout, not a logger: the spawn child's logger is not bridged, and a NAS label files every search
+    point under one model key, so this line is the record of which encoder the arm actually built.
+    """
+    raw = os.environ.get("NETT_NAS_CFG")
+    if raw is None or encoder is None:
+        return
+    label = os.environ.get("NETT_MODEL", "")
+    cfg = json.dumps(json.loads(raw), sort_keys=True, separators=(",", ":"))
+    print(f"[NETT NAS] label={label} cfg={cfg} "
+          f"encoder_params={sum(p.numel() for p in encoder.parameters())}", flush=True)

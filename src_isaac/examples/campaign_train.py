@@ -35,6 +35,8 @@ the CONTROL. A queue row was written naming `NETT_BODY_WRAPPERS (DOES NOT EXIST)
 mistake; body wrappers come from the arm's MODELS entry, never from the environment.
 
   NETT_MODEL       one of the 9 labels above (required)
+  NETT_NAS_CFG     JSON object: the encoder cfg of a NAS label (NAS-CNN, NAS-3DCNN, NAS-ViT,
+                   NAS-ViViT), required by those labels and REFUSED by every other. Schema at NAS_LABELS.
   NETT_EXPERIMENT  binding | parsing | viewinvariance (default binding)
   NETT_IMPRINT     imprint condition override (default = goal condition per exp)
   NETT_DEVICE      GPU index (default 0)
@@ -837,6 +839,199 @@ for _lbl in ("ViT-CLTT-Ref-DropAll", "ViT-CLTT-Ref-DropAux"):
 assert MODELS["ViT-CLTT-Ref-NextFrame"]["cfg"] == MODELS["ViT-CLTT-Ref"]["cfg"]
 del _lbl
 
+# ══════════════════════════════════════════════════════════════════════════════════════════
+# ⭐ NAS LABELS (owner, workspace DECISIONS §80 item 2, 2026-10-08). One label per searched
+# family; the encoder cfg comes from the queue row's env, NETT_NAS_CFG (a JSON object), which
+# `nas_spec` validates against that family's searched knobs and nothing else.
+#
+# ⛔ DELIBERATELY OUTSIDE MODELS. MODELS is the registry of FIXED models: one label, one cfg.
+# A NAS label is one label over many cfgs, so it is resolved by `resolve_spec`, the one place a
+# label becomes a spec. MODELS is not touched, so every registered label resolves exactly as
+# before -- and NETT_NAS_CFG beside a registered label is REFUSED, not ignored: nothing would
+# read it, and the row would file its search point under the label's fixed model.
+# ⚠ ONE KEY, MANY MODELS. Every screen of a family files under the same label in results/*.csv
+# (the ViT-Slots hazard above, by design here). The cfg that RAN is the `[NETT NAS]` line
+# (brain/models/builder.py, printed at every encoder build with the exact parameter count) and
+# `nas_cfg` in campaign_timing.json. Read those, never the label.
+#
+# SCHEMA: every key below is REQUIRED and no other key is allowed. Types are exact JSON types: a
+# bool is not an int, and mlp_ratio must be a JSON float (json.dumps of a Python float always
+# writes the decimal point). Ranges are inclusive. "framestack" is part of the object.
+#   NAS-CNN   features_dim {128,256,512}; conv_dim 16..256; spatial_pool bool; framestack bool.
+#             ⚠ framestack=true is "CNN2F"'s construction: NO input_frames key, so nature_cnn
+#             takes the whole stack as channels (3 x NETT_FRAMESTACK_N), exactly as CNN2F does.
+#   NAS-3DCNN features_dim {256,512}; conv_dim 16..256; stem_dim 16..160; mid_dim 32..640;
+#             stem_kernel_hw {3,5}; framestack MUST be true. num_frames = _FRAMESTACK_N.
+#   NAS-ViT   features_dim 512; patch_size {8,16}; embed_dim int; num_heads {2,3,4,6,8} with
+#             embed_dim % num_heads == 0 and embed_dim/num_heads in 16..64; depth 1..8;
+#             mlp_ratio float 1.0..4.0; pool {"cls","spatial"}; stem {"linear","conv"};
+#             framestack bool; spatial_grid [5,4] REQUIRED with pool "spatial", REFUSED with "cls".
+#             Every other field is VIT_CFG's (VIT_SP_RECT's for pool "spatial", which fixes
+#             spatial_reduce_dim 16 as the live spatial line does). NETT_VIT_DROPOUT is NOT
+#             applied: its scope is the two U35 dropout labels, and "ViT"/"ViT2F" do not take it.
+#   NAS-ViViT the ViT trunk keys (features_dim .. mlp_ratio); temporal_mode {"joint","early",
+#             "factored","late"}; pool MUST be "cls"; framestack MUST be true. Every other field
+#             is VIVIT_CFG's, so num_frames = _FRAMESTACK_N.
+#             ⛔ pool "spatial" is refused: CompactViViT's spatial head pools with adaptive
+#             pooling, whose CUDA backward compact_vit.py rejects as nondeterministic.
+
+
+def _nas_int(lo: int, hi: int):
+    return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
+
+
+def _nas_float(lo: float, hi: float):
+    return ("float", lambda v: lo <= v <= hi, f"a JSON float in {lo}..{hi}")
+
+
+def _nas_one_of(kind: str, *vals):
+    return (kind, lambda v: v in vals, f"one of {list(vals)}")
+
+
+_NAS_BOOL = ("bool", lambda v: True, "a JSON bool")
+_NAS_TRUE = ("bool", lambda v: v is True, "true (this family always stacks frames)")
+_NAS_TYPES = {"int": int, "float": float, "bool": bool, "str": str, "list": list}
+_NAS_VIT_TRUNK = {
+    "features_dim": _nas_one_of("int", 512),
+    "patch_size":   _nas_one_of("int", 8, 16),
+    "embed_dim":    ("int", lambda v: True, "an integer (checked against num_heads)"),
+    "num_heads":    _nas_one_of("int", 2, 3, 4, 6, 8),
+    "depth":        _nas_int(1, 8),
+    "mlp_ratio":    _nas_float(1.0, 4.0),
+}
+_NAS_VIT_KEYS = ("features_dim", "patch_size", "embed_dim", "num_heads", "depth", "mlp_ratio")
+
+# label -> encoder, the registered label its BASE config reproduces, that base config (as the
+# JSON a row would carry), and the schema. The bases are asserted below at import.
+NAS_LABELS: dict[str, dict] = {
+    "NAS-CNN": dict(
+        encoder="nature_cnn", base_label="CNN2F",
+        base={"features_dim": 512, "conv_dim": 75, "spatial_pool": True, "framestack": True},
+        schema={"features_dim": _nas_one_of("int", 128, 256, 512), "conv_dim": _nas_int(16, 256),
+                "spatial_pool": _NAS_BOOL, "framestack": _NAS_BOOL}),
+    "NAS-3DCNN": dict(
+        encoder="compact_3dcnn", base_label="3DCNN",
+        base={"features_dim": 512, "conv_dim": 77, "stem_dim": 32, "mid_dim": 64,
+              "stem_kernel_hw": 3, "framestack": True},
+        schema={"features_dim": _nas_one_of("int", 256, 512), "conv_dim": _nas_int(16, 256),
+                "stem_dim": _nas_int(16, 160), "mid_dim": _nas_int(32, 640),
+                "stem_kernel_hw": _nas_one_of("int", 3, 5), "framestack": _NAS_TRUE}),
+    "NAS-ViT": dict(
+        encoder="compact_vit", base_label="ViT2F",
+        base={"features_dim": 512, "patch_size": 16, "embed_dim": 144, "num_heads": 4, "depth": 3,
+              "mlp_ratio": 2.0, "pool": "cls", "stem": "linear", "framestack": True},
+        schema={**_NAS_VIT_TRUNK, "pool": _nas_one_of("str", "cls", "spatial"),
+                "stem": _nas_one_of("str", "linear", "conv"), "framestack": _NAS_BOOL}),
+    "NAS-ViViT": dict(
+        encoder="compact_vivit", base_label="ViViT",
+        base={"features_dim": 512, "patch_size": 16, "embed_dim": 144, "num_heads": 3, "depth": 3,
+              "mlp_ratio": 2.0, "temporal_mode": "joint", "pool": "cls", "framestack": True},
+        schema={**_NAS_VIT_TRUNK,
+                "temporal_mode": _nas_one_of("str", "joint", "early", "factored", "late"),
+                "pool": _nas_one_of("str", "cls"), "framestack": _NAS_TRUE}),
+}
+_NAS_SPATIAL_GRID = ("list", lambda v: v == [5, 4] and all(type(x) is int for x in v), "[5, 4] (the only grid dividing the 5x8 and "
+                     "10x16 token grids at the 128x80 eye)")
+
+
+def _nas_load(raw: str) -> dict:
+    """Parse NETT_NAS_CFG. ⛔ A duplicated key is REFUSED: json.loads keeps the last one silently."""
+    def _pairs(pairs):
+        seen = [k for k, _ in pairs]
+        dup = sorted({k for k in seen if seen.count(k) > 1})
+        if dup:
+            raise ValueError(f"NETT_NAS_CFG repeats key(s) {dup}; json would keep the last silently.")
+        return dict(pairs)
+    try:
+        obj = json.loads(raw, object_pairs_hook=_pairs)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"NETT_NAS_CFG is not valid JSON ({e}): {raw!r}") from None
+    if type(obj) is not dict:
+        raise ValueError(f"NETT_NAS_CFG must be a JSON object, got {type(obj).__name__}: {raw!r}")
+    return obj
+
+
+def nas_canonical(raw: str) -> str:
+    """The row's cfg as ONE token: sorted keys, no spaces. Same rule as the `[NETT NAS]` line."""
+    return json.dumps(_nas_load(raw), sort_keys=True, separators=(",", ":"))
+
+
+def nas_spec(label: str, raw: str) -> dict:
+    """NETT_NAS_CFG -> a MODELS-shaped spec (encoder, cfg, framestack) for a NAS label.
+
+    Refuses (ValueError) a missing key, an unknown key, a wrong JSON type and an out-of-range
+    value -- never clamps, never fills a default: a search point the encoder did not run is
+    worse than no search point.
+    """
+    fam = NAS_LABELS[label]
+    c = _nas_load(raw)
+    schema = dict(fam["schema"])
+    if label == "NAS-ViT" and c.get("pool") == "spatial":
+        schema["spatial_grid"] = _NAS_SPATIAL_GRID
+    if label == "NAS-ViViT" and c.get("pool") == "spatial":
+        raise ValueError("NAS-ViViT: pool 'spatial' is refused -- CompactViViT's spatial head uses "
+                         "adaptive pooling, whose CUDA backward is nondeterministic. Use 'cls'.")
+    unknown, missing = sorted(set(c) - set(schema)), sorted(set(schema) - set(c))
+    if unknown or missing:
+        raise ValueError(f"{label}: NETT_NAS_CFG keys wrong -- unknown {unknown}, missing {missing}. "
+                         f"Allowed and required: {sorted(schema)}.")
+    for k, (kind, ok, want) in schema.items():
+        v = c[k]
+        if type(v) is not _NAS_TYPES[kind] or not ok(v):
+            raise ValueError(f"{label}: NETT_NAS_CFG {k}={json.dumps(v)} -- must be {want}.")
+    if label in ("NAS-ViT", "NAS-ViViT"):
+        e, h = c["embed_dim"], c["num_heads"]
+        if e % h:
+            raise ValueError(f"{label}: embed_dim={e} is not divisible by num_heads={h}.")
+        if not 16 <= e // h <= 64:
+            raise ValueError(f"{label}: embed_dim/num_heads={e // h} -- must be in 16..64.")
+
+    if label == "NAS-CNN":
+        cfg = {"trainable": True, "features_dim": c["features_dim"], "conv_dim": c["conv_dim"],
+               "spatial_pool": c["spatial_pool"]}
+    elif label == "NAS-3DCNN":
+        cfg = {**_3DCNN_BASE_CFG, **{k: c[k] for k in
+                                     ("features_dim", "conv_dim", "stem_dim", "mid_dim", "stem_kernel_hw")}}
+    elif label == "NAS-ViT":
+        cfg = {**(VIT_SP_RECT if c["pool"] == "spatial" else VIT_CFG),
+               **{k: c[k] for k in (*_NAS_VIT_KEYS, "pool", "stem")}}
+    else:
+        cfg = {**VIVIT_CFG, **{k: c[k] for k in (*_NAS_VIT_KEYS, "temporal_mode", "pool")}}
+    return dict(encoder=fam["encoder"], cfg=cfg, framestack=c["framestack"])
+
+
+def resolve_spec(model: str) -> dict:
+    """The spec `main` runs: MODELS[model] for a registered label, `nas_spec` for a NAS label.
+
+    ⛔ NETT_NAS_CFG is REFUSED on any registered label, empty value included: nothing would read
+    it, and the row's search point would file under that label's fixed model.
+    """
+    raw = os.environ.get("NETT_NAS_CFG")
+    if model in NAS_LABELS:
+        if raw is None:
+            raise ValueError(f"{model} takes its encoder from NETT_NAS_CFG (a JSON object), which is "
+                             "unset. A NAS label has no default model.")
+        return nas_spec(model, raw)
+    if raw is not None:
+        raise ValueError(f"NETT_NAS_CFG is set but {model!r} is not a NAS label {sorted(NAS_LABELS)}; "
+                         "nothing would read it. Unset it, or use a NAS label.")
+    return MODELS[model]
+
+
+# ⛔ A NAS LABEL MUST NOT SHADOW A REGISTERED ONE, and each family's BASE must be its registered
+# label's model: same encoder, same framestack, and every registered cfg key at the registered
+# value. The keys the base ADDS are encoder defaults (stem_dim, spatial_pool, ...); that they are
+# the constructor's defaults -- and the parameter counts -- is pinned in tests/test_nas_labels.py,
+# which can import the encoders. This file does not, at import.
+assert not set(NAS_LABELS) & set(MODELS), sorted(set(NAS_LABELS) & set(MODELS))
+for _lbl, _fam in NAS_LABELS.items():
+    _s, _r = nas_spec(_lbl, json.dumps(_fam["base"])), MODELS[_fam["base_label"]]
+    assert (_s["encoder"], _s["framestack"]) == (_r["encoder"], _r["framestack"]), _lbl
+    assert {k: _s["cfg"].get(k) for k in _r["cfg"]} == _r["cfg"], (
+        f"{_lbl}'s base no longer reproduces {_fam['base_label']!r}:\n"
+        f"  nas  {_s['cfg']}\n  reg  {_r['cfg']}")
+del _lbl, _fam, _s, _r
+
 # experiment -> (design sheet, media dir, default imprint per goal). parsing and
 # viewinvariance use the .mov sheet variants: the base .webm sheets reference clips
 # that DO NOT EXIST on disk, so the env disables video (blank monitors) and the
@@ -1081,15 +1276,21 @@ def main() -> int:
     log = logging.getLogger("nett.campaign")
 
     model = os.environ.get("NETT_MODEL", "")
-    if model not in MODELS:
-        log.error("NETT_MODEL=%r invalid; choose from %s", model, list(MODELS))
+    if model not in MODELS and model not in NAS_LABELS:
+        log.error("NETT_MODEL=%r invalid; choose from %s", model, list(MODELS) + list(NAS_LABELS))
         return 2
     exp = os.environ.get("NETT_EXPERIMENT", "binding")
     if exp not in EXPERIMENTS:
         log.error("NETT_EXPERIMENT=%r invalid; choose from %s", exp, list(EXPERIMENTS))
         return 2
 
-    spec = MODELS[model]
+    # MODELS[model] for every registered label (and NETT_NAS_CFG refused); the validated
+    # NETT_NAS_CFG for a NAS label. See NAS LABELS above.
+    spec = resolve_spec(model)
+    nas_cfg = nas_canonical(os.environ["NETT_NAS_CFG"]) if model in NAS_LABELS else None
+    if nas_cfg is not None:
+        log.info("NAS %s cfg=%s -> encoder=%s cfg=%s framestack=%s", model, nas_cfg,
+                 spec["encoder"], spec["cfg"], spec["framestack"])
     # NETT_FRAMESTACK_SHUFFLE is read by the FrameStack wrapper; an arm without one would log the
     # shuffle label and run the CONTROL. Refuse it (DECISIONS §63).
     if os.environ.get("NETT_FRAMESTACK_SHUFFLE", "").strip() and not spec["framestack"]:
@@ -1565,6 +1766,8 @@ def main() -> int:
          "hidden_sizes": hidden_sizes, "entropy_loss_scale": entropy,
          **({"feature_attn": feature_attn} if feature_attn is not None else {}),
          "eval_stochastic": eval_stochastic,
+         # NAS labels only: the cfg that ran (the label alone names a family, not a model).
+         **({"nas_cfg": nas_cfg} if nas_cfg is not None else {}),
          "unity_parity": {"log_std_cfg": log_std_model_cfg, "kl_threshold": kl_threshold,
                           "value_std": os.environ.get("NETT_VALUE_STD", "on"),
                           "adam_eps": os.environ.get("NETT_ADAM_EPS"),
