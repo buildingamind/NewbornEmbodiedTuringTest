@@ -346,6 +346,9 @@ CNN3D_CONV2M_CFG = {**_3DCNN_BASE_CFG, "stem_dim": 160, "mid_dim": 640}  # enc 2
 #    AT ONE SHA if the 3DCNN ladder separates. It is NOT a fourth rung of the old ladder.
 #    ⚠ embed_dim must stay divisible by num_heads (4).
 VIT_2M_CFG   = {**VIT_CFG, "embed_dim": 256}   # enc 2,117,632 / agent 2,119,173 @ 128x80, 2 frames
+# ViT-CLTT-Ref size ladder (owner, workspace DECISIONS §82, 2026-10-09): the 0.25M rung, matched to
+# 3DCNN-250K (enc 248,762). 68 is the multiple of num_heads (4) nearest 250K; head_dim 17.
+VIT_250K_CFG = {**VIT_CFG, "embed_dim": 68}    # enc 256,056 / agent 257,597 @ 128x80, 2 frames
 
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
@@ -797,6 +800,16 @@ MODELS: dict[str, dict] = {
     # so the policy stacks standardised frames rather than standardising a stack.
     "CNN2F+LumNorm":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, pre=("lumnorm",)),
     "CNN2F+SlotContrast": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, aux="slot_contrast", aux_weight=1.0),
+
+    # ── ViT-CLTT-Ref SIZE LADDER (owner, workspace DECISIONS §82, 2026-10-09: "test the effect of
+    # parameter count on the various test conditions of binding for 3DCNN and ViT-CLTT"). Each rung
+    # is "ViT-CLTT-Ref" with embed_dim moved and NOTHING else (asserted below). Counts are ENCODER /
+    # AGENT; the cltt_ref projection head is built on features_dim (512), so it adds a constant
+    # 329,216 at every rung. Base "ViT-CLTT-Ref" = enc 804,320.
+    "ViT-CLTT-Ref-250K": dict(encoder="compact_vit", cfg=dict(VIT_250K_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 256,056 / agent 257,597
+    "ViT-CLTT-Ref-500K": dict(encoder="compact_vit", cfg=dict(VIT_500K_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 510,056 / agent 511,597
+    "ViT-CLTT-Ref-1M":   dict(encoder="compact_vit", cfg=dict(VIT_1M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 994,680 / agent 996,221
+    "ViT-CLTT-Ref-2M":   dict(encoder="compact_vit", cfg=dict(VIT_2M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 2,117,632 / agent 2,119,173
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -838,6 +851,13 @@ for _lbl in ("ViT-CLTT-Ref-DropAll", "ViT-CLTT-Ref-DropAux"):
         == MODELS["ViT-CLTT-Ref"]["cfg"], _lbl
 assert MODELS["ViT-CLTT-Ref-NextFrame"]["cfg"] == MODELS["ViT-CLTT-Ref"]["cfg"]
 del _lbl
+# ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
+for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
+    _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
+    assert {k: v for k, v in _r.items() if k != "cfg"} == {k: v for k, v in _b.items() if k != "cfg"}, _lbl
+    assert {k: v for k, v in _r["cfg"].items() if k != "embed_dim"} == {k: v for k, v in _b["cfg"].items() if k != "embed_dim"}, _lbl
+    assert _r["cfg"]["embed_dim"] != _b["cfg"]["embed_dim"] and _r["cfg"]["embed_dim"] % _r["cfg"]["num_heads"] == 0, _lbl
+del _lbl, _r, _b
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # ⭐ NAS LABELS (owner, workspace DECISIONS §80 item 2, 2026-10-08). One label per searched
