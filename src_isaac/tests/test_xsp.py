@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import importlib.util
+import os
 import subprocess
 from pathlib import Path
 
@@ -900,9 +901,13 @@ NEW_FILES = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py"
 
 
 def _git(*args):
+    # A git hook (pre-push) exports GIT_DIR; inherited, it makes cwd (src_isaac/) the work-tree
+    # root, so every repo-relative pathspec below matches nothing. Discover the repo from cwd.
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR")}
     try:
         return subprocess.run(["git", *args], cwd=_SRC, capture_output=True, text=True,
-                              check=True).stdout
+                              check=True, env=env).stdout
     except (OSError, subprocess.CalledProcessError) as exc:
         pytest.skip(f"git unavailable here: {exc}")
 
@@ -910,7 +915,9 @@ def _git(*args):
 def _xsp_base():
     """The last commit before XSP: the parent of the commit that added encoders/xsp.py."""
     added = _git("log", "--diff-filter=A", "--format=%H", "--", NEW_FILES[0]).split()
-    return f"{added[-1]}^" if added else "HEAD"
+    if not added:
+        pytest.fail(f"no commit adds {NEW_FILES[0]} -- the diff cannot look (refusing to diff against HEAD)")
+    return f"{added[-1]}^"
 
 
 def _diff(*args):
