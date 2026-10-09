@@ -1,51 +1,64 @@
 """XSP -- cross-stream predictive learning: a siamese conv trunk feeding a ventral (form) and a
 dorsal (motion) stream, trained end-to-end by predicting the next frame.
 
-Owner design (2026-10-09, researcher2 relay), label "XSP" in examples/campaign_train.py:
+Owner design (2026-10-09, researcher2 relay; aligned with the owner's figure the same day), label
+"XSP" in examples/campaign_train.py:
 
 ```
-x_{t-1}, x_t  = the two newest frames of the T-major stack     (observation.py: oldest .. newest)
-z_s  = phi_e(x_s)            s in {t-1, t}   SIAMESE: one conv trunk, the same weights, per frame
-v_t  = softmax_c(phi_v(z_t))                 (B, 2, h, w): channel 0 = FIGURE, 1 = GROUND
-d_t  = phi_d(cat(z_{t-1}, z_t))              (B, K, h, w): motion-field map (MT-like), linear out
-x^_{t+1} = g(x_t, v_t, d_t)                  g lives in the aux head (brain/aux/xsp_aux.py)
-policy features (owner ruling "option (b)"):  ReLU(Linear(flatten(pool(z_t * v_fg))))
+x_{t-T+1} .. x_t = the T frames of the T-major stack, oldest .. newest   (T = NETT_FRAMESTACK_N >= 2)
+z_s  = phi_e(x_s)        s = t-T+1 .. t   SIAMESE: one conv trunk, the same weights, every frame
+m_t  = sigmoid(phi_v(z_t))                (B, 1, h, w): the FIGURE map; ground = 1 - m_t
+d_t  = phi_d(cat(z_{t-T+1}, .., z_t))     (B, K, h, w): motion field over the WHOLE stack, linear out
+x^_{t+1} = g(x_t, m_t, d_t)               g lives in the aux head (brain/aux/xsp_aux.py)
+policy features (owner ruling "option (b)"):  ReLU(Linear(flatten(pool(z_t * m_t))))
 ```
+
+The figure: TOP, the current frame -> shared encoder -> ventral (3 conv maps) -> sigmoid -> predict
+next frame; BOTTOM, the frame stack over time -> the SAME shared encoder -> dorsal (3 conv maps) ->
+predict next frame; MIDDLE, the current frame goes straight into the prediction, whose error
+against the next frame is the one loss.
 
 This module holds phi_e, phi_v, phi_d and the policy readout, so all three streams are in the
-policy checkpoint and in PPO's optimizer. The RL gradient reaches phi_e and phi_v (the readout
-uses z_t and v_fg); phi_d is reached ONLY by the predictive loss, because the policy never reads
-it. That asymmetry is the design: the policy reads FORM, gated by a figure map that motion
+policy checkpoint and in PPO's optimizer. The ventral stream and the policy read ONLY x_t; the
+older frames reach nothing but phi_d. The RL gradient reaches phi_e and phi_v (the readout uses
+z_t and m_t); phi_d is reached ONLY by the predictive loss, because the policy never reads it.
+That asymmetry is the design: the policy reads FORM, gated by a figure map that motion
 prediction had to make useful.
 
 DESIGN CHOICES (each stated, none silent):
 
+* T is the observation's channel count / channels-per-frame, so the dorsal input width is
+  T * conv_dim and T = 2 and T = 3 both build. ``num_frames`` (the label passes
+  campaign_train's _FRAMESTACK_N, the value the FrameStack wrapper also reads) is checked
+  EXACTLY against it with temporal.validate_framestack_depth: a stack depth or a
+  channels-per-frame that disagrees refuses to build instead of scrambling time into colour.
+  T < 2 is refused: one frame has no motion.
+* phi_e runs ONCE on the batch-concatenation of all T frames (siamese by construction).
 * phi_e is NatureCNN's three convolutions (8/4, 4/2, 3/1; 32, 64, conv_dim channels) WITH
   PADDING (2, 1, 1). Unpadded, the 80x128 eye gives a 6x12 map whose cells are centred 17.5 px
   in from each border, so a figure map upsampled onto the image is misregistered by up to ~11 px
   and the outermost ~17 px have no cell centred on them at all. Padded, the map is exactly
   (H/8, W/8) = 10x16 on an 8-px grid, so every decoder upsampling stage is an integer 2x and a
   map cell IS an 8x8 image block. conv_dim defaults to 75, the "CNN" label's.
-* The policy readout pools z_t * v_fg with ``DeterministicAvgPool2d(pool_grid_for(h, w))`` --
+* The policy readout pools z_t * m_t with ``DeterministicAvgPool2d(pool_grid_for(h, w))`` --
   the SAME rule and conv_dim the "CNN" label uses -- so the readout Linear is capacity-matched
   to that label (2x8 = 16 cells x 75 = 1200 -> 512, against CNN's 3x6 = 18 x 75 = 1350). The
   unpooled flatten (10x16x75 = 12000 -> 512, 6.1M parameters) is refused on the evidence in
   nature_cnn.py's docstring: an oversized unpooled readout cost training consistency there.
   The gate is applied BEFORE the pool, so a cell the figure map rejects contributes nothing.
 * ``policy_input="map"`` is the knob's alternative: the raw figure map alone,
-  ReLU(Linear(flatten(v_fg))) (10x16 = 160 -> 512) -- the policy then sees WHERE the figure is
+  ReLU(Linear(flatten(m_t))) (10x16 = 160 -> 512) -- the policy then sees WHERE the figure is
   and nothing about what it looks like.
-* ``policy_input="both"``: pool(z_t * v_fg) and pool(z_t * v_bg) concatenated (2400 -> 512). An
-  ORIENTATION-FREE readout. Under NETT_XSP_COMBINE=outer nothing in the loss decides which ventral
-  channel takes the moving object. On the synthetic moving square (a 10-seed x 300-step scratch
-  sweep, recorded in tests/test_xsp.py section 4; the test itself runs a 2-seed subset) it landed
-  on channel 0 (the "gated" readout's gate) in 3/10 seeds and on channel 1 in 7/10, where "gated"
-  then DOWN-weights the object. "both" reads either assignment. Its effect on the POLICY is
-  untested (no RL run exists).
-* phi_v / phi_d are two 3x3 conv layers and a 1x1 output. Ventral width 32, dorsal width 64
-  (the dorsal reads two concatenated maps), ``dorsal_dim`` (K) = 8 motion channels.
+* ``policy_input="both"``: pool(z_t * m_t) and pool(z_t * (1 - m_t)) concatenated (2400 -> 512),
+  figure and ground. A readout that does not depend on which side of the sigmoid the object
+  lands: swapping m <-> 1 - m permutes its two halves. Under NETT_XSP_COMBINE=outer the loss
+  treats m and 1 - m symmetrically, so nothing decides that the object is the HIGH side (see
+  tests/test_xsp.py section 4 for the measured split). Its effect on the POLICY is untested
+  (no RL run exists).
+* phi_v / phi_d are two 3x3 conv layers and a 1x1 output. Ventral width 32 -> 1 logit, dorsal
+  width 64 (it reads T concatenated maps), ``dorsal_dim`` (K) = 8 motion channels.
 * No autocast here (NatureCNN's NETT_AMP bf16 path is NOT copied): this is a new label with no
-  replay record to keep, and fp32 keeps the softmax and the predictive loss exact. Cost: slower
+  replay record to keep, and fp32 keeps the sigmoid and the predictive loss exact. Cost: slower
   on GPU than the CNN label's bf16 forward.
 """
 
@@ -58,11 +71,10 @@ import torch.nn as nn
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.pool import DeterministicAvgPool2d, pool_grid_for
+from .utils.temporal import validate_framestack_depth
 
-#: The ``policy_input`` values (owner ruling (1) and its alternative). Index 0 is the default.
+#: The ``policy_input`` values (owner ruling (1) and its alternatives). Index 0 is the default.
 POLICY_INPUTS = ("gated", "map", "both")
-#: Ventral channel holding the FIGURE. The policy gate and the "fg" combine both read this one.
-FG = 0
 
 
 def _conv_stack(in_ch: int, width: int, out_ch: int) -> nn.Sequential:
@@ -76,6 +88,8 @@ def _conv_stack(in_ch: int, width: int, out_ch: int) -> nn.Sequential:
 class XSPEncoder(HWCFeatureExtractor):
     """Two-stream (ventral/dorsal) encoder over a siamese per-frame trunk. See module docstring."""
 
+    MIN_FRAMES = 2
+
     def __init__(
         self,
         observation_space: gym.Space,
@@ -85,6 +99,7 @@ class XSPEncoder(HWCFeatureExtractor):
         dorsal_width: int = 64,
         dorsal_dim: int = 8,
         policy_input: str = "gated",
+        num_frames: int | None = None,
         channels_per_frame: int | None = None,
         **_,
     ):
@@ -98,12 +113,15 @@ class XSPEncoder(HWCFeatureExtractor):
         from ..aux.cltt_views import resolve_channels_per_frame
         self.cpf = resolve_channels_per_frame(channels_per_frame)
         channels, height, width = image_channels_hw(observation_space)
-        if channels % self.cpf or channels // self.cpf < 2:
+        if channels % self.cpf or channels // self.cpf < self.MIN_FRAMES:
             raise ValueError(
-                f"XSPEncoder needs a frame stack of >= 2 frames of {self.cpf} channels (framestack=True); "
-                f"the observation has {channels} channels. The dorsal stream compares x_(t-1) with "
-                f"x_t, and a single frame has no x_(t-1) -- refusing rather than comparing a frame "
-                f"with itself.")
+                f"XSPEncoder needs a frame stack of >= {self.MIN_FRAMES} frames of {self.cpf} channels "
+                f"(framestack=True); the observation has {channels} channels. The dorsal stream "
+                f"reads motion across the stack, and a single frame has none -- refusing rather "
+                f"than comparing a frame with itself.")
+        if num_frames is not None:
+            validate_framestack_depth(channels, num_frames, type(self).__name__, channels_per_frame=self.cpf)
+        self.n_frames = channels // self.cpf
         if height % 8 or width % 8:
             raise ValueError(f"XSPEncoder needs an eye divisible by 8 (the trunk's stride); got {height}x{width}.")
         self.policy_input = policy_input
@@ -121,10 +139,10 @@ class XSPEncoder(HWCFeatureExtractor):
         if tuple(probe.shape[-2:]) != self.map_hw:      # measured, not derived (see nature_cnn.py)
             raise RuntimeError(f"XSP trunk map {tuple(probe.shape[-2:])} != expected {self.map_hw}")
         self.conv_dim = conv_dim
-        # phi_v -- ventral (form): z_t -> 2-way softmax per location.
-        self.ventral = _conv_stack(conv_dim, ventral_dim, 2)
-        # phi_d -- dorsal (motion): cat(z_{t-1}, z_t) -> K-channel motion field. Aux-only gradient.
-        self.dorsal = _conv_stack(2 * conv_dim, dorsal_width, dorsal_dim)
+        # phi_v -- ventral (form): z_t -> ONE logit per location; m_t = sigmoid(logit).
+        self.ventral = _conv_stack(conv_dim, ventral_dim, 1)
+        # phi_d -- dorsal (motion): cat(z_{t-T+1}, .., z_t) -> K-channel motion field. Aux-only gradient.
+        self.dorsal = _conv_stack(self.n_frames * conv_dim, dorsal_width, dorsal_dim)
 
         if policy_input in ("gated", "both"):
             self.pool_grid = pool_grid_for(*self.map_hw)
@@ -137,44 +155,49 @@ class XSPEncoder(HWCFeatureExtractor):
         self.linear = nn.Sequential(nn.Linear(n_in, features_dim), nn.ReLU())
 
     # ------------------------------------------------------------------ streams
-    def split_frames(self, prepared: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """(x_{t-1}, x_t): the two NEWEST frames of a prepared T-major stack."""
-        c = self.cpf
-        if prepared.shape[1] % c or prepared.shape[1] // c < 2:
-            raise ValueError(f"XSP expects >= 2 stacked {c}-channel frames; got {prepared.shape[1]} channels.")
-        return prepared[:, -2 * c:-c], prepared[:, -c:]
+    def split_frames(self, prepared: torch.Tensor) -> list[torch.Tensor]:
+        """[x_{t-T+1}, .., x_t]: the T frames of a prepared T-major stack, oldest .. newest."""
+        c, t = self.cpf, self.n_frames
+        if prepared.shape[1] != c * t:
+            raise ValueError(f"XSP was built for {t} stacked {c}-channel frames ({c * t} channels); "
+                             f"got {prepared.shape[1]} channels.")
+        return [prepared[:, k * c:(k + 1) * c] for k in range(t)]
+
+    def current_frame(self, prepared: torch.Tensor) -> torch.Tensor:
+        """x_t: the NEWEST frame -- the only frame the ventral stream and the policy read."""
+        return self.split_frames(prepared)[-1]
 
     def ventral_map(self, z: torch.Tensor) -> torch.Tensor:
-        return torch.softmax(self.ventral(z), dim=1)
+        """m = sigmoid(phi_v(z)): (B, 1, h, w), the figure map; the ground map is 1 - m."""
+        return torch.sigmoid(self.ventral(z))
 
     def encode_streams(self, prepared: torch.Tensor) -> dict[str, torch.Tensor]:
         """All three streams on an already-PREPARED (B, C*T, H, W) image, gradients on.
 
-        phi_e runs ONCE on the batch-concatenation of both frames, so the two frames go through
+        phi_e runs ONCE on the batch-concatenation of all T frames, so every frame goes through
         literally the same module call (siamese by construction, one kernel launch).
+        ``z_frames`` is (B, T, conv_dim, h, w), oldest .. newest; ``z_t`` is its last slice.
         """
-        x_prev, x_t = self.split_frames(prepared)
-        b = x_t.shape[0]
-        z_both = self.trunk(torch.cat([x_prev, x_t], dim=0))
-        z_prev, z_t = z_both[:b], z_both[b:]
-        v = self.ventral_map(z_t)
-        d = self.dorsal(torch.cat([z_prev, z_t], dim=1))
-        return {"x_t": x_t, "z_prev": z_prev, "z_t": z_t, "v": v, "d": d}
+        frames = self.split_frames(prepared)
+        b, t = prepared.shape[0], self.n_frames
+        z_all = self.trunk(torch.cat(frames, dim=0))                     # (T*B, C, h, w), frame-major
+        z_frames = z_all.view(t, b, *z_all.shape[1:]).transpose(0, 1)    # (B, T, C, h, w)
+        z_t = z_frames[:, -1]
+        m = self.ventral_map(z_t)
+        d = self.dorsal(z_frames.flatten(1, 2))                          # channels: oldest .. newest
+        return {"x_t": frames[-1], "z_frames": z_frames, "z_t": z_t, "m": m, "d": d}
 
-    def readout(self, z_t: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
-        fg = v[:, FG:FG + 1]
+    def readout(self, z_t: torch.Tensor, m: torch.Tensor) -> torch.Tensor:
         if self.policy_input == "gated":
-            h = self.readout_pool(z_t * fg)
+            h = self.readout_pool(z_t * m)
         elif self.policy_input == "both":
-            h = torch.cat([self.readout_pool(z_t * fg), self.readout_pool(z_t * v[:, 1 - FG:2 - FG])], dim=1)
+            h = torch.cat([self.readout_pool(z_t * m), self.readout_pool(z_t * (1.0 - m))], dim=1)
         else:
-            h = fg
+            h = m
         return self.linear(h.flatten(1))
 
     # ------------------------------------------------------------------ policy path
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         """Policy features. Only x_t is encoded: the policy reads the ventral stream, not phi_d."""
-        prepared = self._prepare_image(observations)
-        _, x_t = self.split_frames(prepared)
-        z_t = self.trunk(x_t)
+        z_t = self.trunk(self.current_frame(self._prepare_image(observations)))
         return self.readout(z_t, self.ventral_map(z_t))

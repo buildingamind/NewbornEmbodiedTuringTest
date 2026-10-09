@@ -1,15 +1,17 @@
-"""XSP predictive head: x^_{t+1} = g(x_t, v_t, d_t), trained by ||x^_{t+1} - x_{t+1}||^2.
+"""XSP predictive head: x^_{t+1} = g(x_t, m_t, d_t), trained by ||x^_{t+1} - x_{t+1}||^2.
 
 The `xsp` aux (label "XSP", encoder brain/encoders/xsp.py). Owner design 2026-10-09: "Multiplies
 the outputs of the two streams and uses the current frame, the ventral map and the dorsal map to
-predict the next frame", trained end-to-end with that single self-supervised loss.
+predict the next frame", trained end-to-end with that single self-supervised loss; aligned the
+same day with the owner's figure (sigmoid figure map, dorsal stream over the frame stack).
 
 ```
 (obs_t, a_t, obs_{t+1})  <- action_windows.draw_action_window(memory, k=1)     (as nextframe_aux)
-z_{t-1}, z_t, v_t, d_t   <- encoder.encode_streams(obs_t)    phi_e siamese, phi_v, phi_d; grads ON
-m      = v_fg * d_t           NETT_XSP_COMBINE=fg (default):  (B,  K, h, w)
-       | v_t (x) d_t          NETT_XSP_COMBINE=outer:         (B, 2K, h, w) = [v_fg*d, v_bg*d]
-h      = ReLU([FiLM_{a_t}] Conv1x1(cat(v_t, m)))          FiLM only under NETT_XSP_ACTION=film
+z_{t-T+1..t}, m_t, d_t   <- encoder.encode_streams(obs_t)    phi_e siamese, phi_v, phi_d; grads ON
+                            m_t = sigmoid(phi_v(z_t)) (B,1,h,w) figure; d_t from ALL T frames
+c      = m_t * d_t                    NETT_XSP_COMBINE=fg (default):  (B,  K, h, w)
+       | [m_t * d_t, (1-m_t) * d_t]   NETT_XSP_COMBINE=outer:         (B, 2K, h, w)
+h      = ReLU([FiLM_{a_t}] Conv1x1(cat(m_t, c)))          FiLM only under NETT_XSP_ACTION=film
 h      = (nearest 2x -> Conv3x3 -> ReLU) x log2(8/ds)     map grid (H/8, W/8) -> target (H/ds, W/ds)
 x^     = cur + Conv3x3(ReLU(Conv3x3(cat(h, cur))))        cur = avgpool_ds(x_t)   RESIDUAL
 target = avgpool_ds(NEWEST frame of obs_{t+1})
@@ -17,23 +19,24 @@ L      = mean (x^ - target)^2
 ```
 
 ⛔ THE TARGET IS THE NEWEST FRAME OF obs[t+1], NOT obs[t+1] WHOLE -- the leak documented in
-nextframe_aux.py: obs[t+1] = [x_t, x_{t+1}] (T-major), and its older half IS x_t, which g already
-receives. The same `_frames` slicer (last cpf channels) builds the target and the copy baseline.
+nextframe_aux.py: obs[t+1] = [x_{t-T+2}, .., x_t, x_{t+1}] (T-major, FrameStack's deque), and
+every frame but its newest is ALREADY in obs[t], which g's streams receive. The same `_frames`
+slicer (last cpf channels) builds the target and the copy baseline, for any T.
 
 DEFAULT COMBINE = "fg" (coordinator ruling 2026-10-09, replacing "outer"). "Multiplies the
-outputs of the two streams" reads most naturally as v_fg * d, and that product is the only thing
-that gives ventral channel 0 its meaning: it is the channel that carries the motion to g. "outer"
-is symmetric in the two channels by construction; on the synthetic moving square (tests/test_xsp.py
-section 4) it put the object on channel 0 -- the policy's gate -- in 3/10 seeds, against 9/10 for
-"fg". "fg" has its own failure, a collapse to v_fg == 0 (1/10 seeds there); fg_frac/fg_entropy
-expose it in-run. "outer" stays available as a knob value.
+outputs of the two streams" reads most naturally as m * d: the motion field passes where the
+figure map is on, and that product is what gives m its meaning as FIGURE (the high side carries
+the motion to g). "outer" passes the motion through both the figure and the ground map and is
+symmetric under m <-> 1 - m, so the loss does not decide which side is figure; it stays
+available as a knob value. The measured split on the synthetic moving square is recorded in
+tests/test_xsp.py section 4.
 
 DESIGN CHOICES (stated, not knobbed):
 * RESIDUAL OUTPUT. g predicts the CHANGE on top of the pooled current frame. That is still
-  g(x_t, v_t, d_t) -- it is one parameterisation of it -- and it makes "next = current" the
+  g(x_t, m_t, d_t) -- it is one parameterisation of it -- and it makes "next = current" the
   zero point, so `skill` starts near 0 instead of strongly negative and the streams are trained
   on the part of the image that changes, which is the part motion can explain.
-* g gets v_t ITSELF besides the product m: the owner's sentence names "the ventral map and the
+* g gets m_t ITSELF besides the product c: the owner's sentence names "the ventral map and the
   dorsal map" as inputs and the multiplication as how they meet. d_t alone is NOT given to g
   (under "outer" it is recoverable as the sum of the two groups; under "fg" it is deliberately
   visible only where the figure map is on).
@@ -43,11 +46,15 @@ DESIGN CHOICES (stated, not knobbed):
 * Action: by default g takes NO action (paper-faithful). NETT_XSP_ACTION=film adds nextframe's
   zero-initialised FiLM on the first two action components (turn, move).
 
-WHAT NOTHING HERE FORCES. The loss does not force v to be a figure-ground split. Under "outer"
-the two channels are symmetric (which one lands on the object is not determined by the loss);
-under "fg" only channel 0 gates motion, which breaks the symmetry but does not stop v_fg from
-saturating at 1 everywhere. `fg_frac`, `fg_entropy` and `fg_frac_std` are published every call
-so a collapsed map (fg_frac ~0 or ~1, entropy ~0, std ~0) is visible in the run's own logs.
+WHAT NOTHING HERE FORCES. The loss does not force m to be a figure-ground split. Under "outer"
+m and 1 - m are interchangeable; under "fg" only m gates motion, which breaks that symmetry but
+does not stop m from saturating at 0 everywhere (g sees no motion) or at 1 everywhere (c = d,
+the gate passes everything and selects nothing), nor from staying UNDECIDED near .5 while g
+compensates: on the synthetic square one seed predicted as well as the rest (skill .96) with m
+in .41-.59 everywhere and no separation (tests/test_xsp.py section 4), so skill alone does not
+certify the map. `fg_frac`, `fg_entropy` and `fg_frac_std` are published every call so a
+collapsed map (fg_frac ~0 or ~1, entropy ~0, std ~0) and an undecided one (fg_frac ~.5,
+entropy ~1) are visible in the run's own logs.
 
 CHECKPOINTING: as nextframe -- the decoder `head` is in PPO's optimizer but NOT in
 `checkpoint_modules`; phi_e/phi_v/phi_d are inside the encoder and so ARE in the policy checkpoint.
@@ -55,9 +62,9 @@ A resume therefore restarts g from scratch.
 
 TELEMETRY (last_scalars, per call): B, mse, copy_mse, skill (= 1 - mse/copy_mse, NOT_MEASURED when
 copy_mse == 0), mse_parked, mse_transit, copy_parked, copy_transit (median split on |a_t turn|),
-window_turn, action_dim, fg_frac (mean v_fg), fg_frac_std (std over the batch of each sample's
-mean v_fg), fg_entropy (mean per-location binary entropy of v, in bits: 1 = undecided, 0 = hard),
-d_absmean (mean |d_t|), and film_gain (mean |gamma - 1|) under NETT_XSP_ACTION=film only.
+window_turn, action_dim, fg_frac (mean m_t), fg_frac_std (std over the batch of each sample's
+mean m_t), fg_entropy (mean per-location binary entropy of m_t, in bits: 1 = undecided at .5,
+0 = hard), d_absmean (mean |d_t|), and film_gain (mean |gamma - 1|) under NETT_XSP_ACTION=film only.
 """
 
 from __future__ import annotations
@@ -81,21 +88,22 @@ ACTIONS = ("none", "film")
 TRUNK_STRIDE = 8
 
 
-def combine_streams(v: torch.Tensor, d: torch.Tensor, mode: str) -> torch.Tensor:
-    """m: "outer" -> (B, 2K, h, w), the fg group [v_fg*d] then the bg group [v_bg*d]; "fg" -> v_fg*d."""
+def combine_streams(m: torch.Tensor, d: torch.Tensor, mode: str) -> torch.Tensor:
+    """c from the figure map m (B,1,h,w) and the motion field d (B,K,h,w): "fg" -> m*d (B,K,h,w);
+    "outer" -> cat(m*d, (1-m)*d) (B,2K,h,w), the figure group then the ground group."""
     if mode == "outer":
-        return (v[:, :, None] * d[:, None]).flatten(1, 2)
+        return torch.cat([m * d, (1.0 - m) * d], dim=1)
     if mode == "fg":
-        return v[:, :1] * d
+        return m * d
     raise ValueError(f"unknown XSP combine {mode!r}")
 
 
 class XSPDecoder(nn.Module):
-    """g: (cur, v, m[, a]) -> predicted next frame on the target grid (residual on cur)."""
+    """g: (cur, m, c[, a]) -> predicted next frame on the target grid (residual on cur)."""
 
-    def __init__(self, m_ch: int, cpf: int, n_up: int, hidden: int, film: bool) -> None:
+    def __init__(self, c_ch: int, cpf: int, n_up: int, hidden: int, film: bool) -> None:
         super().__init__()
-        self.inp = nn.Conv2d(2 + m_ch, hidden, kernel_size=1)
+        self.inp = nn.Conv2d(1 + c_ch, hidden, kernel_size=1)
         self.film = nn.Linear(ACTION_COMPONENTS, 2 * hidden) if film else None
         if self.film is not None:
             nn.init.zeros_(self.film.weight)
@@ -106,9 +114,9 @@ class XSPDecoder(nn.Module):
         self.out = nn.Conv2d(hidden, cpf, 3, padding=1)
         self.last_film_gain = 0.0
 
-    def forward(self, cur: torch.Tensor, v: torch.Tensor, m: torch.Tensor,
+    def forward(self, cur: torch.Tensor, m: torch.Tensor, c: torch.Tensor,
                 action: torch.Tensor | None = None) -> torch.Tensor:
-        h = self.inp(torch.cat([v, m], dim=1))
+        h = self.inp(torch.cat([m, c], dim=1))
         if self.film is not None:
             gamma, beta = self.film(action).chunk(2, dim=-1)
             self.last_film_gain = float(gamma.detach().abs().mean())
@@ -170,9 +178,9 @@ class XSPTerm(nn.Module):
         self.target_hw = (h // self.downsample, w // self.downsample)
         n_up = int(round(math.log2(TRUNK_STRIDE // self.downsample)))
         k = int(encoder.dorsal_dim)
-        m_ch = 2 * k if self.combine == "outer" else k
+        c_ch = 2 * k if self.combine == "outer" else k
         device = next(encoder.parameters()).device
-        self.head = XSPDecoder(m_ch, self.cpf, n_up, self.hidden, self.action == "film").to(device)
+        self.head = XSPDecoder(c_ch, self.cpf, n_up, self.hidden, self.action == "film").to(device)
 
         self._memory = None
         self.last_scalars: dict = {}
@@ -181,9 +189,10 @@ class XSPTerm(nn.Module):
             from skrl import logger
             logger.warning(
                 "[NETT xsp] combine=%s action=%s downsample=%d (target %dx%d) hidden=%d batch=%d "
-                "transit_frac=%s policy_input=%s | encoder params %d, decoder (aux head) params %d",
+                "transit_frac=%s policy_input=%s frames=%s | encoder params %d, decoder (aux head) params %d",
                 self.combine, self.action, self.downsample, self.target_hw[0], self.target_hw[1],
                 self.hidden, self.batch, self.transit_frac, getattr(encoder, "policy_input", "?"),
+                getattr(encoder, "n_frames", "?"),
                 sum(p.numel() for p in encoder.parameters()),
                 sum(p.numel() for p in self.head.parameters()))
         except ImportError:                                  # pragma: no cover - skrl is a dependency
@@ -198,7 +207,7 @@ class XSPTerm(nn.Module):
         return F.avg_pool2d(newest, self.downsample) if self.downsample > 1 else newest
 
     def _target(self, prepared_tk: torch.Tensor) -> torch.Tensor:
-        """x_{t+1}: the NEWEST frame of obs[t+1] -- never its older half, which IS x_t (the leak)."""
+        """x_{t+1}: the NEWEST frame of obs[t+1] -- never an older frame, each of which is in obs[t]."""
         return self._frames(prepared_tk)
 
     def _current(self, prepared_t: torch.Tensor) -> torch.Tensor:
@@ -231,9 +240,9 @@ class XSPTerm(nn.Module):
         s = encoder.encode_streams(prepared_t)
         with torch.no_grad():
             cur = self._current(prepared_t)
-        m = combine_streams(s["v"], s["d"], self.combine)
+        c = combine_streams(s["m"], s["d"], self.combine)
         a = action if self.action == "film" else None
-        return self.head(cur, s["v"], m, a), s
+        return self.head(cur, s["m"], c, a), s
 
     def score(self, encoder: nn.Module, prepared_t: torch.Tensor, prepared_tk: torch.Tensor,
               actions: torch.Tensor, turn_state: float = MASK_UNSET) -> torch.Tensor:
@@ -254,10 +263,9 @@ class XSPTerm(nn.Module):
             parked, transit = parked_transit(a[:, 0].abs())
             copy_mse = float(copy.mean())
             mse = float(loss.detach())
-            v = s["v"].detach().float()
-            fg = v[:, 0]
-            p = v.clamp_min(1e-12)
-            ent = -(p * p.log2()).sum(dim=1)                          # bits, in [0, 1] for 2 classes
+            fg = s["m"].detach().float()[:, 0]                       # (B, h, w)
+            p, q = fg.clamp_min(1e-12), (1.0 - fg).clamp_min(1e-12)
+            ent = -(fg * p.log2() + (1.0 - fg) * q.log2())            # binary entropy, bits in [0, 1]
             scalars = {
                 "B": float(a.shape[0]),
                 "mse": mse,

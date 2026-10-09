@@ -218,9 +218,9 @@ XSP_POLICY_INPUTS = ("gated", "map", "both")
 def _xsp_policy_input() -> str:
     """NETT_XSP_POLICY_INPUT: what the "XSP" label's policy reads (encoders/xsp.py).
 
-    "gated" (default) = pool(z_t * v_fg) -> Linear; "map" = the figure map v_fg alone -> Linear;
-    "both" = pool(z_t * v_fg) and pool(z_t * v_bg) concatenated -> Linear (orientation-free; see
-    encoders/xsp.py for the measured channel-assignment rate that motivates it).
+    "gated" (default) = pool(z_t * m_t) -> Linear, m_t the sigmoid figure map; "map" = m_t alone
+    -> Linear; "both" = pool(z_t * m_t) and pool(z_t * (1 - m_t)) concatenated -> Linear (figure
+    and ground; it does not depend on which side of the sigmoid the object lands, see encoders/xsp.py).
     Resolved INTO the label's encoder cfg (the `_vit_dropout` precedent), because it changes the
     encoder's state_dict: the cfg is what the test phase rebuilds the encoder from and what the
     run config records. Read on every import, USED only by "XSP". ⛔ Anything but the two spellings
@@ -235,8 +235,11 @@ def _xsp_policy_input() -> str:
 
 _XSP_POLICY_INPUT = _xsp_policy_input()
 #: The "XSP" label's encoder cfg. conv_dim 75 is the "CNN" label's (see encoders/xsp.py for why
-#: the readout is then capacity-matched to it).
-XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input": _XSP_POLICY_INPUT}
+#: the readout is then capacity-matched to it). num_frames is _FRAMESTACK_N, the depth the
+#: FrameStack wrapper reads from the same env var: the dorsal stream reads all T frames, and the
+#: encoder refuses a stack whose channel count disagrees (ONE SOURCE FOR THE STACK DEPTH, below).
+XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input": _XSP_POLICY_INPUT,
+           "num_frames": _FRAMESTACK_N}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -839,12 +842,13 @@ MODELS: dict[str, dict] = {
     "ViT-CLTT-Ref-2M":   dict(encoder="compact_vit", cfg=dict(VIT_2M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 2,117,632 / agent 2,119,173
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
-    # MLP-head PPO). A siamese per-frame conv trunk z = phi_e(x); a VENTRAL stream v = softmax(phi_v(z_t))
-    # (2-way figure/ground per location); a DORSAL stream d = phi_d(z_{t-1}, z_t) (motion field);
-    # g predicts x_{t+1} from x_t, v_t and the product of the streams; ONE loss, ||x^ - x_{t+1}||^2.
-    # The policy reads the ventral output (owner ruling "option (b)"): pool(z_t * v_fg) -> 512.
-    # The streams meet as m = v_fg * d (NETT_XSP_COMBINE=fg, the default since the coordinator's
-    # 2026-10-09 ruling): channel 0 is "figure" because it is what carries the motion to g.
+    # MLP-head PPO; aligned with the owner's figure the same day). ONE shared conv trunk
+    # z = phi_e(x) applied to every frame (siamese). VENTRAL: the current frame only,
+    # m_t = sigmoid(phi_v(z_t)), a one-channel FIGURE map (ground = 1 - m_t). DORSAL: the whole
+    # frame stack, d_t = phi_d(z_{t-T+1}, .., z_t), oldest .. newest, T = NETT_FRAMESTACK_N >= 2
+    # (a motion field). g predicts x_{t+1} = g(x_t, m_t, d_t), the streams meeting as the
+    # product m_t * d_t; ONE loss, ||x^ - x_{t+1}||^2. The policy reads the ventral output (owner
+    # ruling "option (b)"): pool(z_t * m_t) -> 512, from x_t alone.
     # Encoder: brain/encoders/xsp.py; aux: brain/aux/xsp_aux.py.
     # ⚠ ONE LABEL, A CONFIG SEARCH OVER KNOBS (owner: "find an implementation/config that works on
     # parsing"). Unset knob == default, so the bare label IS the default config:
@@ -853,12 +857,14 @@ MODELS: dict[str, dict] = {
     #   NETT_XSP_DOWNSAMPLE   1|2|4|8 (4) NETT_XSP_HIDDEN >0 (64)
     #   NETT_XSP_BATCH        >=2 (64)    NETT_XSP_TRANSIT_FRAC [0,1] (0.5)
     #   NETT_AUX_WEIGHT_OVERRIDE (the existing aux-weight override; spec weight 1.0)
+    #   NETT_FRAMESTACK_N     the stack depth T (global, default 2; the dorsal input widens with it)
     # A NETT_XSP_* knob on any other label is REFUSED in main() (nothing else reads it).
-    # Sizes at the 128x80 eye, 2-frame stack, default knobs (tests/test_xsp.py pins them):
-    # encoder 852,053 (trunk 82,283 + ventral 30,946 + dorsal 123,912 + readout 614,912 --
-    # trunk+ventral+readout, the part the policy reads, is 728,141 vs "CNN"'s 773,995 single-frame
-    # encoder) / decoder (aux head) 78,019 at the fg default (78,531 under NETT_XSP_COMBINE=outer).
-    # The 256x160 eye builds the same counts (pooled readout).
+    # Sizes at the 128x80 eye, default knobs (tests/test_xsp.py pins them):
+    #   T=2: encoder 852,020 (trunk 82,283 + ventral 30,913 + dorsal 123,912 + readout 614,912)
+    #   T=3: encoder 895,220 (dorsal 167,112; everything else unchanged)
+    # trunk+ventral+readout, the part the policy reads, is 728,108 at any T vs "CNN"'s 773,995
+    # single-frame encoder. Decoder (aux head) 77,955 at the fg default (78,467 under
+    # NETT_XSP_COMBINE=outer), independent of T. The 256x160 eye builds the same counts (pooled readout).
     "XSP": dict(encoder="xsp", cfg=dict(XSP_CFG), framestack=True, aux="xsp", aux_weight=1.0),
 }
 
@@ -903,7 +909,8 @@ assert MODELS["ViT-CLTT-Ref-NextFrame"]["cfg"] == MODELS["ViT-CLTT-Ref"]["cfg"]
 del _lbl
 # ⛔ THE XSP LABEL IS ITS DECLARED CFG AND NOTHING ELSE (the knob reaches it only via XSP_CFG).
 assert MODELS["XSP"] == dict(encoder="xsp", cfg=XSP_CFG, framestack=True, aux="xsp", aux_weight=1.0)
-assert set(XSP_CFG) == {"trainable", "features_dim", "conv_dim", "policy_input"}, sorted(XSP_CFG)
+assert set(XSP_CFG) == {"trainable", "features_dim", "conv_dim", "policy_input", "num_frames"}, sorted(XSP_CFG)
+assert XSP_CFG["num_frames"] == _FRAMESTACK_N
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
