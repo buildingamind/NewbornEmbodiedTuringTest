@@ -37,9 +37,11 @@ DESIGN CHOICES (each stated, none silent):
   and nothing about what it looks like.
 * ``policy_input="both"``: pool(z_t * v_fg) and pool(z_t * v_bg) concatenated (2400 -> 512). An
   ORIENTATION-FREE readout. Under NETT_XSP_COMBINE=outer nothing in the loss decides which ventral
-  channel takes the moving object -- measured on the synthetic moving square (tests/test_xsp.py,
-  10 seeds x 300 steps), it landed on channel 0 (the "gated" readout's gate) in 3/10 seeds and on
-  channel 1 in 7/10, where "gated" then DOWN-weights the object. "both" reads either assignment.
+  channel takes the moving object. On the synthetic moving square (a 10-seed x 300-step scratch
+  sweep, recorded in tests/test_xsp.py section 4; the test itself runs a 2-seed subset) it landed
+  on channel 0 (the "gated" readout's gate) in 3/10 seeds and on channel 1 in 7/10, where "gated"
+  then DOWN-weights the object. "both" reads either assignment. Its effect on the POLICY is
+  untested (no RL run exists).
 * phi_v / phi_d are two 3x3 conv layers and a 1x1 output. Ventral width 32, dorsal width 64
   (the dorsal reads two concatenated maps), ``dorsal_dim`` (K) = 8 motion channels.
 * No autocast here (NatureCNN's NETT_AMP bf16 path is NOT copied): this is a new label with no
