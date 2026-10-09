@@ -39,7 +39,7 @@ STACKS = (2, 3)                 # T values every stack-dependent test runs at
 _SRC = Path(__file__).resolve().parents[1]
 _TRAIN = _SRC / "examples" / "campaign_train.py"
 XSP_KNOBS = ("NETT_XSP_POLICY_INPUT", "NETT_XSP_COMBINE", "NETT_XSP_ACTION", "NETT_XSP_DOWNSAMPLE",
-             "NETT_XSP_HIDDEN", "NETT_XSP_BATCH", "NETT_XSP_TRANSIT_FRAC")
+             "NETT_XSP_HIDDEN", "NETT_XSP_BATCH", "NETT_XSP_TRANSIT_FRAC", "NETT_XSP_G_MAP")
 
 
 @pytest.fixture(autouse=True)
@@ -138,10 +138,10 @@ def test_label_is_registered_with_its_declared_spec(campaign):
 #: run 256x160. Only phi_d's first conv widens with T (T * conv_dim inputs).
 PINNED = {
     2: {"encoder": 852_020, "trunk": 82_283, "ventral": 30_913, "dorsal": 123_912,
-        "readout": 614_912, "head": 77_955},
+        "readout": 614_912, "head": 78_403},
     3: {"encoder": 895_220, "trunk": 82_283, "ventral": 30_913, "dorsal": 167_112,
-        "readout": 614_912, "head": 77_955},
-}                                                 # head at the fg default; 78,467 under outer
+        "readout": 614_912, "head": 78_403},
+}   # head at the default (outer, G_MAP=0); 78,467 with G_MAP=1; 77,891 / 77,955 under fg
 
 
 @pytest.mark.parametrize("T", STACKS)
@@ -376,6 +376,8 @@ def _train_once(enc, term):
 
 @pytest.mark.parametrize("name,value,extra", [
     ("NETT_XSP_COMBINE", "outer", None), ("NETT_XSP_COMBINE", "fg", None),
+    ("NETT_XSP_G_MAP", "0", None), ("NETT_XSP_G_MAP", "1", None),
+    ("NETT_XSP_G_MAP", "1", ("NETT_XSP_COMBINE", "fg")),
     ("NETT_XSP_ACTION", "none", None), ("NETT_XSP_ACTION", "film", None),
     ("NETT_XSP_DOWNSAMPLE", "1", None), ("NETT_XSP_DOWNSAMPLE", "2", None), ("NETT_XSP_DOWNSAMPLE", "4", None),
     ("NETT_XSP_DOWNSAMPLE", "8", None),
@@ -397,7 +399,10 @@ def test_every_aux_knob_value_builds_and_trains(monkeypatch, name, value, extra)
     assert all(np.isfinite(v) for v in s.values())
     assert ("film_gain" in s) == (term.action == "film")
     if name == "NETT_XSP_COMBINE":
-        assert term.head.inp.in_channels == 1 + (16 if value == "outer" else 8)
+        assert term.head.inp.in_channels == (16 if value == "outer" else 8)
+    if name == "NETT_XSP_G_MAP":
+        assert term.g_map == term.head.g_map == (value == "1")
+        assert term.head.inp.in_channels == (16 if term.combine == "outer" else 8) + int(value)
     if name == "NETT_XSP_DOWNSAMPLE":
         ds = int(value)
         assert term.target_hw == (H // ds, W // ds) and len(term.head.up) == {1: 3, 2: 2, 4: 1, 8: 0}[ds]
@@ -419,6 +424,59 @@ def test_combine_outer_is_figure_and_ground_groups_and_fg_is_the_figure_group():
     assert not torch.allclose(fg, (1 - m) * d)                  # the figure side, not the ground
     with pytest.raises(ValueError, match="combine"):
         combine_streams(m, d, "sum")
+
+
+def test_sigmoid_figure_map_is_the_methods_two_way_softmax_and_outer_is_v_times_d():
+    """Methods: v_t = softmax(phi_v(z_t)) over TWO channels, x^ = g(x_t, v_t (.) d_t). The encoder's
+    one logit l gives m = sigmoid(l); softmax([l, 0]) == (m, 1 - m) at every location, so
+    v_t (.) d_t = [v_fg * d, v_bg * d] == combine "outer" exactly. Checked on the real encoder's
+    logits and on an extreme range (|l| up to 40) where a naive 1 - m would lose precision."""
+    enc = _small()
+    s = enc.encode_streams(_prepared())
+    for logit in (enc.ventral(s["z_t"]), torch.linspace(-40, 40, 801).view(1, 1, 1, -1)):
+        m = torch.sigmoid(logit)
+        v = torch.softmax(torch.cat([logit, torch.zeros_like(logit)], dim=1), dim=1)   # (B, 2, h, w)
+        assert torch.allclose(v[:, :1], m, atol=1e-7, rtol=0)
+        assert torch.allclose(v[:, 1:], 1 - m, atol=1e-7, rtol=0)
+        # ... and the softmax is unchanged by a shared shift of both logits (the removed redundancy)
+        shift = torch.cat([logit + 3.0, torch.full_like(logit, 3.0)], dim=1)
+        assert torch.allclose(torch.softmax(shift, dim=1), v, atol=1e-6)
+    m, d = s["m"], s["d"]
+    v = torch.softmax(torch.cat([enc.ventral(s["z_t"]), torch.zeros_like(m)], dim=1), dim=1)
+    v_odot_d = (v[:, :, None] * d[:, None]).flatten(1, 2)       # [v_fg*d_1..K, v_bg*d_1..K]
+    assert torch.allclose(combine_streams(m, d, "outer"), v_odot_d, atol=1e-6)
+    assert torch.allclose(combine_streams(m, d, "fg"), v_odot_d[:, :8], atol=1e-6)   # fg = figure half only
+
+
+def check_g_reads_only_x_and_the_product(term, enc):
+    """Under the default (G_MAP=0) g's output depends on (cur, c) ONLY: any m gives the same x^.
+    Positive control: changing c moves the output."""
+    s = enc.encode_streams(_prepared())
+    cur = term._current(_prepared())
+    c = combine_streams(s["m"], s["d"], term.combine)
+    with torch.no_grad():
+        out = term.head(cur, s["m"], c)
+        assert torch.equal(term.head(cur, 1 - s["m"], c), out)
+        assert torch.equal(term.head(cur, torch.rand_like(s["m"]), c), out)
+        assert not torch.allclose(term.head(cur, s["m"], c + 1.0), out)
+
+
+def test_predictor_input_is_only_the_current_frame_and_the_product():
+    enc = _small()
+    term = XSPTerm(enc)
+    assert term.g_map is False and term.head.inp.in_channels == 2 * enc.dorsal_dim
+    check_g_reads_only_x_and_the_product(term, enc)
+
+
+def test_g_map_knob_feeds_the_map_directly(monkeypatch):
+    """NETT_XSP_G_MAP=1: the pre-Methods behaviour -- m_t is a direct input, so the default's
+    check goes red (the knob is real, and the check can see a map input)."""
+    monkeypatch.setenv("NETT_XSP_G_MAP", "1")
+    enc = _small()
+    term = XSPTerm(enc)
+    assert term.g_map is True and term.head.inp.in_channels == 2 * enc.dorsal_dim + 1
+    with pytest.raises(AssertionError):
+        check_g_reads_only_x_and_the_product(term, enc)
 
 
 def test_film_is_zero_initialised_and_learns_an_action_gradient(monkeypatch):
@@ -483,6 +541,7 @@ def test_both_policy_input_pinned_count(campaign):
 
 @pytest.mark.parametrize("name,bad", [
     ("NETT_XSP_COMBINE", "OUTER"), ("NETT_XSP_COMBINE", "both"), ("NETT_XSP_COMBINE", ""),
+    ("NETT_XSP_G_MAP", "2"), ("NETT_XSP_G_MAP", "true"), ("NETT_XSP_G_MAP", ""), ("NETT_XSP_G_MAP", "01"),
     ("NETT_XSP_ACTION", "FiLM"), ("NETT_XSP_ACTION", "yes"),
     ("NETT_XSP_DOWNSAMPLE", "3"), ("NETT_XSP_DOWNSAMPLE", "16"), ("NETT_XSP_DOWNSAMPLE", "0"),
     ("NETT_XSP_DOWNSAMPLE", "x"),
@@ -521,7 +580,7 @@ def test_film_refuses_a_one_component_action(monkeypatch):
         term.compute(enc, None)
 
 
-DEFAULTS = {"NETT_XSP_COMBINE": "fg", "NETT_XSP_ACTION": "none", "NETT_XSP_DOWNSAMPLE": "4",
+DEFAULTS = {"NETT_XSP_COMBINE": "outer", "NETT_XSP_G_MAP": "0", "NETT_XSP_ACTION": "none", "NETT_XSP_DOWNSAMPLE": "4",
             "NETT_XSP_HIDDEN": "64", "NETT_XSP_BATCH": "64", "NETT_XSP_TRANSIT_FRAC": "0.5"}
 
 
@@ -549,6 +608,7 @@ def test_unset_knobs_equal_explicit_defaults(campaign, monkeypatch):
     assert torch.equal(loss0, loss1)
     assert term0.last_scalars == term1.last_scalars
     assert term0.last_scalars["B"] == 64
+    assert term0.combine == "outer" and term0.g_map is False and term0.head.inp.in_channels == 16
 
 
 def test_stray_xsp_knob_on_another_label_refuses(campaign, monkeypatch):
@@ -559,6 +619,10 @@ def test_stray_xsp_knob_on_another_label_refuses(campaign, monkeypatch):
     with pytest.raises(ValueError, match="not an XSP arm"):
         campaign.refuse_stray_xsp_knobs("CNN", campaign.MODELS["CNN"])
     assert campaign.refuse_stray_xsp_knobs("XSP", campaign.MODELS["XSP"]) is None
+    monkeypatch.delenv("NETT_XSP_COMBINE")
+    monkeypatch.setenv("NETT_XSP_G_MAP", "0")                            # the new knob too
+    with pytest.raises(ValueError, match="NETT_XSP_G_MAP"):
+        campaign.refuse_stray_xsp_knobs("CNN", campaign.MODELS["CNN"])
 
 
 def test_knobs_are_literal_reads_the_env_gate_can_find():
@@ -581,27 +645,38 @@ def test_knobs_are_literal_reads_the_env_gate_can_find():
 # can only smear -- that is the no-dorsal control. "diff" = mean m_t on cells the square covers
 # (>= .5) minus mean m_t on cells it does not touch; > 0 means the square is on the FIGURE side.
 #
-# Measured before pinning with the sigmoid map (scratch ka3.py, the same generator, 300 Adam steps
-# at lr 1e-3, batch 16, model seeds 0-9; 3 threads per run):
-#   T=2 fg (DEFAULT) skill .957-.964 in 10/10; diff >= .14 in 9/10 (+.142..+.466, AUC .986-.999);
-#                    seed 7 separates NOTHING (diff -.016, m in .41-.59, entropy .999) yet skill .961:
-#                    a gate stuck near .5 still passes d, so skill alone does not certify the map.
-#                    No collapse in 10 seeds.
-#   T=2 outer (knob) skill .954-.964 in 10/10; |diff| .17-.51 in 10/10, the square on the HIGH side
-#                    (diff > 0) in 4/10 (seeds 0, 1, 3, 7) and on the LOW side in 6/10 -- under
-#                    outer the loss does not decide which side of the sigmoid is "figure".
-#   T=3 fg           skill .952-.964 and diff +.27..+.48 in 7/10; seed 7 skill .956, diff +.057;
-#                    seeds 1 and 6 COLLAPSE to m ~ 0 (fg_frac and entropy < .001, skill .200-.202,
-#                    the no-dorsal level: g sees no motion).
-#   T=3 outer        seeds 0-2: skill .958-.962, diff -.373, +.414, +.400.
-#   d := 0           skill .201-.213 (T=2 fg/outer seeds 0-2, T=3 fg seeds 0-2). The motion stream
-#                    is what lifts skill from .2 to .96. m can still separate the square without it
-#                    (T=2 fg seed 0 +.151; T=3 fg -.13..-.17): m enters g directly, so the map is
-#                    partly a form/brightness cue, not purely motion-made.
-#   untrained        |diff| <= .0004; AUC .08-.87 on maps that differ by 1e-3, so the MEAN
-#                    DIFFERENCE is the primary statistic and AUC is reported, not asserted.
-# Thresholds (unchanged from the 2-way softmax version): skill >= .8 (the x_t-only ceiling is ~.2);
-# skill - no-dorsal >= .5; |diff| >= .15 under outer; fg direction >= .10 with AUC >= .9.
+# Measured before pinning (scratch ka3.py, the same generator, 300 Adam steps at lr 1e-3, batch 16,
+# model seeds 0-9 per cell; 3 threads per run). sep = diff above; "undecided" = entropy > .99 with
+# |sep| < .05; "collapse" = m saturated to one side (none of the cells below has one).
+#
+#   T=2                     skill      |sep| >= .15   object on HIGH side     AUC (high side)  coll/undec
+#   outer, G_MAP=0 DEFAULT  .949-.968  8/10           3/10 (seeds 0, 3, 8)    .988-.999        0 / 0
+#   outer, G_MAP=1          .954-.964  10/10          4/10 (seeds 0, 1, 3, 7) .802-.995        0 / 0
+#   fg,    G_MAP=0          .950-.963  10/10          10/10, +.166..+.444     .968-1.000       0 / 0
+#   fg,    G_MAP=1          .957-.964  9/10           9/10, +.142..+.466      .986-.999        0 / 1 (s7)
+#   T=3 (G_MAP=0 only)
+#   outer, G_MAP=0          .953-.968  8/10           6/10 (0, 1, 2, 3, 6, 9) .747-.999        0 / 0
+#   fg,    G_MAP=0          .956-.966  10/10          10/10, +.244..+.482     .992-1.000       0 / 0
+#
+#   Default outer misses: T=2 seed 0 sep +.109 (fg_frac .90, entropy .44: leaning to all-figure),
+#   seed 6 sep -.087; T=3 seed 8 sep -.036. Under outer the LOSS cannot decide the side (it is
+#   symmetric under m <-> 1-m), so the side is a coin per seed, and the "gated" readout gates on
+#   the background whenever the object lands low: NETT_XSP_POLICY_INPUT=both is orientation-free.
+#   ⚠ The coin is not even fixed by the seed: at 8 threads (this file) T=2 seed 0 lands at -.111
+#   and seed 6 at -.359 (3 threads: +.109, -.087) -- CPU reduction order alone flips weak seeds.
+#   The tests below therefore use seeds whose side matched at both thread counts.
+#   G_MAP=1 rows are bit-identical to the pre-Methods commit 03fddbf (same seeds, same numbers):
+#   under it fg + T=3 COLLAPSED to m ~ 0 in 2/10 (seeds 1, 6; skill .200-.202) and fg + T=2
+#   seed 7 stayed undecided (m .41-.59, entropy .999) while predicting at skill .961 -- skill alone
+#   does not certify the map. With G_MAP=0 neither happened in 20 fg seeds.
+#   d := 0                  skill .199-.208 (T=2 outer seeds 0-2; T=3 outer, fg seed 2), and m does
+#                           NOT separate (|sep| <= .0004): under G_MAP=0 m reaches g only through
+#                           m*d, so with d = 0 it gets no gradient. (With G_MAP=1 it could:
+#                           sep up to .15-.30 at d = 0 -- m was partly a form cue there.)
+#   untrained               |sep| <= .0004; AUC .08-.87 on maps that differ by 1e-3, so the MEAN
+#                           DIFFERENCE is the primary statistic and AUC is reported, not asserted.
+# Thresholds (unchanged): skill >= .8 (the x_t-only ceiling is ~.2); skill - no-dorsal >= .5;
+# |sep| >= .15 for outer; sep >= .10 with AUC >= .9 for fg.
 
 KA_S, KA_SPEED, KA_STEPS = 16, 4, 300
 
@@ -652,13 +727,15 @@ def _ka_eval(enc, term):
                 fg_frac=term.last_scalars["fg_frac"], fg_entropy=term.last_scalars["fg_entropy"],
                 m_max=float(m.max()), m_min=float(m.min()),
                 m_q999=float(m.flatten().quantile(0.999)), m_q001=float(m.flatten().quantile(0.001)),
-                combine=term.combine, T=T)
+                combine=term.combine, g_map=term.g_map, T=T)
 
 
-def _ka_train(monkeypatch, combine, seed, no_dorsal=False, T=2):
-    """combine=None trains the DEFAULT (knob unset)."""
+def _ka_train(monkeypatch, combine, seed, no_dorsal=False, T=2, g_map=None):
+    """combine=None / g_map=None train the DEFAULT (knob unset)."""
     if combine is not None:
         monkeypatch.setenv("NETT_XSP_COMBINE", combine)
+    if g_map is not None:
+        monkeypatch.setenv("NETT_XSP_G_MAP", g_map)
     torch.set_num_threads(8)                                    # restored by the autouse fixture
     if no_dorsal:
         orig = XSPEncoder.encode_streams
@@ -682,29 +759,31 @@ def _ka_train(monkeypatch, combine, seed, no_dorsal=False, T=2):
         loss.backward()
         opt.step()
     final = _ka_eval(enc, term)
-    print(f"KA T={T} combine={combine} seed={seed} no_dorsal={no_dorsal}: init {init} -> final {final}")
+    print(f"KA T={T} combine={combine} g_map={g_map} seed={seed} no_dorsal={no_dorsal}: init {init} -> final {final}")
     return init, final
 
 
-@pytest.mark.parametrize("T,seed", [(2, 1), (2, 2), (3, 2)])
-def test_known_answer_default_puts_the_square_on_the_figure_side(monkeypatch, T, seed):
-    """The DEFAULT (fg): prediction beats copy AND the square is where m_t is HIGH, the policy's gate."""
-    init, final = _ka_train(monkeypatch, None, seed, T=T)
-    assert final["combine"] == "fg" and final["T"] == T
+@pytest.mark.parametrize("g_map,T,seed", [(None, 2, 2), (None, 2, 8), (None, 3, 0), ("1", 2, 0), ("1", 2, 2)])
+def test_known_answer_outer_separates_the_square_on_either_side(monkeypatch, g_map, T, seed):
+    """The DEFAULT (outer = the Methods' v (.) d, G_MAP=0) and outer with G_MAP=1: prediction beats
+    copy and m separates the square -- on EITHER side. T=2 seeds 2 and 8 land on opposite sides
+    (scratch: -.508, +.417), as do G_MAP=1 seeds 2 and 0 (-.477, +.417)."""
+    init, final = _ka_train(monkeypatch, None, seed, T=T, g_map=g_map)
+    assert final["combine"] == "outer" and final["g_map"] == (g_map == "1") and final["T"] == T
     assert abs(init["diff"]) < 0.01                       # untrained map does not separate it
     assert final["skill"] >= 0.8                          # prediction clearly beats copy
-    assert final["diff"] >= 0.10 and final["auc"] >= 0.9  # ... on the FIGURE side
+    assert abs(final["diff"]) >= 0.15                     # symmetric loss: no side is "figure"
+    assert np.isfinite(final["auc"])
 
 
-@pytest.mark.parametrize("seed", [0, 2])
-def test_known_answer_outer_knob_separates_the_square_on_either_side(monkeypatch, seed):
-    """Seeds 0 and 2 land on OPPOSITE sides (scratch: +.417, -.477): outer separates the square
-    but does not decide which side of the sigmoid it takes."""
-    init, final = _ka_train(monkeypatch, "outer", seed)
+@pytest.mark.parametrize("T,seed", [(2, 1), (2, 2), (3, 2)])
+def test_known_answer_fg_puts_the_square_on_the_figure_side(monkeypatch, T, seed):
+    """fg (G_MAP=0): only m * d reaches g, so the moving object must be where m is HIGH."""
+    init, final = _ka_train(monkeypatch, "fg", seed, T=T)
+    assert final["combine"] == "fg" and final["g_map"] is False
     assert abs(init["diff"]) < 0.01
     assert final["skill"] >= 0.8
-    assert abs(final["diff"]) >= 0.15
-    assert np.isfinite(final["auc"])
+    assert final["diff"] >= 0.10 and final["auc"] >= 0.9
 
 
 @pytest.mark.parametrize("T,seed", [(2, 1), (3, 2)])
@@ -713,6 +792,7 @@ def test_known_answer_no_dorsal_control_cannot_predict_motion(monkeypatch, T, se
     _, cut = _ka_train(monkeypatch, None, seed, no_dorsal=True, T=T)
     assert cut["skill"] <= 0.4
     assert full["skill"] - cut["skill"] >= 0.5
+    assert abs(cut["diff"]) < 0.01      # G_MAP=0: with d = 0, m gets no gradient at all
 
 
 def _telemetry_flags_collapse(s):
@@ -738,17 +818,18 @@ def _check_collapse_detection(r):
         assert not _telemetry_flags_collapse(r), r      # a separating map raises no alarm
 
 
-@pytest.mark.parametrize("T,seed", [(3, 1), (3, 2)])
-def test_known_answer_default_collapse_whenever_it_happens_is_detected(monkeypatch, T, seed):
-    """fg can collapse to m == 0 (g sees no motion): measured in 2/10 scratch seeds at T=3 (1 and 6)
-    and 0/10 at T=2. This does NOT pin which seeds collapse. Whatever training produces, a collapsed
-    map must be flagged by fg_frac/fg_entropy and a separating one must not; the forced cases below
-    make sure the detection branch is exercised even if no trained seed collapses."""
-    _, final = _ka_train(monkeypatch, None, seed, T=T)
-    assert _map_is_collapsed(final) or abs(final["diff"]) >= 0.10 or final["fg_entropy"] > 0.5, \
-        f"neither collapsed, separating nor undecided -- the check below would see nothing: {final}"
-    print(f"T={T} seed {seed}: map collapsed={_map_is_collapsed(final)} "
+@pytest.mark.parametrize("combine,g_map,T,seed", [
+    (None, None, 2, 0), (None, None, 2, 6), ("fg", "1", 3, 1), ("fg", "1", 3, 2)])
+def test_known_answer_collapse_whenever_it_happens_is_detected(monkeypatch, combine, g_map, T, seed):
+    """Whatever training produces, a collapsed map must be flagged by fg_frac/fg_entropy and a
+    separating one must not. This does NOT pin which seeds collapse. The default's weakest seeds
+    (T=2 seeds 0 and 6) and fg + G_MAP=1 at T=3 (seed 1 collapsed to m ~ 0 in scratch, seed 2 did
+    not) are run; the forced cases below exercise the detector even if no trained seed collapses."""
+    _, final = _ka_train(monkeypatch, combine, seed, T=T, g_map=g_map)
+    print(f"{combine} g_map={g_map} T={T} seed {seed}: map collapsed={_map_is_collapsed(final)} "
           f"telemetry flags={_telemetry_flags_collapse(final)}")
+    assert _map_is_collapsed(final) or abs(final["diff"]) >= 0.05 or final["fg_entropy"] > 0.5, \
+        f"neither collapsed, separating nor undecided -- the check below would see nothing: {final}"
     _check_collapse_detection(final)
 
 

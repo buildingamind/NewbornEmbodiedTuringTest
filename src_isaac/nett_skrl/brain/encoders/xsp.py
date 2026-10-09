@@ -1,17 +1,28 @@
 """XSP -- cross-stream predictive learning: a siamese conv trunk feeding a ventral (form) and a
 dorsal (motion) stream, trained end-to-end by predicting the next frame.
 
-Owner design (2026-10-09, researcher2 relay; aligned with the owner's figure the same day), label
-"XSP" in examples/campaign_train.py:
+Owner design (2026-10-09, researcher2 relay), aligned with the paper's Methods and the owner's
+figure the same day; label "XSP" in examples/campaign_train.py. Methods (verbatim): "The shared
+encoder phi_e maps each frame x_t to a feature map, z_t = phi_e(x_t). The ventral pathway
+processes the current feature map and applies a two-way softmax at each location,
+v_t = softmax(phi_v(z_t)). The dorsal pathway processes successive feature maps,
+d_t = phi_d(z_{t-1}, z_t). Their outputs are combined multiplicatively and passed to the predictor
+alongside the current frame, x^_{t+1} = g(x_t, v_t (.) d_t)."
 
 ```
 x_{t-T+1} .. x_t = the T frames of the T-major stack, oldest .. newest   (T = NETT_FRAMESTACK_N >= 2)
 z_s  = phi_e(x_s)        s = t-T+1 .. t   SIAMESE: one conv trunk, the same weights, every frame
 m_t  = sigmoid(phi_v(z_t))                (B, 1, h, w): the FIGURE map; ground = 1 - m_t
-d_t  = phi_d(cat(z_{t-T+1}, .., z_t))     (B, K, h, w): motion field over the WHOLE stack, linear out
-x^_{t+1} = g(x_t, m_t, d_t)               g lives in the aux head (brain/aux/xsp_aux.py)
+       [m_t, 1 - m_t] = softmax([l, 0]) = the Methods' two-way softmax v_t (one redundant logit
+       removed: a softmax is unchanged by adding a constant to both logits)
+d_t  = phi_d(cat(z_{t-T+1}, .., z_t))     (B, K, h, w): motion field over the stack, linear out
+x^_{t+1} = g(x_t, v_t (.) d_t)            g lives in the aux head (brain/aux/xsp_aux.py)
 policy features (owner ruling "option (b)"):  ReLU(Linear(flatten(pool(z_t * m_t))))
 ```
+
+STACK DEPTH: T = 2 IS THE METHODS EXACTLY (d_t = phi_d(z_{t-1}, z_t), "successive feature maps").
+T = 3 is the owner's FIGURE, which draws the dorsal stream over a stack of frames; phi_d's first
+conv simply widens to T * conv_dim inputs. T = 2 is the default (NETT_FRAMESTACK_N unset).
 
 The figure: TOP, the current frame -> shared encoder -> ventral (3 conv maps) -> sigmoid -> predict
 next frame; BOTTOM, the frame stack over time -> the SAME shared encoder -> dorsal (3 conv maps) ->
@@ -51,10 +62,12 @@ DESIGN CHOICES (each stated, none silent):
   and nothing about what it looks like.
 * ``policy_input="both"``: pool(z_t * m_t) and pool(z_t * (1 - m_t)) concatenated (2400 -> 512),
   figure and ground. A readout that does not depend on which side of the sigmoid the object
-  lands: swapping m <-> 1 - m permutes its two halves. Under NETT_XSP_COMBINE=outer the loss
-  treats m and 1 - m symmetrically, so nothing decides that the object is the HIGH side (see
-  tests/test_xsp.py section 4 for the measured split). Its effect on the POLICY is untested
-  (no RL run exists).
+  lands: swapping m <-> 1 - m permutes its two halves. Under NETT_XSP_COMBINE=outer (the
+  default, = the Methods' v_t (.) d_t) the loss is symmetric under m <-> 1 - m, so nothing
+  decides that the object is the HIGH side: on the synthetic moving square it landed high in
+  3/10 seeds at T=2 and 6/10 at T=3 (tests/test_xsp.py section 4), and "gated" then gates on
+  the background. Under NETT_XSP_COMBINE=fg it landed high in 20/20. Its effect on the POLICY
+  is untested (no RL run exists).
 * phi_v / phi_d are two 3x3 conv layers and a 1x1 output. Ventral width 32 -> 1 logit, dorsal
   width 64 (it reads T concatenated maps), ``dorsal_dim`` (K) = 8 motion channels.
 * No autocast here (NatureCNN's NETT_AMP bf16 path is NOT copied): this is a new label with no

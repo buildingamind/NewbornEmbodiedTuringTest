@@ -1,17 +1,19 @@
-"""XSP predictive head: x^_{t+1} = g(x_t, m_t, d_t), trained by ||x^_{t+1} - x_{t+1}||^2.
+"""XSP predictive head: x^_{t+1} = g(x_t, v_t (.) d_t), trained by ||x^_{t+1} - x_{t+1}||^2.
 
-The `xsp` aux (label "XSP", encoder brain/encoders/xsp.py). Owner design 2026-10-09: "Multiplies
-the outputs of the two streams and uses the current frame, the ventral map and the dorsal map to
-predict the next frame", trained end-to-end with that single self-supervised loss; aligned the
-same day with the owner's figure (sigmoid figure map, dorsal stream over the frame stack).
+The `xsp` aux (label "XSP", encoder brain/encoders/xsp.py). The paper's Methods (owner, verbatim):
+"Their outputs are combined multiplicatively and passed to the predictor alongside the current
+frame, x^_{t+1} = g(x_t, v_t (.) d_t). All components are trained jointly to minimize the
+next-frame prediction error, e = ||x^_{t+1} - x_{t+1}||^2." -- with v_t = softmax(phi_v(z_t)) a
+TWO-WAY softmax per location and d_t = phi_d(z_{t-1}, z_t).
 
 ```
 (obs_t, a_t, obs_{t+1})  <- action_windows.draw_action_window(memory, k=1)     (as nextframe_aux)
 z_{t-T+1..t}, m_t, d_t   <- encoder.encode_streams(obs_t)    phi_e siamese, phi_v, phi_d; grads ON
-                            m_t = sigmoid(phi_v(z_t)) (B,1,h,w) figure; d_t from ALL T frames
-c      = m_t * d_t                    NETT_XSP_COMBINE=fg (default):  (B,  K, h, w)
-       | [m_t * d_t, (1-m_t) * d_t]   NETT_XSP_COMBINE=outer:         (B, 2K, h, w)
-h      = ReLU([FiLM_{a_t}] Conv1x1(cat(m_t, c)))          FiLM only under NETT_XSP_ACTION=film
+                            m_t = sigmoid(phi_v(z_t)) (B,1,h,w); d_t from ALL T frames
+c      = [m_t * d_t, (1-m_t) * d_t]   NETT_XSP_COMBINE=outer (DEFAULT) = v_t (.) d_t   (B, 2K, h, w)
+       | m_t * d_t                    NETT_XSP_COMBINE=fg (knob)                       (B,  K, h, w)
+h      = ReLU([FiLM_{a_t}] Conv1x1(c))          NETT_XSP_G_MAP=0 (DEFAULT, paper: g sees no map)
+       | ReLU([FiLM_{a_t}] Conv1x1(cat(m_t, c)))  NETT_XSP_G_MAP=1 (knob: g also reads m_t)
 h      = (nearest 2x -> Conv3x3 -> ReLU) x log2(8/ds)     map grid (H/8, W/8) -> target (H/ds, W/ds)
 x^     = cur + Conv3x3(ReLU(Conv3x3(cat(h, cur))))        cur = avgpool_ds(x_t)   RESIDUAL
 target = avgpool_ds(NEWEST frame of obs_{t+1})
@@ -23,23 +25,29 @@ nextframe_aux.py: obs[t+1] = [x_{t-T+2}, .., x_t, x_{t+1}] (T-major, FrameStack'
 every frame but its newest is ALREADY in obs[t], which g's streams receive. The same `_frames`
 slicer (last cpf channels) builds the target and the copy baseline, for any T.
 
-DEFAULT COMBINE = "fg" (coordinator ruling 2026-10-09, replacing "outer"). "Multiplies the
-outputs of the two streams" reads most naturally as m * d: the motion field passes where the
-figure map is on, and that product is what gives m its meaning as FIGURE (the high side carries
-the motion to g). "outer" passes the motion through both the figure and the ground map and is
-symmetric under m <-> 1 - m, so the loss does not decide which side is figure; it stays
-available as a knob value. The measured split on the synthetic moving square is recorded in
-tests/test_xsp.py section 4.
+DEFAULT COMBINE = "outer" (coordinator ruling 2026-10-09, from the Methods text) IS THE PAPER'S
+v_t (.) d_t. With a two-way softmax v_t = [v_fg, v_bg] per location and d_t of K channels, the
+per-location product of the two streams is [v_fg * d_t, v_bg * d_t] (2K channels). The encoder
+parameterises v_t by ONE logit l per location, m_t = sigmoid(l), and sigmoid(l) =
+softmax([l, 0])_0: [m_t, 1 - m_t] IS a two-way softmax with its redundant second logit fixed at 0
+(the softmax is invariant to adding a constant to both logits, so nothing is lost). Hence "outer"
+= [m_t * d_t, (1 - m_t) * d_t] = v_t (.) d_t exactly (tests/test_xsp.py proves it numerically).
+Consequence: the loss is symmetric under m <-> 1 - m (swap the two halves of g's first conv), so
+NOTHING decides which side of the sigmoid is "figure"; the measured split is in tests/test_xsp.py
+section 4, and policy_input="both" is the readout that does not depend on it. "fg" (m_t * d_t
+only: the ground half dropped) is a knob value that breaks that symmetry.
+
+NETT_XSP_G_MAP ("0" default, paper-faithful): g's input is ONLY (x_t, v_t (.) d_t). "1" also
+concatenates m_t itself into g's first conv -- the pre-Methods behaviour, kept as a knob.
 
 DESIGN CHOICES (stated, not knobbed):
 * RESIDUAL OUTPUT. g predicts the CHANGE on top of the pooled current frame. That is still
-  g(x_t, m_t, d_t) -- it is one parameterisation of it -- and it makes "next = current" the
+  g(x_t, v_t (.) d_t) -- it is one parameterisation of it -- and it makes "next = current" the
   zero point, so `skill` starts near 0 instead of strongly negative and the streams are trained
   on the part of the image that changes, which is the part motion can explain.
-* g gets m_t ITSELF besides the product c: the owner's sentence names "the ventral map and the
-  dorsal map" as inputs and the multiplication as how they meet. d_t alone is NOT given to g
-  (under "outer" it is recoverable as the sum of the two groups; under "fg" it is deliberately
-  visible only where the figure map is on).
+* By default g gets NEITHER m_t NOR d_t directly, only their product c (Methods). Under "outer"
+  d_t is still recoverable as the sum of the two groups; under "fg" it is visible only where m_t
+  is on. NETT_XSP_G_MAP=1 adds m_t as a direct input.
 * x_t enters g at the TARGET grid (avgpool_ds), concatenated after the up-sampling stages, so
   the frame's appearance is available at full target resolution and the streams' maps carry
   only what the frame does not: which locations are figure, and how things move.
@@ -47,7 +55,7 @@ DESIGN CHOICES (stated, not knobbed):
   zero-initialised FiLM on the first two action components (turn, move).
 
 WHAT NOTHING HERE FORCES. The loss does not force m to be a figure-ground split. Under "outer"
-m and 1 - m are interchangeable; under "fg" only m gates motion, which breaks that symmetry but
+(the default) m and 1 - m are interchangeable; under "fg" only m gates motion, which breaks that symmetry but
 does not stop m from saturating at 0 everywhere (g sees no motion) or at 1 everywhere (c = d,
 the gate passes everything and selects nothing), nor from staying UNDECIDED near .5 while g
 compensates: on the synthetic square one seed predicted as well as the rest (skill .96) with m
@@ -82,7 +90,9 @@ from .token_term import MASK_UNSET, parked_transit, stratum_mean, window_turn_sc
 
 #: Motor components FiLM conditions on under NETT_XSP_ACTION=film: (turn, move), as nextframe.
 ACTION_COMPONENTS = 2
-COMBINES = ("fg", "outer")
+#: Index 0 is the default. "outer" = the Methods' v_t (.) d_t (see the module docstring).
+COMBINES = ("outer", "fg")
+G_MAPS = ("0", "1")
 ACTIONS = ("none", "film")
 #: The XSP trunk's total stride; the decoder's input grid is (H/8, W/8).
 TRUNK_STRIDE = 8
@@ -99,11 +109,16 @@ def combine_streams(m: torch.Tensor, d: torch.Tensor, mode: str) -> torch.Tensor
 
 
 class XSPDecoder(nn.Module):
-    """g: (cur, m, c[, a]) -> predicted next frame on the target grid (residual on cur)."""
+    """g: (cur, c[, m][, a]) -> predicted next frame on the target grid (residual on cur).
 
-    def __init__(self, c_ch: int, cpf: int, n_up: int, hidden: int, film: bool) -> None:
+    ``g_map`` False (the default, Methods): m is NOT read -- the first conv sees c alone.
+    """
+
+    def __init__(self, c_ch: int, cpf: int, n_up: int, hidden: int, film: bool,
+                 g_map: bool = False) -> None:
         super().__init__()
-        self.inp = nn.Conv2d(1 + c_ch, hidden, kernel_size=1)
+        self.g_map = bool(g_map)
+        self.inp = nn.Conv2d(c_ch + (1 if self.g_map else 0), hidden, kernel_size=1)
         self.film = nn.Linear(ACTION_COMPONENTS, 2 * hidden) if film else None
         if self.film is not None:
             nn.init.zeros_(self.film.weight)
@@ -116,7 +131,7 @@ class XSPDecoder(nn.Module):
 
     def forward(self, cur: torch.Tensor, m: torch.Tensor, c: torch.Tensor,
                 action: torch.Tensor | None = None) -> torch.Tensor:
-        h = self.inp(torch.cat([m, c], dim=1))
+        h = self.inp(torch.cat([m, c], dim=1) if self.g_map else c)
         if self.film is not None:
             gamma, beta = self.film(action).chunk(2, dim=-1)
             self.last_film_gain = float(gamma.detach().abs().mean())
@@ -142,6 +157,7 @@ class XSPTerm(nn.Module):
     ACTION_ENV = "NETT_XSP_ACTION"
     DOWNSAMPLE_ENV = "NETT_XSP_DOWNSAMPLE"
     HIDDEN_ENV = "NETT_XSP_HIDDEN"
+    G_MAP_ENV = "NETT_XSP_G_MAP"
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
@@ -158,7 +174,8 @@ class XSPTerm(nn.Module):
             raise ValueError(
                 f"{self.BATCH_ENV}={self.batch} with {self.TRANSIT_FRAC_ENV}={self.transit_frac} splits into "
                 f"slabs {slabs}; draw_action_window needs >= 2 per non-empty slab. Raise the batch.")
-        self.combine = _env_choice(self.COMBINE_ENV, "fg", COMBINES)
+        self.combine = _env_choice(self.COMBINE_ENV, "outer", COMBINES)
+        self.g_map = _env_choice(self.G_MAP_ENV, "0", G_MAPS) == "1"
         self.action = _env_choice(self.ACTION_ENV, "none", ACTIONS)
         self.downsample = _env_positive_int(self.DOWNSAMPLE_ENV, 4)
         self.hidden = _env_positive_int(self.HIDDEN_ENV, 64)
@@ -180,7 +197,8 @@ class XSPTerm(nn.Module):
         k = int(encoder.dorsal_dim)
         c_ch = 2 * k if self.combine == "outer" else k
         device = next(encoder.parameters()).device
-        self.head = XSPDecoder(c_ch, self.cpf, n_up, self.hidden, self.action == "film").to(device)
+        self.head = XSPDecoder(c_ch, self.cpf, n_up, self.hidden, self.action == "film",
+                               g_map=self.g_map).to(device)
 
         self._memory = None
         self.last_scalars: dict = {}
@@ -188,9 +206,9 @@ class XSPTerm(nn.Module):
         try:
             from skrl import logger
             logger.warning(
-                "[NETT xsp] combine=%s action=%s downsample=%d (target %dx%d) hidden=%d batch=%d "
+                "[NETT xsp] combine=%s g_map=%d action=%s downsample=%d (target %dx%d) hidden=%d batch=%d "
                 "transit_frac=%s policy_input=%s frames=%s | encoder params %d, decoder (aux head) params %d",
-                self.combine, self.action, self.downsample, self.target_hw[0], self.target_hw[1],
+                self.combine, int(self.g_map), self.action, self.downsample, self.target_hw[0], self.target_hw[1],
                 self.hidden, self.batch, self.transit_frac, getattr(encoder, "policy_input", "?"),
                 getattr(encoder, "n_frames", "?"),
                 sum(p.numel() for p in encoder.parameters()),

@@ -842,18 +842,21 @@ MODELS: dict[str, dict] = {
     "ViT-CLTT-Ref-2M":   dict(encoder="compact_vit", cfg=dict(VIT_2M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 2,117,632 / agent 2,119,173
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
-    # MLP-head PPO; aligned with the owner's figure the same day). ONE shared conv trunk
-    # z = phi_e(x) applied to every frame (siamese). VENTRAL: the current frame only,
-    # m_t = sigmoid(phi_v(z_t)), a one-channel FIGURE map (ground = 1 - m_t). DORSAL: the whole
-    # frame stack, d_t = phi_d(z_{t-T+1}, .., z_t), oldest .. newest, T = NETT_FRAMESTACK_N >= 2
-    # (a motion field). g predicts x_{t+1} = g(x_t, m_t, d_t), the streams meeting as the
-    # product m_t * d_t; ONE loss, ||x^ - x_{t+1}||^2. The policy reads the ventral output (owner
-    # ruling "option (b)"): pool(z_t * m_t) -> 512, from x_t alone.
+    # MLP-head PPO; aligned with the paper's Methods and the owner's figure the same day). ONE
+    # shared conv trunk z = phi_e(x) applied to every frame (siamese). VENTRAL: the current frame
+    # only, m_t = sigmoid(phi_v(z_t)), i.e. the Methods' two-way softmax v_t = [m_t, 1 - m_t]
+    # (sigmoid(l) = softmax([l, 0])_0). DORSAL: d_t = phi_d(z_{t-T+1}, .., z_t), oldest .. newest,
+    # T = NETT_FRAMESTACK_N >= 2 (T=2 is the Methods' "successive feature maps"; T=3 the figure's
+    # stack). PREDICTOR (Methods): x^_{t+1} = g(x_t, v_t (.) d_t) = g(x_t, [m_t*d_t, (1-m_t)*d_t]);
+    # ONE loss, ||x^ - x_{t+1}||^2. The policy reads the ventral output (owner ruling "option (b)"):
+    # pool(z_t * m_t) -> 512, from x_t alone. ⚠ Under the default combine nothing in the loss
+    # decides which side of m is the object; NETT_XSP_POLICY_INPUT=both reads either side.
     # Encoder: brain/encoders/xsp.py; aux: brain/aux/xsp_aux.py.
     # ⚠ ONE LABEL, A CONFIG SEARCH OVER KNOBS (owner: "find an implementation/config that works on
     # parsing"). Unset knob == default, so the bare label IS the default config:
     #   NETT_XSP_POLICY_INPUT gated|map|both (encoder cfg, resolved above)
-    #   NETT_XSP_COMBINE      fg|outer    NETT_XSP_ACTION none|film   (first value = default)
+    #   NETT_XSP_COMBINE      outer|fg    NETT_XSP_ACTION none|film   (first value = default)
+    #   NETT_XSP_G_MAP        0|1 (0 = Methods: g reads x_t and v_t (.) d_t only; 1 = g also reads m_t)
     #   NETT_XSP_DOWNSAMPLE   1|2|4|8 (4) NETT_XSP_HIDDEN >0 (64)
     #   NETT_XSP_BATCH        >=2 (64)    NETT_XSP_TRANSIT_FRAC [0,1] (0.5)
     #   NETT_AUX_WEIGHT_OVERRIDE (the existing aux-weight override; spec weight 1.0)
@@ -863,8 +866,9 @@ MODELS: dict[str, dict] = {
     #   T=2: encoder 852,020 (trunk 82,283 + ventral 30,913 + dorsal 123,912 + readout 614,912)
     #   T=3: encoder 895,220 (dorsal 167,112; everything else unchanged)
     # trunk+ventral+readout, the part the policy reads, is 728,108 at any T vs "CNN"'s 773,995
-    # single-frame encoder. Decoder (aux head) 77,955 at the fg default (78,467 under
-    # NETT_XSP_COMBINE=outer), independent of T. The 256x160 eye builds the same counts (pooled readout).
+    # single-frame encoder. Decoder (aux head) 78,403 at the default (outer, G_MAP=0); +64 with
+    # NETT_XSP_G_MAP=1; -512 under NETT_XSP_COMBINE=fg; independent of T. The 256x160 eye builds
+    # the same counts (pooled readout).
     "XSP": dict(encoder="xsp", cfg=dict(XSP_CFG), framestack=True, aux="xsp", aux_weight=1.0),
 }
 
