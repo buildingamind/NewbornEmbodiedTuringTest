@@ -7,8 +7,8 @@ predict the next frame", trained end-to-end with that single self-supervised los
 ```
 (obs_t, a_t, obs_{t+1})  <- action_windows.draw_action_window(memory, k=1)     (as nextframe_aux)
 z_{t-1}, z_t, v_t, d_t   <- encoder.encode_streams(obs_t)    phi_e siamese, phi_v, phi_d; grads ON
-m      = v_t (x) d_t          NETT_XSP_COMBINE=outer (default): (B, 2K, h, w) = [v_fg*d, v_bg*d]
-       | v_fg * d_t           NETT_XSP_COMBINE=fg:              (B,  K, h, w)
+m      = v_fg * d_t           NETT_XSP_COMBINE=fg (default):  (B,  K, h, w)
+       | v_t (x) d_t          NETT_XSP_COMBINE=outer:         (B, 2K, h, w) = [v_fg*d, v_bg*d]
 h      = ReLU([FiLM_{a_t}] Conv1x1(cat(v_t, m)))          FiLM only under NETT_XSP_ACTION=film
 h      = (nearest 2x -> Conv3x3 -> ReLU) x log2(8/ds)     map grid (H/8, W/8) -> target (H/ds, W/ds)
 x^     = cur + Conv3x3(ReLU(Conv3x3(cat(h, cur))))        cur = avgpool_ds(x_t)   RESIDUAL
@@ -19,6 +19,14 @@ L      = mean (x^ - target)^2
 ⛔ THE TARGET IS THE NEWEST FRAME OF obs[t+1], NOT obs[t+1] WHOLE -- the leak documented in
 nextframe_aux.py: obs[t+1] = [x_t, x_{t+1}] (T-major), and its older half IS x_t, which g already
 receives. The same `_frames` slicer (last cpf channels) builds the target and the copy baseline.
+
+DEFAULT COMBINE = "fg" (coordinator ruling 2026-10-09, replacing "outer"). "Multiplies the
+outputs of the two streams" reads most naturally as v_fg * d, and that product is the only thing
+that gives ventral channel 0 its meaning: it is the channel that carries the motion to g. "outer"
+is symmetric in the two channels by construction; on the synthetic moving square (tests/test_xsp.py
+section 4) it put the object on channel 0 -- the policy's gate -- in 3/10 seeds, against 9/10 for
+"fg". "fg" has its own failure, a collapse to v_fg == 0 (1/10 seeds there); fg_frac/fg_entropy
+expose it in-run. "outer" stays available as a knob value.
 
 DESIGN CHOICES (stated, not knobbed):
 * RESIDUAL OUTPUT. g predicts the CHANGE on top of the pooled current frame. That is still
@@ -67,7 +75,7 @@ from .token_term import MASK_UNSET, parked_transit, stratum_mean, window_turn_sc
 
 #: Motor components FiLM conditions on under NETT_XSP_ACTION=film: (turn, move), as nextframe.
 ACTION_COMPONENTS = 2
-COMBINES = ("outer", "fg")
+COMBINES = ("fg", "outer")
 ACTIONS = ("none", "film")
 #: The XSP trunk's total stride; the decoder's input grid is (H/8, W/8).
 TRUNK_STRIDE = 8
@@ -142,7 +150,7 @@ class XSPTerm(nn.Module):
             raise ValueError(
                 f"{self.BATCH_ENV}={self.batch} with {self.TRANSIT_FRAC_ENV}={self.transit_frac} splits into "
                 f"slabs {slabs}; draw_action_window needs >= 2 per non-empty slab. Raise the batch.")
-        self.combine = _env_choice(self.COMBINE_ENV, "outer", COMBINES)
+        self.combine = _env_choice(self.COMBINE_ENV, "fg", COMBINES)
         self.action = _env_choice(self.ACTION_ENV, "none", ACTIONS)
         self.downsample = _env_positive_int(self.DOWNSAMPLE_ENV, 4)
         self.hidden = _env_positive_int(self.HIDDEN_ENV, 64)

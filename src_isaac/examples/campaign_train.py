@@ -843,11 +843,13 @@ MODELS: dict[str, dict] = {
     # (2-way figure/ground per location); a DORSAL stream d = phi_d(z_{t-1}, z_t) (motion field);
     # g predicts x_{t+1} from x_t, v_t and the product of the streams; ONE loss, ||x^ - x_{t+1}||^2.
     # The policy reads the ventral output (owner ruling "option (b)"): pool(z_t * v_fg) -> 512.
+    # The streams meet as m = v_fg * d (NETT_XSP_COMBINE=fg, the default since the coordinator's
+    # 2026-10-09 ruling): channel 0 is "figure" because it is what carries the motion to g.
     # Encoder: brain/encoders/xsp.py; aux: brain/aux/xsp_aux.py.
     # ⚠ ONE LABEL, A CONFIG SEARCH OVER KNOBS (owner: "find an implementation/config that works on
     # parsing"). Unset knob == default, so the bare label IS the default config:
     #   NETT_XSP_POLICY_INPUT gated|map|both (encoder cfg, resolved above)
-    #   NETT_XSP_COMBINE      outer|fg    NETT_XSP_ACTION none|film
+    #   NETT_XSP_COMBINE      fg|outer    NETT_XSP_ACTION none|film   (first value = default)
     #   NETT_XSP_DOWNSAMPLE   1|2|4|8 (4) NETT_XSP_HIDDEN >0 (64)
     #   NETT_XSP_BATCH        >=2 (64)    NETT_XSP_TRANSIT_FRAC [0,1] (0.5)
     #   NETT_AUX_WEIGHT_OVERRIDE (the existing aux-weight override; spec weight 1.0)
@@ -855,7 +857,8 @@ MODELS: dict[str, dict] = {
     # Sizes at the 128x80 eye, 2-frame stack, default knobs (tests/test_xsp.py pins them):
     # encoder 852,053 (trunk 82,283 + ventral 30,946 + dorsal 123,912 + readout 614,912 --
     # trunk+ventral+readout, the part the policy reads, is 728,141 vs "CNN"'s 773,995 single-frame
-    # encoder) / decoder (aux head) 78,531. The 256x160 eye builds the same counts (pooled readout).
+    # encoder) / decoder (aux head) 78,019 at the fg default (78,531 under NETT_XSP_COMBINE=outer).
+    # The 256x160 eye builds the same counts (pooled readout).
     "XSP": dict(encoder="xsp", cfg=dict(XSP_CFG), framestack=True, aux="xsp", aux_weight=1.0),
 }
 

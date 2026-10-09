@@ -128,7 +128,7 @@ def test_label_is_registered_with_its_declared_spec(campaign):
 #: Pinned at the parsing eye. ⚠ The parsing rows of U37 (lion L685-L688) set no NETT_EYE_RES, so
 #: they run repo B's ObservationCfg.eye_resolution = 128x80 (W x H); some ViT rows run 256x160.
 PINNED = {"encoder": 852_053, "trunk": 82_283, "ventral": 30_946, "dorsal": 123_912,
-          "readout": 614_912, "head": 78_531}
+          "readout": 614_912, "head": 78_019}       # head at the fg default; 78,531 under outer
 
 
 @pytest.mark.parametrize("h,w", [(80, 128), (160, 256)])
@@ -459,7 +459,7 @@ def test_film_refuses_a_one_component_action(monkeypatch):
         term.compute(enc, None)
 
 
-DEFAULTS = {"NETT_XSP_COMBINE": "outer", "NETT_XSP_ACTION": "none", "NETT_XSP_DOWNSAMPLE": "4",
+DEFAULTS = {"NETT_XSP_COMBINE": "fg", "NETT_XSP_ACTION": "none", "NETT_XSP_DOWNSAMPLE": "4",
             "NETT_XSP_HIDDEN": "64", "NETT_XSP_BATCH": "64", "NETT_XSP_TRANSIT_FRAC": "0.5"}
 
 
@@ -519,14 +519,16 @@ def test_knobs_are_literal_reads_the_env_gate_can_find():
 #
 # Measured before pinning (scratch ka.py, the same generator, 300 Adam steps at lr 1e-3, batch 16,
 # 10 model seeds each; 8 or 4 threads):
-#   outer (default)  skill .951-.964 in 10/10; |fg_in - fg_out| .19-.45 in 10/10, but the square
+#   fg (DEFAULT since the coordinator's 2026-10-09 ruling)
+#                    skill .938-.965 in 9/10, square on channel 0 in 9/10 (diff +.145..+.461);
+#                    seed 0 COLLAPSES: v_fg == 0 everywhere, entropy 0, skill .206.
+#   outer (knob)     skill .951-.964 in 10/10; |fg_in - fg_out| .19-.45 in 10/10, but the square
 #                    is on CHANNEL 0 (the "gated" policy gate) in only 3/10 (seeds 0, 8, 9) and on
 #                    channel 1 in 7/10 -- the loss does not decide which channel is "figure".
-#   fg               skill .938-.965 in 9/10, square on channel 0 in 9/10 (diff +.145..+.461);
-#                    seed 0 COLLAPSES: v_fg == 0 everywhere, entropy 0, skill .206.
-#   outer, d := 0    skill .200-.204 (3 seeds): the motion stream is what lifts skill from .2 to .96.
-#                    v still separates the square in 2/3 of these (diff +.15) -- v enters g
-#                    directly, so the map is partly a form/brightness cue, not purely motion-made.
+#   d := 0           outer: skill .200-.204 (seeds 0-2); fg: .195, .205 (seeds 1, 2). The motion
+#                    stream is what lifts skill from .2 to .96. Under outer v still separates the
+#                    square in 2/3 of these (diff +.15) -- v enters g directly, so the map is
+#                    partly a form/brightness cue, not purely motion-made.
 #   untrained        |fg_in - fg_out| <= .0008; AUC .10-.76 on maps that differ by 1e-3, so the
 #                    MEAN DIFFERENCE is the primary statistic and AUC is reported, not asserted.
 # Thresholds: skill >= .8 (the x_t-only ceiling is ~.2); skill - no-dorsal >= .5; |diff| >= .15
@@ -575,11 +577,14 @@ def _ka_eval(enc, term):
     fg = cell >= 0.5
     return dict(skill=term.last_scalars["skill"], auc=_auc(v, fg),
                 diff=float(v[fg].mean() - v[cell == 0].mean()),
-                fg_frac=term.last_scalars["fg_frac"], fg_entropy=term.last_scalars["fg_entropy"])
+                fg_frac=term.last_scalars["fg_frac"], fg_entropy=term.last_scalars["fg_entropy"],
+                v_fg_max=float(v.max()), v_fg_min=float(v.min()), combine=term.combine)
 
 
 def _ka_train(monkeypatch, combine, seed, no_dorsal=False):
-    monkeypatch.setenv("NETT_XSP_COMBINE", combine)
+    """combine=None trains the DEFAULT (knob unset)."""
+    if combine is not None:
+        monkeypatch.setenv("NETT_XSP_COMBINE", combine)
     torch.set_num_threads(8)                                    # restored by the autouse fixture
     if no_dorsal:
         orig = XSPEncoder.encode_streams
@@ -607,37 +612,90 @@ def _ka_train(monkeypatch, combine, seed, no_dorsal=False):
     return init, final
 
 
-@pytest.mark.parametrize("seed", [0, 1])
-def test_known_answer_default_predicts_motion_and_separates_the_square(monkeypatch, seed):
-    init, final = _ka_train(monkeypatch, "outer", seed)
+@pytest.mark.parametrize("seed", [1, 2])
+def test_known_answer_default_puts_the_square_on_the_figure_channel(monkeypatch, seed):
+    """The DEFAULT (fg): prediction beats copy AND the square is on channel 0, the policy's gate."""
+    init, final = _ka_train(monkeypatch, None, seed)
+    assert final["combine"] == "fg"
     assert abs(init["diff"]) < 0.01                       # untrained map does not separate it
     assert final["skill"] >= 0.8                          # prediction clearly beats copy
-    assert abs(final["diff"]) >= 0.15                     # v separates the square (either channel)
+    assert final["diff"] >= 0.10 and final["auc"] >= 0.9  # ... on the FIGURE channel
+
+
+@pytest.mark.parametrize("seed", [0, 1])
+def test_known_answer_outer_knob_separates_the_square_on_either_channel(monkeypatch, seed):
+    init, final = _ka_train(monkeypatch, "outer", seed)
+    assert abs(init["diff"]) < 0.01
+    assert final["skill"] >= 0.8
+    assert abs(final["diff"]) >= 0.15                     # symmetric: no channel is "figure"
     assert np.isfinite(final["auc"])
 
 
 def test_known_answer_no_dorsal_control_cannot_predict_motion(monkeypatch):
-    _, full = _ka_train(monkeypatch, "outer", 0)
-    _, cut = _ka_train(monkeypatch, "outer", 0, no_dorsal=True)
+    _, full = _ka_train(monkeypatch, None, 1)
+    _, cut = _ka_train(monkeypatch, None, 1, no_dorsal=True)
     assert cut["skill"] <= 0.4
     assert full["skill"] - cut["skill"] >= 0.5
 
 
-@pytest.mark.parametrize("seed", [1, 2])
-def test_known_answer_fg_combine_puts_the_square_on_the_figure_channel(monkeypatch, seed):
-    init, final = _ka_train(monkeypatch, "fg", seed)
-    assert abs(init["diff"]) < 0.01
-    assert final["skill"] >= 0.8
-    assert final["diff"] >= 0.10 and final["auc"] >= 0.9
+def _telemetry_flags_collapse(s):
+    """What a reader of the run's own logs can see: the map is decided (entropy ~0) and uniform
+    (fg_frac at an extreme)."""
+    return s["fg_entropy"] < 0.05 and (s["fg_frac"] < 0.05 or s["fg_frac"] > 0.95)
 
 
-def test_known_answer_fg_collapse_is_visible_in_the_telemetry(monkeypatch):
-    """fg seed 0 collapses (v_fg -> 0 everywhere, so m = 0 and g sees no motion). Pinned loosely:
-    the claim is that the published fg_frac / fg_entropy expose it, and that skill drops to the
-    x_t-only level -- not that this particular seed must collapse forever."""
-    _, final = _ka_train(monkeypatch, "fg", 0)
-    assert final["fg_frac"] < 0.05 and final["fg_entropy"] < 0.05
-    assert final["skill"] < 0.4
+def _map_is_collapsed(r):
+    """Ground truth from the map itself, not from the telemetry: every location of every sample
+    saturated to the SAME channel (v_fg <= .005 or >= .995 everywhere; binary entropy of .005 is
+    .045 bits, so a collapsed map is inside the telemetry's .05 bound by construction)."""
+    return r["v_fg_max"] <= 0.005 or r["v_fg_min"] >= 0.995
+
+
+def _check_collapse_detection(r):
+    if _map_is_collapsed(r):
+        assert _telemetry_flags_collapse(r), r          # every collapse is DETECTED
+    if abs(r["diff"]) >= 0.10:
+        assert not _telemetry_flags_collapse(r), r      # a separating map raises no alarm
+
+
+@pytest.mark.parametrize("seed", [0, 3])
+def test_known_answer_default_collapse_whenever_it_happens_is_detected(monkeypatch, seed):
+    """fg can collapse to v_fg == 0 (m = 0, g sees no motion): measured in 1/10 scratch seeds. This
+    does NOT pin which seeds collapse. Whatever training produces, a collapsed map must be flagged by
+    fg_frac/fg_entropy and a separating one must not; the forced cases below make sure the
+    detection branch is exercised even if no trained seed collapses."""
+    _, final = _ka_train(monkeypatch, None, seed)
+    print(f"seed {seed}: map collapsed={_map_is_collapsed(final)} "
+          f"telemetry flags={_telemetry_flags_collapse(final)}")
+    _check_collapse_detection(final)
+
+
+@pytest.mark.parametrize("bias", [(-30.0, 30.0), (30.0, -30.0), None])
+def test_forced_collapse_is_detected_and_a_healthy_map_is_not(bias):
+    """Positive controls for the detector: saturate the ventral output to all-ground / all-figure
+    (a collapse by construction) and leave it untrained (undecided, entropy ~1, not a collapse)."""
+    torch.manual_seed(0)
+    enc = XSPEncoder(_space(), features_dim=32)
+    term = XSPTerm(enc)
+    if bias is not None:
+        with torch.no_grad():
+            enc.ventral[-1].weight.zero_()
+            enc.ventral[-1].bias.copy_(torch.tensor(bias))
+    r = _ka_eval(enc, term)
+    assert _map_is_collapsed(r) == (bias is not None)
+    assert _telemetry_flags_collapse(r) == (bias is not None)
+    _check_collapse_detection(r)
+
+
+@pytest.mark.parametrize("collapse", [True, False])
+def test_collapse_detection_check_goes_red_on_a_blind_detector(monkeypatch, collapse):
+    """Mutant: a detector that never fires must fail the check on a real collapse; one that always
+    fires must fail it on a separating map."""
+    r = {"v_fg_max": 1e-6, "v_fg_min": 0.0, "fg_frac": 1e-6, "fg_entropy": 1e-6, "diff": 0.0} if collapse \
+        else {"v_fg_max": 0.99, "v_fg_min": 0.01, "fg_frac": 0.5, "fg_entropy": 0.9, "diff": 0.4}
+    monkeypatch.setitem(globals(), "_telemetry_flags_collapse", lambda s: not collapse)
+    with pytest.raises(AssertionError):
+        _check_collapse_detection(r)
 
 
 def test_static_scene_control_is_finite_and_marks_skill_unmeasured():
