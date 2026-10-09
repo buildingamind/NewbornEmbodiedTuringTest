@@ -167,6 +167,13 @@ def _build_nextframe_with_cltt_ref(encoder):
     return _wave17(NextFrameTerm, "nextframe")(encoder)
 
 
+def _build_xsp(encoder):
+    """Cross-stream predictive learning (owner 2026-10-09): next frame from x_t, the ventral
+    figure map and the dorsal motion map of the XSP encoder (brain/aux/xsp_aux.py)."""
+    from .xsp_aux import XSPTerm
+    return XSPTerm(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -200,6 +207,8 @@ AUX_LOSSES = {
     # ── U35 (owner 2026-10-05). Next-frame predictive coding (brain/aux/nextframe_aux.py).
     "nextframe": _build_nextframe,
     "nextframe_with_cltt_ref": _build_nextframe_with_cltt_ref,
+    # ── XSP (owner 2026-10-09). Next-frame prediction through the two streams (xsp_aux.py).
+    "xsp": _build_xsp,
 }
 
 

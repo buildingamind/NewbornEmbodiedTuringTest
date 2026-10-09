@@ -139,6 +139,8 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "compact_vivit": encoders.CompactViViT,
     "simclr_cltt": encoders.SimCLRCLTT,
     "guess_what_moves": encoders.GuessWhatMoves,
+    # Cross-stream predictive learning (owner 2026-10-09): siamese trunk + ventral/dorsal streams.
+    "xsp": encoders.XSPEncoder,
 }
 
 

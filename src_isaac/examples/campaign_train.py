@@ -211,6 +211,33 @@ def _vit_dropout() -> float:
 
 _VIT_DROPOUT = _vit_dropout()
 
+#: NETT_XSP_POLICY_INPUT values; index 0 is the default (owner ruling "option (b)", 2026-10-09).
+XSP_POLICY_INPUTS = ("gated", "map", "both")
+
+
+def _xsp_policy_input() -> str:
+    """NETT_XSP_POLICY_INPUT: what the "XSP" label's policy reads (encoders/xsp.py).
+
+    "gated" (default) = pool(z_t * v_fg) -> Linear; "map" = the figure map v_fg alone -> Linear;
+    "both" = pool(z_t * v_fg) and pool(z_t * v_bg) concatenated -> Linear (orientation-free; see
+    encoders/xsp.py for the measured channel-assignment rate that motivates it).
+    Resolved INTO the label's encoder cfg (the `_vit_dropout` precedent), because it changes the
+    encoder's state_dict: the cfg is what the test phase rebuilds the encoder from and what the
+    run config records. Read on every import, USED only by "XSP". ⛔ Anything but the two spellings
+    refuses (no case folding, no nearest match): a misspelling that resolved to the default would
+    file the default under the row's config.
+    """
+    raw = os.environ.get("NETT_XSP_POLICY_INPUT", "gated")
+    if raw.strip() not in XSP_POLICY_INPUTS:
+        raise ValueError(f"NETT_XSP_POLICY_INPUT={raw!r} is not one of {list(XSP_POLICY_INPUTS)}.")
+    return raw.strip()
+
+
+_XSP_POLICY_INPUT = _xsp_policy_input()
+#: The "XSP" label's encoder cfg. conv_dim 75 is the "CNN" label's (see encoders/xsp.py for why
+#: the readout is then capacity-matched to it).
+XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input": _XSP_POLICY_INPUT}
+
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
 VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
@@ -810,6 +837,26 @@ MODELS: dict[str, dict] = {
     "ViT-CLTT-Ref-500K": dict(encoder="compact_vit", cfg=dict(VIT_500K_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 510,056 / agent 511,597
     "ViT-CLTT-Ref-1M":   dict(encoder="compact_vit", cfg=dict(VIT_1M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 994,680 / agent 996,221
     "ViT-CLTT-Ref-2M":   dict(encoder="compact_vit", cfg=dict(VIT_2M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 2,117,632 / agent 2,119,173
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
+    # MLP-head PPO). A siamese per-frame conv trunk z = phi_e(x); a VENTRAL stream v = softmax(phi_v(z_t))
+    # (2-way figure/ground per location); a DORSAL stream d = phi_d(z_{t-1}, z_t) (motion field);
+    # g predicts x_{t+1} from x_t, v_t and the product of the streams; ONE loss, ||x^ - x_{t+1}||^2.
+    # The policy reads the ventral output (owner ruling "option (b)"): pool(z_t * v_fg) -> 512.
+    # Encoder: brain/encoders/xsp.py; aux: brain/aux/xsp_aux.py.
+    # ⚠ ONE LABEL, A CONFIG SEARCH OVER KNOBS (owner: "find an implementation/config that works on
+    # parsing"). Unset knob == default, so the bare label IS the default config:
+    #   NETT_XSP_POLICY_INPUT gated|map|both (encoder cfg, resolved above)
+    #   NETT_XSP_COMBINE      outer|fg    NETT_XSP_ACTION none|film
+    #   NETT_XSP_DOWNSAMPLE   1|2|4|8 (4) NETT_XSP_HIDDEN >0 (64)
+    #   NETT_XSP_BATCH        >=2 (64)    NETT_XSP_TRANSIT_FRAC [0,1] (0.5)
+    #   NETT_AUX_WEIGHT_OVERRIDE (the existing aux-weight override; spec weight 1.0)
+    # A NETT_XSP_* knob on any other label is REFUSED in main() (nothing else reads it).
+    # Sizes at the 128x80 eye, 2-frame stack, default knobs (tests/test_xsp.py pins them):
+    # encoder 852,053 (trunk 82,283 + ventral 30,946 + dorsal 123,912 + readout 614,912 --
+    # trunk+ventral+readout, the part the policy reads, is 728,141 vs "CNN"'s 773,995 single-frame
+    # encoder) / decoder (aux head) 78,531. The 256x160 eye builds the same counts (pooled readout).
+    "XSP": dict(encoder="xsp", cfg=dict(XSP_CFG), framestack=True, aux="xsp", aux_weight=1.0),
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -851,6 +898,9 @@ for _lbl in ("ViT-CLTT-Ref-DropAll", "ViT-CLTT-Ref-DropAux"):
         == MODELS["ViT-CLTT-Ref"]["cfg"], _lbl
 assert MODELS["ViT-CLTT-Ref-NextFrame"]["cfg"] == MODELS["ViT-CLTT-Ref"]["cfg"]
 del _lbl
+# ⛔ THE XSP LABEL IS ITS DECLARED CFG AND NOTHING ELSE (the knob reaches it only via XSP_CFG).
+assert MODELS["XSP"] == dict(encoder="xsp", cfg=XSP_CFG, framestack=True, aux="xsp", aux_weight=1.0)
+assert set(XSP_CFG) == {"trainable", "features_dim", "conv_dim", "policy_input"}, sorted(XSP_CFG)
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
@@ -1102,6 +1152,17 @@ def export_seg_flow(model: str, spec: dict) -> None:
     elif row is not None:
         raise ValueError(f"NETT_GWM_FLOW={row!r} is set but arm {model!r} has no seg_flow; nothing "
                          "would read it and the arm would run under a flow label it does not have.")
+
+
+def refuse_stray_xsp_knobs(model: str, spec: dict) -> None:
+    """A NETT_XSP_* knob on a label whose encoder is not "xsp" is read by NOTHING: the arm would
+    train its own model under a row that names an XSP config. Refuse it (the NETT_GWM_FLOW rule)."""
+    if spec.get("encoder") == "xsp":
+        return
+    stray = sorted(k for k in os.environ if k.startswith("NETT_XSP_"))
+    if stray:
+        raise ValueError(f"{stray} set but arm {model!r} is not an XSP arm (encoder "
+                         f"{spec.get('encoder')!r}); nothing would read them. Unset them.")
 
 
 def _slug(s: str) -> str:
@@ -1424,6 +1485,7 @@ def main() -> int:
     else:
         os.environ.pop("NETT_SEG_QUERIES", None)
     export_seg_flow(model, spec)
+    refuse_stray_xsp_knobs(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

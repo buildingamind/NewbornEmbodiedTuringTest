@@ -479,10 +479,16 @@ def test_every_registered_aux_kind_exposes_a_head():
         return encoder_mapping["compact_vit"](
             space, features_dim=32, patch_size=16, embed_dim=32, depth=1, num_heads=2)
 
+    def _xsp_host():
+        """The `xsp` kind REFUSES any encoder without the XSP streams (encode_streams) by design;
+        its only row runs the `xsp` encoder."""
+        space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
+        return encoder_mapping["xsp"](space, features_dim=32, conv_dim=16)
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
-                     _framestacked_host, _vit_host):
+                     _framestacked_host, _vit_host, _xsp_host):
             try:
                 aux = build(host())
                 break
