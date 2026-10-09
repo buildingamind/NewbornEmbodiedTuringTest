@@ -1072,16 +1072,22 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
         assert campaign.segmentation_wrappers(campaign.MODELS[label]) == old.segmentation_wrappers(spec_old)
 
 
+def _literal_keys(src, opener):
+    return {ln.split('"')[1] for ln in src.split(opener, 1)[1].split("\n}", 1)[0].splitlines()
+            if ln.strip().startswith('"')}
+
+
 def test_registries_only_gained_the_xsp_entries():
+    # Source literal at the XSP base vs source literal now. The LIVE dicts are not compared for
+    # equality: other tests register entries at runtime (test_validate.py's "DummyEnc"), so under
+    # the full suite the live set depends on test order. The live dicts must still contain both.
     base = _xsp_base()
-    reg = _git("show", f"{base}:src_isaac/nett_skrl/brain/aux/ppo_aux.py")
-    old_keys = {ln.split('"')[1] for ln in reg.split("AUX_LOSSES = {", 1)[1].split("\n}", 1)[0].splitlines()
-                if ln.strip().startswith('"')}
-    assert old_keys and set(AUX_LOSSES) - old_keys == {"xsp"} and old_keys <= set(AUX_LOSSES)
-    enc = _git("show", f"{base}:src_isaac/nett_skrl/brain/registry.py")
-    old_enc = {ln.split('"')[1] for ln in enc.split("encoder_mapping: dict", 1)[1].split("\n}", 1)[0].splitlines()
-               if ln.strip().startswith('"')}
-    assert old_enc and set(encoder_mapping) - old_enc == {"xsp"} and old_enc <= set(encoder_mapping)
+    for rel, opener, live in (("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", AUX_LOSSES),
+                              ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
+        old = _literal_keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
+        new = _literal_keys((_SRC / rel).read_text(), opener)
+        assert old and new - old == {"xsp"} and old <= new, rel
+        assert new <= set(live), rel
 
 
 # ================================================================ 7. mutants
