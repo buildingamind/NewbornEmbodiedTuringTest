@@ -23,7 +23,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:263`<br>`examples/campaign_train.py:1831`<br>`examples/campaign_train.py:1869` |
 | `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:276`<br>`examples/campaign_train.py:1832`<br>`examples/campaign_train.py:1870` |
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:69`<br>`examples/probe_frozen_features.py:57` |
-| `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:168` |
+| `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
@@ -38,7 +38,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_CLTT_REF_TEMP` | `"0.5"` | `nett_skrl/brain/aux/cltt_ref_aux.py:867` |
 | `NETT_AUX_CLTT_REF_WEIGHT` | `1.0` | `nett_skrl/brain/aux/with_cltt_ref.py:79` |
 | `NETT_AUX_CLTT_STACK_OFFSETS` | `'2,4'` | `nett_skrl/brain/aux/cltt_ref_aux.py:856` |
-| `NETT_AUX_EGO_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:168` |
+| `NETT_AUX_EGO_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_EGO_IDENTITY_BIAS` | `4.0` | `nett_skrl/brain/aux/ego_residual_aux.py:122` |
 | `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_EGO_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/ego_residual_aux.py:123` |
@@ -57,11 +57,11 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_NF_HIDDEN` | `64` | `nett_skrl/brain/aux/nextframe_aux.py:145` |
 | `NETT_AUX_NF_NORM_PIX` | `False` | `nett_skrl/brain/aux/nextframe_aux.py:147` |
 | `NETT_AUX_NF_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/nextframe_aux.py:146` |
-| `NETT_AUX_PATCH_BATCH` | `512`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:168` |
+| `NETT_AUX_PATCH_BATCH` | `512`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_PATCH_M` | `8` | `nett_skrl/brain/aux/cltt_patch_aux.py:90` |
 | `NETT_AUX_PATCH_TEMP` | `0.5` | `nett_skrl/brain/aux/cltt_patch_aux.py:91` |
 | `NETT_AUX_PATCH_TOPG` | `max(1, self.n_tokens // 2)` | `nett_skrl/brain/aux/cltt_patch_aux.py:89` |
-| `NETT_AUX_SLOTFG_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:168` |
+| `NETT_AUX_SLOTFG_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_SLOTFG_DECODER` | `"convsbd"` | `nett_skrl/brain/aux/slot_fg_aux.py:174` |
 | `NETT_AUX_SLOTFG_DECODE_SCALE` | `"2"` | `nett_skrl/brain/aux/slot_fg_aux.py:176`<br>`nett_skrl/brain/aux/slot_fg_aux.py:200` |
 | `NETT_AUX_SLOTFG_DEC_HIDDEN` | `256` | `nett_skrl/brain/aux/slot_fg_aux.py:186`<br>`nett_skrl/brain/aux/slot_fg_aux.py:216` |
@@ -276,11 +276,11 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_WANDB_GROUP` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:91` |
 | `NETT_WANDB_MODE` | `"offline"`, `"online"` | `examples/campaign_retest.py:71`<br>`examples/campaign_retest_launch.py:82`<br>`examples/campaign_train.py:1690`<br>`examples/train_binding_8brain_targets.py:174` |
 | `NETT_WORKSPACE` | `""` | `examples/gate_a_resume.py:81` |
-| `NETT_XSP_ACTION` | `"none"` | `nett_skrl/brain/aux/xsp_aux.py:179` |
-| `NETT_XSP_BATCH` | `64` | `nett_skrl/brain/aux/xsp_aux.py:168` |
-| `NETT_XSP_COMBINE` | `"outer"` | `nett_skrl/brain/aux/xsp_aux.py:177` |
-| `NETT_XSP_DOWNSAMPLE` | `4` | `nett_skrl/brain/aux/xsp_aux.py:180` |
-| `NETT_XSP_G_MAP` | `"0"` | `nett_skrl/brain/aux/xsp_aux.py:178` |
-| `NETT_XSP_HIDDEN` | `64` | `nett_skrl/brain/aux/xsp_aux.py:181` |
+| `NETT_XSP_ACTION` | `"none"` | `nett_skrl/brain/aux/xsp_aux.py:227` |
+| `NETT_XSP_BATCH` | `64` | `nett_skrl/brain/aux/xsp_aux.py:216` |
+| `NETT_XSP_COMBINE` | `"outer"` | `nett_skrl/brain/aux/xsp_aux.py:225` |
+| `NETT_XSP_DOWNSAMPLE` | `4` | `nett_skrl/brain/aux/xsp_aux.py:228` |
+| `NETT_XSP_G_MAP` | `"0"` | `nett_skrl/brain/aux/xsp_aux.py:226` |
+| `NETT_XSP_HIDDEN` | `64` | `nett_skrl/brain/aux/xsp_aux.py:229` |
 | `NETT_XSP_POLICY_INPUT` | `"gated"` | `examples/campaign_train.py:230` |
-| `NETT_XSP_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/xsp_aux.py:171` |
+| `NETT_XSP_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/xsp_aux.py:219` |

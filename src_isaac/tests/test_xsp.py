@@ -29,7 +29,8 @@ import torch.nn.functional as F
 
 from nett_skrl.brain.aux.knobs import NOT_MEASURED
 from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
-from nett_skrl.brain.aux.xsp_aux import XSPTerm, combine_streams
+from nett_skrl.brain.aux import xsp_aux
+from nett_skrl.brain.aux.xsp_aux import XSPTerm, combine_streams, motion_orientation
 from nett_skrl.brain.config import EncoderCfg
 from nett_skrl.brain.encoders.xsp import XSPEncoder
 from nett_skrl.brain.registry import encoder_mapping
@@ -395,7 +396,7 @@ def test_every_aux_knob_value_builds_and_trains(monkeypatch, name, value, extra)
     s = term.last_scalars
     for key in ("B", "mse", "copy_mse", "skill", "mse_parked", "mse_transit", "copy_parked",
                 "copy_transit", "window_turn", "action_dim", "fg_frac", "fg_frac_std",
-                "fg_entropy", "d_absmean"):
+                "fg_entropy", "d_absmean", "fg_motion_sep", "fg_motion_sep_parked", "fg_motion_n_parked"):
         assert key in s, key
     assert all(np.isfinite(v) for v in s.values())
     assert ("film_gain" in s) == (term.action == "film")
@@ -728,7 +729,8 @@ def _ka_eval(enc, term):
                 fg_frac=term.last_scalars["fg_frac"], fg_entropy=term.last_scalars["fg_entropy"],
                 m_max=float(m.max()), m_min=float(m.min()),
                 m_q999=float(m.flatten().quantile(0.999)), m_q001=float(m.flatten().quantile(0.001)),
-                combine=term.combine, g_map=term.g_map, T=T)
+                combine=term.combine, g_map=term.g_map, T=T,
+                fg_motion_sep=term.last_scalars["fg_motion_sep"])
 
 
 def _ka_train(monkeypatch, combine, seed, no_dorsal=False, T=2, g_map=None):
@@ -885,6 +887,116 @@ def test_static_scene_control_is_finite_and_marks_skill_unmeasured():
         opt.step()
         first = float(loss) if first is None else first
     assert float(loss) < first
+
+
+# ================================================================ 4b. orientation telemetry
+#
+# fg_motion_sep: a label-free per-brain flag for WHICH side of m holds the moving object (module
+# docstring of xsp_aux.py). Measured before pinning, T=2, outer (default), G_MAP=0, 8 threads (as
+# _ka_train), the 300-step sweep above; sep = ground-truth square-minus-background separation:
+#   seed   0      1      2      3      4      5      6      7      8      9
+#   sep   -.111  -.400  -.450  +.289  -.263  -.382  -.359  -.350  +.422  -.495
+#   fms   +.002  -.037  -.153  +.067  -.058  -.162  -.076  -.139  +.093  -.154
+# Agreement in sign on every seed with |sep| >= .15: 9/9 (seed 0 is below .15 and not counted).
+# fms is smaller than sep by construction: the square moves 4 px, so only ~3-6 of the 16 "moving"
+# cells carry motion; the rest are zero-motion ties (diluted toward the static mean, sign kept).
+
+@pytest.mark.parametrize("seed,side", [(2, -1), (3, +1), (8, +1), (9, -1)])
+def test_motion_orientation_flag_matches_the_true_side(monkeypatch, seed, side):
+    """POSITIVE CONTROL: the label-free flag reads the side the square actually took. Both sides
+    occur among the pinned seeds (2, 9 low; 3, 8 high) -- a flag stuck at one sign fails."""
+    _, final = _ka_train(monkeypatch, None, seed)
+    assert final["combine"] == "outer" and final["g_map"] is False
+    assert abs(final["diff"]) >= 0.15 and np.sign(final["diff"]) == side
+    assert np.sign(final["fg_motion_sep"]) == np.sign(final["diff"]), final
+
+
+def _motion_batch(b=256, seed=4):
+    pt, ptk, _ = _ka_batch(torch.Generator().manual_seed(seed), b)
+    return pt[:, -CPF:], ptk[:, -CPF:]
+
+
+def test_motion_orientation_is_near_zero_for_a_map_unrelated_to_motion():
+    """NEGATIVE CONTROL: a constant .5 map gives exactly 0; a random map drawn independently of the
+    frames gives |fg_motion_sep| < .02. Positive control on the same frames: a map equal to the
+    pooled motion energy itself gives a clearly positive value."""
+    x_t, x_next = _motion_batch()
+    parked = torch.ones(x_t.shape[0], dtype=torch.bool)
+    flat = motion_orientation(torch.full((x_t.shape[0], 1, 10, 16), 0.5), x_t, x_next, parked)
+    assert flat["fg_motion_sep"] == 0.0 and flat["fg_motion_n_parked"] == x_t.shape[0]
+    rand = torch.rand(x_t.shape[0], 1, 10, 16, generator=torch.Generator().manual_seed(11))
+    r = motion_orientation(rand, x_t, x_next, parked)
+    assert abs(r["fg_motion_sep"]) < 0.02 and abs(r["fg_motion_sep_parked"]) < 0.02, r
+    energy = F.avg_pool2d((x_next - x_t).abs().mean(1, keepdim=True), 8)
+    assert motion_orientation(energy / energy.max(), x_t, x_next, parked)["fg_motion_sep"] > 0.05
+
+
+def test_motion_orientation_known_answer_and_parked_split():
+    """Hand-built batch: motion in ONE 8x8 cell (index 2*16+3). Samples 0, 1 parked and moving,
+    sample 2 transit and moving, sample 3 parked and STATIC (does not qualify). m = 1 on the moving
+    cell only: the moving set is that cell + 15 zero-motion ties, the static set holds no m, so
+    sep = 1/16 exactly; with m = 1 - that map, sep = -1/16."""
+    x_t = torch.zeros(4, CPF, H, W)
+    x_next = x_t.clone()
+    x_next[:3, :, 16:24, 24:32] = 1.0
+    m = torch.zeros(4, 1, 10, 16)
+    m[:, 0, 2, 3] = 1.0
+    parked = torch.tensor([True, True, False, True])
+    r = motion_orientation(m, x_t, x_next, parked)
+    assert r["fg_motion_sep"] == pytest.approx(1 / 16) and r["fg_motion_sep_parked"] == pytest.approx(1 / 16)
+    assert r["fg_motion_n_parked"] == 2.0                                  # sample 3 does not qualify
+    r = motion_orientation(1 - m, x_t, x_next, parked)
+    assert r["fg_motion_sep"] == pytest.approx(-1 / 16)
+    r = motion_orientation(m, x_t, x_next, torch.tensor([False, False, False, True]))  # only the static one parked
+    assert r["fg_motion_sep_parked"] == NOT_MEASURED and r["fg_motion_n_parked"] == 0.0
+    assert r["fg_motion_sep"] == pytest.approx(1 / 16)
+
+
+def test_motion_orientation_is_not_measured_on_static_frames():
+    """x_{t+1} == x_t: no sample has localized motion -> every orientation scalar is NOT_MEASURED
+    (n = 0). Positive control: the same model on the moving version of the batch measures it."""
+    enc = XSPEncoder(_space(), features_dim=32)
+    term = XSPTerm(enc)
+    g = torch.Generator().manual_seed(7)
+    pt, ptk, _ = _ka_batch(g, 8, static=True)
+    assert torch.equal(pt[:, -CPF:], ptk[:, -CPF:])
+    with torch.no_grad():
+        term.score(enc, pt, ptk, torch.zeros(8, 2))
+    s = term.last_scalars
+    assert s["fg_motion_sep"] == NOT_MEASURED and s["fg_motion_sep_parked"] == NOT_MEASURED
+    assert s["fg_motion_n_parked"] == 0.0
+    pt, ptk, _ = _ka_batch(g, 8)
+    with torch.no_grad():
+        term.score(enc, pt, ptk, torch.zeros(8, 2))
+    assert term.last_scalars["fg_motion_sep"] != NOT_MEASURED and term.last_scalars["fg_motion_n_parked"] == 8.0
+
+
+def test_motion_orientation_leaves_loss_and_grads_bit_identical(monkeypatch):
+    """The flag is telemetry only: the same model and batch give a bit-identical loss and gradient
+    on every parameter with motion_orientation replaced by a no-op (the replacement is checked to
+    have taken effect, so the comparison is not vacuous)."""
+    enc = _small()
+    term = XSPTerm(enc)
+    term.attach_memory(_NoiseMemory())
+    params = list(enc.parameters()) + list(term.head.parameters())
+
+    def run():
+        for p in params:
+            p.grad = None
+        torch.manual_seed(5)
+        loss = term.compute(enc, None)
+        loss.backward()
+        return loss.detach().clone(), [None if p.grad is None else p.grad.clone() for p in params]
+
+    loss_on, grads_on = run()
+    assert "fg_motion_sep" in term.last_scalars
+    monkeypatch.setattr(xsp_aux, "motion_orientation", lambda *a, **k: {})
+    loss_off, grads_off = run()
+    assert "fg_motion_sep" not in term.last_scalars                      # the no-op really ran
+    assert torch.equal(loss_on, loss_off)
+    assert sum(g is not None for g in grads_on) > 0
+    for a, b in zip(grads_on, grads_off):
+        assert (a is None and b is None) or torch.equal(a, b)
 
 
 # ================================================================ 6. existing-arm invariance

@@ -72,7 +72,24 @@ TELEMETRY (last_scalars, per call): B, mse, copy_mse, skill (= 1 - mse/copy_mse,
 copy_mse == 0), mse_parked, mse_transit, copy_parked, copy_transit (median split on |a_t turn|),
 window_turn, action_dim, fg_frac (mean m_t), fg_frac_std (std over the batch of each sample's
 mean m_t), fg_entropy (mean per-location binary entropy of m_t, in bits: 1 = undecided at .5,
-0 = hard), d_absmean (mean |d_t|), and film_gain (mean |gamma - 1|) under NETT_XSP_ACTION=film only.
+0 = hard), d_absmean (mean |d_t|), film_gain (mean |gamma - 1|) under NETT_XSP_ACTION=film only,
+and the ORIENTATION group fg_motion_sep, fg_motion_sep_parked, fg_motion_n_parked (below).
+
+ORIENTATION (label-free, per brain). Under combine=outer the loss is symmetric under m <-> 1 - m,
+so which side of m lands on the object is a per-seed coin; the parsing read needs it per brain,
+and the env has no masks. Pixel motion stands in: e = mean over channels of |x_{t+1} - x_t| on
+the NEWEST frame of each stack (the frames the target and copy baseline use), average-pooled to
+m's grid. Per sample, "moving" = the top 10% of cells by e, "static" = the bottom 50%; a sample
+QUALIFIES only if mean e(moving) > 2 * mean e(static) + 1e-6 (localized motion). Then
+  fg_motion_sep        = mean over qualifying samples of [mean m(moving) - mean m(static)]
+  fg_motion_sep_parked = the same over qualifying PARKED samples (the parked_transit split)
+  fg_motion_n_parked   = the number of qualifying parked samples
+NOT_MEASURED when no sample qualifies. > 0: the moving thing is on the HIGH side of m.
+⚠ AN APPROXIMATION, NOT GROUND TRUTH. It assumes a static background: during parked steps the
+only pixel change is the screen video, so "moving" is the stimulus; during transit the whole
+view moves and the top-10% cells are wherever the parallax is largest. It is a DIAGNOSTIC,
+computed under no_grad from a detached m -- never a training signal (the loss and every gradient
+are bit-identical with and without it; tests/test_xsp.py proves it).
 """
 
 from __future__ import annotations
@@ -96,6 +113,37 @@ G_MAPS = ("0", "1")
 ACTIONS = ("none", "film")
 #: The XSP trunk's total stride; the decoder's input grid is (H/8, W/8).
 TRUNK_STRIDE = 8
+#: Orientation telemetry: top fraction of cells = "moving", bottom fraction = "static", and the
+#: localisation test mean e(moving) > MOTION_RATIO * mean e(static) + MOTION_EPS.
+MOTION_TOP, MOTION_BOTTOM, MOTION_RATIO, MOTION_EPS = 0.10, 0.50, 2.0, 1e-6
+
+
+@torch.no_grad()
+def motion_orientation(m: torch.Tensor, x_t: torch.Tensor, x_next: torch.Tensor,
+                       parked: torch.Tensor) -> dict[str, float]:
+    """The ORIENTATION scalar group (module docstring). m: (B, 1, h, w) figure map; x_t, x_next:
+    (B, cpf, H, W) newest frames of obs_t / obs_{t+1} at full resolution; parked: (B,) bool."""
+    m = m.detach().float()[:, 0]                                         # (B, h, w)
+    b, h, w = m.shape
+    e = (x_next.float() - x_t.float()).abs().mean(dim=1, keepdim=True)  # (B, 1, H, W)
+    kh, kw = e.shape[-2] // h, e.shape[-1] // w
+    if (kh * h, kw * w) != tuple(e.shape[-2:]):
+        raise RuntimeError(f"motion grid {tuple(e.shape[-2:])} is not a multiple of m's {(h, w)}")
+    e = F.avg_pool2d(e, (kh, kw))[:, 0].flatten(1)                     # (B, h*w)
+    n = h * w
+    k_move, k_static = max(1, math.ceil(MOTION_TOP * n)), max(1, int(MOTION_BOTTOM * n))
+    order = torch.sort(e, dim=1, descending=True, stable=True).indices
+    move, static = order[:, :k_move], order[:, n - k_static:]
+    mf = m.flatten(1)
+    e_move, e_static = e.gather(1, move).mean(1), e.gather(1, static).mean(1)
+    sep = mf.gather(1, move).mean(1) - mf.gather(1, static).mean(1)    # (B,)
+    ok = e_move > MOTION_RATIO * e_static + MOTION_EPS
+    ok_parked = ok & parked.to(ok.device)
+    return {
+        "fg_motion_sep": float(sep[ok].mean()) if bool(ok.any()) else NOT_MEASURED,
+        "fg_motion_sep_parked": float(sep[ok_parked].mean()) if bool(ok_parked.any()) else NOT_MEASURED,
+        "fg_motion_n_parked": float(ok_parked.sum()),
+    }
 
 
 def combine_streams(m: torch.Tensor, d: torch.Tensor, mode: str) -> torch.Tensor:
@@ -302,6 +350,8 @@ class XSPTerm(nn.Module):
             }
             if self.action == "film":
                 scalars["film_gain"] = float(self.head.last_film_gain)
+            scalars.update(motion_orientation(s["m"], prepared_t[:, -self.cpf:],
+                                              prepared_tk[:, -self.cpf:], parked))
             self.last_scalars = scalars
         self.last_window_turn = float(turn_state)
         return loss
