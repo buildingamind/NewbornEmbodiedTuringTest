@@ -485,10 +485,16 @@ def test_every_registered_aux_kind_exposes_a_head():
         space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
         return encoder_mapping["xsp"](space, features_dim=32, conv_dim=16)
 
+    def _xsp2_host():
+        """The `xsp2` kind likewise REFUSES any encoder but XSP2's (DECISIONS §87); its features_dim
+        is the 10x16 map at this eye."""
+        space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
+        return encoder_mapping["xsp2"](space, features_dim=160)
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
-                     _framestacked_host, _vit_host, _xsp_host):
+                     _framestacked_host, _vit_host, _xsp_host, _xsp2_host):
             try:
                 aux = build(host())
                 break
