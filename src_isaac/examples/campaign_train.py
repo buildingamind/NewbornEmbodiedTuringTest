@@ -240,6 +240,13 @@ _XSP_POLICY_INPUT = _xsp_policy_input()
 #: encoder refuses a stack whose channel count disagrees (ONE SOURCE FOR THE STACK DEPTH, below).
 XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input": _XSP_POLICY_INPUT,
            "num_frames": _FRAMESTACK_N}
+#: The "XSP2" label's encoder cfg (owner, workspace DECISIONS §87; encoders/xsp2.py). NO readout:
+#: the policy features ARE the flattened, detached 10x16 ventral figure map, so features_dim is the
+#: map size at the parsing eye, 128x80 (W x H) -> 10x16 = 160; any other eye refuses at
+#: construction, naming the value it needs. num_frames is _FRAMESTACK_N; the encoder refuses
+#: anything but 2 (its dorsal Conv3d has a depth-2 kernel). Every XSP2 knob is an AUX knob
+#: (NETT_XSP2_*, read in brain/aux/xsp2_aux.py), recorded by the launcher's environ capture.
+XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames": _FRAMESTACK_N}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -870,6 +877,27 @@ MODELS: dict[str, dict] = {
     # NETT_XSP_G_MAP=1; -512 under NETT_XSP_COMBINE=fg; independent of T. The 256x160 eye builds
     # the same counts (pooled readout).
     "XSP": dict(encoder="xsp", cfg=dict(XSP_CFG), framestack=True, aux="xsp", aux_weight=1.0),
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # XSP2 -- owner spec, workspace DECISIONS §87 (2026-10-10), with its spec changes 1-3. Same
+    # figure as XSP (siamese padded NatureCNN trunk phi_e; ventral m_t = sigmoid(phi_v(z_t)); dorsal
+    # d_t = phi_d(z_{t-1}, z_t), here a Conv3d over the 2-frame stack + 2 Conv2d, linear 2-channel
+    # pixel-unit flow) with three owner rulings that make it a different model:
+    #   * the POLICY READS THE MAP: flatten(m_t), 10x16 = 160, DETACHED -> the standard MLP. No
+    #     readout; no RL gradient reaches phi_e/phi_v/phi_d.
+    #   * the streams are trained ONLY by next-frame prediction, with the aux's OWN Adam (lr = PPO's
+    #     current lr x NETT_XSP2_LR_SCALE), excluded from PPO's optimizer, no grad clipping.
+    #   * predictor at the full 80x128 eye on c_t = up8(m_t * d_t): NETT_XSP2_PREDICTOR=warp (default:
+    #     gather-based bilinear backward warp of x_t by c_t + a 3-layer conv refiner) | conv (4-layer
+    #     conv on cat(c_t, x_t)); loss = SUM of squares against the newest frame of obs_{t+1}.
+    #   * init: Kaiming trunk, PyTorch-default streams/predictor; exempt from the fleet's orthogonal
+    #     init (encoder_owns_init). The policy/value MLP keeps the fleet's init.
+    # Knobs (aux side; first value = default): NETT_XSP2_PREDICTOR warp|conv, NETT_XSP2_REFINE_HIDDEN
+    # >0 (32, warp only), NETT_XSP2_HIDDEN >0 (64, conv only), NETT_XSP2_BATCH >=4 (64),
+    # NETT_XSP2_LR_SCALE >0 (1.0). A NETT_XSP2_* knob on any other label is REFUSED in main().
+    # Sizes at the 128x80 eye (tests/test_xsp2.py pins them): encoder 166,510 = trunk 82,283 +
+    # ventral 31,169 + dorsal 53,058, all aux-trained; predictor 12,451 (warp, R=32) | 78,531 (conv,
+    # H=64). Policy input 160 (no readout).
+    "XSP2": dict(encoder="xsp2", cfg=dict(XSP2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -915,6 +943,10 @@ del _lbl
 assert MODELS["XSP"] == dict(encoder="xsp", cfg=XSP_CFG, framestack=True, aux="xsp", aux_weight=1.0)
 assert set(XSP_CFG) == {"trainable", "features_dim", "conv_dim", "policy_input", "num_frames"}, sorted(XSP_CFG)
 assert XSP_CFG["num_frames"] == _FRAMESTACK_N
+# ⛔ THE XSP2 LABEL IS ITS DECLARED CFG AND NOTHING ELSE (no encoder knob; every knob is aux-side).
+assert MODELS["XSP2"] == dict(encoder="xsp2", cfg=XSP2_CFG, framestack=True, aux="xsp2", aux_weight=1.0)
+assert set(XSP2_CFG) == {"trainable", "features_dim", "conv_dim", "num_frames"}, sorted(XSP2_CFG)
+assert XSP2_CFG["num_frames"] == _FRAMESTACK_N
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
@@ -1176,6 +1208,17 @@ def refuse_stray_xsp_knobs(model: str, spec: dict) -> None:
     stray = sorted(k for k in os.environ if k.startswith("NETT_XSP_"))
     if stray:
         raise ValueError(f"{stray} set but arm {model!r} is not an XSP arm (encoder "
+                         f"{spec.get('encoder')!r}); nothing would read them. Unset them.")
+
+
+def refuse_stray_xsp2_knobs(model: str, spec: dict) -> None:
+    """A NETT_XSP2_* knob on a label whose encoder is not "xsp2" is read by NOTHING (the
+    refuse_stray_xsp_knobs rule; that function already refuses NETT_XSP_* on an XSP2 arm)."""
+    if spec.get("encoder") == "xsp2":
+        return
+    stray = sorted(k for k in os.environ if k.startswith("NETT_XSP2_"))
+    if stray:
+        raise ValueError(f"{stray} set but arm {model!r} is not an XSP2 arm (encoder "
                          f"{spec.get('encoder')!r}); nothing would read them. Unset them.")
 
 
@@ -1500,6 +1543,7 @@ def main() -> int:
         os.environ.pop("NETT_SEG_QUERIES", None)
     export_seg_flow(model, spec)
     refuse_stray_xsp_knobs(model, spec)
+    refuse_stray_xsp2_knobs(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

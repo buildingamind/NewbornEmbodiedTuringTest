@@ -1010,6 +1010,11 @@ def test_motion_orientation_leaves_loss_and_grads_bit_identical(monkeypatch):
 SHARED = ("nett_skrl/brain/aux/ppo_aux.py", "nett_skrl/brain/registry.py",
           "nett_skrl/brain/encoders/__init__.py", "examples/campaign_train.py")
 NEW_FILES = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py")
+# XSP2 (DECISIONS §87, test_xsp2.py) is the one later label allowed to touch the same shared
+# files plus the init-ownership hook; test_xsp2.py holds XSP2 to its own invariance checks.
+XSP2_FILES = ("nett_skrl/brain/encoders/xsp2.py", "nett_skrl/brain/aux/xsp2_aux.py",
+              "nett_skrl/brain/models/builder.py", "nett_skrl/brain/models/utils/backbone.py",
+              "nett_skrl/brain/models/utils/init.py")
 
 
 def _git(*args):
@@ -1048,7 +1053,7 @@ def test_shared_file_change_is_additive_only(path):
 
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES}
+    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1060,7 +1065,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP"}
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2"}
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
@@ -1086,7 +1091,7 @@ def test_registries_only_gained_the_xsp_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == {"xsp"} and old <= new, rel
+        assert old and new - old == {"xsp", "xsp2"} and old <= new, rel
         assert new <= set(live), rel
 
 

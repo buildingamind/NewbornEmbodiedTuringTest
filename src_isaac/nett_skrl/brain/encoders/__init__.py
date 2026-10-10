@@ -18,6 +18,7 @@ from .resnet18_cnn import Resnet18CNN
 from .simclr_cltt import SimCLRCLTT
 from .small_cnn import SmallCNN
 from .xsp import XSPEncoder
+from .xsp2 import XSP2Encoder
 
 __all__ = [
     "Compact3DCNN",
@@ -36,4 +37,5 @@ __all__ = [
     "SimCLRCLTT",
     "SmallCNN",
     "XSPEncoder",
+    "XSP2Encoder",
 ]

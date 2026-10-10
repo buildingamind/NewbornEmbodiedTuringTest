@@ -141,6 +141,8 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "guess_what_moves": encoders.GuessWhatMoves,
     # Cross-stream predictive learning (owner 2026-10-09): siamese trunk + ventral/dorsal streams.
     "xsp": encoders.XSPEncoder,
+    # XSP2 (owner DECISIONS §87): reward-detached streams with their own Adam; policy reads the map.
+    "xsp2": encoders.XSP2Encoder,
 }
 
 

@@ -29,6 +29,16 @@ def conv3d_ortho_init_enabled() -> bool:
     return v == "1"
 
 
+def encoder_owns_init(encoder) -> bool:
+    """True for an encoder that declares ``OWNS_INIT = True``: the builder and the backbone then
+    skip the fleet's orthogonal_init for it and keep the init its constructor chose.
+
+    Only XSP2 declares it (owner, workspace DECISIONS §87 spec change 2: Kaiming trunk, PyTorch-
+    default streams). Every other encoder reads False, so its init is unchanged.
+    """
+    return bool(getattr(encoder, "OWNS_INIT", False))
+
+
 def orthogonal_init(module: nn.Module, gain: float) -> None:
     types = (nn.Conv2d, nn.Linear)
     if conv3d_ortho_init_enabled():

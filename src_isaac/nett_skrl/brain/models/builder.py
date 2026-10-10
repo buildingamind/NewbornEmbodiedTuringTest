@@ -13,7 +13,7 @@ from .model_cfg import ModelCfg
 from .multivariate_gaussian_actor import MultivariateGaussianActor
 from .q_critic import QCritic
 from .value_critic import ValueCritic
-from .utils.init import orthogonal_init
+from .utils.init import encoder_owns_init, orthogonal_init
 
 
 def build_models_for_algorithm(
@@ -40,7 +40,7 @@ def build_models_for_algorithm(
     if cfg.shared_encoder:
         shared_enc = encoder_cls(observation_space, **encoder_kwargs)
         shared_enc.to(device)
-        if cfg.orthogonal_init:
+        if cfg.orthogonal_init and not encoder_owns_init(shared_enc):
             shared_enc.apply(lambda m: orthogonal_init(m, cfg.hidden_gain))
 
     model_kwargs = {

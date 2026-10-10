@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from ..model_cfg import ModelCfg
 from .feature_attn import feature_attn_trunk
-from .init import orthogonal_init
+from .init import encoder_owns_init, orthogonal_init
 from .mlp import mlp_trunk
 
 
@@ -25,7 +25,7 @@ class FeatureBackbone:
             self.encoder = shared_encoder
         else:
             self.encoder = encoder_cls(observation_space, **encoder_kwargs)
-            if cfg.orthogonal_init:
+            if cfg.orthogonal_init and not encoder_owns_init(self.encoder):
                 self.encoder.apply(lambda module: orthogonal_init(module, cfg.hidden_gain))
         if cfg.feature_attn is not None:
             # Feature-token attention head (feature_attn.py). It replaces the MLP trunk, so a

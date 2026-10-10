@@ -174,6 +174,13 @@ def _build_xsp(encoder):
     return XSPTerm(encoder)
 
 
+def _build_xsp2(encoder):
+    """XSP2 (owner DECISIONS §87): the XSP2 encoder's streams trained ONLY by next-frame prediction,
+    with the term's OWN Adam (brain/aux/xsp2_aux.py); AuxLossPPO.__init__ calls its bind_agent."""
+    from .xsp2_aux import XSP2Term
+    return XSP2Term(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -209,6 +216,8 @@ AUX_LOSSES = {
     "nextframe_with_cltt_ref": _build_nextframe_with_cltt_ref,
     # ── XSP (owner 2026-10-09). Next-frame prediction through the two streams (xsp_aux.py).
     "xsp": _build_xsp,
+    # ── XSP2 (owner DECISIONS §87). Reward-detached streams, own optimizer (xsp2_aux.py).
+    "xsp2": _build_xsp2,
 }
 
 
@@ -394,6 +403,13 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
             self.optimizer.add_param_group(
                 {"params": list(self._aux.head.parameters())}
             )
+        # ⭐ A TERM THAT OWNS ITS OPTIMIZER (xsp2, owner DECISIONS §87). Its `head` above is empty,
+        # so the param group just added holds nothing; bind_agent REMOVES the encoder's parameters
+        # from this optimizer (in place), builds the term's own Adam (lr = this optimizer's lr x
+        # its scale) and checkpoints it. Its compute() steps that Adam itself and returns a
+        # detached zero, so the PPO loss and every PPO gradient below are those of plain PPO.
+        if getattr(self._aux, "owns_optimizer", False):
+            self._aux.bind_agent(self)
         self._aux_encoder = encoder
         logger.info(
             "AuxLossPPO: %s aux loss ENABLED (weight=%s).", self._aux_kind, self._aux_weight
