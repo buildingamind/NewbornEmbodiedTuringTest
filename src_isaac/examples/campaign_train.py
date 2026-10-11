@@ -364,6 +364,32 @@ VIT_3F_PM_CFG = {**VIT_CFG, "embed_dim": 132}  # enc 800,696 / agent 802,237 @ 1
 _3DCNN_BASE_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}
 CNN3D_LOW_CFG   = {**_3DCNN_BASE_CFG, "conv_dim":  26}  # enc   248,762 / agent   250,303 @ 128x80, 2 frames
 CNN3D_HIGH_CFG  = {**_3DCNN_BASE_CFG, "conv_dim": 230}  # enc 2,037,638 / agent 2,039,179 @ 128x80, 2 frames
+#
+# ── ⭐ SMALL-3DCNN LADDER, owner 2026-10-11 (workspace DECISIONS §89): "test out ... the 0.25M encoder
+#    on 3DCNN ... a 0.1M encoder too. I am suspecting that the conv layers may not need as many
+#    number of filters/channels as we suspect. It might just be best to try a 16x16 kernel with
+#    fewer number of channels that it outputs."
+#    WHY THREE AXES. The base 3DCNN encoder is ~91% ONE linear layer: flatten = conv_dim*16 (4x4
+#    pool) -> 512 is 631,296 of 695,981. "3DCNN-250K" moved conv_dim only, i.e. it shrank that
+#    head and left the filters alone, so it never tested "fewer filters". These labels move:
+#      HEAD    conv_dim 77 / 26 / 12                       (~0.65M / ~0.25M / ~0.1M encoders)
+#      FILTERS stem/mid 32/64 (base) vs 8/16 ("N", narrow)
+#      KERNEL  stem 3x3 (base) vs 16x16 ("K16"; even kernel = asymmetric pad 7/8, same 40x64 grid)
+#    Encoder counts MEASURED at 128x80, 2 frames (tests/test_3dcnn_small_ladder.py pins them):
+#      3DCNN-W12     wide filters, head 12          125,996
+#      3DCNN-N77     narrow filters, head 77        644,069
+#      3DCNN-N12     narrow filters, head 12        102,164
+#      3DCNN-K16N77  16x16 stem, narrow, head 77    655,925
+#      3DCNN-K16N26  16x16 stem, narrow, head 26    230,738
+#      3DCNN-K16N12  16x16 stem, narrow, head 12    114,020
+#    ("3DCNN" = wide, head 77, 695,981; "3DCNN-250K" = wide, head 26, 248,762.) agent adds 1,541.
+_SZL_NARROW = {"stem_dim": 8, "mid_dim": 16}
+CNN3D_W12_CFG    = {**_3DCNN_BASE_CFG, "conv_dim": 12}
+CNN3D_N77_CFG    = {**_3DCNN_BASE_CFG, **_SZL_NARROW}
+CNN3D_N12_CFG    = {**_3DCNN_BASE_CFG, **_SZL_NARROW, "conv_dim": 12}
+CNN3D_K16N77_CFG = {**_3DCNN_BASE_CFG, **_SZL_NARROW, "stem_kernel_hw": 16}
+CNN3D_K16N26_CFG = {**_3DCNN_BASE_CFG, **_SZL_NARROW, "stem_kernel_hw": 16, "conv_dim": 26}
+CNN3D_K16N12_CFG = {**_3DCNN_BASE_CFG, **_SZL_NARROW, "stem_kernel_hw": 16, "conv_dim": 12}
 #    ⭐ THE SAME TOTAL, IN A DIFFERENT PLACE. HIGH above is 92.5% ONE nn.Linear: `conv_dim`
 #    scales the last conv AND the flatten->features head together (flatten = conv_dim*16), so
 #    it cannot say whether a capacity effect is about the COUNT or about WHERE the parameters
@@ -641,6 +667,13 @@ MODELS: dict[str, dict] = {
     "3DCNN-1F":       dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "num_frames": 2, "duplicate_frame": True},             framestack=False),
     "3DCNN-Sp1":      dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "stem_kernel_hw": 1},                                  framestack=True),
     "3DCNN-Sp5":      dict(encoder="compact_3dcnn",   cfg={**_3DCNN_BASE_CFG, "stem_kernel_hw": 5},                                  framestack=True),
+    # ⭐ SMALL-3DCNN LADDER (DECISIONS §89) -- see the block above _SZL_NARROW. Encoder counts.
+    "3DCNN-W12":      dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_W12_CFG),    framestack=True),   # enc 125,996
+    "3DCNN-N77":      dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_N77_CFG),    framestack=True),   # enc 644,069
+    "3DCNN-N12":      dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_N12_CFG),    framestack=True),   # enc 102,164
+    "3DCNN-K16N77":   dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_K16N77_CFG), framestack=True),   # enc 655,925
+    "3DCNN-K16N26":   dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_K16N26_CFG), framestack=True),   # enc 230,738
+    "3DCNN-K16N12":   dict(encoder="compact_3dcnn",   cfg=dict(CNN3D_K16N12_CFG), framestack=True),   # enc 114,020
     "ViT2F-2M":       dict(encoder="compact_vit",     cfg=dict(VIT_2M_CFG),                                                          framestack=True),   # enc 2,117,632 / agent 2,119,173 -- capacity HIGH, cross-arch leg
     # ⛔⛔ THE 3F ARMS ARE NOT SELF-SUFFICIENT. Stack depth is GLOBAL: _FRAMESTACK_N reads
     # NETT_FRAMESTACK_N (default 2) and there is NO per-model field for it. Launching either
@@ -916,6 +949,13 @@ _RUNG_AXIS = {
     "3DCNN-250K":    ({"conv_dim"},            CNN3D_LOW_CFG),
     "3DCNN-2M":      ({"conv_dim"},            CNN3D_HIGH_CFG),
     "3DCNN-2M-conv": ({"stem_dim", "mid_dim"}, CNN3D_CONV2M_CFG),
+    # small-3DCNN ladder (§89): each declares exactly the axes it moves
+    "3DCNN-W12":     ({"conv_dim"},                                         CNN3D_W12_CFG),
+    "3DCNN-N77":     ({"stem_dim", "mid_dim"},                              CNN3D_N77_CFG),
+    "3DCNN-N12":     ({"stem_dim", "mid_dim", "conv_dim"},                  CNN3D_N12_CFG),
+    "3DCNN-K16N77":  ({"stem_dim", "mid_dim", "stem_kernel_hw"},            CNN3D_K16N77_CFG),
+    "3DCNN-K16N26":  ({"stem_dim", "mid_dim", "stem_kernel_hw", "conv_dim"}, CNN3D_K16N26_CFG),
+    "3DCNN-K16N12":  ({"stem_dim", "mid_dim", "stem_kernel_hw", "conv_dim"}, CNN3D_K16N12_CFG),
 }
 for _lbl, (_axis, _cfg) in _RUNG_AXIS.items():
     _diff = {k for k in set(_cfg) | set(_3DCNN_BASE_CFG)

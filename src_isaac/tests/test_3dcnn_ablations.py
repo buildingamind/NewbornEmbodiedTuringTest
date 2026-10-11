@@ -144,7 +144,15 @@ def test_1f_refuses_a_stacked_input_and_a_single_tap():
         Compact3DCNN(_space(3), num_frames=1, duplicate_frame=True)
 
 
-@pytest.mark.parametrize("k", [0, 2, 4, -1])
-def test_even_or_nonpositive_stem_kernel_refuses(k):
+@pytest.mark.parametrize("k", [0, -1])
+def test_nonpositive_stem_kernel_refuses(k):
     with pytest.raises(ValueError):
         Compact3DCNN(_space(6), num_frames=2, stem_kernel_hw=k)
+
+
+@pytest.mark.parametrize("k", [2, 4, 16])
+def test_even_stem_kernel_pads_asymmetrically(k):
+    """Even kernels were refused until workspace DECISIONS §89 (owner: "try a 16x16 kernel"); they now
+    pad (k-1)//2 before / k//2 after and keep the 3x3 stem's grid (tests/test_3dcnn_small_ladder.py)."""
+    enc = Compact3DCNN(_space(6), num_frames=2, stem_kernel_hw=k)
+    assert enc._stem_pad == ((k - 1) // 2, k // 2, (k - 1) // 2, k // 2) and enc.conv3d.padding == (0, 0, 0)

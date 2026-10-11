@@ -823,6 +823,10 @@ EDITED = {
          "if cfg.orthogonal_init and not encoder_owns_init(self.encoder):"]),
 }
 UNCHANGED = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py")
+# The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py): cfg-only 3DCNN labels and an
+# even-stem-kernel path in compact_3dcnn.py, held to the old counts and the plain odd-kernel Conv3d there.
+SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
+SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
 
 
 def _git(*args):
@@ -868,7 +872,8 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert added and not removed
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, "nett_skrl/brain/models/utils/init.py")}
+    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES,
+                                          "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -878,7 +883,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2"}
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2"} | SMALL3D_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

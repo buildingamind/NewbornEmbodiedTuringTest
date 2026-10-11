@@ -20,6 +20,7 @@ from __future__ import annotations
 import gymnasium as gym
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from ...body.observation import image_channels_hw
 from .utils.temporal import validate_framestack_depth
@@ -76,21 +77,29 @@ class Compact3DCNN(HWCFeatureExtractor):
                 total_channels, num_frames, type(self).__name__, channels_per_frame)
             self.base_channels = total_channels // self.num_frames  # 3 for RGB, 2 for DVS
         k = int(stem_kernel_hw)
-        if k < 1 or k % 2 == 0:
-            raise ValueError(f"{type(self).__name__}: stem_kernel_hw must be a positive odd integer; got {stem_kernel_hw!r}.")
+        if k < 1:
+            raise ValueError(f"{type(self).__name__}: stem_kernel_hw must be a positive integer; got {stem_kernel_hw!r}.")
         self.stem_kernel_hw = k
+        # ⭐ EVEN STEM KERNELS (owner, workspace DECISIONS §89: "try a 16x16 kernel"). Symmetric
+        # padding k//2 only gives the 3x3 stem's grid for ODD k. An even k gets ASYMMETRIC zero
+        # padding instead: (k-1)//2 before and k//2 after, on H and W, applied by F.pad in
+        # _stem_conv (the Conv3d itself pads 0). The total pad is k-1 either way, so at stride 2
+        # the grid is (d - 1)//2 + 1 for every k (asserted below). ODD k is UNCHANGED: same
+        # Conv3d padding, no F.pad, no new module, so every existing arm rebuilds byte-identically.
+        self._stem_pad = None if k % 2 else ((k - 1) // 2, k // 2, (k - 1) // 2, k // 2)
 
         # Temporal-spatial convolution: T×H×W kernel collapses time to 1
         self.conv3d = nn.Conv3d(
             self.base_channels, stem_dim,
             kernel_size=(self.num_frames, k, k),
             stride=(1, 2, 2),
-            padding=(0, k // 2, k // 2),
+            padding=(0, k // 2, k // 2) if k % 2 else (0, 0, 0),
         )
         if k != 3:
             # Same output grid as the original (T, 3, 3) / padding 1 stem: ((H - 1) // 2 + 1).
             want = ((height - 1) // 2 + 1, (width - 1) // 2 + 1)
-            got = tuple(((d + 2 * (k // 2) - k) // 2 + 1) for d in (height, width))
+            pad_total = 2 * (k // 2) if k % 2 else k - 1
+            got = tuple(((d + pad_total - k) // 2 + 1) for d in (height, width))
             if got != want:
                 raise ValueError(f"{type(self).__name__}: stem_kernel_hw={k} gives a {got} stem grid, "
                                  f"not the 3x3 stem's {want}; downstream shapes would differ.")
@@ -111,7 +120,9 @@ class Compact3DCNN(HWCFeatureExtractor):
         # Compute flat size dynamically
         with torch.no_grad():
             dummy = torch.zeros(1, self.base_channels, self.num_frames, height, width)
-            n_flat = self.cnn2d(self.conv3d(dummy).squeeze(2)).shape[1]
+            stem = self._stem_conv(dummy).squeeze(2)
+            assert tuple(stem.shape[-2:]) == ((height - 1) // 2 + 1, (width - 1) // 2 + 1), stem.shape
+            n_flat = self.cnn2d(stem).shape[1]
 
         self.linear = nn.Sequential(nn.Linear(n_flat, features_dim), nn.ReLU())
 
@@ -121,7 +132,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         if self.duplicate_frame:
             # ONE frame (B, C, H, W) handed to every temporal slot: (B, C, T, H, W).
             x = x.unsqueeze(2).expand(B, CT, self.num_frames, H, W).contiguous()
-            x = self.conv3d(x).squeeze(2)
+            x = self._stem_conv(x).squeeze(2)
             x = self.cnn2d(x)
             return self.linear(x)
         # ⛔★★★★★ THIS WAS `x.view(B, base_channels, num_frames, H, W)` AND IT
@@ -151,7 +162,14 @@ class Compact3DCNN(HWCFeatureExtractor):
         B, _, H, W = x.shape
         x = x.view(B, self.num_frames, self.base_channels, H, W)
         x = x.permute(0, 2, 1, 3, 4).contiguous()
-        return self.conv3d(x).squeeze(2)
+        return self._stem_conv(x).squeeze(2)
+
+    def _stem_conv(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, C, T, H, W) -> Conv3d stem output. Even stem kernels are zero-padded asymmetrically
+        first (see __init__); odd kernels call the Conv3d exactly as before (no extra op)."""
+        if self._stem_pad is not None:
+            x = F.pad(x, self._stem_pad)   # pads W by (l, r), then H by (t, b); T untouched
+        return self.conv3d(x)
 
     def encode_spatial(self, observations: torch.Tensor) -> torch.Tensor:
         """(B, conv_dim, h, w): the trunk map BEFORE the 4x4 pool (the base `encode_spatial` hook).

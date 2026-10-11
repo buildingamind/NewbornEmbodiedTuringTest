@@ -1015,6 +1015,11 @@ NEW_FILES = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py"
 XSP2_FILES = ("nett_skrl/brain/encoders/xsp2.py", "nett_skrl/brain/aux/xsp2_aux.py",
               "nett_skrl/brain/models/builder.py", "nett_skrl/brain/models/utils/backbone.py",
               "nett_skrl/brain/models/utils/init.py")
+# The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py) adds cfg-only 3DCNN labels and an
+# even-stem-kernel path to compact_3dcnn.py; that test holds every existing 3DCNN label to its old count
+# and the odd-kernel path to the plain Conv3d. These are the only later labels this guard admits.
+SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
+SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
 
 
 def _git(*args):
@@ -1053,7 +1058,7 @@ def test_shared_file_change_is_additive_only(path):
 
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES}
+    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1065,7 +1070,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2"}
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2"} | SMALL3D_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
