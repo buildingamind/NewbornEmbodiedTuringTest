@@ -832,7 +832,9 @@ SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
 ABORT_GATE_FILES = ("nett_skrl/recording/__init__.py", "nett_skrl/recording/checkpoints.py",
                     "nett_skrl/runtime/task_runner.py")
 SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
-# The owner's matched baseline (DECISIONS §92, test_matched_encoders.py): twelve "M-" labels, encoder "matched".
+# The owner's matched baseline (DECISIONS §92, test_matched_encoders.py): fourteen "M-" labels, encoder "matched",
+# one new encoder file; the registry, encoders/__init__ and campaign_train edits are already in ADDITIVE/EDITED.
+MATCHED_FILES = ("nett_skrl/brain/encoders/matched.py",)
 MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", "M-CNN-CLTT-Ref", "M-ViT-CLTT-Ref",
                   "M-CNN2F-CLTT-Ref", "M-ViT2F-CLTT-Ref", "M-3DCNN-CLTT-Ref", "M-ViViT-CLTT-Ref",
                   "M-3DCNN-G6", "M-3DCNN-G6-CLTT-Ref"}
@@ -881,7 +883,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert added and not removed
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES,
+    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
