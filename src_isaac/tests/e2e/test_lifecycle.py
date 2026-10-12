@@ -174,8 +174,18 @@ class _FakeProcess:
         pass
 
 
+def _write_finals(task) -> None:
+    """Every brain's final_agent.pt, as a finished train leaves them."""
+    from nett_skrl.recording.checkpoints import brain_checkpoint_dir
+
+    for i in range(1, int(task.config.num_brains) + 1):
+        d = Path(brain_checkpoint_dir(task.config.path, i))
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "final_agent.pt").write_bytes(b"pt")
+
+
 def test_spawn_mode_subprocess_warns_on_teardown_signal(monkeypatch, caplog, tmp_path):
-    """Known Isaac teardown signals warn so flushed artifacts remain usable."""
+    """A teardown signal AFTER a finished train warns, so flushed artifacts remain usable."""
     from nett_skrl.runtime import task_runner
 
     class _FakeCtx:
@@ -186,12 +196,29 @@ def test_spawn_mode_subprocess_warns_on_teardown_signal(monkeypatch, caplog, tmp
     monkeypatch.setattr("multiprocessing.get_context", lambda mode: _FakeCtx())
 
     task = _minimal_task(tmp_path)
+    _write_finals(task)
 
     with caplog.at_level(logging.WARNING):
         task_runner._spawn_mode_subprocess(task, "train")
 
     assert any("exited with code -11" in rec.message for rec in caplog.records), \
         f"no warning logged about exit code -11; got: {[r.message for r in caplog.records]}"
+
+
+def test_spawn_mode_subprocess_fails_on_teardown_signal_without_final(monkeypatch, tmp_path):
+    """The same signal with no final checkpoint is a train abort (DECISIONS §90.3): fail the arm."""
+    from nett_skrl.runtime import task_runner
+
+    class _FakeCtx:
+        @staticmethod
+        def Process(target=None, args=(), daemon=False, **_kw):
+            return _FakeProcess(target=target, args=args, daemon=daemon, exitcode=-11)
+
+    monkeypatch.setattr("multiprocessing.get_context", lambda mode: _FakeCtx())
+
+    task = _minimal_task(tmp_path)
+    with pytest.raises(task_runner.TrainAbortedError, match="exited with code -11"):
+        task_runner._spawn_mode_subprocess(task, "train")
 
 
 def test_spawn_mode_subprocess_raises_on_python_failure(monkeypatch, tmp_path):
