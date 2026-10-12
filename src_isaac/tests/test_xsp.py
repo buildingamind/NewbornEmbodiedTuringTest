@@ -1020,6 +1020,11 @@ XSP2_FILES = ("nett_skrl/brain/encoders/xsp2.py", "nett_skrl/brain/aux/xsp2_aux.
 # and the odd-kernel path to the plain Conv3d. These are the only later labels this guard admits.
 SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
 SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
+# The train-abort gate (DECISIONS §90.3, test_train_abort_gate.py): TEST refuses a brain with no
+# checkpoint, and a crashed train subprocess fails the arm unless every brain saved final_agent.pt.
+# It touches no encoder, aux or label file.
+ABORT_GATE_FILES = ("nett_skrl/recording/__init__.py", "nett_skrl/recording/checkpoints.py",
+                    "nett_skrl/runtime/task_runner.py")
 
 
 def _git(*args):
@@ -1058,7 +1063,7 @@ def test_shared_file_change_is_additive_only(path):
 
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES}
+    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

@@ -940,8 +940,14 @@ def test_load_latest_checkpoints_reads_skrl_path(tmp_path, monkeypatch):
     assert loaded == [str(fake_ckpt)]
 
 
-def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
-    from nett_skrl.recording import load_latest_checkpoints
+def test_load_latest_checkpoints_refuses_in_test_and_falls_back_in_train(tmp_path):
+    # Was test_load_latest_checkpoints_falls_back_silently_when_missing: that silent
+    # fallback is what tested ten untrained arms (FINDINGS §4dh.44h.143). DECISIONS
+    # §90.3 makes TEST refuse; train keeps the fallback (nothing to resume on a first
+    # train). Full known answers: tests/test_train_abort_gate.py.
+    import pytest
+
+    from nett_skrl.recording import MissingCheckpointError, load_latest_checkpoints
 
     class _FakeAgent:
         def load(self, path):
@@ -950,8 +956,9 @@ def test_load_latest_checkpoints_falls_back_silently_when_missing(tmp_path):
     class _Cfg:
         path = tmp_path  # no wandb_runs/brain_1/checkpoints/ present
 
-    # Must not raise; logs a warning and moves on.
-    load_latest_checkpoints([_FakeAgent()], _Cfg())
+    with pytest.raises(MissingCheckpointError):
+        load_latest_checkpoints([_FakeAgent()], _Cfg())
+    load_latest_checkpoints([_FakeAgent()], _Cfg(), context="train")
 
 
 def test_target_side_oracle_actions_steer_toward_target_monitors():

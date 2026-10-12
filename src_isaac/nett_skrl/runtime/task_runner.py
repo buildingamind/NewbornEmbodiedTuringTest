@@ -13,6 +13,7 @@ import csv
 import json
 import logging
 import os
+import time
 from pathlib import Path
 
 import torch
@@ -153,6 +154,9 @@ def _run_mode_subprocess(task: Task, mode: str, reaper: TaskReaper,
     # tracker would be born inside the scope, inherit the token, and be reaped as
     # if it were ours. The token is removed again as soon as start() returns, so
     # a later healthy spawn is never mis-attributed to this task.
+    # Wall clock BEFORE the child exists: a train subprocess that dies non-zero is
+    # accepted only if every brain wrote final_agent.pt after this instant.
+    started_at = time.time()
     with visible_device_scope(task.config.device), reaper.launch_scope():
         p = ctx.Process(
             target=_run_single_mode, args=(task, mode, overrides), daemon=False
@@ -242,6 +246,7 @@ def _run_mode_subprocess(task: Task, mode: str, reaper: TaskReaper,
             raise RuntimeError(
                 f"Mode {mode} subprocess failed with exit code {p.exitcode}"
             )
+        _refuse_unfinished_train(task.config, mode, p.exitcode, started_at)
         task.config.logger.warning(
             "Mode %s subprocess exited with code %d (likely Isaac Sim teardown "
             "SIGSEGV; outputs on disk should still be intact)",
@@ -653,6 +658,42 @@ def _training_boundaries(total: int, *, eval_freq: int) -> list[int]:
     boundaries = {int(total)}
     boundaries.update(range(eval_freq, total + 1, eval_freq))
     return sorted(boundaries)
+
+
+class TrainAbortedError(RuntimeError):
+    """A train subprocess died before every brain saved its final checkpoint."""
+
+
+def _refuse_unfinished_train(config, mode: str, exitcode: int | None, started_at: float) -> None:
+    """A tolerated-teardown exit from TRAIN counts as success only with proof of completion.
+
+    ⛔ THE "TEARDOWN" LABEL WAS AN ASSUMPTION, AND TEN ARMS PAID FOR IT (FINDINGS
+    §4dh.44h.143, DECISIONS §90.3). An abort at Kit setup (insect I567, -6 before the
+    encoder was built) or mid-training (lion L35-L37, -6 at 88-90%) exits with the same
+    codes as a crash in Kit's shutdown, and was logged "outputs on disk should still be
+    intact" -- after which TEST ran on fresh weights and the launcher wrote done rc 0.
+    The proof is ``final_agent.pt`` for EVERY brain, written after this subprocess
+    started: it is saved once, at the very end of training. Any brain without one means
+    training did not finish, so the arm FAILS here and TEST is never spawned. A real
+    teardown crash after a finished train still passes (with the warning that follows).
+    Dry runs write no checkpoint by design and are not judged.
+    """
+    if mode != "train" or bool(getattr(config, "dry_run", False)):
+        return
+    from nett_skrl.recording import brains_missing_final_checkpoint
+
+    # 60 s of slack: run roots can sit on network storage whose clock is not ours, and
+    # any older final_agent.pt (an earlier chunk, a seeded resume) predates the
+    # subprocess by at least a Kit boot.
+    missing = brains_missing_final_checkpoint(config.path, config.num_brains,
+                                              since=started_at - 60.0)
+    if missing:
+        raise TrainAbortedError(
+            f"Mode train subprocess exited with code {exitcode} and {len(missing)}/"
+            f"{config.num_brains} brain(s) wrote no final_agent.pt during it "
+            f"(brain_{', brain_'.join(map(str, missing))}): training did not finish. "
+            f"Failing the arm; TEST is not run on untrained weights."
+        )
 
 
 def _is_tolerated_isaac_teardown_exit(exitcode: int | None) -> bool:

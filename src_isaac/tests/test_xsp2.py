@@ -826,6 +826,11 @@ UNCHANGED = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py"
 # The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py): cfg-only 3DCNN labels and an
 # even-stem-kernel path in compact_3dcnn.py, held to the old counts and the plain odd-kernel Conv3d there.
 SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
+# The train-abort gate (DECISIONS §90.3, test_train_abort_gate.py): TEST refuses a brain with no
+# checkpoint, and a crashed train subprocess fails the arm unless every brain saved final_agent.pt.
+# It touches no encoder, aux or label file.
+ABORT_GATE_FILES = ("nett_skrl/recording/__init__.py", "nett_skrl/recording/checkpoints.py",
+                    "nett_skrl/runtime/task_runner.py")
 SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
 
 
@@ -872,7 +877,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert added and not removed
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES,
+    allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
