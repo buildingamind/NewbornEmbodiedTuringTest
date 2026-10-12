@@ -1025,6 +1025,13 @@ SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-
 # It touches no encoder, aux or label file.
 ABORT_GATE_FILES = ("nett_skrl/recording/__init__.py", "nett_skrl/recording/checkpoints.py",
                     "nett_skrl/runtime/task_runner.py")
+# The owner's matched baseline (DECISIONS §92, test_matched_encoders.py): one new encoder file, the
+# "matched" registry key and twelve "M-" labels. campaign_train's main() gains a per-label head that only
+# a label carrying "head" reads; test_matched_encoders.py pins the counts, init and refusals.
+MATCHED_FILES = ("nett_skrl/brain/encoders/matched.py",)
+MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", "M-CNN-CLTT-Ref", "M-ViT-CLTT-Ref",
+                  "M-CNN2F-CLTT-Ref", "M-ViT2F-CLTT-Ref", "M-3DCNN-CLTT-Ref", "M-ViViT-CLTT-Ref",
+                  "M-3DCNN-G6", "M-3DCNN-G6-CLTT-Ref"}
 
 
 def _git(*args):
@@ -1063,7 +1070,8 @@ def test_shared_file_change_is_additive_only(path):
 
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
-    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES}
+    allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
+               + MATCHED_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1075,7 +1083,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2"} | SMALL3D_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2"} | SMALL3D_LABELS | MATCHED_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
@@ -1101,7 +1109,7 @@ def test_registries_only_gained_the_xsp_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == {"xsp", "xsp2"} and old <= new, rel
+        assert old and new - old == ({"xsp", "xsp2", "matched"} if "registry" in rel else {"xsp", "xsp2"}) and old <= new, rel
         assert new <= set(live), rel
 
 

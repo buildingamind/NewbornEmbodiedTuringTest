@@ -143,6 +143,8 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "xsp": encoders.XSPEncoder,
     # XSP2 (owner DECISIONS §87): reward-detached streams with their own Adam; policy reads the map.
     "xsp2": encoders.XSP2Encoder,
+    # The owner's six matched baseline encoders (DECISIONS §92): one class, cfg key `variant`.
+    "matched": encoders.MatchedEncoder,
 }
 
 

@@ -832,6 +832,10 @@ SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
 ABORT_GATE_FILES = ("nett_skrl/recording/__init__.py", "nett_skrl/recording/checkpoints.py",
                     "nett_skrl/runtime/task_runner.py")
 SMALL3D_LABELS = {"3DCNN-W12", "3DCNN-N77", "3DCNN-N12", "3DCNN-K16N77", "3DCNN-K16N26", "3DCNN-K16N12"}
+# The owner's matched baseline (DECISIONS §92, test_matched_encoders.py): twelve "M-" labels, encoder "matched".
+MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", "M-CNN-CLTT-Ref", "M-ViT-CLTT-Ref",
+                  "M-CNN2F-CLTT-Ref", "M-ViT2F-CLTT-Ref", "M-3DCNN-CLTT-Ref", "M-ViViT-CLTT-Ref",
+                  "M-3DCNN-G6", "M-3DCNN-G6-CLTT-Ref"}
 
 
 def _git(*args):
@@ -888,7 +892,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2"} | SMALL3D_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2"} | SMALL3D_LABELS | MATCHED_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS
@@ -904,5 +908,5 @@ def test_registries_only_gained_the_xsp2_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == {"xsp2"} and old <= new, rel
+        assert old and new - old == ({"xsp2", "matched"} if "registry" in rel else {"xsp2"}) and old <= new, rel
         assert new <= set(live), rel

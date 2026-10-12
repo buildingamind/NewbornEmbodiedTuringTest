@@ -12,6 +12,7 @@ from .compact_vit import CompactViT
 from .unity_vit import UnityViT
 from .guess_what_moves import GuessWhatMoves
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .matched import MatchedEncoder
 from .nature_cnn import NatureCNN
 from .resnet10_cnn import Resnet10CNN
 from .resnet18_cnn import Resnet18CNN
@@ -30,6 +31,7 @@ __all__ = [
     "CompactViViT",
     "GuessWhatMoves",
     "HWCFeatureExtractor",
+    "MatchedEncoder",
     "NETTFeatureExtractor",
     "NatureCNN",
     "Resnet10CNN",

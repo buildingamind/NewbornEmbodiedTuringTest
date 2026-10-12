@@ -413,6 +413,14 @@ VIT_2M_CFG   = {**VIT_CFG, "embed_dim": 256}   # enc 2,117,632 / agent 2,119,173
 # 3DCNN-250K (enc 248,762). 68 is the multiple of num_heads (4) nearest 250K; head_dim 17.
 VIT_250K_CFG = {**VIT_CFG, "embed_dim": 68}    # enc 256,056 / agent 257,597 @ 128x80, 2 frames
 
+# The owner's MATCHED BASELINE (workspace DECISIONS §92; spec docs/specs/matched_architectures_owner_2026-10-12.md).
+# MATCHED_HEAD is the spec's actor and critic: separate Linear(128,128)-Tanh-Linear(128,128)-Tanh MLPs on the
+# shared encoder, then the harness's mean / value Linear. orthogonal_init False keeps PyTorch's default
+# U(+-1/sqrt(fan_in)) on every head layer, which is the spec's init -- and so ALSO drops the fleet's 0.01
+# policy-output gain and 1.0 value-output orthogonal init (models/utils/init.init_output is a no-op then).
+# A "head" key is applied in main(); NETT_HIDDEN_SIZES / NETT_FEATURE_ATTN refuse on these labels.
+MATCHED_HEAD = {"hidden_sizes": [128, 128], "activation": "tanh", "orthogonal_init": False}
+
 # model label -> (encoder name, encoder_cfg, framestack?, reward(None|"CLTT"), aux(None|"vicreg"))
 MODELS: dict[str, dict] = {
     "CNN":            dict(encoder="nature_cnn",      cfg={"trainable": True, "features_dim": 512, "conv_dim": 75},                  framestack=False),  # ~699K
@@ -931,6 +939,38 @@ MODELS: dict[str, dict] = {
     # ventral 31,169 + dorsal 53,058, all aux-trained; predictor 12,451 (warp, R=32) | 78,531 (conv,
     # H=64). Policy input 160 (no readout).
     "XSP2": dict(encoder="xsp2", cfg=dict(XSP2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
+    # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
+    # frame / 2 jointly). encoders/matched.py; spec copied verbatim to
+    # docs/specs/matched_architectures_owner_2026-10-12.md. EYE 256x160 ONLY (the encoder refuses any
+    # other: NETT_EYE_RES=256x160). Two-frame labels need NETT_FRAMESTACK_N 2 (strict check).
+    # "M-" because CNN / ViT / CNN2F / ViT2F / 3DCNN / ViViT are already registered, different models.
+    # ENCODER params (tests/test_matched_encoders.py pins them):
+    #   M-CNN 644,640  M-ViT 507,264  M-CNN2F 634,336  M-ViT2F 496,960  M-3DCNN 1,132,192  M-ViViT 497,152
+    # ⚠ M-3DCNN is 2.3x M-ViViT by the spec's own Conv3d mixer; a capacity confound, reported.
+    # M-3DCNN-G6 510,112: the owner's COMPACT 3DCNN (DECISIONS §92 answer 2), groups=6 in the three
+    # backbone Conv3d mixers and nothing else. Both 3DCNN flavours run (7 models, 14 arms).
+    # "-CLTT-Ref" adds aux="cltt_ref" and NOTHING else. The DETACHED arm is that label with
+    # NETT_DECOUPLE_ENCODER=1 in the row env (the 14-condition-wave rule above: standard and
+    # decoupled are byte-identical architectures). ⚠ cltt_ref's views repeat the CURRENT frame
+    # across T slots (cltt_views.current_frame_stack), so the two-frame encoders' aux sees no motion.
+    # Single-frame labels run framestack=False: cltt_ref takes t, t+1, t+2 from the rollout, not
+    # from a stack.
+    "M-CNN":            dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "cnn"}, framestack=False, head=dict(MATCHED_HEAD)),
+    "M-ViT":            dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vit"}, framestack=False, head=dict(MATCHED_HEAD)),
+    "M-CNN2F":          dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "cnn2f"}, framestack=True, head=dict(MATCHED_HEAD)),
+    "M-ViT2F":          dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vit2f"}, framestack=True, head=dict(MATCHED_HEAD)),
+    "M-3DCNN":          dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn"}, framestack=True, head=dict(MATCHED_HEAD)),
+    "M-ViViT":          dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vivit"}, framestack=True, head=dict(MATCHED_HEAD)),
+    "M-3DCNN-G6":       dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn_g6"}, framestack=True, head=dict(MATCHED_HEAD)),
+    "M-CNN-CLTT-Ref":   dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "cnn"}, framestack=False, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-ViT-CLTT-Ref":   dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vit"}, framestack=False, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-CNN2F-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "cnn2f"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-ViT2F-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vit2f"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-3DCNN-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-ViViT-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vivit"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    "M-3DCNN-G6-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn_g6"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -1516,6 +1556,14 @@ def main() -> int:
     # agents/arm would be needed. See NEXT_STEPS.md §G5 before running a head ladder.
     _hs = os.environ.get("NETT_HIDDEN_SIZES", "")
     hidden_sizes = [int(x) for x in _hs.split(",") if x.strip()] if _hs.strip() else []
+    # A label that carries its own head (MATCHED_HEAD, DECISIONS §92) owns the trunk outright: a
+    # NETT_HIDDEN_SIZES or NETT_FEATURE_ATTN beside it would be read by nothing, so it refuses.
+    head = spec.get("head")
+    if head is not None:
+        stray = sorted(k for k in ("NETT_HIDDEN_SIZES", "NETT_FEATURE_ATTN") if os.environ.get(k, "").strip())
+        if stray:
+            raise ValueError(f"{stray} set but {model!r} carries its own head {head}; nothing would read them. Unset them.")
+        hidden_sizes = list(head["hidden_sizes"])
     # NETT_FEATURE_ATTN (owner request 2026-10-04): unset = no key in the model cfg at all, so the
     # MLP trunk above is byte-identical. "1" = the defaults in feature_attn.FEATURE_ATTN_DEFAULTS;
     # "dim=64,heads=4,blocks=1,group=1,mlp_ratio=2" sets any of them. Replaces the trunk with
@@ -1759,6 +1807,7 @@ def main() -> int:
             "shared_encoder": True,
             "hidden_sizes": hidden_sizes,
             "clip_actions": False,
+            **({k: head[k] for k in ("activation", "orthogonal_init")} if head is not None else {}),
             **log_std_model_cfg,
             **({"feature_attn": feature_attn} if feature_attn is not None else {}),
         },
@@ -1945,6 +1994,8 @@ def main() -> int:
          # pools with anything under the other.
          "hidden_sizes": hidden_sizes, "entropy_loss_scale": entropy,
          **({"feature_attn": feature_attn} if feature_attn is not None else {}),
+         # Labels that carry their own head (MATCHED_HEAD): the activation and init it ran with.
+         **({"head": head} if head is not None else {}),
          "eval_stochastic": eval_stochastic,
          # NAS labels only: the cfg that ran (the label alone names a family, not a model).
          **({"nas_cfg": nas_cfg} if nas_cfg is not None else {}),
