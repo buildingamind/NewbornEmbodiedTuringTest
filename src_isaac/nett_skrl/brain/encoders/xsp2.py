@@ -67,6 +67,16 @@ DESIGN CHOICES the spec left open (each stated):
   campaign cfg states 160; another eye refuses at construction, naming the value it needs,
   rather than resizing anything silently.
 * fp32 throughout, no autocast (the aux step also disables it).
+
+FINER MAP (owner, workspace DECISIONS §104, 2026-10-13: "try using a map that is more detailed than
+just 16x10"; label "XSP2-MAP20x32"). ``map_stride`` is the trunk's total stride, 8 (default, the
+"XSP2" label, unchanged) or 4. At 4 ONLY phi_e's first conv changes, stride 4 -> 2 and padding
+2 -> 3, so the 128x80 eye gives 40x64 -> 20x32 -> 20x32. Every kernel and channel width is the
+same, so the parameter count is the same (166,510); the arm differs from XSP2 in the map's
+resolution (20x32 = 640 policy features, detached as before) and the policy MLP's input width,
+nothing else. c_t is upsampled NEAREST by 4 instead of 8; d_t keeps its pixel units of the eye.
+The orientation telemetry derives its block size from the shapes (xsp_aux.motion_orientation), so
+it measures the 20x32 map as it is.
 """
 
 from __future__ import annotations
@@ -80,8 +90,11 @@ from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.temporal import validate_framestack_depth
 
-#: The trunk's total stride: the stream grid is (H/8, W/8).
+#: The trunk's total stride: the stream grid is (H/8, W/8). The "XSP2" label's map_stride.
 TRUNK_STRIDE = 8
+#: map_stride -> phi_e's first conv (stride, padding); the other two convs never change.
+#: 8 is the "XSP2" trunk exactly; 4 is the finer map (DECISIONS §104).
+MAP_STRIDES = {8: (4, 2), 4: (2, 3)}
 
 
 def upsample_nearest(x: torch.Tensor, factor: int) -> torch.Tensor:
@@ -131,8 +144,12 @@ class XSP2Encoder(HWCFeatureExtractor):
         dorsal_width: int = 32,
         num_frames: int | None = None,
         channels_per_frame: int | None = None,
+        map_stride: int = TRUNK_STRIDE,
     ):
         super().__init__(observation_space, features_dim)
+        if type(map_stride) is not int or map_stride not in MAP_STRIDES:
+            raise ValueError(f"XSP2Encoder map_stride must be one of {sorted(MAP_STRIDES)}; got {map_stride!r}.")
+        self.map_stride = map_stride
         for name, value in (("conv_dim", conv_dim), ("ventral_width", ventral_width),
                             ("dorsal_width", dorsal_width), ("features_dim", features_dim)):
             if type(value) is not int or value < 1:
@@ -155,22 +172,25 @@ class XSP2Encoder(HWCFeatureExtractor):
                 f"XSP2Encoder needs a frame stack of exactly {self.N_FRAMES} frames of {self.cpf} channels "
                 f"({self.cpf * self.N_FRAMES} channels, framestack=True, NETT_FRAMESTACK_N=2); the "
                 f"observation has {channels}.")
-        if height % TRUNK_STRIDE or width % TRUNK_STRIDE:
-            raise ValueError(f"XSP2Encoder needs an eye divisible by {TRUNK_STRIDE}; got {height}x{width}.")
+        if height % map_stride or width % map_stride:
+            raise ValueError(f"XSP2Encoder needs an eye divisible by {map_stride}; got {height}x{width}.")
         self.n_frames = self.N_FRAMES
         self.image_hw = (height, width)
-        self.map_hw = (height // TRUNK_STRIDE, width // TRUNK_STRIDE)
+        self.map_hw = (height // map_stride, width // map_stride)
         n_map = self.map_hw[0] * self.map_hw[1]
         if features_dim != n_map:
             raise ValueError(
                 f"XSP2Encoder's policy features ARE the flattened {self.map_hw[0]}x{self.map_hw[1]} figure "
-                f"map, so features_dim must be {n_map} at the {width}x{height} eye; got {features_dim}. "
+                f"map, so features_dim must be {n_map} at the {width}x{height} eye (map_stride {map_stride}); "
+                f"got {features_dim}. "
                 f"Refusing to resize the map to fit a cfg value.")
         self.conv_dim = conv_dim
 
-        # phi_e -- applied to x_{t-1} and x_t with these weights (siamese). NatureCNN's convs, padded.
+        # phi_e -- applied to x_{t-1} and x_t with these weights (siamese). NatureCNN's convs, padded;
+        # map_stride 4 changes only the first conv's stride and padding (MAP_STRIDES).
+        stride1, pad1 = MAP_STRIDES[map_stride]
         self.trunk = nn.Sequential(
-            nn.Conv2d(self.cpf, 32, kernel_size=8, stride=4, padding=2), nn.ReLU(),
+            nn.Conv2d(self.cpf, 32, kernel_size=8, stride=stride1, padding=pad1), nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=1), nn.ReLU(),
         )
@@ -222,7 +242,8 @@ class XSP2Encoder(HWCFeatureExtractor):
         """All three streams on a PREPARED (B, 6, H, W) stack, gradients on (the aux path).
 
         phi_e runs ONCE on cat(x_{t-1}, x_t) along the batch. ``c`` is m * d formed at the stream
-        grid and upsampled NEAREST by 8 to the eye: the predictor's flow input.
+        grid and upsampled NEAREST by ``map_stride`` (8; 4 for the finer map) to the eye: the
+        predictor's flow input.
         """
         x_prev, x_t = self.split_frames(prepared)
         b = prepared.shape[0]
@@ -230,12 +251,12 @@ class XSP2Encoder(HWCFeatureExtractor):
         z_prev, z_t = z[:b], z[b:]
         m = self.ventral_map(z_t)
         d = self.dorsal(z_prev, z_t)
-        c = upsample_nearest(m * d, TRUNK_STRIDE)
+        c = upsample_nearest(m * d, self.map_stride)
         return {"x_t": x_t, "z_t": z_t, "m": m, "d": d, "c": c}
 
     # ------------------------------------------------------------------ policy path
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        """Policy features: flatten(m_t), (B, 160), computed under no_grad from x_t alone.
+        """Policy features: flatten(m_t), (B, 160) (640 at map_stride 4), under no_grad from x_t alone.
 
         ⛔ DETACHED BY CONSTRUCTION. Nothing the RL loss differentiates depends on phi_e or phi_v
         (no autograd graph is even recorded), so no reward gradient can reach them. That is also

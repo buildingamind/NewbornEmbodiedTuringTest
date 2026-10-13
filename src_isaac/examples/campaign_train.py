@@ -247,6 +247,10 @@ XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input
 #: anything but 2 (its dorsal Conv3d has a depth-2 kernel). Every XSP2 knob is an AUX knob
 #: (NETT_XSP2_*, read in brain/aux/xsp2_aux.py), recorded by the launcher's environ capture.
 XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames": _FRAMESTACK_N}
+#: The "XSP2-MAP20x32" label (owner, workspace DECISIONS §104): XSP2 with the finer figure map. Trunk
+#: stride 4 instead of 8 (phi_e's first conv only: stride 2, padding 3), so 128x80 -> 20x32 = 640
+#: policy features; same kernels, same 166,510 encoder parameters. Every other key is XSP2_CFG's.
+XSP2_MAP20x32_CFG = {**XSP2_CFG, "features_dim": 640, "map_stride": 4}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -939,6 +943,10 @@ MODELS: dict[str, dict] = {
     # ventral 31,169 + dorsal 53,058, all aux-trained; predictor 12,451 (warp, R=32) | 78,531 (conv,
     # H=64). Policy input 160 (no readout).
     "XSP2": dict(encoder="xsp2", cfg=dict(XSP2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    # XSP2 with a 20x32 figure map (owner, workspace DECISIONS §104): trunk stride 4 via phi_e's first
+    # conv (stride 2, padding 3); policy input 640; c_t upsampled x4. Same aux, knobs and parameters.
+    "XSP2-MAP20x32": dict(encoder="xsp2", cfg=dict(XSP2_MAP20x32_CFG), framestack=True, aux="xsp2",
+                          aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1027,6 +1035,10 @@ assert XSP_CFG["num_frames"] == _FRAMESTACK_N
 assert MODELS["XSP2"] == dict(encoder="xsp2", cfg=XSP2_CFG, framestack=True, aux="xsp2", aux_weight=1.0)
 assert set(XSP2_CFG) == {"trainable", "features_dim", "conv_dim", "num_frames"}, sorted(XSP2_CFG)
 assert XSP2_CFG["num_frames"] == _FRAMESTACK_N
+# ⛔ XSP2-MAP20x32 IS XSP2 WITH THE MAP STRIDE (AND SO THE POLICY WIDTH) MOVED, NOTHING ELSE (DECISIONS §104).
+assert MODELS["XSP2-MAP20x32"] == {**MODELS["XSP2"], "cfg": XSP2_MAP20x32_CFG}
+assert {k: v for k, v in XSP2_MAP20x32_CFG.items() if k != "map_stride"} == {**XSP2_CFG, "features_dim": 640}
+assert (XSP2_MAP20x32_CFG["features_dim"], XSP2_MAP20x32_CFG["map_stride"]) == (640, 4)
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
