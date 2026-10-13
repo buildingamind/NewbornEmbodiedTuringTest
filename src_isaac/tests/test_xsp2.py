@@ -838,6 +838,10 @@ MATCHED_FILES = ("nett_skrl/brain/encoders/matched.py",)
 MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", "M-CNN-CLTT-Ref", "M-ViT-CLTT-Ref",
                   "M-CNN2F-CLTT-Ref", "M-ViT2F-CLTT-Ref", "M-3DCNN-CLTT-Ref", "M-ViViT-CLTT-Ref",
                   "M-3DCNN-G6", "M-3DCNN-G6-CLTT-Ref"}
+# The uint8 CPU observation buffer (DECISIONS §103; test_xsp.py holds the same exemption): two buffer files,
+# and one admitted removal in campaign_train -- the NETT_UINT8_BUFFER pop on the CPU move -- by exact text, once.
+UINT8_FILES = ("nett_skrl/brain/agent_factory.py", "nett_skrl/brain/hybrid_memory.py")
+UINT8_REMOVED = {"examples/campaign_train.py": ('os.environ.pop("NETT_UINT8_BUFFER", None)',)}
 
 
 def _git(*args):
@@ -869,6 +873,9 @@ def _diff_lines(path):
 def test_shared_file_change_is_additive_only(path):
     removed, added = _diff_lines(path)
     assert added, f"{path}: no XSP2 addition found -- the diff did not look"
+    for text in UINT8_REMOVED.get(path, ()):
+        assert text in removed, f"{path}: the admitted §103 removal {text!r} is not in the diff -- stale exemption"
+        removed.remove(text)
     assert not removed, f"{path}: XSP2 removed or edited existing lines:\n" + "\n".join(removed)
 
 
@@ -884,7 +891,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

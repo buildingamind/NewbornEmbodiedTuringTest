@@ -1032,6 +1032,22 @@ MATCHED_FILES = ("nett_skrl/brain/encoders/matched.py",)
 MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", "M-CNN-CLTT-Ref", "M-ViT-CLTT-Ref",
                   "M-CNN2F-CLTT-Ref", "M-ViT2F-CLTT-Ref", "M-3DCNN-CLTT-Ref", "M-ViViT-CLTT-Ref",
                   "M-3DCNN-G6", "M-3DCNN-G6-CLTT-Ref"}
+# The uint8 observation buffer on the CPU path (DECISIONS §103, test_uint8_cpu_buffer.py): the hybrid buffer class
+# and its selection in agent_factory; no encoder, aux or label file. Its one EDIT to an existing line is
+# campaign_train no longer popping a declared NETT_UINT8_BUFFER on the CPU move -- admitted below by exact text,
+# once, so any other removal in a shared file still fails.
+UINT8_FILES = ("nett_skrl/brain/agent_factory.py", "nett_skrl/brain/hybrid_memory.py")
+UINT8_REMOVED = {"examples/campaign_train.py": ('os.environ.pop("NETT_UINT8_BUFFER", None)',)}
+
+
+def _drop_admitted(path, removed):
+    """removed lines (diff '-' lines) minus each line §103 is admitted to remove, one occurrence each."""
+    left = list(removed)
+    for text in UINT8_REMOVED.get(path, ()):
+        hit = [ln for ln in left if ln[1:].strip() == text]
+        assert hit, f"{path}: the admitted §103 removal {text!r} is not in the diff -- the exemption is stale"
+        left.remove(hit[0])
+    return left
 
 
 def _git(*args):
@@ -1065,13 +1081,14 @@ def test_shared_file_change_is_additive_only(path):
     removed = [ln for ln in lines if ln.startswith("-") and not ln.startswith("---")]
     added = [ln for ln in lines if ln.startswith("+") and not ln.startswith("+++")]
     assert added, f"{path}: no XSP addition found -- the diff did not look at the change"
+    removed = _drop_admitted(path, removed)
     assert not removed, f"{path}: XSP removed or edited existing lines:\n" + "\n".join(removed)
 
 
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
-               + MATCHED_FILES}
+               + MATCHED_FILES + UINT8_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
