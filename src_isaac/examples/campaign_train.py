@@ -1678,7 +1678,8 @@ def main() -> int:
     if "NETT_MEMORY_DEVICE" not in os.environ:
         if spec["framestack"] or _buf_gb > _budget_gb or not _lean:
             os.environ["NETT_MEMORY_DEVICE"] = "cpu"
-            os.environ.pop("NETT_UINT8_BUFFER", None)
+            # NETT_UINT8_BUFFER is NOT popped any more: since DECISIONS §103 it governs the CPU buffer
+            # too (default on), so a declared "0" must survive the move to the host.
             why = ("framestack" if spec["framestack"]
                    else f"> {_budget_gb:.1f} GB GPU budget" if _buf_gb > _budget_gb
                    else f"encoder {spec['encoder']} not in the GPU-buffer allowlist "

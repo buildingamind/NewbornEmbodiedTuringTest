@@ -46,6 +46,8 @@ which would otherwise overwrite every conv and linear.
 
 from __future__ import annotations
 
+import os
+
 import gymnasium as gym
 import torch
 import torch.nn as nn
@@ -130,6 +132,19 @@ class _Block(nn.Module):
         return u + self.ffn(self.norm2(u))
 
 
+def matched_amp_dtype() -> torch.dtype | None:
+    """NETT_MATCHED_AMP: autocast dtype for the matched encoders' forward. DEFAULT OFF (fp32/TF32, the
+    registered recipe). "bf16" runs the trunk under CUDA autocast and returns fp32 features, as NatureCNN
+    does under NETT_AMP; owner-directed speed test (DECISIONS §103), NOT a recipe change until ruled.
+    Anything else refuses, so a typo cannot silently run fp32."""
+    v = os.environ.get("NETT_MATCHED_AMP", "off").strip().lower()
+    if v in ("off", "0", "fp32", ""):
+        return None
+    if v == "bf16":
+        return torch.bfloat16
+    raise ValueError(f"NETT_MATCHED_AMP={v!r}; expected 'off' or 'bf16'")
+
+
 class MatchedEncoder(HWCFeatureExtractor):
     """One of the owner's six matched encoders, chosen by ``variant`` (see the module docstring)."""
 
@@ -173,6 +188,14 @@ class MatchedEncoder(HWCFeatureExtractor):
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         x = self._prepare_image(observations)              # (B, 3T, 160, 256), [prev, cur], /255 once
+        amp = matched_amp_dtype()
+        if amp is not None and x.is_cuda:
+            with torch.autocast("cuda", dtype=amp):
+                out = self._trunk(x)
+            return out.float()
+        return self._trunk(x)
+
+    def _trunk(self, x: torch.Tensor) -> torch.Tensor:
         B, T = x.shape[0], self.num_frames
         f = self.patch(x.reshape(B * T, 3, *EYE_HW))       # same weights on every frame -> [B*T, 96, 10, 16]
         x = f.permute(0, 2, 3, 1).reshape(B, T, *GRID, DIM) + self.pos_spatial

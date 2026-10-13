@@ -10,7 +10,13 @@ import torch.nn as nn
 from skrl.memories.torch import RandomMemory
 from skrl.resources.preprocessors.torch import RunningStandardScaler
 
-from .hybrid_memory import HybridDeviceMemory, Uint8StatesMemory, resolve_memory_device
+from .hybrid_memory import (
+    HybridDeviceMemory,
+    Uint8HybridDeviceMemory,
+    Uint8StatesMemory,
+    resolve_memory_device,
+    uint8_buffer_enabled,
+)
 
 from .aux import AuxLossPPO
 from .experiment import apply_experiment_cfg
@@ -178,7 +184,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
         if not on_compute_device:
             # Storage off the compute device (CPU buffer for high-res runs):
             # use the hybrid memory so PPO's GAE/minibatch math stays on-device.
-            memory = HybridDeviceMemory(
+            # uint8 image observations BY DEFAULT here too (DECISIONS §103, 2026-10-13): 1/4 the
+            # host RAM and 1/4 the per-minibatch host->device bytes. NETT_UINT8_BUFFER=0 = float32.
+            hybrid_cls = Uint8HybridDeviceMemory if uint8_buffer_enabled() else HybridDeviceMemory
+            memory = hybrid_cls(
                 memory_size=scaled_rollouts,
                 num_envs=scope,
                 device=mem_device,
@@ -190,11 +199,7 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             # is what makes the on-GPU default fit: float32 would need 22.7 GB of a
             # 23 GB card at 2 jobs/GPU, uint8 needs 13.9. Set NETT_UINT8_BUFFER=0 to
             # store float32 — only viable at 1 job/GPU or low rollout counts.
-            mem_cls = (
-                RandomMemory
-                if os.environ.get("NETT_UINT8_BUFFER", "1") == "0"
-                else Uint8StatesMemory
-            )
+            mem_cls = Uint8StatesMemory if uint8_buffer_enabled() else RandomMemory
             memory = mem_cls(
                 memory_size=scaled_rollouts,
                 num_envs=scope,
