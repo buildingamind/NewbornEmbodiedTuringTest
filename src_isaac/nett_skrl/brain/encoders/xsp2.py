@@ -77,6 +77,26 @@ resolution (20x32 = 640 policy features, detached as before) and the policy MLP'
 nothing else. c_t is upsampled NEAREST by 4 instead of 8; d_t keeps its pixel units of the eye.
 The orientation telemetry derives its block size from the shapes (xsp_aux.motion_orientation), so
 it measures the 20x32 map as it is.
+
+WHAT UNDER THE FIGURE (owner, workspace DECISIONS §105/§106, 2026-10-14: "Keep trying to get XSP2 to work
+by editing it ... to ensure that the ventral output effectively parses the foreground object"; label
+"XSP2-WHAT"). The map alone tells the policy WHERE the figure is, never WHAT it is, and the parsing test's
+two objects differ in shape only. ``policy_input`` ("map", the default and every earlier label,
+unchanged) may be "fg": the policy reads ``cat(flatten(m_t), fg_t)`` with
+
+```
+l    = phi_v(z_t) flattened                     (B, h*w)   the ventral LOGITS
+l^   = (l - mean(l)) / (std(l) + 1e-6)          per frame, over the h*w locations (population std)
+a    = softmax(pool_beta * l^)                  (B, h*w)   a figure-attention weight, sums to 1
+fg_t = sum_loc a * z_t                          (B, conv_dim)
+```
+
+PARAMETER-FREE and computed under the same ``torch.no_grad`` as the map: there is no readout and no
+RL path into phi_e or phi_v; the detachment argument below holds verbatim. The per-frame
+standardisation makes the pool independent of the logit scale, which next-frame prediction leaves
+free (only m * d is constrained). ``pool_beta`` is fixed per label (offline footprint concentration,
+FINDINGS §4dh.44h.150). ``trunk_widths`` (default (32, 64), XSP2's) sets phi_e's first two conv
+widths so a smaller encoder can be built with ``conv_dim`` / ``ventral_width`` / ``dorsal_width``.
 """
 
 from __future__ import annotations
@@ -95,6 +115,8 @@ TRUNK_STRIDE = 8
 #: map_stride -> phi_e's first conv (stride, padding); the other two convs never change.
 #: 8 is the "XSP2" trunk exactly; 4 is the finer map (DECISIONS §104).
 MAP_STRIDES = {8: (4, 2), 4: (2, 3)}
+#: What the policy reads: "map" = flatten(m) (XSP2); "fg" = cat(flatten(m), figure-attention pool of z_t).
+POLICY_INPUTS = ("map", "fg")
 
 
 def upsample_nearest(x: torch.Tensor, factor: int) -> torch.Tensor:
@@ -145,8 +167,21 @@ class XSP2Encoder(HWCFeatureExtractor):
         num_frames: int | None = None,
         channels_per_frame: int | None = None,
         map_stride: int = TRUNK_STRIDE,
+        policy_input: str = "map",
+        pool_beta: float = 4.0,
+        trunk_widths: tuple[int, int] | list[int] = (32, 64),
     ):
         super().__init__(observation_space, features_dim)
+        if policy_input not in POLICY_INPUTS:
+            raise ValueError(f"XSP2Encoder policy_input must be one of {POLICY_INPUTS}; got {policy_input!r}.")
+        if type(pool_beta) not in (int, float) or not pool_beta > 0:
+            raise ValueError(f"XSP2Encoder pool_beta must be a positive number; got {pool_beta!r}.")
+        trunk_widths = tuple(trunk_widths)
+        if len(trunk_widths) != 2 or any(type(v) is not int or v < 1 for v in trunk_widths):
+            raise ValueError(f"XSP2Encoder trunk_widths must be two positive ints; got {trunk_widths!r}.")
+        self.policy_input = policy_input
+        self.pool_beta = float(pool_beta)
+        self.trunk_widths = trunk_widths
         if type(map_stride) is not int or map_stride not in MAP_STRIDES:
             raise ValueError(f"XSP2Encoder map_stride must be one of {sorted(MAP_STRIDES)}; got {map_stride!r}.")
         self.map_stride = map_stride
@@ -178,11 +213,17 @@ class XSP2Encoder(HWCFeatureExtractor):
         self.image_hw = (height, width)
         self.map_hw = (height // map_stride, width // map_stride)
         n_map = self.map_hw[0] * self.map_hw[1]
-        if features_dim != n_map:
+        if policy_input == "map" and features_dim != n_map:
             raise ValueError(
                 f"XSP2Encoder's policy features ARE the flattened {self.map_hw[0]}x{self.map_hw[1]} figure "
                 f"map, so features_dim must be {n_map} at the {width}x{height} eye (map_stride {map_stride}); "
                 f"got {features_dim}. "
+                f"Refusing to resize the map to fit a cfg value.")
+        if policy_input == "fg" and features_dim != n_map + conv_dim:
+            raise ValueError(
+                f"XSP2Encoder policy_input 'fg' reads the flattened {self.map_hw[0]}x{self.map_hw[1]} figure "
+                f"map plus the {conv_dim}-channel figure pool, so features_dim must be {n_map + conv_dim} at "
+                f"the {width}x{height} eye (map_stride {map_stride}); got {features_dim}. "
                 f"Refusing to resize the map to fit a cfg value.")
         self.conv_dim = conv_dim
 
@@ -190,9 +231,9 @@ class XSP2Encoder(HWCFeatureExtractor):
         # map_stride 4 changes only the first conv's stride and padding (MAP_STRIDES).
         stride1, pad1 = MAP_STRIDES[map_stride]
         self.trunk = nn.Sequential(
-            nn.Conv2d(self.cpf, 32, kernel_size=8, stride=stride1, padding=pad1), nn.ReLU(),
-            nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=1), nn.ReLU(),
-            nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=1), nn.ReLU(),
+            nn.Conv2d(self.cpf, trunk_widths[0], kernel_size=8, stride=stride1, padding=pad1), nn.ReLU(),
+            nn.Conv2d(trunk_widths[0], trunk_widths[1], kernel_size=4, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(trunk_widths[1], conv_dim, kernel_size=3, stride=1, padding=1), nn.ReLU(),
         )
         # phi_v -- ventral (form): z_t -> one logit per location; m_t = sigmoid(logit).
         self.ventral = nn.Sequential(
@@ -265,5 +306,16 @@ class XSP2Encoder(HWCFeatureExtractor):
         """
         with torch.no_grad():
             x_t = self.current_frame(self._prepare_image(observations))
-            m = self.ventral_map(self.trunk(x_t))
-        return m.flatten(1).detach()
+            z_t = self.trunk(x_t)
+            if self.policy_input == "map":
+                m = self.ventral_map(z_t)
+                return m.flatten(1).detach()
+            logit = self.ventral(z_t).flatten(1)                          # (B, h*w)
+            m = torch.sigmoid(logit)
+            fg = (z_t.flatten(2) * self.figure_attention(logit).unsqueeze(1)).sum(-1)   # (B, conv_dim)
+        return torch.cat([m, fg], dim=1).detach()
+
+    def figure_attention(self, logit: torch.Tensor) -> torch.Tensor:
+        """softmax(pool_beta * per-frame standardised ventral logits) over the h*w locations: (B, h*w)."""
+        std = logit.std(dim=1, keepdim=True, unbiased=False)
+        return torch.softmax(self.pool_beta * (logit - logit.mean(dim=1, keepdim=True)) / (std + 1e-6), dim=1)
