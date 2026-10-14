@@ -845,6 +845,9 @@ UINT8_REMOVED = {"examples/campaign_train.py": ('os.environ.pop("NETT_UINT8_BUFF
 # Workspace DECISIONS §108 (test_xsp2_windows_and_train_dp.py): the train-only decision period adds an
 # Environment kwarg + its schema entry; NETT_XSP2_WINDOWS lives in xsp2_aux.py (already admitted).
 DP108_FILES = ("nett_skrl/environment/environment.py", "nett_skrl/schema.json")
+# Workspace DECISIONS §110 (test_xsp2_step_before_wrapper.py): NETT_XSP2_WINDOWS=hold reads the env's own
+# step counter through a TRAINING-env wrapper (env_wrappers.py), applied in trainer._run_skrl_train.
+DP110_FILES = ("nett_skrl/brain/env_wrappers.py", "nett_skrl/brain/trainer.py")
 
 
 def _git(*args):
@@ -894,7 +897,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

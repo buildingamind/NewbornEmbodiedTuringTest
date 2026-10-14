@@ -3,7 +3,9 @@
 With NETT_TRAIN_DECISION_PERIOD=P >= 3 the env moves only on step_in_episode % P == 0, so the frames
 after steps Pk .. Pk+P-1 share one pose. "hold" draws memory rows t with step_before(t) % P == P-1:
 dorsal (o0, o1) = row t's stack, ventral + predictor o1, target o2 = row t+1's newest frame.
-step_before is recovered from the done flags (hold_step_before). Every check has a control that fails.
+step_before is the env's own counter, recorded per row (XSP2Term.record_step_before, fed by
+env_wrappers.StepBeforeEnvWrapper -- tested through real skrl in test_xsp2_step_before_wrapper.py) and
+cross-checked against the done flags (hold_step_before). Every check has a control that fails.
 """
 
 from __future__ import annotations
@@ -84,7 +86,7 @@ def _space():
     return gym.spaces.Box(low=0, high=255, shape=(C, H, W), dtype=np.uint8)
 
 
-def _term(monkeypatch, memory, dp="3", windows="hold"):
+def _term(monkeypatch, memory, dp="3", windows="hold", record=True):
     monkeypatch.setenv("NETT_XSP2_WINDOWS", windows)
     if dp is None:
         monkeypatch.delenv("NETT_TRAIN_DECISION_PERIOD", raising=False)
@@ -95,6 +97,9 @@ def _term(monkeypatch, memory, dp="3", windows="hold"):
     enc = XSP2Encoder(_space(), features_dim=235, policy_input="fg")
     term = XSP2Term(enc)
     term.attach_memory(memory)
+    if record and term.needs_step_before:
+        for row in range(memory.memory_size):          # what StepBeforeEnvWrapper hands over per row
+            term.record_step_before(row, memory.true_sb[row])
     return enc, term
 
 
@@ -194,3 +199,54 @@ def test_hold_aux_step_runs_and_its_telemetry_is_a_positive_control(monkeypatch)
     torch.random.set_rng_state(g_state)
     term._draw(enc)
     assert torch.equal(torch.random.get_rng_state(), expected)
+
+
+def test_a_rollout_without_any_done_still_draws_hold_triples(monkeypatch):
+    """THE CASE THAT BROKE e9d38af: a PPO rollout (500 rows) shorter than a P=3 episode (1500 steps).
+
+    CONTROL: the done flags anchor nothing here, so the old done-based recovery had no row to draw.
+    """
+    mem = _HoldMemory(P=3, steps=40, T=61, memory_index=23, starts=(5, 0, 11))
+    assert not bool(mem.tensors["truncated"].any())
+    assert (hold_step_before(mem) < 0).all()                                 # control: nothing anchored
+    enc, term = _term(monkeypatch, mem)
+    for seed in range(5):
+        torch.manual_seed(seed)
+        obs_t, obs_tk, _, _ = term._draw(enc)
+        sb = obs_t[:, 0, 0, CPF + 2].long()
+        assert (sb % 3 == 2).all() and torch.equal(obs_tk[:, 0, 0, CPF + 2].long(), sb + 1)
+        assert torch.equal(obs_t[:, 0, 0, 0], obs_t[:, 0, 0, CPF])
+        assert torch.equal(obs_t[:, 0, 0, CPF], obs_tk[:, 0, 0, CPF])
+
+
+def test_hold_fails_closed_without_a_complete_record(monkeypatch):
+    mem = _HoldMemory(T=61, memory_index=23)
+    enc, term = _term(monkeypatch, mem, record=False)
+    with pytest.raises(RuntimeError, match="no step_before was recorded"):
+        term._draw(enc)
+    for row in range(mem.T):
+        if row != 40:
+            term.record_step_before(row, mem.true_sb[row])
+    with pytest.raises(RuntimeError, match="1 stored row"):
+        term._draw(enc)
+    term.record_step_before(40, mem.true_sb[40])
+    term._draw(enc)                                                            # control: complete -> draws
+    with pytest.raises(ValueError, match="envs"):
+        term.record_step_before(0, mem.true_sb[0][:2])
+    with pytest.raises(IndexError):
+        term.record_step_before(mem.T, mem.true_sb[0])
+    _, slab = _term(monkeypatch, mem, windows="slab")
+    assert slab.needs_step_before is False
+    with pytest.raises(RuntimeError, match="hold"):
+        slab.record_step_before(0, mem.true_sb[0])
+
+
+@pytest.mark.parametrize("steps", [4, 40], ids=["with-dones", "no-dones"])
+def test_a_record_shifted_by_one_row_breaks_the_step_chain(monkeypatch, steps):
+    """MUTATION: writing each step_before one row late (the memory_index off-by-one) is caught."""
+    mem = _HoldMemory(P=3, steps=steps, T=61, memory_index=23)
+    enc, term = _term(monkeypatch, mem, record=False)
+    for row in range(mem.T):
+        term.record_step_before((row + 1) % mem.T, mem.true_sb[row])
+    with pytest.raises(RuntimeError, match="step chain"):
+        term._draw(enc)

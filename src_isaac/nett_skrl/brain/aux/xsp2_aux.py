@@ -132,7 +132,9 @@ TRANSIT_FRAC = 0.5
 #: other P-1 steps, so the observations after steps Pk .. Pk+P-1 share one pose. The window is the
 #: LAST triple of each hold -- dorsal (o0, o1), ventral + predictor o1, target o2 -- i.e. memory rows
 #: t with step_before(t) % P == P-1, so each hold gives exactly ONE window and no window crosses an
-#: action. See XSP2Term._draw_hold for how step_before is recovered from the rollout's done flags.
+#: action. step_before comes from the ENV'S OWN COUNTER (NETTEnv._last_step_for_outputs), handed over
+#: per recorded row by env_wrappers.StepBeforeEnvWrapper -- a PPO rollout (e.g. 500 rows) is shorter
+#: than a P=3 episode (1500 steps), so most rollouts hold no done flag to anchor the phase on.
 WINDOWS = ("slab", "iid", "hold")
 
 
@@ -142,7 +144,8 @@ def hold_step_before(memory) -> torch.Tensor:
     Chronological order is oldest-first: rows memory_index..T-1 then 0..memory_index-1 on a filled
     ring (memory_index 0 = natural order). A done at chronological row d makes row d+1 a reset
     observation (step_before 0); rows before a column's first done get -1. Boundaries are
-    terminated | truncated, the same signals episode_window_starts reads.
+    terminated | truncated, the same signals episode_window_starts reads. Since the env counter is
+    recorded per row (XSP2Term.record_step_before), this is a CROSS-CHECK of it, not the source.
     """
     t_max = memory.memory_size if memory.filled else memory.memory_index
     tensors = memory.tensors
@@ -304,6 +307,10 @@ class XSP2Term(nn.Module):
                     f"needs {self.TRAIN_DP_ENV} set to an integer >= 3 (got {raw!r}). Refusing to draw "
                     f"'hold' windows from a rollout whose every step may move.")
             self.hold_period = int(raw)
+        #: StepBeforeEnvWrapper hands this term the env's step_before per recorded row ("hold" only).
+        self.needs_step_before = self.windows == "hold"
+        #: (memory_size, n_env) long, -1 = never recorded; allocated by the first record_step_before.
+        self._sb_rows = None
         #: Private stream for the hold telemetry's comparison draw: never touches torch's global RNG.
         self._tele_gen = torch.Generator().manual_seed(0)
         self.map_stride = int(getattr(encoder, "map_stride", 8))
@@ -439,15 +446,76 @@ class XSP2Term(nn.Module):
         a = actions[t.to(actions.device), env.to(actions.device)].to(device)       # (B, A)
         return obs_t, obs_tk, a, float(a[:, 0].abs().float().mean())
 
+    def record_step_before(self, row: int, step_before: torch.Tensor) -> None:
+        """Store the env's step_before for the memory row skrl is about to write (StepBeforeEnvWrapper).
+
+        Called after env.step and BEFORE agent.record_transition, so ``row`` is memory.memory_index:
+        the row this transition lands in. ``step_before`` is this agent's env slice (n_env,).
+        """
+        if not self.needs_step_before:
+            raise RuntimeError(f"record_step_before is for {self.WINDOWS_ENV}=hold; windows={self.windows!r}.")
+        if self._memory is None:
+            raise RuntimeError("XSP2Term.record_step_before before attach_memory(memory).")
+        sb = torch.as_tensor(step_before).detach().reshape(-1).to("cpu", torch.long)
+        size = int(self._memory.memory_size)
+        if self._sb_rows is None:
+            self._sb_rows = torch.full((size, sb.numel()), -1, dtype=torch.long)
+        if sb.numel() != self._sb_rows.shape[1]:
+            raise ValueError(f"record_step_before: {sb.numel()} envs, but this term records "
+                             f"{self._sb_rows.shape[1]} (one agent's env scope).")
+        if not 0 <= int(row) < size:
+            raise IndexError(f"record_step_before: row {row} outside the rollout memory [0, {size}).")
+        if (sb < 0).any():
+            raise ValueError("record_step_before: the env reported a negative step_before.")
+        self._sb_rows[int(row)] = sb
+
+    def _recorded_step_before(self, memory) -> torch.Tensor:
+        """(T, env) step_before for every stored row, checked against the rollout's own flags.
+
+        FAILS CLOSED: a row never recorded (StepBeforeEnvWrapper not applied) raises. Two checks
+        that need no trust in the recorder: (1) consecutive stored rows t, t+1 (not across the ring's
+        write head) must read sb[t+1] == 0 after a done at t and sb[t] + 1 otherwise; (2) wherever the
+        done flags anchor a value (hold_step_before), it must equal the recorded one.
+        """
+        t_max = memory.memory_size if memory.filled else memory.memory_index
+        if self._sb_rows is None:
+            raise RuntimeError(
+                f"XSP2 hold windows: no step_before was recorded -- {self.WINDOWS_ENV}=hold needs the "
+                f"trainer's StepBeforeEnvWrapper around the TRAINING env (env_wrappers.py).")
+        sb = self._sb_rows[:t_max]
+        missing = int((sb < 0).any(1).sum())
+        if missing:
+            raise RuntimeError(
+                f"XSP2 hold windows: {missing} stored row(s) have no recorded step_before -- the "
+                f"StepBeforeEnvWrapper did not see every training step.")
+        flags = []
+        for name in ("terminated", "truncated"):
+            signal = torch.as_tensor(memory.tensors[name][:t_max]).bool().cpu()
+            flags.append(signal.squeeze(-1) if signal.ndim == 3 and signal.shape[-1] == 1 else signal)
+        done = flags[0] | flags[1]
+        if t_max > 1:
+            expect = torch.where(done[:-1], torch.zeros_like(sb[:-1]), sb[:-1] + 1)
+            pair_ok = sb[1:] == expect
+            head = int(memory.memory_index) if memory.filled else 0
+            if head > 0:
+                pair_ok[head - 1] = True                         # rows head-1 (newest), head (oldest)
+            if not bool(pair_ok.all()):
+                t, e = (~pair_ok).nonzero()[0].tolist()
+                raise RuntimeError(
+                    f"XSP2 hold windows: recorded step_before breaks the rollout's step chain at rows "
+                    f"{t}->{t + 1}, env {e} ({int(sb[t, e])} -> {int(sb[t + 1, e])}, done={bool(done[t, e])}).")
+        anchored = hold_step_before(memory)[:t_max]
+        known = anchored >= 0
+        if not torch.equal(anchored[known], sb[known]):
+            raise RuntimeError("XSP2 hold windows: recorded step_before disagrees with the done-anchored value.")
+        return sb
+
     def _draw_hold(self, device):
         """B independent hold-triple windows (obs_t, obs_{t+1}, a_t): step_before(t) % P == P-1.
 
-        step_before is recovered per env column from the rollout's boundary flags, in chronological
-        order (oldest row first, i.e. starting at memory_index on a filled ring): a done at row d means
-        row d+1 is a reset observation with step_before 0, so a row t after its column's latest
-        boundary d has step_before t - d - 1. Rows BEFORE a column's first boundary have no anchor
-        and are never drawn (exact: no assumption that the first boundary is a time-out). A window
-        must also pass ``episode_window_starts(memory, (1,))`` (no done at t, no seam), so the target
+        step_before is the env's own counter per stored row (record_step_before, checked by
+        _recorded_step_before against the rollout's done flags). A window must also pass
+        ``episode_window_starts(memory, (1,))`` (no done at t, no seam), so the target
         o2 is never a reset frame. a_t at a hold row is the policy's sample, which the env IGNORED.
         """
         from .cltt_ref_aux import episode_window_starts
@@ -457,12 +525,12 @@ class XSP2Term(nn.Module):
             raise ValueError("XSP2 hold windows need a rollout 'actions' tensor shaped (T, env, A).")
         raw = memory.tensors["observations"]
         valid = episode_window_starts(memory, (1,))[:, :raw.shape[1]]
-        sb = hold_step_before(memory)[:valid.shape[0], :raw.shape[1]]
-        hold = valid & (sb >= 0) & (sb % self.hold_period == self.hold_period - 1)
+        sb = self._recorded_step_before(memory)[:valid.shape[0], :raw.shape[1]]
+        hold = valid & (sb % self.hold_period == self.hold_period - 1)
         flat = hold.reshape(-1).nonzero().flatten()
         if flat.numel() == 0:
             raise ValueError(f"XSP2 hold windows: no row with step_before % {self.hold_period} == "
-                             f"{self.hold_period - 1} after a boundary in this rollout.")
+                             f"{self.hold_period - 1} in this rollout.")
         pick = flat[torch.randint(flat.numel(), (self.batch,))]
         t, env = pick // hold.shape[1], pick % hold.shape[1]
         t_d, env_d = t.to(raw.device), env.to(raw.device)
