@@ -39,7 +39,8 @@ from nett_skrl.brain.registry import encoder_mapping
 
 @pytest.fixture(autouse=True)
 def cpu_defaults(monkeypatch):
-    for name in ("NETT_AUX_BATCH", "NETT_AUX_CLTT_REF_OFFSETS", "NETT_AUX_CLTT_REF_TEMP"):
+    for name in ("NETT_AUX_BATCH", "NETT_AUX_CLTT_REF_OFFSETS", "NETT_AUX_CLTT_REF_TEMP",
+                 "NETT_CLTT_REF_DEDUP"):
         monkeypatch.delenv(name, raising=False)
     threads = torch.get_num_threads()
     torch.set_num_threads(1)
@@ -88,6 +89,22 @@ def identity_memory(t_max=16, num_envs=3, channels=6, **kwargs):
     return FakeMemory(ids[..., None].expand(-1, -1, channels).float().clone(), **kwargs)
 
 
+def cltt_ref_roles(views, offsets):
+    """The encoder input of each role -- anchor, then one positive per offset -- from either path.
+
+    DECISIONS §111 fix 1: by default cltt_ref encodes ONE span of B + max(offsets) rows and slices the
+    roles from it (anchor = rows 0..B-1, positive(k) = rows k..k+B-1); NETT_CLTT_REF_DEDUP=0 encodes
+    one view per role. ``views`` is what a recording encoder saw during ONE compute(). The span form
+    is unpacked here so every geometry assertion below runs unchanged on both paths.
+    """
+    if len(views) == 1 + len(offsets):
+        return list(views)
+    assert len(views) == 1, f"expected one span or {1 + len(offsets)} views, got {len(views)}"
+    span = views[0]
+    batch = span.shape[0] - max(offsets)
+    return [span[k:k + batch] for k in (0, *offsets)]
+
+
 def fixed_draws(monkeypatch, draws):
     pending = iter(draws)
     calls = []
@@ -113,15 +130,17 @@ def test_reference_head_geometry():
     torch.testing.assert_close(head(torch.randn(4, 512)).norm(dim=-1), torch.ones(4))
 
 
+@pytest.mark.parametrize("dedup", ["1", "0"])
 @pytest.mark.parametrize(
     "filled,memory_index,batch,start,expected_batch,expected_highs",
     [(True, 0, 4, 8, 4, [3, 9]), (False, 9, 4, 1, 4, [3, 2]),
      (False, 7, 96, 0, 3, [3]), (False, 8, 4, 0, 4, [3, 1])],
 )
 def test_one_stream_contiguous_windows_without_whole_buffer_transfer(
-    monkeypatch, filled, memory_index, batch, start, expected_batch, expected_highs,
+    monkeypatch, filled, memory_index, batch, start, expected_batch, expected_highs, dedup,
 ):
     # Pin this sampler regression's original geometry independently of loss defaults.
+    monkeypatch.setenv("NETT_CLTT_REF_DEDUP", dedup)
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2,4")
     monkeypatch.setenv("NETT_AUX_BATCH", str(batch))
     draws = [2, start] if len(expected_highs) == 2 else [2]
@@ -135,16 +154,22 @@ def test_one_stream_contiguous_windows_without_whole_buffer_transfer(
     assert calls == expected_highs
     assert aux.num_frames == 2
     assert aux.offsets == (2, 4)
-    assert len(encoder.views) == 3
+    # §111 fix 1: ONE encoder pass over B + 4 rows by default; one per role under "0".
+    assert len(encoder.views) == (1 if dedup == "1" else 3)
+    assert aux.last_scalars["encode_dedup"] == float(dedup == "1")
+    if dedup == "1":
+        assert encoder.views[0].shape[0] == expected_batch + 4
     anchor_t = torch.arange(start, start + expected_batch)
-    for view, offset in zip(encoder.views, (0, 2, 4)):
+    for view, offset in zip(cltt_ref_roles(encoder.views, (2, 4)), (0, 2, 4)):
         ids = view[:, 0].long()
         assert torch.equal(ids % 1000, torch.full((expected_batch,), 2))
         assert torch.equal(ids // 1000, anchor_t + offset)
         assert torch.equal(view, view[:, :1].expand_as(view))
 
 
-def test_three_frame_default_offsets_accepted_with_one_time_logging(monkeypatch):
+@pytest.mark.parametrize("dedup", ["1", "0"])
+def test_three_frame_default_offsets_accepted_with_one_time_logging(monkeypatch, dedup):
+    monkeypatch.setenv("NETT_CLTT_REF_DEDUP", dedup)
     encoder = IdentityEncoder(channels=9)
     aux = CLTTReferenceAuxLoss(encoder)
     aux.attach_memory(identity_memory(channels=9))
@@ -161,18 +186,21 @@ def test_three_frame_default_offsets_accepted_with_one_time_logging(monkeypatch)
         assert len(messages[0][1:]) > 2, "offsets and T alone leave the level unbacked"
         fmt = messages[0][0] % messages[0][1:]
         assert "batch B=" in fmt and "chance" in fmt
-    assert len(encoder.views) == 6
+        assert ("encoder passes: ONE" in fmt) == (dedup == "1")
+    assert len(encoder.views) == (2 if dedup == "1" else 6)
 
 
+@pytest.mark.parametrize("dedup", ["1", "0"])
 @pytest.mark.parametrize("channels,offsets", [(9, "3,6"), (3, "1,2")])
-def test_offsets_aligned_to_stack_depth_are_accepted(monkeypatch, channels, offsets):
+def test_offsets_aligned_to_stack_depth_are_accepted(monkeypatch, channels, offsets, dedup):
+    monkeypatch.setenv("NETT_CLTT_REF_DEDUP", dedup)
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", offsets)
     encoder = IdentityEncoder(channels=channels)
     aux = CLTTReferenceAuxLoss(encoder)
     aux.attach_memory(identity_memory(channels=channels))
     assert torch.isfinite(aux.compute(encoder, torch.empty(0)))
     assert aux.num_frames == channels // 3
-    assert len(encoder.views) == 3
+    assert len(encoder.views) == (1 if dedup == "1" else 3)
 
 
 def test_backbone_receives_nonzero_gradients(monkeypatch):
@@ -250,7 +278,11 @@ def test_invalid_offsets_raise(monkeypatch, offsets):
 def test_defaults_overrides_and_one_time_logging(monkeypatch):
     encoder = IdentityEncoder(channels=9)
     aux = CLTTReferenceAuxLoss(encoder)
-    assert aux.max_samples == 512 and aux.temperature == 0.5
+    # 128 since DECISIONS §111 ("We should also do the aux128 for cltt-ref by default"); was 512.
+    assert aux.max_samples == 128 and aux.temperature == 0.5
+    monkeypatch.setenv("NETT_AUX_BATCH", "256")
+    assert CLTTReferenceAuxLoss(encoder).max_samples == 256          # a row's own value wins
+    monkeypatch.delenv("NETT_AUX_BATCH")
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "3, 6")
     monkeypatch.setenv("NETT_AUX_CLTT_REF_TEMP", "0.7")
     aux = CLTTReferenceAuxLoss(encoder)
@@ -498,9 +530,10 @@ def test_cltt_ref_does_not_support_transit_masking_and_that_is_asserted_not_assu
         f"7 must be updated in the same change.")
 
 
+@pytest.mark.parametrize("dedup", ["1", "0"])
 @pytest.mark.parametrize("kind", ["cltt_ref", "vicreg_tt"])
 @pytest.mark.parametrize("mask", [False, True])
-def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask):
+def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask, dedup):
     """⚠ `mask` is a live factor for vicreg_tt ONLY; cltt_ref ignores it by construction and
     the case above asserts that. Kept across both so the RESET-exclusion behaviour -- which is
     what this test is actually about -- is checked for each module under both settings."""
@@ -509,6 +542,7 @@ def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask):
     monkeypatch.setenv("NETT_AUX_CLTT_REF_OFFSETS", "2")
     monkeypatch.setenv("NETT_AUX_VICREG_TT_OFFSETS", "2")
     monkeypatch.setenv("NETT_AUX_TRANSIT_MASK", str(int(mask)))
+    monkeypatch.setenv("NETT_CLTT_REF_DEDUP", dedup)          # a no-op for vicreg_tt
     monkeypatch.setattr(vicreg_tt_aux, "_augment", lambda view, **kw: view)
     encoder = IdentityEncoder()
     memory = identity_memory(t_max=12, num_envs=1)
@@ -522,7 +556,8 @@ def test_sampler_excludes_reset_and_shrinks_batch(monkeypatch, kind, mask):
     for _ in range(8):
         encoder.views.clear()
         assert torch.isfinite(aux.compute(encoder, torch.empty(0)))
-        anchor, positive = [view[:, 0].long() // 1000 for view in encoder.views]
+        views = cltt_ref_roles(encoder.views, (2,)) if kind == "cltt_ref" else encoder.views
+        anchor, positive = [view[:, 0].long() // 1000 for view in views]
         assert len(anchor) == 4
         assert torch.equal(positive - anchor, torch.full_like(anchor, 2))
         assert torch.equal(anchor // 6, positive // 6)
@@ -543,7 +578,10 @@ def test_offline_temporal_losses_keep_internal_window_batches(monkeypatch, kind)
                         (torch.arange(12) % 6)[:, None].expand(-1, 2)), dim=-1)
     aux, losses = rh.train_offline(encoder, kind, obs, None, 2, 3e-4, 17, batch=2, keys=keys)
     assert len(losses) == 2 and all(np.isfinite(losses))
-    assert all(len(view) == 4 for view in encoder.views)  # internal safe slab, not CLI batch=2
+    # One recorded encoder input per compute() under §111 fix 1 (the span); unpack it to the roles.
+    views = ([r for span in encoder.views for r in cltt_ref_roles([span], (2,))]
+             if kind == "cltt_ref" else encoder.views)
+    assert all(len(view) == 4 for view in views)  # internal safe slab, not CLI batch=2
     assert torch.equal(aux._memory.tensors["keys"], keys)
 
 

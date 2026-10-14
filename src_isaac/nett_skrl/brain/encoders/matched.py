@@ -133,11 +133,14 @@ class _Block(nn.Module):
 
 
 def matched_amp_dtype() -> torch.dtype | None:
-    """NETT_MATCHED_AMP: autocast dtype for the matched encoders' forward. DEFAULT OFF (fp32/TF32, the
-    registered recipe). "bf16" runs the trunk under CUDA autocast and returns fp32 features, as NatureCNN
-    does under NETT_AMP; owner-directed speed test (DECISIONS §103), NOT a recipe change until ruled.
-    Anything else refuses, so a typo cannot silently run fp32."""
-    v = os.environ.get("NETT_MATCHED_AMP", "off").strip().lower()
+    """NETT_MATCHED_AMP: autocast dtype for the matched encoders' forward. DEFAULT bf16 since workspace
+    DECISIONS §111 (owner, 2026-10-14: "uint8 buffer and bf16 should always be active"); it was "off"
+    (fp32/TF32) from §103, when bf16 was an opt-in speed test. "bf16" runs the trunk under CUDA autocast
+    and returns fp32 features, as NatureCNN does under NETT_AMP (also bf16 by default); on CPU tensors
+    the forward is fp32 either way. "off" (or "0", "fp32", "") restores the fp32 forward -- the recipe
+    of every row before §111 that did not name the knob. Anything else refuses, so a typo cannot
+    silently pick a precision."""
+    v = os.environ.get("NETT_MATCHED_AMP", "bf16").strip().lower()
     if v in ("off", "0", "fp32", ""):
         return None
     if v == "bf16":

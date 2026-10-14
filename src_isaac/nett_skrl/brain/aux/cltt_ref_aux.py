@@ -7,8 +7,10 @@ nt_xent(z1, z2) + nt_xent(z1, z3). We retain one-stream contiguous negatives,
 backbone gradients, the Linear(512,512)->BatchNorm->ReLU->Linear(512,128,bias=False)
 L2-normalised projector, and the effective CLI temperature 0.5.
 
-NETT_AUX_BATCH now defaults to 512 and NETT_AUX_CLTT_REF_OFFSETS to "1,2",
-matching training_jobs/train_simclr.sh and models/simclr.py shared_step(v0).
+NETT_AUX_CLTT_REF_OFFSETS defaults to "1,2", matching training_jobs/train_simclr.sh and
+models/simclr.py shared_step(v0). NETT_AUX_BATCH defaulted to 512 (the reference's) from 088a785
+and defaults to 128 since workspace DECISIONS §111 (owner, 2026-10-14: "We should also do the
+aux128 for cltt-ref by default"); a row that names NETT_AUX_BATCH keeps its own value.
 Old logs used 96 anchors and offsets (2,4) on whole stacks. Each view now uses
 only the observation's CURRENT RGB frame. For a host encoder requiring T slots,
 we repeat that frame across those slots, avoiding overlapping-stack shortcuts
@@ -80,6 +82,42 @@ from skrl import logger
 # leaves 4.67 of self-similarity per row. Our nt_xent masks the diagonal exactly.
 from .knobs import NOT_MEASURED, _env_flag_strict
 from .cltt_views import current_frame_stack, resolve_channels_per_frame
+
+#: ⭐ FIX 1 OF DECISIONS §111 (owner, 2026-10-14, "Proceed with 1 + 2 + 2b"): ENCODE EACH FRAME ONCE.
+#: The anchor view is rows t0..t0+B-1 and the offset-k view is rows t0+k..t0+B-1+k of the SAME
+#: env stream, and every view is a row-wise function of its row (`_prepare_image`, then
+#: `_make_views`). So only B + max(offsets) distinct inputs exist, and the old path encoded
+#: 3B of them with grad. The dedup path encodes the span once and slices each role from it:
+#: anchor = Z[0:B], positive(k) = Z[k:k+B]. Autograd sums the gradient from both roles into the
+#: shared rows, which is the same total gradient as separate passes up to float summation order.
+#: ⛔ THE PROJECTION HEAD IS STILL APPLIED PER VIEW: it holds a BatchNorm1d, whose batch statistics
+#: depend on WHICH B rows it sees, so head(Z)[k:k+B] != head(Z[k:k+B]). Only the encoder is shared.
+#: ⛔ EXACT ONLY FOR AN ENCODER THAT IS DETERMINISTIC PER SAMPLE. `dedup_is_exact` refuses (old
+#: path) for any training-mode BatchNorm, any live dropout (nn.Dropout p>0, CompactViT live_p>0
+#: or dropout_scope 'aux'/'all', DropPath drop_prob>0): separate passes draw separate masks and
+#: see separate batch statistics. The refusal is STATIC (module inspection), so the fallback
+#: path consumes exactly the RNG it always did.
+#: "0" restores the old three-pass path everywhere (a control, not a debug switch).
+DEDUP_ENV = "NETT_CLTT_REF_DEDUP"
+
+
+def dedup_is_exact(encoder: nn.Module) -> tuple[bool, str]:
+    """(True, "") when one pass over the span equals separate passes per view; else (False, why)."""
+    if not _env_flag_strict(DEDUP_ENV, True):
+        return False, f"{DEDUP_ENV}=0"
+    scope = getattr(encoder, "dropout_scope", None)
+    if scope in ("aux", "all"):
+        return False, f"dropout_scope={scope!r}"
+    for name, module in encoder.named_modules():
+        if isinstance(module, nn.modules.batchnorm._BatchNorm) and module.training:
+            return False, f"training-mode BatchNorm at {name or type(module).__name__}"
+        if isinstance(module, nn.modules.dropout._DropoutNd) and module.p > 0:
+            return False, f"dropout p={module.p} at {name or type(module).__name__}"
+        for attr in ("live_p", "drop_prob"):
+            value = getattr(module, attr, None)
+            if isinstance(value, (int, float)) and value > 0:
+                return False, f"{attr}={value} at {name or type(module).__name__}"
+    return True, ""
 
 #: ⛔ THE CANDIDATE SET IS THE OBJECTIVE, AND IT HAS CHANGED TWICE IN ONE DAY. These are the
 #: three losses `cltt_ref` has run, in order, and the value published as `mask_regime`:
@@ -831,6 +869,13 @@ class CLTTReferenceAuxLoss(nn.Module):
     """Sum temporal NT-Xent terms over contiguous windows from one rollout stream."""
 
     needs_memory = True
+    #: ⭐ FIX 2 / 2b OF DECISIONS §111. compute() encodes its OWN frames from the attached memory and
+    #: never reads the PPO minibatch or its encoder output (the `observations` argument is ignored),
+    #: so its graph and the PPO graph share no node. AuxLossPPO may therefore run this aux's forward
+    #: AFTER the PPO backward with no retain_graph (fix 2), and, under NETT_DECOUPLE_ENCODER=1, run
+    #: the RL encoder forward under no_grad (fix 2b). Inherited by CLTTReferenceStackAuxLoss, which
+    #: changes only `_make_views`. A subclass whose compute() reads the minibatch MUST set it False.
+    independent_of_ppo_graph = True
 
     # ⭐ THE TWO VARIANT POINTS, named so a subclass changes them and nothing else. The
     # incumbent's values are unchanged and MUST stay unchanged: already-scored ViT-CLTT-Ref and
@@ -863,7 +908,8 @@ class CLTTReferenceAuxLoss(nn.Module):
                 f"{self.OFFSETS_ENV} must be a comma-separated list of "
                 f"at least one positive integer; got {offsets!r}."
             ) from exc
-        self.max_samples = int(os.environ.get("NETT_AUX_BATCH", "512"))
+        # 128 since DECISIONS §111 (was 512, the reference's, from 088a785).
+        self.max_samples = int(os.environ.get("NETT_AUX_BATCH", "128"))
         self.temperature = float(os.environ.get("NETT_AUX_CLTT_REF_TEMP", "0.5"))
         self.head = CLTTReferenceProjectionHead(int(encoder.features_dim))
         self.head.to(next(encoder.parameters()).device)
@@ -913,11 +959,17 @@ class CLTTReferenceAuxLoss(nn.Module):
             ) from exc
         env, t0 = draw_episode_window(starts, draw_single_start=avail >= self.max_samples)
         device = next(encoder.parameters()).device
+        dedup, why_not = dedup_is_exact(encoder)
         with torch.no_grad():
-            views = [
-                encoder._prepare_image(raw[t0 + k : t0 + batch + k, env].to(device))
-                for k in (0, *self.offsets)
-            ]
+            if dedup:
+                # ONE prepared span; each role is a row slice of it (see DEDUP_ENV).
+                views = [encoder._prepare_image(
+                    raw[t0 : t0 + batch + max(self.offsets), env].to(device))]
+            else:
+                views = [
+                    encoder._prepare_image(raw[t0 + k : t0 + batch + k, env].to(device))
+                    for k in (0, *self.offsets)
+                ]
         if self.num_frames is None:
             # ⚠ NOT `// 3`. dvs_polarity makes one frame TWO channels, and a stack depth read
             # through the wrong divisor is reported in the log line below as fact.
@@ -943,24 +995,34 @@ class CLTTReferenceAuxLoss(nn.Module):
                 "CLTTReferenceAuxLoss: offsets=%s, stack depth T=%s, batch B=%s "
                 "(t_max=%s, avail=%s, NETT_AUX_BATCH=%s, memory filled=%s), "
                 "positive twin masked=%s -> candidates per row (mean) %s of 2B-1=%s, "
-"NT-Xent chance floor mean_r ln|C_r| per offset %s, summed over %s offsets=%.4f",
+"NT-Xent chance floor mean_r ln|C_r| per offset %s, summed over %s offsets=%.4f; "
+                "encoder passes: %s",
                 self.offsets, self.num_frames, batch, t_max, avail, self.max_samples,
                 bool(getattr(self._memory, "filled", False)), self.mask_twin,
                 [round(c, 3) for _, c, _ in per_offset], 2 * batch - 1,
                 [round(f, 4) for _, _, f in per_offset], len(self.offsets),
                 sum(f for _, _, f in per_offset),
+                (f"ONE over B+max(offsets)={batch + max(self.offsets)} rows ({DEDUP_ENV}, §111 fix 1)"
+                 if dedup else f"one per view, {len(self.offsets) + 1}x{batch} rows ({why_not})"),
             )
         views = self._make_views(views, encoder)
 
-        with aux_dropout_scope(encoder):
-            z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
+        if dedup:
+            z_span = encoder.encode_prepared(views[0])                  # backbone grad ON, once
+            z_anchor = self.head(z_span[:batch])
+        else:
+            with aux_dropout_scope(encoder):
+                z_anchor = self.head(encoder.encode_prepared(views[0]))  # backbone grad ON
         total, diags = 0.0, []
         masked_pairs = 0
         candidates = 0.0
         floor = 0.0
-        for offset, view in zip(self.offsets, views[1:]):
-            with aux_dropout_scope(encoder):
-                z_pos = self.head(encoder.encode_prepared(view))
+        for i, offset in enumerate(self.offsets):
+            if dedup:
+                z_pos = self.head(z_span[offset : offset + batch])       # head per view (BatchNorm)
+            else:
+                with aux_dropout_scope(encoder):
+                    z_pos = self.head(encoder.encode_prepared(views[1 + i]))
             # ⛔ TWO OWNER DECISIONS OF 2026-09-17: the anchor's own frame is not one of its
             # negatives, and (under MASK_TWIN_ENV, default on) neither is the positive's. This
             # CHANGES THE OBJECTIVE -- see `nt_xent_same_frame_masked`. Arms trained under a
@@ -1013,6 +1075,8 @@ class CLTTReferenceAuxLoss(nn.Module):
         # what makes either number checkable. Reported beside the loss so that reading a loss
         # value never requires knowing which regime ran -- that is the point of publishing it.
         self.last_scalars = {"B": float(batch), "t_max": float(t_max),
+                             # 1 = Fix 1 (one encoder pass over the span), 0 = one pass per view.
+                             "encode_dedup": float(dedup),
                              "same_frame_masked": 1.0,
                              "mask_regime": (MASK_REGIME_ANCHOR_AND_TWIN if self.mask_twin
                                              else MASK_REGIME_ANCHOR),

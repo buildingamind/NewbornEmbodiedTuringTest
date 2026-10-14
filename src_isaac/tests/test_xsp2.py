@@ -848,6 +848,13 @@ DP108_FILES = ("nett_skrl/environment/environment.py", "nett_skrl/schema.json")
 # Workspace DECISIONS §110 (test_xsp2_step_before_wrapper.py): NETT_XSP2_WINDOWS=hold reads the env's own
 # step counter through a TRAINING-env wrapper (env_wrappers.py), applied in trainer._run_skrl_train.
 DP110_FILES = ("nett_skrl/brain/env_wrappers.py", "nett_skrl/brain/trainer.py")
+# Workspace DECISIONS §111 (test_cltt_step_fixes.py): the CLTT-Ref encode dedup (cltt_ref_aux.py), the RL
+# encoder pass under no_grad when decoupled (features.py), and the aux forward moved after the PPO backward
+# in ppo_aux.py. That move is the one §111 EDIT to existing lines -- the aux compute now sits under
+# `if not aux_after:` and the split-backward `if (` became `elif (` -- admitted below by exact text, once each.
+DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/utils/features.py")
+DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight * self._aux.compute(",
+                                                     "self._aux_encoder, sampled_observations", ")", "if (")}
 
 
 def _git(*args):
@@ -879,9 +886,10 @@ def _diff_lines(path):
 def test_shared_file_change_is_additive_only(path):
     removed, added = _diff_lines(path)
     assert added, f"{path}: no XSP2 addition found -- the diff did not look"
-    for text in UINT8_REMOVED.get(path, ()):
-        assert text in removed, f"{path}: the admitted §103 removal {text!r} is not in the diff -- stale exemption"
-        removed.remove(text)
+    for rule, admitted in (("§103", UINT8_REMOVED), ("§111", DP111_REMOVED)):
+        for text in admitted.get(path, ()):
+            assert text in removed, f"{path}: the admitted {rule} removal {text!r} is not in the diff -- stale exemption"
+            removed.remove(text)
     assert not removed, f"{path}: XSP2 removed or edited existing lines:\n" + "\n".join(removed)
 
 
@@ -897,7 +905,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

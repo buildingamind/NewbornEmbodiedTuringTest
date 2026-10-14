@@ -7,7 +7,7 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from test_cltt_ref_aux import FakeMemory
+from test_cltt_ref_aux import FakeMemory, cltt_ref_roles
 
 
 @pytest.fixture(autouse=True)
@@ -64,10 +64,16 @@ def test_vicreg_variance_matches_hand_calculation(diagnostics):
     assert vicreg_loss(a, b, 0, 0, 1).item() == pytest.approx(4.)
 
 
-def test_buildingamind_default_batch_and_effective_batch():
+def test_buildingamind_default_batch_and_effective_batch(monkeypatch):
     from nett_skrl.brain.aux.cltt_ref_aux import CLTTReferenceAuxLoss
 
     encoder = Encoder(frames=1)
+    aux = CLTTReferenceAuxLoss(encoder)
+    # ⛔ A DELIBERATE, OWNER-DIRECTED DEVIATION FROM THE REFERENCE'S 512 (workspace DECISIONS §111,
+    # 2026-10-14: "We should also do the aux128 for cltt-ref by default"), recorded here rather than
+    # relaxed away. The reference batch stays reachable and is what the rest of this test pins.
+    assert aux.max_samples == 128
+    monkeypatch.setenv("NETT_AUX_BATCH", "512")
     aux = CLTTReferenceAuxLoss(encoder)
     assert aux.max_samples == 512
     assert aux.temperature == .5
@@ -87,7 +93,7 @@ def test_buildingamind_three_frame_positives_and_summed_loss(monkeypatch, frames
     assert aux.offsets == (1, 2)
     aux.attach_memory(memory(frames=frames))
     loss = aux.compute(encoder, torch.empty(0))
-    views = encoder.views.copy()
+    views = cltt_ref_roles(encoder.views.copy(), aux.offsets)      # either encode path (§111 fix 1)
     assert len(views) == 3
     for offset, view in enumerate(views):
         torch.testing.assert_close(view - views[0], torch.full_like(view, offset))

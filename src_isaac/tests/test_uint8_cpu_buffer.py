@@ -1,6 +1,7 @@
 """uint8 image observations in the rollout buffer, on the CPU (hybrid) path as on the GPU path (workspace
-DECISIONS §103, owner 2026-10-13: "Gpu and cpu both use uint8 for observation buffer"), and the opt-in bf16
-autocast for the matched encoders (NETT_MATCHED_AMP).
+DECISIONS §103, owner 2026-10-13: "Gpu and cpu both use uint8 for observation buffer"), and the bf16
+autocast for the matched encoders (NETT_MATCHED_AMP; opt-in from §103, DEFAULT since §111, owner 2026-10-14:
+"uint8 buffer and bf16 should always be active").
 
 Known answers, each with a control that can fail:
   1. The CPU hybrid buffer stores 0-255 image observations as uint8 by default, and float32 under
@@ -14,8 +15,9 @@ Known answers, each with a control that can fail:
      so uint8 would change the encoder input. Control: the same values under a 0-255 space do go uint8.
   6. agent_factory picks Uint8HybridDeviceMemory / Uint8StatesMemory by default and the float classes
      under "0"; campaign_train no longer pops a declared NETT_UINT8_BUFFER when it moves the buffer to CPU.
-  7. NETT_MATCHED_AMP: unset == "off" == the fp32 forward exactly; "bf16" (CUDA only) returns fp32 features
-     close to fp32 and NOT identical (control that autocast engaged); a typo refuses.
+  7. NETT_MATCHED_AMP: unset == "bf16" (§111); "off" == the fp32 forward exactly; bf16 (CUDA only) returns
+     fp32 features close to fp32 and NOT identical (control that autocast engaged), and unset matches an
+     explicit "bf16" bit for bit; on CPU every setting is the same fp32 forward; a typo refuses.
 """
 
 from __future__ import annotations
@@ -123,9 +125,9 @@ def _obs(frames, n=2):
     return torch.randint(0, 256, (n, 3 * frames, H, W), generator=g, dtype=torch.uint8)
 
 
-def test_matched_amp_default_is_fp32_and_typo_refuses(monkeypatch):
+def test_matched_amp_default_is_bf16_off_is_fp32_and_typo_refuses(monkeypatch):
     monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
-    assert matched_amp_dtype() is None
+    assert matched_amp_dtype() is torch.bfloat16              # DECISIONS §111
     for v in ("off", "0", "fp32"):
         monkeypatch.setenv("NETT_MATCHED_AMP", v); assert matched_amp_dtype() is None
     monkeypatch.setenv("NETT_MATCHED_AMP", "bf16"); assert matched_amp_dtype() is torch.bfloat16
@@ -136,13 +138,17 @@ def test_matched_amp_default_is_fp32_and_typo_refuses(monkeypatch):
 
 @pytest.mark.parametrize("variant", ["vivit", "3dcnn"])
 def test_matched_amp_off_is_unchanged_on_cpu_even_when_bf16_is_set(monkeypatch, variant):
-    """autocast engages only on CUDA tensors: on CPU "bf16" must leave the forward bit-identical."""
+    """autocast engages only on CUDA tensors: on CPU "bf16" (explicit or the §111 default) must leave the
+    forward bit-identical to "off"."""
     enc = MatchedEncoder(gym.spaces.Box(0, 255, (6, H, W), np.uint8), variant=variant).eval()
     x = _obs(2)
-    monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
+    monkeypatch.setenv("NETT_MATCHED_AMP", "off")
     with torch.no_grad():
         ref = enc(x)
     monkeypatch.setenv("NETT_MATCHED_AMP", "bf16")
+    with torch.no_grad():
+        assert torch.equal(enc(x), ref)
+    monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
     with torch.no_grad():
         assert torch.equal(enc(x), ref)
 
@@ -153,12 +159,16 @@ def test_matched_amp_bf16_on_cuda_is_close_not_identical_and_fp32_out(monkeypatc
     frames = 2 if variant in ("vivit", "3dcnn_g6") else 1
     enc = MatchedEncoder(gym.spaces.Box(0, 255, (3 * frames, H, W), np.uint8), variant=variant).cuda().eval()
     x = _obs(frames, n=8).cuda()
-    monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
+    monkeypatch.setenv("NETT_MATCHED_AMP", "off")
     with torch.no_grad():
         ref = enc(x)
     monkeypatch.setenv("NETT_MATCHED_AMP", "bf16")
     with torch.no_grad():
         out = enc(x)
+    monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
+    with torch.no_grad():
+        default = enc(x)
+    assert torch.equal(default, out), "unset must be the §111 default, bf16"
     assert out.dtype == torch.float32
     assert not torch.equal(out, ref), "autocast did not engage"
     # LayerNorm(128) output is O(1); bf16 has ~3 significant digits

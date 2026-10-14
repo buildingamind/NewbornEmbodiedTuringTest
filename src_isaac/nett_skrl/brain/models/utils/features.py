@@ -5,6 +5,8 @@ from __future__ import annotations
 import contextlib
 import os
 
+import torch
+
 
 def _decouple_encoder() -> bool:
     """True when the RL objective must NOT shape the encoder.
@@ -27,6 +29,27 @@ def _decouple_encoder() -> bool:
 
 
 _CACHE_ATTR = "_nett_shared_feature_cache"
+
+#: ⭐ FIX 2b OF DECISIONS §111 (owner, 2026-10-14, "Proceed with 1 + 2 + 2b"). Set on an encoder by
+#: AuxLossPPO ONLY when its aux never reads the RL forward's graph (`independent_of_ppo_graph`,
+#: the CLTT-Ref family). With NETT_DECOUPLE_ENCODER=1 the RL path's encoder output is detached
+#: below, so building its graph bought nothing -- yet the cache kept that graph alive until the
+#: optimizer step. Marked + decoupled => the encoder pass runs under no_grad: same values, same
+#: (zero) RL gradient into the encoder, no graph. "0" in NETT_RL_ENCODER_NO_GRAD restores the
+#: graph-building pass (a control).
+RL_NO_GRAD_ATTR = "_nett_rl_forward_no_grad"
+RL_NO_GRAD_ENV = "NETT_RL_ENCODER_NO_GRAD"
+
+
+def _rl_forward_no_grad(enc) -> bool:
+    if getattr(enc, RL_NO_GRAD_ATTR, False) is not True or not _decouple_encoder():
+        return False
+    raw = os.environ.get(RL_NO_GRAD_ENV, "").strip().lower()
+    if raw in ("", "1", "true", "yes", "on"):
+        return True
+    if raw in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"{RL_NO_GRAD_ENV}={raw!r} is not a boolean; refusing to guess.")
 
 
 # ⛔⛔⛔ THE CACHE IS OFF UNTIL AN AGENT OPTS IN, AND THAT IS NOT CAUTION -- IT IS A CORRECTNESS
@@ -136,7 +159,11 @@ def features_forward(model, inputs):
     if _hit is not None and _hit[0] is x:
         feats = _hit[1]
     else:
-        feats = enc(x)
+        if _rl_forward_no_grad(enc):
+            with torch.no_grad():
+                feats = enc(x)
+        else:
+            feats = enc(x)
         if _cache_enabled():
             setattr(enc, _CACHE_ATTR, (x, feats))
     if _decouple_encoder():

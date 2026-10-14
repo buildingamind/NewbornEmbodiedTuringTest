@@ -1044,15 +1044,23 @@ DP108_FILES = ("nett_skrl/environment/environment.py", "nett_skrl/schema.json")
 # Workspace DECISIONS §110 (test_xsp2_step_before_wrapper.py): NETT_XSP2_WINDOWS=hold reads the env's own
 # step counter through a TRAINING-env wrapper (env_wrappers.py), applied in trainer._run_skrl_train.
 DP110_FILES = ("nett_skrl/brain/env_wrappers.py", "nett_skrl/brain/trainer.py")
+# Workspace DECISIONS §111 (test_cltt_step_fixes.py): the CLTT-Ref encode dedup (cltt_ref_aux.py), the RL
+# encoder pass under no_grad when decoupled (features.py), and the aux forward moved after the PPO backward
+# in ppo_aux.py. That move is the one §111 EDIT to existing lines -- the aux compute now sits under
+# `if not aux_after:` and the split-backward `if (` became `elif (` -- admitted below by exact text, once each.
+DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/utils/features.py")
+DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight * self._aux.compute(",
+                                                     "self._aux_encoder, sampled_observations", ")", "if (")}
 
 
 def _drop_admitted(path, removed):
     """removed lines (diff '-' lines) minus each line §103 is admitted to remove, one occurrence each."""
     left = list(removed)
-    for text in UINT8_REMOVED.get(path, ()):
-        hit = [ln for ln in left if ln[1:].strip() == text]
-        assert hit, f"{path}: the admitted §103 removal {text!r} is not in the diff -- the exemption is stale"
-        left.remove(hit[0])
+    for rule, admitted in (("§103", UINT8_REMOVED), ("§111", DP111_REMOVED)):
+        for text in admitted.get(path, ()):
+            hit = [ln for ln in left if ln[1:].strip() == text]
+            assert hit, f"{path}: the admitted {rule} removal {text!r} is not in the diff -- the exemption is stale"
+            left.remove(hit[0])
     return left
 
 
@@ -1094,7 +1102,7 @@ def test_shared_file_change_is_additive_only(path):
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
-               + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES}
+               + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

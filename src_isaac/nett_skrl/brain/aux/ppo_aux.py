@@ -37,7 +37,9 @@ from ..skrl_patches import (
 )
 
 from ..models.utils.features import clear_feature_cache
+from ..models.utils.features import RL_NO_GRAD_ATTR
 from .knobs import NOT_MEASURED
+from .knobs import _env_flag_strict
 from .simclr_aux import SimCLRAuxLoss
 
 
@@ -411,9 +413,36 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         if getattr(self._aux, "owns_optimizer", False):
             self._aux.bind_agent(self)
         self._aux_encoder = encoder
+        # ⭐ FIX 2b OF DECISIONS §111. An aux that never reads the RL forward's graph (CLTT-Ref:
+        # `independent_of_ppo_graph`) lets features_forward run the RL encoder pass under no_grad
+        # WHEN NETT_DECOUPLE_ENCODER=1 -- that output is .detach()ed anyway, so the pass only ever
+        # built a graph nothing backwarded through. The decouple knob is still read at forward
+        # time; this mark alone changes nothing. Any other aux leaves the mark unset.
+        if getattr(self._aux, "independent_of_ppo_graph", False) is True:
+            for enc in {id(e): e for e in (encoder, getattr(getattr(self, "value", None),
+                                                            "encoder", None)) if e is not None}.values():
+                setattr(enc, RL_NO_GRAD_ATTR, True)
         logger.info(
             "AuxLossPPO: %s aux loss ENABLED (weight=%s).", self._aux_kind, self._aux_weight
         )
+
+    #: FIX 2 OF DECISIONS §111: "0" restores the aux forward BEFORE the PPO backward (retain_graph).
+    AFTER_PPO_BACKWARD_ENV = "NETT_AUX_AFTER_PPO_BACKWARD"
+
+    def _aux_after_ppo_backward(self) -> bool:
+        """True when this update runs the aux forward+backward AFTER the PPO backward (fix 2).
+
+        Only for an aux whose graph shares no node with the PPO minibatch's
+        (`independent_of_ppo_graph`, the CLTT-Ref family), and never under NETT_AUX_STRICT=1, whose
+        fused backward needs both losses at once. Exact: the PPO backward draws no random numbers
+        and touches no aux state, so the aux sees the same parameters, the same RNG stream and the
+        same .grad accumulation as before; only the PPO graph is freed before the aux graph exists.
+        """
+        if getattr(self._aux, "independent_of_ppo_graph", False) is not True:
+            return False
+        if os.environ.get("NETT_AUX_STRICT", "").strip() in ("1", "true", "yes"):
+            return False
+        return _env_flag_strict(self.AFTER_PPO_BACKWARD_ENV, True)
 
     # The body below mirrors stock skrl PPO.update; the only change is the added
     # aux-loss term folded into the backward() of the existing optimizer step.
@@ -486,6 +515,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         cumulative_window_turn = 0.0
         window_turns_seen = 0
         window_turn_last: float | None = None
+        aux_after = self._aux_after_ppo_backward()
 
         for epoch in range(self.cfg.learning_epochs):
             kl_divergences = []
@@ -549,9 +579,10 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                     # averaging divisor at the `track_data` site below was the first, and the
                     # same seat made both). The hazard is the file's structure, not the reader:
                     # emission and increment sit at different depths throughout.
-                    aux_loss = self._aux_weight * self._aux.compute(
-                        self._aux_encoder, sampled_observations
-                    )
+                    if not aux_after:
+                        aux_loss = self._aux_weight * self._aux.compute(
+                            self._aux_encoder, sampled_observations
+                        )
 
                 self.optimizer.zero_grad()
                 # ⛔ SPLIT BACKWARD (owner ruling, 2026-08-28). This was ONE fused
@@ -577,7 +608,19 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                 # NETT_AUX_STRICT=1 restores the old fused, fully-strict backward, so the
                 # pre-ruling behaviour remains reachable as a control.
                 _ppo_loss = policy_loss + entropy_loss + value_loss
-                if (
+                if aux_after:
+                    # ⭐ FIX 2 (DECISIONS §111): PPO backward FIRST, with no retain_graph, so its
+                    # graph is freed before the aux builds one -- the update's peak is then
+                    # max(PPO, aux) instead of their sum. Same gradients: .grad accumulates.
+                    self.scaler.scale(_ppo_loss).backward()
+                    with torch.autocast(device_type=self._device_type, enabled=self.cfg.mixed_precision):
+                        aux_loss = self._aux_weight * self._aux.compute(
+                            self._aux_encoder, sampled_observations
+                        )
+                    if torch.is_tensor(aux_loss) and aux_loss.requires_grad:
+                        with relaxed_determinism():
+                            self.scaler.scale(aux_loss).backward()
+                elif (
                     torch.is_tensor(aux_loss)
                     and aux_loss.requires_grad
                     and os.environ.get("NETT_AUX_STRICT", "").strip() not in ("1", "true", "yes")
