@@ -99,7 +99,10 @@ TELEMETRY (last_scalars, per call; names as xsp_aux where they exist): B, loss (
 when copy_mse == 0), warp_mse (x_w alone, "warp" only), fg_frac, fg_frac_std, fg_entropy,
 fg_motion_sep, fg_motion_sep_parked, fg_motion_n_parked, flow_absmean (mean |c_t| at 80x128),
 d_absmean (mean |d_t|), enc_grad_norm (L2 norm of the aux gradient over phi_e's parameters,
-before the step), lr (the aux Adam's lr this step), window_turn.
+before the step), lr (the aux Adam's lr this step), window_turn. Under NETT_XSP2_WINDOWS=hold also
+hold_d01 / hold_d12 (mean |o1-o0|, |o2-o1| in prepared pixels over the drawn hold windows),
+uniform_d01 / uniform_d12 (the same over B windows uniform over all valid pairs, a private RNG) and
+hold_frac (hold rows / valid rows): the positive control that the hold rows really share one pose.
 """
 
 from __future__ import annotations
@@ -124,7 +127,48 @@ TRANSIT_FRAC = 0.5
 #: episode-contiguous pair (t, t+1) in the rollout (seam and done excluded). Offline on recorded
 #: parsing frames (scratch xsp3/offline2.py), the slab draw cut the 20x32 map's object-within-screen
 #: preference from ~2.1 to ~1.2 at an identical recipe; iid reproduces offline training's batches.
-WINDOWS = ("slab", "iid")
+#: "hold" (workspace DECISIONS §110, 2026-10-14) draws B iid windows from HOLD TRIPLES only: with
+#: NETT_TRAIN_DECISION_PERIOD=P >= 3 the env moves on step_in_episode % P == 0 and holds pose on the
+#: other P-1 steps, so the observations after steps Pk .. Pk+P-1 share one pose. The window is the
+#: LAST triple of each hold -- dorsal (o0, o1), ventral + predictor o1, target o2 -- i.e. memory rows
+#: t with step_before(t) % P == P-1, so each hold gives exactly ONE window and no window crosses an
+#: action. See XSP2Term._draw_hold for how step_before is recovered from the rollout's done flags.
+WINDOWS = ("slab", "iid", "hold")
+
+
+def hold_step_before(memory) -> torch.Tensor:
+    """(T, env) long: each row's step_before recovered from the boundary flags; -1 = no anchor.
+
+    Chronological order is oldest-first: rows memory_index..T-1 then 0..memory_index-1 on a filled
+    ring (memory_index 0 = natural order). A done at chronological row d makes row d+1 a reset
+    observation (step_before 0); rows before a column's first done get -1. Boundaries are
+    terminated | truncated, the same signals episode_window_starts reads.
+    """
+    t_max = memory.memory_size if memory.filled else memory.memory_index
+    tensors = memory.tensors
+    signals = []
+    for name in ("terminated", "truncated"):
+        signal = tensors.get(name)
+        if signal is None:
+            raise ValueError(f"XSP2 hold windows need the rollout's '{name}' flags.")
+        signal = torch.as_tensor(signal[:t_max]).bool().cpu()
+        if signal.ndim == 3 and signal.shape[-1] == 1:
+            signal = signal.squeeze(-1)
+        signals.append(signal)
+    done = signals[0] | signals[1]                                    # (T, env), storage order
+    start = int(memory.memory_index) if memory.filled else 0
+    order = torch.cat([torch.arange(start, t_max), torch.arange(0, start)])
+    chrono = done[order]                                              # oldest first
+    T, n_env = chrono.shape
+    rows = torch.arange(T).view(T, 1).expand(T, n_env)
+    # anchor[t] = chronological index of the latest done at a row < t (done at r -> reset at r+1).
+    marks = torch.where(chrono, rows, torch.full_like(rows, -1))
+    prev = torch.cummax(marks, dim=0).values                          # latest done at row <= t
+    anchor = torch.cat([torch.full((1, n_env), -1, dtype=prev.dtype), prev[:-1]])
+    sb_chrono = torch.where(anchor >= 0, rows - anchor - 1, torch.full_like(rows, -1))
+    sb = torch.empty_like(sb_chrono)
+    sb[order] = sb_chrono
+    return sb
 
 
 def warp_bilinear(x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -223,6 +267,7 @@ class XSP2Term(nn.Module):
     LR_SCALE_ENV = "NETT_XSP2_LR_SCALE"
     SURPRISE_ENV = "NETT_XSP2_SURPRISE"
     WINDOWS_ENV = "NETT_XSP2_WINDOWS"
+    TRAIN_DP_ENV = "NETT_TRAIN_DECISION_PERIOD"
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
@@ -249,6 +294,18 @@ class XSP2Term(nn.Module):
         #: 0.0 = off (unset). Set, it must be a positive float (the knob refuses 0, negatives, junk).
         self.surprise = _env_positive_float(self.SURPRISE_ENV, 1.0) if self.SURPRISE_ENV in os.environ else 0.0
         self.windows = _env_choice(self.WINDOWS_ENV, "slab", WINDOWS)
+        #: P for "hold": the TRAIN decision period the campaign passes to the env (the same knob).
+        self.hold_period = 0
+        if self.windows == "hold":
+            raw = os.environ.get(self.TRAIN_DP_ENV, "")
+            if not raw.strip().isdigit() or int(raw) < 3:
+                raise ValueError(
+                    f"{self.WINDOWS_ENV}=hold draws the last observation triple of each pose hold, which "
+                    f"needs {self.TRAIN_DP_ENV} set to an integer >= 3 (got {raw!r}). Refusing to draw "
+                    f"'hold' windows from a rollout whose every step may move.")
+            self.hold_period = int(raw)
+        #: Private stream for the hold telemetry's comparison draw: never touches torch's global RNG.
+        self._tele_gen = torch.Generator().manual_seed(0)
         self.map_stride = int(getattr(encoder, "map_stride", 8))
         self.cpf = int(encoder.cpf)
         device = next(encoder.parameters()).device
@@ -338,6 +395,8 @@ class XSP2Term(nn.Module):
         device = next(encoder.parameters()).device
         if self.windows == "iid":
             return self._draw_iid(device)
+        if self.windows == "hold":
+            return self._draw_hold(device)
         n_transit = int(round(TRANSIT_FRAC * self.batch))
         parts, turn_state = [], None
         for size, weighted in ((n_transit, True), (self.batch - n_transit, False)):
@@ -379,6 +438,63 @@ class XSP2Term(nn.Module):
         obs_tk = raw[t_d + 1, env_d].to(device)
         a = actions[t.to(actions.device), env.to(actions.device)].to(device)       # (B, A)
         return obs_t, obs_tk, a, float(a[:, 0].abs().float().mean())
+
+    def _draw_hold(self, device):
+        """B independent hold-triple windows (obs_t, obs_{t+1}, a_t): step_before(t) % P == P-1.
+
+        step_before is recovered per env column from the rollout's boundary flags, in chronological
+        order (oldest row first, i.e. starting at memory_index on a filled ring): a done at row d means
+        row d+1 is a reset observation with step_before 0, so a row t after its column's latest
+        boundary d has step_before t - d - 1. Rows BEFORE a column's first boundary have no anchor
+        and are never drawn (exact: no assumption that the first boundary is a time-out). A window
+        must also pass ``episode_window_starts(memory, (1,))`` (no done at t, no seam), so the target
+        o2 is never a reset frame. a_t at a hold row is the policy's sample, which the env IGNORED.
+        """
+        from .cltt_ref_aux import episode_window_starts
+        memory = self._memory
+        actions = memory.tensors.get("actions")
+        if actions is None or actions.ndim != 3 or actions.shape[-1] < 1:
+            raise ValueError("XSP2 hold windows need a rollout 'actions' tensor shaped (T, env, A).")
+        raw = memory.tensors["observations"]
+        valid = episode_window_starts(memory, (1,))[:, :raw.shape[1]]
+        sb = hold_step_before(memory)[:valid.shape[0], :raw.shape[1]]
+        hold = valid & (sb >= 0) & (sb % self.hold_period == self.hold_period - 1)
+        flat = hold.reshape(-1).nonzero().flatten()
+        if flat.numel() == 0:
+            raise ValueError(f"XSP2 hold windows: no row with step_before % {self.hold_period} == "
+                             f"{self.hold_period - 1} after a boundary in this rollout.")
+        pick = flat[torch.randint(flat.numel(), (self.batch,))]
+        t, env = pick // hold.shape[1], pick % hold.shape[1]
+        t_d, env_d = t.to(raw.device), env.to(raw.device)
+        obs_t = raw[t_d, env_d].to(device)
+        obs_tk = raw[t_d + 1, env_d].to(device)
+        a = actions[t.to(actions.device), env.to(actions.device)].to(device)       # (B, A)
+        # Telemetry comparison: the same number of windows uniform over ALL valid pairs, drawn
+        # from a private generator (the hold draw above is the only global-RNG consumer).
+        vflat = valid.reshape(-1).nonzero().flatten()
+        cpick = vflat[torch.randint(vflat.numel(), (self.batch,), generator=self._tele_gen)]
+        ct, cenv = (cpick // valid.shape[1]).to(raw.device), (cpick % valid.shape[1]).to(raw.device)
+        self._hold_cmp = (raw[ct, cenv].to(device), raw[ct + 1, cenv].to(device))
+        self._hold_frac = float(hold.sum()) / max(1.0, float(valid.sum()))
+        return obs_t, obs_tk, a, float(a[:, 0].abs().float().mean())
+
+    def _hold_telemetry(self, encoder: nn.Module, prepared_t: torch.Tensor,
+                        prepared_tk: torch.Tensor) -> dict:
+        """Mean |o1-o0| and |o2-o1| (prepared pixels) over the hold windows and over uniform windows.
+
+        POSITIVE CONTROL for the step_before recovery: hold triples share one pose, so their frame
+        differences must sit far below the uniform windows' (which include every move step).
+        """
+        with torch.no_grad():
+            def diffs(pt, ptk):
+                o0, o1 = encoder.split_frames(pt)
+                o2 = encoder.current_frame(ptk)
+                return float((o1 - o0).abs().mean()), float((o2 - o1).abs().mean())
+            h01, h12 = diffs(prepared_t, prepared_tk)
+            c_t, c_tk = self._hold_cmp
+            u01, u12 = diffs(encoder._prepare_image(c_t), encoder._prepare_image(c_tk))
+        return {"hold_d01": h01, "hold_d12": h12, "uniform_d01": u01, "uniform_d12": u12,
+                "hold_frac": self._hold_frac}
 
     # ------------------------------------------------------------------ objective
     def predict(self, encoder: nn.Module, prepared_t: torch.Tensor):
@@ -470,4 +586,6 @@ class XSP2Term(nn.Module):
                 prepared_t = encoder._prepare_image(obs_t)
                 prepared_tk = encoder._prepare_image(obs_tk)
             self.step(encoder, prepared_t, prepared_tk, actions, turn_state)
+            if self.windows == "hold":
+                self.last_scalars.update(self._hold_telemetry(encoder, prepared_t, prepared_tk))
         return torch.zeros((), device=device)

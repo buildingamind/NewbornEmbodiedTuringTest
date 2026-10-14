@@ -98,8 +98,8 @@ def _decode(obs):
     return o[:, 0, 0, CPF].long(), o[:, 0, 0, CPF + 1].long()
 
 
-def test_windows_default_is_slab_and_iid_is_the_only_alternative(monkeypatch):
-    assert WINDOWS == ("slab", "iid")
+def test_windows_default_is_slab_and_iid_is_an_alternative(monkeypatch):
+    assert WINDOWS[:2] == ("slab", "iid")                 # §110 appends "hold" (test_xsp2_hold_windows.py)
     _, t0 = _term(monkeypatch, None)
     assert t0.windows == "slab"
     _, t1 = _term(monkeypatch, "iid")
