@@ -159,6 +159,8 @@ def frames_valid_rows(memory) -> torch.Tensor:
         signal = tensors.get(name)
         if signal is None:
             raise ValueError(f"XSP2 frames windows need the rollout's '{name}' flags.")
+        if int(t_max) == 0:                     # nothing written yet: no valid row (the draw then refuses)
+            return torch.zeros((int(memory.memory_size), int(signal.shape[1])), dtype=torch.bool)
         signal = torch.as_tensor(signal[:t_max]).bool().cpu()
         if signal.ndim == 3 and signal.shape[-1] == 1:
             signal = signal.squeeze(-1)

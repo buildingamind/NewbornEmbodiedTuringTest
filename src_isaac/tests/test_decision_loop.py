@@ -335,6 +335,8 @@ def test_valid_rows_drop_the_first_chronological_row_and_rows_after_a_done():
     valid = frames_valid_rows(mem)
     assert not valid[9:].any() and not valid[0].any() and valid[1:9, 1:].all()
     assert not valid[6, 0] and valid[6, 1]
+    mem.memory_index = 0                                                    # nothing written: no row, no crash
+    assert not frames_valid_rows(mem).any() and frames_valid_rows(mem).shape == (24, 3)
 
 
 def test_frames_draw_is_valid_rows_their_predecessors_and_zero_actions(monkeypatch):
