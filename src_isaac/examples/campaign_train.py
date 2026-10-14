@@ -263,6 +263,16 @@ XSP2_WHAT_S4_CFG = {**XSP2_WHAT_CFG, "features_dim": 715, "map_stride": 4}
 #: kernels, same 166,510 encoder parameters. Offline (scratch xsp3/offline2.py, recorded parsing frames), stride 2
 #: gave object-within-screen 2.51/2.83 against stride 4's 2.11/2.39 (seeds 0/1).
 XSP2_WHAT_S2_CFG = {**XSP2_WHAT_CFG, "features_dim": 2635, "map_stride": 2}
+#: "XSP2-MAP40x64" (owner, workspace DECISIONS §112: "focus on using the output of the ventral stream only ...
+#: difficulties in discerning it would just come from resolution of the map"): the map-only policy on the 40x64 map,
+#: trunk stride 2 (XSP2-WHAT-S2's trunk, no WHAT pool). 2560 policy features; same 166,510 encoder parameters.
+XSP2_MAP40x64_CFG = {**XSP2_CFG, "features_dim": 2560, "map_stride": 2}
+#: "-F3" (workspace DECISIONS §114): the same encoder reading a 3-frame stack (o0, o1, o2) -- the whole window of
+#: one NETT_DECISION_LOOP=3 decision. Needs NETT_FRAMESTACK_N=3 (num_frames is _FRAMESTACK_N; the encoder refuses
+#: any other depth) and NETT_XSP2_WINDOWS=frames (the aux refuses the cross-row modes at depth 3). The policy reads
+#: the map of o2, the newest frame; the aux's dorsal/ventral pair is (o0, o1) and its target o2. Same parameters.
+XSP2_MAP20x32_F3_CFG = {**XSP2_MAP20x32_CFG, "stack_frames": 3}
+XSP2_MAP40x64_F3_CFG = {**XSP2_MAP40x64_CFG, "stack_frames": 3}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -966,6 +976,12 @@ MODELS: dict[str, dict] = {
     "XSP2-WHAT": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     "XSP2-WHAT-S4": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_S4_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     "XSP2-WHAT-S2": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_S2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    # Map-only resolution ladder + the decision loop's 3-frame window (owner, workspace DECISIONS §112/§114).
+    "XSP2-MAP40x64": dict(encoder="xsp2", cfg=dict(XSP2_MAP40x64_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    "XSP2-MAP20x32-F3": dict(encoder="xsp2", cfg=dict(XSP2_MAP20x32_F3_CFG), framestack=True, aux="xsp2",
+                             aux_weight=1.0),
+    "XSP2-MAP40x64-F3": dict(encoder="xsp2", cfg=dict(XSP2_MAP40x64_F3_CFG), framestack=True, aux="xsp2",
+                             aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1065,6 +1081,11 @@ assert MODELS["XSP2-WHAT-S4"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_S4_CFG}
 assert XSP2_WHAT_S4_CFG == {**XSP2_MAP20x32_CFG, "features_dim": 715, "policy_input": "fg", "pool_beta": 8.0}
 assert MODELS["XSP2-WHAT-S2"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_S2_CFG}
 assert XSP2_WHAT_S2_CFG == {**XSP2_WHAT_S4_CFG, "features_dim": 2635, "map_stride": 2}
+# ⛔ XSP2-MAP40x64 IS XSP2 WITH THE MAP STRIDE MOVED TO 2, NOTHING ELSE; -F3 ADDS ONLY THE STACK DEPTH (§112/§114).
+assert MODELS["XSP2-MAP40x64"] == {**MODELS["XSP2"], "cfg": XSP2_MAP40x64_CFG}
+assert XSP2_MAP40x64_CFG == {**XSP2_CFG, "features_dim": 2560, "map_stride": 2}
+for _lbl, _base in (("XSP2-MAP20x32-F3", XSP2_MAP20x32_CFG), ("XSP2-MAP40x64-F3", XSP2_MAP40x64_CFG)):
+    assert MODELS[_lbl] == {**MODELS["XSP2"], "cfg": {**_base, "stack_frames": 3}}, _lbl
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
@@ -1420,6 +1441,25 @@ def _train_decision_period() -> int:
     if value < 1 or str(value) != raw.strip():
         raise ValueError(f"NETT_TRAIN_DECISION_PERIOD={raw!r}: expected an integer >= 1")
     return value
+
+
+def _decision_loop_env_kwargs() -> dict:
+    """NETT_DECISION_LOOP=P -> {"decision_period": P} for EVERY phase (workspace DECISIONS §114). Unset -> {}.
+
+    The agent-side loop (brain.env_wrappers.DecisionLoopEnvWrapper) and the env must run the same P, train
+    and test alike ("1. Same 3-step loop"), so this sets the all-phase ``decision_period`` -- not the
+    train-only §108 override. Both at once would be two periods in one row: refused.
+    """
+    from nett_skrl.brain.env_wrappers import decision_loop_period
+
+    period = decision_loop_period()
+    if period is None:
+        return {}
+    if os.environ.get("NETT_TRAIN_DECISION_PERIOD", "").strip():
+        raise ValueError(
+            "NETT_DECISION_LOOP and NETT_TRAIN_DECISION_PERIOD are both set: the loop runs the same period "
+            "in train and test (DECISIONS §114); the train-only period (§108) is a different design. Pick one.")
+    return {"decision_period": period}
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -1956,6 +1996,12 @@ def main() -> int:
             # steps (action_windows.py caveat). ⛔ OPT-IN ONLY: unset, the key is NOT PASSED.
             **({"train_decision_period": _train_decision_period()}
                if os.environ.get("NETT_TRAIN_DECISION_PERIOD") else {}),
+            # AGENT-SIDE DECISION LOOP (owner, workspace DECISIONS §114): NETT_DECISION_LOOP=P sets the env's
+            # decision_period to P in EVERY phase, and brain._wrapped_env makes one agent step P env ticks
+            # (the agent sees no observation and returns no action on the held ticks; the video plays on
+            # all P). ⚠ BUDGET: timesteps count DECISIONS, so train/test complete the same episodes as at
+            # P = 1 at ~P x the ticks. ⛔ OPT-IN ONLY: unset, the key is NOT PASSED.
+            **_decision_loop_env_kwargs(),
         },
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each

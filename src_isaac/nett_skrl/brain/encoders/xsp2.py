@@ -117,6 +117,8 @@ TRUNK_STRIDE = 8
 #: owner: "we need to try an even finer map"). Stride 1, padding 4: an 8x8 kernel gives (H+1, W+1), and
 #: conv2 (k4 s2 p1) floors that to (H/2, W/2) for an even eye -- 128x80 -> 40x64, no extra module.
 MAP_STRIDES = {8: (4, 2), 4: (2, 3), 2: (1, 4)}
+#: stack_frames: 2 (every label before DECISIONS §114) or 3 (the decision loop's whole (o0, o1, o2) window).
+STACK_FRAMES = (2, 3)
 #: What the policy reads: "map" = flatten(m) (XSP2); "fg" = cat(flatten(m), figure-attention pool of z_t).
 POLICY_INPUTS = ("map", "fg")
 
@@ -172,6 +174,7 @@ class XSP2Encoder(HWCFeatureExtractor):
         policy_input: str = "map",
         pool_beta: float = 4.0,
         trunk_widths: tuple[int, int] | list[int] = (32, 64),
+        stack_frames: int = 2,
     ):
         super().__init__(observation_space, features_dim)
         if policy_input not in POLICY_INPUTS:
@@ -198,20 +201,28 @@ class XSP2Encoder(HWCFeatureExtractor):
                 f"XSP2Encoder needs RGB frames (channels-per-frame {self.CPF}); got {self.cpf}. The "
                 f"predictor's warp and loss are defined on the RGB eye.")
         channels, height, width = image_channels_hw(observation_space)
+        # STACK DEPTH (workspace DECISIONS §114). 2 = every label before §114: (x_{t-1}, x_t). 3 = the
+        # decision loop's whole window (o0, o1, o2) in ONE observation: the aux reads (o0, o1) for the
+        # dorsal pair, o1 for the ventral stream and predictor, o2 as the target ("frames" windows); the
+        # policy reads the map of the NEWEST frame, o2. The dorsal Conv3d still sees exactly 2 frames, so
+        # the parameter count is the same at 2 and 3.
+        if stack_frames not in STACK_FRAMES:
+            raise ValueError(f"XSP2Encoder stack_frames must be one of {STACK_FRAMES}; got {stack_frames!r}.")
+        self.stack_frames = int(stack_frames)
         if num_frames is not None:
             validate_framestack_depth(channels, num_frames, type(self).__name__, channels_per_frame=self.cpf)
-            if int(num_frames) != self.N_FRAMES:
+            if int(num_frames) != self.stack_frames:
                 raise ValueError(
-                    f"XSP2Encoder needs a stack of exactly {self.N_FRAMES} frames (the dorsal Conv3d has a "
-                    f"depth-2 kernel over (z_t-1, z_t)); num_frames={num_frames}. Set NETT_FRAMESTACK_N=2.")
-        if channels != self.cpf * self.N_FRAMES:
+                    f"XSP2Encoder stack_frames={self.stack_frames} needs a stack of exactly {self.stack_frames} "
+                    f"frames; num_frames={num_frames}. Set NETT_FRAMESTACK_N={self.stack_frames}.")
+        if channels != self.cpf * self.stack_frames:
             raise ValueError(
-                f"XSP2Encoder needs a frame stack of exactly {self.N_FRAMES} frames of {self.cpf} channels "
-                f"({self.cpf * self.N_FRAMES} channels, framestack=True, NETT_FRAMESTACK_N=2); the "
-                f"observation has {channels}.")
+                f"XSP2Encoder needs a frame stack of exactly {self.stack_frames} frames of {self.cpf} channels "
+                f"({self.cpf * self.stack_frames} channels, framestack=True, NETT_FRAMESTACK_N="
+                f"{self.stack_frames}); the observation has {channels}.")
         if height % map_stride or width % map_stride:
             raise ValueError(f"XSP2Encoder needs an eye divisible by {map_stride}; got {height}x{width}.")
-        self.n_frames = self.N_FRAMES
+        self.n_frames = self.stack_frames
         self.image_hw = (height, width)
         self.map_hw = (height // map_stride, width // map_stride)
         n_map = self.map_hw[0] * self.map_hw[1]
@@ -274,8 +285,15 @@ class XSP2Encoder(HWCFeatureExtractor):
         return prepared[:, :c], prepared[:, c:]
 
     def current_frame(self, prepared: torch.Tensor) -> torch.Tensor:
-        """x_t: the NEWEST frame -- the only frame the ventral stream and the policy read."""
-        return self.split_frames(prepared)[1]
+        """x_t: the NEWEST frame of a full observation stack -- the only frame the policy reads.
+
+        A 2-frame pair (what the aux hands encode_streams) also passes: its newest frame is x_t.
+        """
+        c = self.cpf
+        if prepared.shape[1] not in (c * self.N_FRAMES, c * self.stack_frames):
+            raise ValueError(f"XSP2 was built for {self.stack_frames} stacked {c}-channel frames; "
+                             f"got {prepared.shape[1]} channels.")
+        return prepared[:, -c:]
 
     def ventral_map(self, z_t: torch.Tensor) -> torch.Tensor:
         """m = sigmoid(phi_v(z_t)): (B, 1, h, w), the figure map at the stream grid."""

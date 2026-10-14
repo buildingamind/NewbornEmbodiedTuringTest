@@ -104,7 +104,7 @@ def _term(monkeypatch, memory, dp="3", windows="hold", record=True):
 
 
 def test_hold_is_the_third_choice_and_refuses_without_a_period_of_at_least_three(monkeypatch):
-    assert WINDOWS == ("slab", "iid", "hold")
+    assert WINDOWS[:3] == ("slab", "iid", "hold")       # §114 appends "frames" (test_decision_loop.py)
     mem = _HoldMemory()
     _, ok = _term(monkeypatch, mem)
     assert ok.windows == "hold" and ok.hold_period == 3

@@ -856,6 +856,9 @@ DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/ut
                "nett_skrl/brain/encoders/nature_cnn.py")   # + §113's pre-Ampere bf16 warning (additive)
 DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight * self._aux.compute(",
                                                      "self._aux_encoder, sampled_observations", ")", "if (")}
+# Workspace DECISIONS §114 (test_decision_loop.py): the agent-side decision loop wraps the env in the one place
+# train/test/record get it (brain._wrapped_env); that test pins brain.py's diff to exactly that hook.
+DP114_FILES = ("nett_skrl/brain/brain.py",)
 
 
 def _git(*args):
@@ -906,7 +909,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -916,7 +919,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2"} | SMALL3D_LABELS | MATCHED_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

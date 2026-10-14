@@ -288,7 +288,11 @@ class Brain:
 
     def _wrapped_env(self, envs, config: TaskConfig):
         device = policy_device(config)
-        return device, IsaacEnvWrapper(envs, device=device)
+        wrapped = IsaacEnvWrapper(envs, device=device)
+        # Workspace DECISIONS §114: NETT_DECISION_LOOP=P makes one agent step P env ticks, in train,
+        # test and record alike (this is the one place all three get their env). Unset = unchanged.
+        from .env_wrappers import DecisionLoopEnvWrapper, decision_loop_period
+        return device, DecisionLoopEnvWrapper.wrap(wrapped, envs, decision_loop_period())
 
     def _build_agents(self, wrapped, device: torch.device, config: TaskConfig):
         # During a dry-run, force wandb off for the per-agent skrl experiment

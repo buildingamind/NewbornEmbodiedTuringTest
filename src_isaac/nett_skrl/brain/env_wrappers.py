@@ -189,3 +189,135 @@ class IntrinsicRewardEnvWrapper:
                 ).view_as(reward_i)
         self._last_observations = next_observations
         return next_observations, rewards, terminated, truncated, infos
+
+
+#: Workspace DECISIONS §114: the agent-side decision loop's period. Unset/empty = off (one agent step per tick).
+DECISION_LOOP_ENV = "NETT_DECISION_LOOP"
+
+
+def decision_loop_period() -> int | None:
+    """NETT_DECISION_LOOP=P (integer >= 2): one agent decision per P env ticks, train AND test. Unset = None.
+
+    campaign_train passes the same P to the env as ``decision_period`` (every phase), and
+    DecisionLoopEnvWrapper asserts the two agree. "1" and anything that is not an integer >= 2 refuse:
+    unset is the one way to say "no loop", so a row cannot carry an ambiguous value.
+    """
+    import os
+
+    raw = os.environ.get(DECISION_LOOP_ENV, "")
+    if raw.strip() == "":
+        return None
+    v = raw.strip()
+    if not v.isdigit() or int(v) < 2:
+        raise ValueError(f"{DECISION_LOOP_ENV}={raw!r}: expected an integer >= 2 (leave it unset for no loop).")
+    return int(v)
+
+
+class DecisionLoopEnvWrapper:
+    """One agent decision per P env ticks: the agent is NOT queried on the P-1 held ticks (DECISIONS §114).
+
+    OWNER, workspace DECISIONS §114 (2026-10-14): "the model does not receive any observations and does
+    not return actions until after the hold window is completed. In the case of a 3 step hold window, the
+    video would step forward 3 times and 3 observations would be collected, then they would be sent to the
+    agent and the agent would return one action. If the agent expects one frame, it would receive only the
+    last frame. If the agent expects two frames, it would receive only the last two frames. If the agent
+    expects all three frames, as would be the case with XSP, it would receive all three frames." And
+    "1. Same 3-step loop": test runs the same loop as train.
+
+    It wraps the skrl adapter (IsaacEnvWrapper), so it covers train, test (BrainTrainer.eval) and record.
+    One ``step(action)`` calls the inner env P times with the SAME action. The env (repo B, run at
+    ``decision_period = P``) applies it on the tick with step_in_episode % P == 0 and commands zero motion
+    on the other P-1 (the wheeled body holds pose); the monitors advance on every tick (advance_all is
+    unconditional). Returned:
+      * observation -- the LAST tick's. FrameStack sits inside the adapter and sees every tick, so a
+        k-frame stack holds the last k ticks (k = NETT_FRAMESTACK_N; k = P gives the whole window).
+      * reward      -- the SUM over the P ticks. Repo B zeroes the reward off decision ticks
+        (nett_env.py ``reward * _last_decision_mask``), so this equals the decision tick's reward.
+      * terminated / truncated -- OR over the P ticks; info -- the last tick's.
+    Budgets count AGENT steps, so episodes x NETT_STEPS is the number of DECISIONS and an episode is
+    NETT_STEPS decisions = NETT_STEPS x P ticks, as repo B already sizes it: train and test complete the
+    same number of episodes as at P = 1, at ~P x the env ticks (wall clock).
+
+    Fail-loud guards: the env's decision period must equal P; after every agent step every env's
+    step_in_episode must be a multiple of P (0 after a done), so decisions stay on decision ticks; a done
+    may only arrive on the LAST tick (repo B never terminates early and truncates at NETT_STEPS x P).
+    """
+
+    def __init__(self, env, period: int, raw) -> None:
+        self._env = env
+        self.period = int(period)
+        self._raw = raw
+
+    @classmethod
+    def wrap(cls, wrapped, body_env, period: int | None):
+        """``wrapped`` = the skrl adapter, ``body_env`` = the body-wrapped env under it. None = no loop."""
+        if period is None:
+            return wrapped
+        import os
+
+        from ..body.wrappers.acuity import find_acuity
+
+        if find_acuity(body_env):
+            raise ValueError(
+                f"{DECISION_LOOP_ENV}={period}: an acuity curriculum counts its own step() calls, which "
+                f"would be ticks, not decisions, so its schedule would run {period}x too fast. Refusing.")
+        if os.environ.get("NETT_XSP2_WINDOWS", "").strip().lower() == "hold":
+            raise ValueError(
+                f"{DECISION_LOOP_ENV}={period} with NETT_XSP2_WINDOWS=hold: hold windows draw ACROSS stored "
+                f"rows by step_before, and under the loop every stored row is the last tick of a window. "
+                f"Use the in-observation draw (NETT_XSP2_WINDOWS=frames) instead.")
+        raw = _unwrap_nett(body_env)
+        for name in ("_step_in_episode", "_decision_period"):
+            if not hasattr(raw, name):
+                raise RuntimeError(f"DecisionLoopEnvWrapper: the unwrapped env {type(raw).__name__} has no {name}.")
+        env_period = int(raw._decision_period())
+        if env_period != int(period):
+            raise ValueError(
+                f"DecisionLoopEnvWrapper: {DECISION_LOOP_ENV}={period} but the env runs decision_period="
+                f"{env_period}; the env must gate motors on the same period the agent decides on.")
+        print(f"[NETT decision loop] P={period}: one agent decision per {period} env ticks "
+              f"(workspace DECISIONS §114)", flush=True)
+        return cls(wrapped, period, raw)
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def reset(self, *args, **kwargs):
+        return self._env.reset(*args, **kwargs)
+
+    def step(self, actions):
+        reward_sum = terminated_any = truncated_any = None
+        for tick in range(self.period):
+            observations, reward, terminated, truncated, info = self._env.step(actions)
+            done = torch.as_tensor(terminated).bool() | torch.as_tensor(truncated).bool()
+            if tick < self.period - 1 and bool(done.any()):
+                bad = int(done.reshape(-1).nonzero()[0])
+                raise RuntimeError(
+                    f"DecisionLoopEnvWrapper: env {bad} ended its episode on tick {tick + 1} of {self.period}; "
+                    f"an episode must end on the last tick of a decision (repo B truncates at NETT_STEPS x P).")
+            if reward_sum is None:
+                reward_sum, terminated_any, truncated_any = reward.clone(), terminated, truncated
+            else:
+                reward_sum = reward_sum + reward
+                terminated_any = terminated_any | terminated
+                truncated_any = truncated_any | truncated
+        phase = self._raw._step_in_episode.reshape(-1) % self.period
+        if bool((phase != 0).any()):
+            bad = int(phase.nonzero()[0])
+            raise RuntimeError(
+                f"DecisionLoopEnvWrapper: env {bad} sits at step_in_episode "
+                f"{int(self._raw._step_in_episode.reshape(-1)[bad])} after a decision; it must be a multiple of "
+                f"{self.period}, or the next action would land on a held tick.")
+        return observations, reward_sum, terminated_any, truncated_any, info
+
+
+def _unwrap_nett(env):
+    """The NETTEnv under any chain of gym / skrl wrappers (the trainer's _unwrap_env walk)."""
+    current, seen = env, set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "_step_in_episode") and hasattr(current, "_decision_period"):
+            return current
+        current = (getattr(current, "_env", None) or getattr(current, "env", None)
+                   or getattr(current, "_unwrapped", None))
+    return env

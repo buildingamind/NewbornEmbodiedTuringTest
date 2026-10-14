@@ -135,7 +135,44 @@ TRANSIT_FRAC = 0.5
 #: action. step_before comes from the ENV'S OWN COUNTER (NETTEnv._last_step_for_outputs), handed over
 #: per recorded row by env_wrappers.StepBeforeEnvWrapper -- a PPO rollout (e.g. 500 rows) is shorter
 #: than a P=3 episode (1500 steps), so most rollouts hold no done flag to anchor the phase on.
-WINDOWS = ("slab", "iid", "hold")
+#: "frames" (workspace DECISIONS §114, 2026-10-14) draws B rows iid and takes the WHOLE window from ONE
+#: stored observation: under NETT_DECISION_LOOP=3 the agent is queried once per 3 env ticks and an
+#: XSP2 label with stack_frames=3 stores (o0, o1, o2) -- the three ticks after a move, the body still on
+#: the last two. Dorsal (o0, o1), ventral + predictor o1, target o2: the §110 roles with no cross-row
+#: bookkeeping. A row whose observation is an episode's FIRST (FrameStack's reset scrub fills the stack
+#: with one frame, a static triple) is never drawn; see frames_valid_rows.
+WINDOWS = ("slab", "iid", "hold", "frames")
+
+
+def frames_valid_rows(memory) -> torch.Tensor:
+    """(T, env) bool: rows whose stored observation is a real 3-tick window ("frames" draws only these).
+
+    Excluded: rows past the fill (not yet written), each column's chronologically FIRST row (its
+    predecessor is outside this rollout, so whether it is an episode's reset observation is unknown),
+    and every row right after a done (a reset observation: FrameStack replicated one frame across the
+    stack). Chronological order and the done rule are hold_step_before's.
+    """
+    t_max = memory.memory_size if memory.filled else memory.memory_index
+    tensors = memory.tensors
+    signals = []
+    for name in ("terminated", "truncated"):
+        signal = tensors.get(name)
+        if signal is None:
+            raise ValueError(f"XSP2 frames windows need the rollout's '{name}' flags.")
+        signal = torch.as_tensor(signal[:t_max]).bool().cpu()
+        if signal.ndim == 3 and signal.shape[-1] == 1:
+            signal = signal.squeeze(-1)
+        signals.append(signal)
+    done = signals[0] | signals[1]                                    # (t_max, env), storage order
+    start = int(memory.memory_index) if memory.filled else 0
+    order = torch.cat([torch.arange(start, t_max), torch.arange(0, start)])
+    chrono_done = done[order]
+    ok = torch.ones_like(chrono_done)
+    ok[0] = False                                                     # predecessor unknown
+    ok[1:] = ~chrono_done[:-1]                                        # not right after a done
+    valid = torch.zeros((int(memory.memory_size), done.shape[1]), dtype=torch.bool)
+    valid[order] = ok
+    return valid
 
 
 def hold_step_before(memory) -> torch.Tensor:
@@ -307,6 +344,20 @@ class XSP2Term(nn.Module):
                     f"needs {self.TRAIN_DP_ENV} set to an integer >= 3 (got {raw!r}). Refusing to draw "
                     f"'hold' windows from a rollout whose every step may move.")
             self.hold_period = int(raw)
+        #: "frames" needs the 3-frame label AND the decision loop of the same length (DECISIONS §114).
+        stack = int(getattr(encoder, "stack_frames", 2))
+        if self.windows == "frames":
+            from ..env_wrappers import DECISION_LOOP_ENV, decision_loop_period
+            if stack != 3:
+                raise ValueError(f"{self.WINDOWS_ENV}=frames reads (o0, o1, o2) from one observation, so it needs "
+                                 f"an XSP2 label with stack_frames=3; this encoder stacks {stack}.")
+            period = decision_loop_period()
+            if period != 3:
+                raise ValueError(f"{self.WINDOWS_ENV}=frames needs {DECISION_LOOP_ENV}=3 (one decision per "
+                                 f"3-tick window, the body still on the last two); got {period!r}.")
+        elif stack != 2:
+            raise ValueError(f"{self.WINDOWS_ENV}={self.windows} draws ACROSS stored rows and was built for "
+                             f"2-frame observations; this encoder stacks {stack}. Use {self.WINDOWS_ENV}=frames.")
         #: StepBeforeEnvWrapper hands this term the env's step_before per recorded row ("hold" only).
         self.needs_step_before = self.windows == "hold"
         #: (memory_size, n_env) long, -1 = never recorded; allocated by the first record_step_before.
@@ -404,6 +455,8 @@ class XSP2Term(nn.Module):
             return self._draw_iid(device)
         if self.windows == "hold":
             return self._draw_hold(device)
+        if self.windows == "frames":
+            return self._draw_frames(device)
         n_transit = int(round(TRANSIT_FRAC * self.batch))
         parts, turn_state = [], None
         for size, weighted in ((n_transit, True), (self.batch - n_transit, False)):
@@ -445,6 +498,49 @@ class XSP2Term(nn.Module):
         obs_tk = raw[t_d + 1, env_d].to(device)
         a = actions[t.to(actions.device), env.to(actions.device)].to(device)       # (B, A)
         return obs_t, obs_tk, a, float(a[:, 0].abs().float().mean())
+
+    def _draw_frames(self, device):
+        """B iid rows, each ONE stored 3-frame observation (o0, o1, o2); returns (obs, obs_prev, a, 0.0).
+
+        ``a`` is ZERO: the env commanded no motion between o1 and o2 (a held tick), and the predictor
+        never reads actions (they feed only the parked/transit telemetry). NOTE: §110's hold draw passed
+        the policy's sample, which the env had ignored; this draw passes what the body was told to do.
+        ``obs_prev`` is each row's PREDECESSOR observation (same env, one decision earlier, same
+        episode by frames_valid_rows): its o2 against this row's o0 spans the move -- the positive
+        control that the within-window frames really are the still ones.
+        """
+        memory = self._memory
+        actions = memory.tensors.get("actions")
+        if actions is None or actions.ndim != 3 or actions.shape[-1] < 1:
+            raise ValueError("XSP2 frames windows need a rollout 'actions' tensor shaped (T, env, A).")
+        raw = memory.tensors["observations"]
+        valid = frames_valid_rows(memory)[:raw.shape[0], :raw.shape[1]]
+        flat = valid.reshape(-1).nonzero().flatten()
+        if flat.numel() == 0:
+            raise ValueError("XSP2 frames windows: no row in this rollout holds a full in-episode window.")
+        pick = flat[torch.randint(flat.numel(), (self.batch,))]
+        t, env = pick // valid.shape[1], pick % valid.shape[1]
+        t_d, env_d = t.to(raw.device), env.to(raw.device)
+        obs = raw[t_d, env_d].to(device)
+        size = int(memory.memory_size)
+        obs_prev = raw[((t - 1) % size).to(raw.device), env_d].to(device)
+        self._frames_frac = float(valid.sum()) / float(valid.numel())
+        a = torch.zeros((self.batch, actions.shape[-1]), device=device)
+        return obs, obs_prev, a, 0.0
+
+    def _frames_telemetry(self, encoder: nn.Module, prepared: torch.Tensor, prepared_prev: torch.Tensor) -> dict:
+        """Within-window |o1-o0|, |o2-o1| vs ACROSS the move |o0 - previous o2| (prepared pixels).
+
+        POSITIVE CONTROL: the move happens between the previous observation's o2 and this one's o0, so
+        ``move_d`` must sit far above the within-window changes, which only the video and any residual
+        coasting produce.
+        """
+        c = self.cpf
+        with torch.no_grad():
+            o0, o1, o2 = prepared[:, :c], prepared[:, c:2 * c], prepared[:, 2 * c:]
+            prev_o2 = prepared_prev[:, 2 * c:]
+            return {"frames_d01": float((o1 - o0).abs().mean()), "frames_d12": float((o2 - o1).abs().mean()),
+                    "move_d": float((o0 - prev_o2).abs().mean()), "frames_frac": self._frames_frac}
 
     def record_step_before(self, row: int, step_before: torch.Tensor) -> None:
         """Store the env's step_before for the memory row skrl is about to write (StepBeforeEnvWrapper).
@@ -653,7 +749,15 @@ class XSP2Term(nn.Module):
             with torch.no_grad():
                 prepared_t = encoder._prepare_image(obs_t)
                 prepared_tk = encoder._prepare_image(obs_tk)
-            self.step(encoder, prepared_t, prepared_tk, actions, turn_state)
+            if self.windows == "frames":
+                # ONE observation (o0, o1, o2): the pair (o0, o1) is the dorsal/ventral input and (o1, o2)
+                # puts o2 last, where score() reads the target and o1 where it reads "current".
+                c = self.cpf
+                window, prev = prepared_t, prepared_tk
+                self.step(encoder, window[:, :2 * c], window[:, c:], actions, turn_state)
+                self.last_scalars.update(self._frames_telemetry(encoder, window, prev))
+            else:
+                self.step(encoder, prepared_t, prepared_tk, actions, turn_state)
             if self.windows == "hold":
                 self.last_scalars.update(self._hold_telemetry(encoder, prepared_t, prepared_tk))
         return torch.zeros((), device=device)
