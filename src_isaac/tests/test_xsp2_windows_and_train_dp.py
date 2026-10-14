@@ -225,3 +225,50 @@ def test_campaign_knob_is_opt_in_and_refuses_junk(campaign, monkeypatch):
         monkeypatch.setenv("NETT_TRAIN_DECISION_PERIOD", junk)
         with pytest.raises(ValueError):
             campaign._train_decision_period()
+
+
+# ---------------------------------------------------------------- XSP2-WHAT-S2: the 40x64 map (owner §108)
+
+def test_s2_label_is_s4_with_a_40x64_map_and_the_same_parameters(campaign):
+    from nett_skrl.brain.config import EncoderCfg
+    from nett_skrl.brain.registry import encoder_mapping
+    import torch.nn as nn
+
+    def build(label):
+        kw = EncoderCfg(**campaign.MODELS[label]["cfg"]).as_kwargs()
+        kw.pop("trainable", None)
+        return encoder_mapping["xsp2"](_space(), **kw)
+
+    spec, s4spec = campaign.MODELS["XSP2-WHAT-S2"], campaign.MODELS["XSP2-WHAT-S4"]
+    assert {k: v for k, v in spec.items() if k != "cfg"} == {k: v for k, v in s4spec.items() if k != "cfg"}
+    assert spec["cfg"] == {**s4spec["cfg"], "features_dim": 2635, "map_stride": 2}
+    torch.manual_seed(0)
+    s2, s4 = build("XSP2-WHAT-S2"), build("XSP2-WHAT-S4")
+    n = lambda m: sum(p.numel() for p in m.parameters())
+    assert n(s2) == n(s4) == 166_510
+    c2 = [m for m in s2.trunk if isinstance(m, nn.Conv2d)]
+    assert (c2[0].stride, c2[0].padding, c2[0].kernel_size) == ((1, 1), (4, 4), (8, 8))
+    assert s2.map_hw == (40, 64) and s2.features_dim == 2635
+    x = torch.randint(0, 256, (2, C * H * W), generator=torch.Generator().manual_seed(5)).float()
+    s = s2.encode_streams(s2._prepare_image(x))
+    assert s["z_t"].shape[-2:] == (40, 64) and s["m"].shape[-2:] == (40, 64)
+    assert s["c"].shape[-2:] == (H, W)                                     # x2 upsample reaches the eye exactly
+    assert s2(x).shape == (2, 2635)
+    assert s4.map_hw == (20, 32)                                           # control: S4 unchanged
+
+
+def test_s2_aux_step_runs_and_the_surprise_pool_is_x2(monkeypatch):
+    monkeypatch.setenv("NETT_XSP2_PREDICTOR", "conv")
+    monkeypatch.setenv("NETT_XSP2_SURPRISE", "0.003")
+    monkeypatch.setenv("NETT_XSP2_BATCH", "8")
+    torch.manual_seed(1)
+    enc = XSP2Encoder(_space(), features_dim=2635, policy_input="fg", map_stride=2)
+    term = XSP2Term(enc)
+    assert term.map_stride == 2
+    term.build_optimizer(1e-3)
+    term.attach_memory(_CodedMemory())
+    before = {k: v.detach().clone() for k, v in enc.state_dict().items()}
+    torch.manual_seed(2)
+    term.compute(enc, None)
+    assert np.isfinite(term.last_scalars["loss"]) and np.isfinite(term.last_scalars["surprise_bce"])
+    assert any(not torch.equal(before[k], v) for k, v in enc.state_dict().items())

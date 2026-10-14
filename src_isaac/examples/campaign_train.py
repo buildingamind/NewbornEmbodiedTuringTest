@@ -258,6 +258,11 @@ XSP2_MAP20x32_CFG = {**XSP2_CFG, "features_dim": 640, "map_stride": 4}
 XSP2_WHAT_CFG = {**XSP2_CFG, "features_dim": 235, "policy_input": "fg", "pool_beta": 8.0}
 #: "XSP2-WHAT-S4": XSP2-WHAT on the 20x32 map (XSP2-MAP20x32's trunk stride 4): 640 + 75 = 715 policy features.
 XSP2_WHAT_S4_CFG = {**XSP2_WHAT_CFG, "features_dim": 715, "map_stride": 4}
+#: "XSP2-WHAT-S2" (owner, workspace DECISIONS §108: "an even finer map"): XSP2-WHAT on a 40x64 map, trunk stride 2
+#: (phi_e's first conv stride 1, padding 4; encoders/xsp2.py MAP_STRIDES). 2560 + 75 = 2635 policy features; same
+#: kernels, same 166,510 encoder parameters. Offline (scratch xsp3/offline2.py, recorded parsing frames), stride 2
+#: gave object-within-screen 2.51/2.83 against stride 4's 2.11/2.39 (seeds 0/1).
+XSP2_WHAT_S2_CFG = {**XSP2_WHAT_CFG, "features_dim": 2635, "map_stride": 2}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -960,6 +965,7 @@ MODELS: dict[str, dict] = {
     # + a 75-channel figure-attention pool of z_t (parameter-free, detached). Same aux, knobs and parameters.
     "XSP2-WHAT": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     "XSP2-WHAT-S4": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_S4_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    "XSP2-WHAT-S2": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_S2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1057,6 +1063,8 @@ assert MODELS["XSP2-WHAT"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_CFG}
 assert {k: v for k, v in XSP2_WHAT_CFG.items() if k not in ("policy_input", "pool_beta")} == {**XSP2_CFG, "features_dim": 235}
 assert MODELS["XSP2-WHAT-S4"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_S4_CFG}
 assert XSP2_WHAT_S4_CFG == {**XSP2_MAP20x32_CFG, "features_dim": 715, "policy_input": "fg", "pool_beta": 8.0}
+assert MODELS["XSP2-WHAT-S2"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_S2_CFG}
+assert XSP2_WHAT_S2_CFG == {**XSP2_WHAT_S4_CFG, "features_dim": 2635, "map_stride": 2}
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]

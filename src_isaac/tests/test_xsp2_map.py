@@ -149,7 +149,7 @@ def test_label_builds_with_the_same_parameters_and_only_conv1_moves(campaign):
     cf, cc = convs(fine), convs(coarse)
     assert cf[0] == ((8, 8), (2, 2), (3, 3), 3, 32) and cc[0] == ((8, 8), (4, 4), (2, 2), 3, 32)
     assert cf[1:] == cc[1:]
-    assert MAP_STRIDES == {8: (4, 2), 4: (2, 3)} and xsp2_mod.TRUNK_STRIDE == 8
+    assert MAP_STRIDES == {8: (4, 2), 4: (2, 3), 2: (1, 4)} and xsp2_mod.TRUNK_STRIDE == 8
 
 
 # ================================================================ 3. streams and the x4 upsample
@@ -223,7 +223,8 @@ def test_policy_reads_640_through_the_real_builder_and_one_update_runs(campaign,
 # ================================================================ 5. refusals
 
 @pytest.mark.parametrize("kw, match", [
-    ({"features_dim": 640, "map_stride": 2}, "map_stride must be one of"),
+    ({"features_dim": 640, "map_stride": 3}, "map_stride must be one of"),
+    ({"features_dim": 640, "map_stride": 1}, "map_stride must be one of"),
     ({"features_dim": 640, "map_stride": 16}, "map_stride must be one of"),
     ({"features_dim": 640, "map_stride": "4"}, "map_stride must be one of"),
     ({"features_dim": 160, "map_stride": 4}, "features_dim must be 640"),

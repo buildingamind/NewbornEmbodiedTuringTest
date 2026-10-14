@@ -113,8 +113,10 @@ from .utils.temporal import validate_framestack_depth
 #: The trunk's total stride: the stream grid is (H/8, W/8). The "XSP2" label's map_stride.
 TRUNK_STRIDE = 8
 #: map_stride -> phi_e's first conv (stride, padding); the other two convs never change.
-#: 8 is the "XSP2" trunk exactly; 4 is the finer map (DECISIONS §104).
-MAP_STRIDES = {8: (4, 2), 4: (2, 3)}
+#: 8 is the "XSP2" trunk exactly; 4 is the finer map (DECISIONS §104); 2 is the finest (DECISIONS §108,
+#: owner: "we need to try an even finer map"). Stride 1, padding 4: an 8x8 kernel gives (H+1, W+1), and
+#: conv2 (k4 s2 p1) floors that to (H/2, W/2) for an even eye -- 128x80 -> 40x64, no extra module.
+MAP_STRIDES = {8: (4, 2), 4: (2, 3), 2: (1, 4)}
 #: What the policy reads: "map" = flatten(m) (XSP2); "fg" = cat(flatten(m), figure-attention pool of z_t).
 POLICY_INPUTS = ("map", "fg")
 
