@@ -252,10 +252,12 @@ XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames"
 #: policy features; same kernels, same 166,510 encoder parameters. Every other key is XSP2_CFG's.
 XSP2_MAP20x32_CFG = {**XSP2_CFG, "features_dim": 640, "map_stride": 4}
 #: The "XSP2-WHAT" label (owner, workspace DECISIONS §105/§106): XSP2 whose policy also reads WHAT is under
-#: the figure -- cat(flatten(m_t), fg_t), fg_t = softmax(4 * standardised ventral logits)-weighted sum of z_t
+#: the figure -- cat(flatten(m_t), fg_t), fg_t = softmax(8 * standardised ventral logits)-weighted sum of z_t
 #: (75 channels), parameter-free, detached (encoders/xsp2.py policy_input "fg"). 160 + 75 = 235 policy
-#: features; same streams, aux, knobs and 166,510 encoder parameters. pool_beta 4: FINDINGS §4dh.44h.150.
-XSP2_WHAT_CFG = {**XSP2_CFG, "features_dim": 235, "policy_input": "fg", "pool_beta": 4.0}
+#: features; same streams, aux, knobs and 166,510 encoder parameters. pool_beta 8: FINDINGS §4dh.44h.150.
+XSP2_WHAT_CFG = {**XSP2_CFG, "features_dim": 235, "policy_input": "fg", "pool_beta": 8.0}
+#: "XSP2-WHAT-S4": XSP2-WHAT on the 20x32 map (XSP2-MAP20x32's trunk stride 4): 640 + 75 = 715 policy features.
+XSP2_WHAT_S4_CFG = {**XSP2_WHAT_CFG, "features_dim": 715, "map_stride": 4}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -944,6 +946,8 @@ MODELS: dict[str, dict] = {
     # Knobs (aux side; first value = default): NETT_XSP2_PREDICTOR warp|conv, NETT_XSP2_REFINE_HIDDEN
     # >0 (32, warp only), NETT_XSP2_HIDDEN >0 (64, conv only), NETT_XSP2_BATCH >=4 (64),
     # NETT_XSP2_LR_SCALE >0 (1.0). A NETT_XSP2_* knob on any other label is REFUSED in main().
+    # NETT_XSP2_SURPRISE >0 (unset = off; DECISIONS §105/§106): the figure map ALSO learns where the predictor
+    # fails, BCE(m, per-frame-max-normalised per-cell prediction error, detached), scaled to e's summed units.
     # Sizes at the 128x80 eye (tests/test_xsp2.py pins them): encoder 166,510 = trunk 82,283 +
     # ventral 31,169 + dorsal 53,058, all aux-trained; predictor 12,451 (warp, R=32) | 78,531 (conv,
     # H=64). Policy input 160 (no readout).
@@ -955,6 +959,7 @@ MODELS: dict[str, dict] = {
     # XSP2 + what-under-the-figure (owner, workspace DECISIONS §105/§106): policy input 235 = the 160-cell map
     # + a 75-channel figure-attention pool of z_t (parameter-free, detached). Same aux, knobs and parameters.
     "XSP2-WHAT": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    "XSP2-WHAT-S4": dict(encoder="xsp2", cfg=dict(XSP2_WHAT_S4_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1050,6 +1055,8 @@ assert (XSP2_MAP20x32_CFG["features_dim"], XSP2_MAP20x32_CFG["map_stride"]) == (
 # ⛔ XSP2-WHAT IS XSP2 WITH THE POLICY INPUT (AND SO ITS WIDTH) MOVED, NOTHING ELSE (DECISIONS §105/§106).
 assert MODELS["XSP2-WHAT"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_CFG}
 assert {k: v for k, v in XSP2_WHAT_CFG.items() if k not in ("policy_input", "pool_beta")} == {**XSP2_CFG, "features_dim": 235}
+assert MODELS["XSP2-WHAT-S4"] == {**MODELS["XSP2"], "cfg": XSP2_WHAT_S4_CFG}
+assert XSP2_WHAT_S4_CFG == {**XSP2_MAP20x32_CFG, "features_dim": 715, "policy_input": "fg", "pool_beta": 8.0}
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]

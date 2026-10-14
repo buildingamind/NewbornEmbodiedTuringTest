@@ -202,13 +202,18 @@ def test_attention_is_scale_free_and_output_is_detached():
 def test_label_is_xsp2_with_the_policy_input_moved(campaign):
     spec, base = campaign.MODELS[LABEL], campaign.MODELS["XSP2"]
     assert {k: v for k, v in spec.items() if k != "cfg"} == {k: v for k, v in base.items() if k != "cfg"}
-    assert spec["cfg"] == {**base["cfg"], "features_dim": 235, "policy_input": "fg", "pool_beta": 4.0}
+    assert spec["cfg"] == {**base["cfg"], "features_dim": 235, "policy_input": "fg", "pool_beta": 8.0}
     what = encoder_mapping["xsp2"](_space(), **_label_kwargs(campaign, LABEL))
     plain = encoder_mapping["xsp2"](_space(), **_label_kwargs(campaign, "XSP2"))
-    assert what.policy_input == "fg" and what.pool_beta == 4.0 and what.features_dim == 235
+    assert what.policy_input == "fg" and what.pool_beta == 8.0 and what.features_dim == 235
     assert plain.policy_input == "map" and plain.features_dim == 160
     counts = lambda e: (_n(e), _n(e.trunk), _n(e.ventral), _n(e.dorsal))
     assert counts(what) == counts(plain) == (166_510, 82_283, 31_169, 53_058)
+    s4 = encoder_mapping["xsp2"](_space(), **_label_kwargs(campaign, "XSP2-WHAT-S4"))
+    assert campaign.MODELS["XSP2-WHAT-S4"]["cfg"] == {**campaign.MODELS["XSP2-MAP20x32"]["cfg"], "features_dim": 715,
+                                                      "policy_input": "fg", "pool_beta": 8.0}
+    assert s4.map_hw == (20, 32) and s4.features_dim == 715 and counts(s4) == counts(plain)
+    assert s4(_obs()).shape == (4, 715)
 
 
 class _Env:
@@ -306,3 +311,68 @@ def test_trunk_widths_shrink_phi_e_and_the_aux_step_runs():
     term.compute(enc, None)
     assert np.isfinite(term.last_scalars["loss"]) and 0 < term.last_scalars["fg_frac"] < 1
     assert any(not torch.equal(before[k], v) for k, v in enc.state_dict().items())
+
+
+# ================================================================ 7. NETT_XSP2_SURPRISE: the ventral map also marks where the predictor fails
+
+def _one_step(monkeypatch, surprise, seed=1):
+    if surprise is None:
+        monkeypatch.delenv("NETT_XSP2_SURPRISE", raising=False)
+    else:
+        monkeypatch.setenv("NETT_XSP2_SURPRISE", surprise)
+    monkeypatch.setenv("NETT_XSP2_PREDICTOR", "conv")
+    torch.manual_seed(seed)
+    enc = XSP2Encoder(_space(), features_dim=235, policy_input="fg")
+    term = XSP2Term(enc)
+    term.build_optimizer(1e-3)
+    term.attach_memory(_NoiseMemory())
+    torch.manual_seed(2)
+    term.compute(enc, None)
+    return enc, term
+
+
+def test_surprise_unset_is_off_and_set_changes_only_the_streams_step(monkeypatch):
+    e0, t0 = _one_step(monkeypatch, None)
+    e1, t1 = _one_step(monkeypatch, None)
+    assert t0.surprise == 0.0 and "surprise_bce" not in t0.last_scalars
+    assert all(torch.equal(v, e1.state_dict()[k]) for k, v in e0.state_dict().items())     # deterministic baseline
+    e2, t2 = _one_step(monkeypatch, "0.01")
+    assert t2.surprise == 0.01 and np.isfinite(t2.last_scalars["surprise_bce"])
+    # the prediction loss telemetry is the same e (same draw, same weights before the step)
+    assert t2.last_scalars["loss"] == pytest.approx(t0.last_scalars["loss"], rel=1e-6)
+    # the BCE reaches phi_v (the ventral weights move differently) ...
+    assert not torch.equal(e2.ventral[-1].weight, e0.ventral[-1].weight)
+    # ... but never the predictor: its gradient from the BCE is zero because r is detached
+    p0 = dict(t0.predictor.named_parameters())
+    assert all(torch.allclose(p, p0[k], atol=1e-7) for k, p in t2.predictor.named_parameters())
+
+
+def test_surprise_target_is_the_normalised_per_cell_prediction_error(monkeypatch):
+    monkeypatch.setenv("NETT_XSP2_SURPRISE", "0.5")
+    monkeypatch.setenv("NETT_XSP2_PREDICTOR", "conv")
+    torch.manual_seed(0)
+    enc = XSP2Encoder(_space(), features_dim=160)
+    term = XSP2Term(enc)
+    p_t = torch.rand(2, C, H, W, generator=torch.Generator().manual_seed(4))
+    p_tk = torch.rand(2, C, H, W, generator=torch.Generator().manual_seed(5))
+    acts = torch.zeros(2, 2)
+    obj = term.score(enc, p_t, p_tk, acts)
+    with torch.no_grad():
+        pred, _, s = term.predict(enc, p_t)
+        target = p_tk[:, -CPF:]
+        e = (pred - target).pow(2).sum()
+        r = (pred - target).pow(2).sum(1, keepdim=True).view(2, 1, 10, 8, 16, 8).mean((3, 5))
+        tau = r / r.flatten(1).max(1).values.view(-1, 1, 1, 1)
+        bce = -(tau * s["m"].log() + (1 - tau) * (1 - s["m"]).log()).mean()
+    assert float(tau.flatten(1).max(1).values.min()) == pytest.approx(1.0)
+    assert float(obj) == pytest.approx(float(e + 0.5 * bce * CPF * H * W * 2), rel=1e-5)
+    # control: without the BCE the objective is e alone, and they differ
+    assert float(obj) != pytest.approx(float(e), rel=1e-3)
+
+
+@pytest.mark.parametrize("bad", ["0", "-1", "nan", "x"])
+def test_surprise_refuses_non_positive_or_junk(monkeypatch, bad):
+    monkeypatch.setenv("NETT_XSP2_SURPRISE", bad)
+    torch.manual_seed(0)
+    with pytest.raises(ValueError):
+        XSP2Term(XSP2Encoder(_space(), features_dim=160))

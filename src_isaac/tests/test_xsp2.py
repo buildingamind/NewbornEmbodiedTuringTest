@@ -901,7 +901,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT"} | SMALL3D_LABELS | MATCHED_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4"} | SMALL3D_LABELS | MATCHED_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

@@ -80,6 +80,20 @@ DESIGN CHOICES the spec left open (each stated, none knobbed):
 * ORIENTATION telemetry (xsp_aux.motion_orientation) runs on m at its native 10x16 grid, the
   grid XSP's own orientation numbers use.
 
+SURPRISE TARGET (workspace DECISIONS §105/§106, 2026-10-14; NETT_XSP2_SURPRISE = w > 0, default UNSET =
+off, every earlier row bit-identical). Next-frame prediction leaves the figure map's scale free (only m * d
+is constrained), so which locations m marks depends on the seed. With w set, the ventral map is ALSO
+trained to mark WHERE THE PREDICTOR FAILS -- a target fixed by the data:
+
+```
+r    = avg_pool_{map_stride}( sum_channels (x^ - target)^2 )      (B, 1, h, w), DETACHED
+tau  = r / max_over_locations(r)                                   per frame, in [0, 1]
+loss = e + w * BCE(m, tau).mean() * (C*H*W) * B                    BCE scaled to e's summed units
+```
+
+The predictor never sees the gradient of the BCE (r is detached); it reaches phi_v and phi_e through m.
+Label-free: r is the model's own prediction error. Telemetry adds ``surprise_bce`` (the mean BCE).
+
 TELEMETRY (last_scalars, per call; names as xsp_aux where they exist): B, loss (summed e), mse
 (e per pixel-channel), copy_mse (x_t as the prediction), skill (= 1 - mse/copy_mse, NOT_MEASURED
 when copy_mse == 0), warp_mse (x_w alone, "warp" only), fg_frac, fg_frac_std, fg_entropy,
@@ -200,6 +214,7 @@ class XSP2Term(nn.Module):
     HIDDEN_ENV = "NETT_XSP2_HIDDEN"
     REFINE_HIDDEN_ENV = "NETT_XSP2_REFINE_HIDDEN"
     LR_SCALE_ENV = "NETT_XSP2_LR_SCALE"
+    SURPRISE_ENV = "NETT_XSP2_SURPRISE"
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
@@ -223,6 +238,9 @@ class XSP2Term(nn.Module):
                                  f"would ignore it. Unset it (the conv predictor's width is {self.HIDDEN_ENV}).")
             self.hidden = _env_positive_int(self.HIDDEN_ENV, 64)
         self.lr_scale = _env_positive_float(self.LR_SCALE_ENV, 1.0)
+        #: 0.0 = off (unset). Set, it must be a positive float (the knob refuses 0, negatives, junk).
+        self.surprise = _env_positive_float(self.SURPRISE_ENV, 1.0) if self.SURPRISE_ENV in os.environ else 0.0
+        self.map_stride = int(getattr(encoder, "map_stride", 8))
         self.cpf = int(encoder.cpf)
         device = next(encoder.parameters()).device
         cls = WarpRefiner if self.predictor_kind == "warp" else ConvPredictor
@@ -342,6 +360,17 @@ class XSP2Term(nn.Module):
         if pred.shape != target.shape:
             raise RuntimeError(f"XSP2 prediction {tuple(pred.shape)} != target {tuple(target.shape)}")
         loss = (pred - target).pow(2).sum()
+        objective = loss
+        surprise_bce = None
+        if self.surprise > 0:
+            with torch.no_grad():
+                r = torch.nn.functional.avg_pool2d((pred - target).pow(2).sum(1, keepdim=True), self.map_stride)
+                tau = r / r.flatten(1).max(1).values.clamp_min(1e-12).view(-1, 1, 1, 1)
+            if tau.shape != s["m"].shape:
+                raise RuntimeError(f"XSP2 surprise target {tuple(tau.shape)} != figure map {tuple(s['m'].shape)}")
+            bce = torch.nn.functional.binary_cross_entropy(s["m"], tau)
+            objective = loss + self.surprise * bce * float(target[0].numel()) * float(target.shape[0])
+            surprise_bce = float(bce.detach())
         with torch.no_grad():
             n = float(target.numel())
             mse = float(loss.detach()) / n
@@ -365,10 +394,12 @@ class XSP2Term(nn.Module):
             }
             if x_w is not None:
                 scalars["warp_mse"] = float((x_w - target).pow(2).mean())
+            if surprise_bce is not None:
+                scalars["surprise_bce"] = surprise_bce
             scalars.update(motion_orientation(s["m"], current, target, parked))
             self.last_scalars = scalars
         self.last_window_turn = float(turn_state)
-        return loss
+        return objective
 
     def step(self, encoder: nn.Module, prepared_t: torch.Tensor, prepared_tk: torch.Tensor,
              actions: torch.Tensor, turn_state: float = MASK_UNSET) -> torch.Tensor:
