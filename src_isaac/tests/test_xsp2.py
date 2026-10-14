@@ -852,7 +852,8 @@ DP110_FILES = ("nett_skrl/brain/env_wrappers.py", "nett_skrl/brain/trainer.py")
 # encoder pass under no_grad when decoupled (features.py), and the aux forward moved after the PPO backward
 # in ppo_aux.py. That move is the one §111 EDIT to existing lines -- the aux compute now sits under
 # `if not aux_after:` and the split-backward `if (` became `elif (` -- admitted below by exact text, once each.
-DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/utils/features.py")
+DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/utils/features.py",
+               "nett_skrl/brain/encoders/nature_cnn.py")   # + §113's pre-Ampere bf16 warning (additive)
 DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight * self._aux.compute(",
                                                      "self._aux_encoder, sampled_observations", ")", "if (")}
 

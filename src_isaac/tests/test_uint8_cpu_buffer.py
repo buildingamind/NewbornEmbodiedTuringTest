@@ -173,3 +173,32 @@ def test_matched_amp_bf16_on_cuda_is_close_not_identical_and_fp32_out(monkeypatc
     assert not torch.equal(out, ref), "autocast did not engage"
     # LayerNorm(128) output is O(1); bf16 has ~3 significant digits
     assert (out - ref).abs().max() < 0.15 and torch.nn.functional.cosine_similarity(out, ref).min() > 0.995
+
+
+# --- DECISIONS §113: bf16 stays the default everywhere; pre-Ampere cards get a one-time warning only ---
+
+@pytest.mark.parametrize("capability, warns", [((7, 5), True), ((7, 0), True), ((8, 0), False), ((8, 6), False)])
+def test_bf16_pre_ampere_warning_logs_once_and_never_changes_the_dtype(monkeypatch, caplog, capability, warns):
+    from nett_skrl.brain.encoders import matched as m
+    monkeypatch.setattr(m, "_BF16_SLOW_WARNED", set())
+    monkeypatch.setattr(torch.cuda, "get_device_capability", lambda index: capability)
+    monkeypatch.delenv("NETT_MATCHED_AMP", raising=False)
+    with caplog.at_level("WARNING", logger=m.logger.name):
+        m.warn_if_bf16_without_tensor_cores(torch.device("cuda", 3), "NETT_MATCHED_AMP")
+        m.warn_if_bf16_without_tensor_cores(torch.device("cuda", 3), "NETT_MATCHED_AMP")
+    hits = [r for r in caplog.records if "no bf16 tensor-core path" in r.getMessage()]
+    assert len(hits) == (1 if warns else 0)          # positive control: (7, 5) DOES log, exactly once
+    if warns:
+        assert "cuda:3" in hits[0].getMessage() and "NETT_MATCHED_AMP=off" in hits[0].getMessage()
+    assert matched_amp_dtype() is torch.bfloat16     # §113: the default is untouched on every host
+
+
+def test_bf16_warning_is_silent_on_cpu(monkeypatch, caplog):
+    from nett_skrl.brain.encoders import matched as m
+    monkeypatch.setattr(m, "_BF16_SLOW_WARNED", set())
+    def boom(index):
+        raise AssertionError("a CPU device must not query CUDA capability")
+    monkeypatch.setattr(torch.cuda, "get_device_capability", boom)
+    with caplog.at_level("WARNING", logger=m.logger.name):
+        m.warn_if_bf16_without_tensor_cores(torch.device("cpu"), "NETT_AMP")
+    assert not caplog.records

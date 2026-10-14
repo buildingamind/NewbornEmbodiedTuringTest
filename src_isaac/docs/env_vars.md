@@ -163,7 +163,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_LR_WARMUP` | *(required / no literal default)* | `examples/train_binding_8brain_targets.py:119`<br>`examples/train_binding_8brain_targets.py:125` |
 | `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
 | `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
-| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/encoders/matched.py:143` |
+| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/encoders/matched.py:146` |
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:1587`<br>`examples/train_binding_8brain_targets.py:38` |
 | `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1485` |
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:1899` |

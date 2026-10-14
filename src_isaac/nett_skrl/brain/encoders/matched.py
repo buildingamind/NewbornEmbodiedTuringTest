@@ -46,6 +46,7 @@ which would otherwise overwrite every conv and linear.
 
 from __future__ import annotations
 
+import logging
 import os
 
 import gymnasium as gym
@@ -56,6 +57,8 @@ import torch.nn.functional as F
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.temporal import validate_framestack_depth
+
+logger = logging.getLogger(__name__)
 
 DIM, BLOCKS, HEADS, HEAD_DIM, FFN, PATCH = 96, 3, 3, 32, 384, 16
 EYE_HW = (160, 256)
@@ -148,6 +151,32 @@ def matched_amp_dtype() -> torch.dtype | None:
     raise ValueError(f"NETT_MATCHED_AMP={v!r}; expected 'off' or 'bf16'")
 
 
+#: CUDA device indices already warned by warn_if_bf16_without_tensor_cores (one line per device per process).
+_BF16_SLOW_WARNED: set[int] = set()
+
+
+def warn_if_bf16_without_tensor_cores(device: torch.device, knob: str) -> None:
+    """Log ONCE per CUDA device when bf16 autocast runs on compute capability < 8.0. Never changes the dtype.
+
+    Workspace DECISIONS §113 (owner, 2026-10-14: "Keep bf16 as the default everywhere."): the default does not
+    depend on the host, so a row means the same numerics on every node. Turing and older have no bf16
+    tensor-core path; presenter measured bf16 SLOWER than fp32 on chicken's TITAN RTX (sm_75: 4096^2 matmul
+    7.9 vs 12.1 TFLOPS, an M-ViViT-CLTT-Ref update ~4x longer). The warning names the knob that opts out.
+    """
+    if device.type != "cuda":
+        return
+    index = device.index if device.index is not None else torch.cuda.current_device()
+    if index in _BF16_SLOW_WARNED:
+        return
+    _BF16_SLOW_WARNED.add(index)
+    major, minor = torch.cuda.get_device_capability(index)
+    if major < 8:
+        logger.warning(
+            "bf16 autocast is active (%s, default bf16 per DECISIONS §113) on cuda:%d, compute capability "
+            "%d.%d: there is no bf16 tensor-core path below 8.0, so this is SLOWER than fp32 here. "
+            "Set %s=off in the row's env for fp32.", knob, index, major, minor, knob)
+
+
 class MatchedEncoder(HWCFeatureExtractor):
     """One of the owner's six matched encoders, chosen by ``variant`` (see the module docstring)."""
 
@@ -193,6 +222,7 @@ class MatchedEncoder(HWCFeatureExtractor):
         x = self._prepare_image(observations)              # (B, 3T, 160, 256), [prev, cur], /255 once
         amp = matched_amp_dtype()
         if amp is not None and x.is_cuda:
+            warn_if_bf16_without_tensor_cores(x.device, "NETT_MATCHED_AMP")
             with torch.autocast("cuda", dtype=amp):
                 out = self._trunk(x)
             return out.float()

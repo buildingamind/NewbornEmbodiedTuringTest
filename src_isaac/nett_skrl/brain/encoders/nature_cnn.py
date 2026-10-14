@@ -189,6 +189,9 @@ class NatureCNN(HWCFeatureExtractor):
         x = self._prepare_frames(observations)
         amp = _amp_dtype()
         if amp is not None and x.is_cuda:
+            if amp is torch.bfloat16:
+                from .matched import warn_if_bf16_without_tensor_cores  # DECISIONS §113
+                warn_if_bf16_without_tensor_cores(x.device, "NETT_AMP")
             # Run the (dominant) conv stack + projection in bf16/fp16 on the tensor
             # cores, then cast the 512-d feature back to fp32 so the downstream skrl
             # action/value heads and the distribution stats stay full precision.
