@@ -842,6 +842,9 @@ MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", 
 # and one admitted removal in campaign_train -- the NETT_UINT8_BUFFER pop on the CPU move -- by exact text, once.
 UINT8_FILES = ("nett_skrl/brain/agent_factory.py", "nett_skrl/brain/hybrid_memory.py")
 UINT8_REMOVED = {"examples/campaign_train.py": ('os.environ.pop("NETT_UINT8_BUFFER", None)',)}
+# Workspace DECISIONS §108 (test_xsp2_windows_and_train_dp.py): the train-only decision period adds an
+# Environment kwarg + its schema entry; NETT_XSP2_WINDOWS lives in xsp2_aux.py (already admitted).
+DP108_FILES = ("nett_skrl/environment/environment.py", "nett_skrl/schema.json")
 
 
 def _git(*args):
@@ -891,7 +894,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

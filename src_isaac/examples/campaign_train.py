@@ -1402,6 +1402,18 @@ _ENV_TRUE = frozenset(("1", "true", "yes", "on"))
 _ENV_FALSE = frozenset(("", "0", "false", "no", "off"))
 
 
+def _train_decision_period() -> int:
+    """NETT_TRAIN_DECISION_PERIOD as an integer >= 1; anything else REFUSES (never ignored)."""
+    raw = os.environ.get("NETT_TRAIN_DECISION_PERIOD", "")
+    try:
+        value = int(raw)
+    except ValueError:
+        raise ValueError(f"NETT_TRAIN_DECISION_PERIOD={raw!r}: expected an integer >= 1") from None
+    if value < 1 or str(value) != raw.strip():
+        raise ValueError(f"NETT_TRAIN_DECISION_PERIOD={raw!r}: expected an integer >= 1")
+    return value
+
+
 def _env_flag(name: str, default: bool = False) -> bool:
     """Boolean env var that FAILS LOUD on anything it does not recognise.
 
@@ -1924,6 +1936,18 @@ def main() -> int:
             # Environment prints "[NETT screens] random_first_frame=... phase=..." per phase.
             **({"random_first_frame": True}
                if _env_flag("NETT_RANDOM_FIRST_FRAME") else {}),
+            # TRAIN-ONLY DECISION PERIOD (owner, workspace DECISIONS §108, 2026-10-14: "having actions
+            # every other step, meaning that the agent does not move or request an action for one step
+            # and then the next step is the action step"). NETT_TRAIN_DECISION_PERIOD=P (integer >= 1):
+            # the TRAIN env applies the policy's action only when step % P == 0 and HOLDS pose on the
+            # other steps (repo B _apply_motor_actions; wheeled commands zero velocity), so the frames
+            # alternate moving and held. TEST is untouched (decision_period stays 1). ⚠ BUDGET: the
+            # training budget is TIMESTEPS (train_eps x NETT_STEPS), unchanged, and an episode lasts
+            # NETT_STEPS x P sim steps, so P = 2 completes HALF the episodes on the same frames, PPO
+            # updates and aux steps. ⚠ The rollout's stored action is the COMMANDED sample on held
+            # steps (action_windows.py caveat). ⛔ OPT-IN ONLY: unset, the key is NOT PASSED.
+            **({"train_decision_period": _train_decision_period()}
+               if os.environ.get("NETT_TRAIN_DECISION_PERIOD") else {}),
         },
         "brain": brain,
         # ⚠ ORDER IS LOAD-BEARING. body.py:53 applies these in list order, each

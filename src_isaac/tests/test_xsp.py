@@ -1038,6 +1038,9 @@ MATCHED_LABELS = {"M-CNN", "M-ViT", "M-CNN2F", "M-ViT2F", "M-3DCNN", "M-ViViT", 
 # once, so any other removal in a shared file still fails.
 UINT8_FILES = ("nett_skrl/brain/agent_factory.py", "nett_skrl/brain/hybrid_memory.py")
 UINT8_REMOVED = {"examples/campaign_train.py": ('os.environ.pop("NETT_UINT8_BUFFER", None)',)}
+# Workspace DECISIONS §108 (test_xsp2_windows_and_train_dp.py): the train-only decision period adds an
+# Environment kwarg + its schema entry; NETT_XSP2_WINDOWS lives in xsp2_aux.py (already admitted).
+DP108_FILES = ("nett_skrl/environment/environment.py", "nett_skrl/schema.json")
 
 
 def _drop_admitted(path, removed):
@@ -1088,7 +1091,7 @@ def test_shared_file_change_is_additive_only(path):
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
-               + MATCHED_FILES + UINT8_FILES}
+               + MATCHED_FILES + UINT8_FILES + DP108_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

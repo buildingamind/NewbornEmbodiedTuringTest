@@ -149,6 +149,10 @@ class Environment:
         recording: dict | None = None,
         random_first_frame: bool = False,
         decision_period: int = 1,
+        # TRAIN-PHASE-ONLY decision period (workspace DECISIONS §108): None = ``decision_period``.
+        # Set (>= 1), it overrides screens.decision_period in the TRAIN build only; the test build
+        # keeps ``decision_period``, so every score stays on the established test protocol.
+        train_decision_period: int | None = None,
         enable_neck_flexion: bool = False,
         enable_lateral_bending: bool = False,
         # Default WHEELED, matching schema.json's "default": "wheeled" and the
@@ -219,6 +223,9 @@ class Environment:
         self.recording = recording or {}
         self.random_first_frame = bool(random_first_frame)
         self.decision_period = int(decision_period or 1)
+        if train_decision_period is not None and int(train_decision_period) < 1:
+            raise ValueError(f"train_decision_period must be >= 1 or None; got {train_decision_period!r}")
+        self.train_decision_period = None if train_decision_period is None else int(train_decision_period)
         self.enable_neck_flexion = bool(enable_neck_flexion)
         self.enable_lateral_bending = bool(enable_lateral_bending)
         if locomotion not in ("kinematic", "wheeled"):
@@ -356,6 +363,16 @@ class Environment:
             self._configure_artifacts(cfg, config, seed)
         cfg.__post_init__()
 
+    def _apply_train_decision_period(self, cfg, mode: str) -> None:
+        """TRAIN build only: screens.decision_period = train_decision_period (DECISIONS §108).
+
+        Runs AFTER _copy_env_cfg_fields (which writes ``decision_period`` into every phase), so the
+        train override wins there and the test build keeps ``decision_period``. None = no change.
+        """
+        tdp = getattr(self, "train_decision_period", None)
+        if tdp is not None and mode == "train":
+            _set_attr_path(cfg, "screens.decision_period", int(tdp))
+
     def _apply_sim_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         if config.current_mode == "train":
             cfg.phase = getattr(self, "train_phase", "train")
@@ -430,11 +447,17 @@ class Environment:
         log = logger.warning if strategy.vram_warning else logger.info
         log("PhysX placement: %s (%s)", strategy.device, strategy.rationale)
         self._copy_env_cfg_fields(cfg)
+        self._apply_train_decision_period(cfg, config.current_mode)
         # Positive provenance for the start-frame knob, one line per phase build: a close check
         # counts these instead of inferring the setting from a config it cannot see applied.
         _screens = getattr(cfg, "screens", None)
         if _screens is not None and hasattr(_screens, "random_first_frame"):
             print(f"[NETT screens] random_first_frame={bool(_screens.random_first_frame)} "
+                  f"phase={config.current_mode}", flush=True)
+        if _screens is not None and hasattr(_screens, "decision_period"):
+            # Same provenance rule for the decision period: one line per phase build, read from the
+            # cfg that will be used, so a close check counts it instead of trusting the knob.
+            print(f"[NETT screens] decision_period={int(_screens.decision_period)} "
                   f"phase={config.current_mode}", flush=True)
         if self.asset_root is not None:
             _set_if_present(cfg, "asset_root", str(self.asset_root))

@@ -84,6 +84,7 @@ _MAPPING = {
     "environment.record_mode": lambda: _signature_default(Environment.__init__, "record_mode"),
     "environment.random_first_frame": lambda: _signature_default(Environment.__init__, "random_first_frame"),
     "environment.decision_period": lambda: _signature_default(Environment.__init__, "decision_period"),
+    "environment.train_decision_period": lambda: _signature_default(Environment.__init__, "train_decision_period"),
     "environment.enable_neck_flexion": lambda: _signature_default(Environment.__init__, "enable_neck_flexion"),
     "environment.enable_lateral_bending": lambda: _signature_default(Environment.__init__, "enable_lateral_bending"),
     "environment.locomotion": lambda: _signature_default(Environment.__init__, "locomotion"),

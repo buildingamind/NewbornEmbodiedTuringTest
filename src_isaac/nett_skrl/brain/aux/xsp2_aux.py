@@ -118,6 +118,13 @@ from .xsp_aux import motion_orientation
 PREDICTORS = ("warp", "conv")
 #: The transit-weighted share of each batch, as xsp_aux's default (fixed here, not a knob).
 TRANSIT_FRAC = 0.5
+#: NETT_XSP2_WINDOWS (workspace DECISIONS §108, 2026-10-14). Index 0 is the default and is the
+#: pre-§108 draw, unchanged: TWO contiguous slabs of B/2 consecutive frames from ONE env each, one
+#: transit-weighted and one uniform. "iid" draws B INDEPENDENT (t, env) windows uniformly over every
+#: episode-contiguous pair (t, t+1) in the rollout (seam and done excluded). Offline on recorded
+#: parsing frames (scratch xsp3/offline2.py), the slab draw cut the 20x32 map's object-within-screen
+#: preference from ~2.1 to ~1.2 at an identical recipe; iid reproduces offline training's batches.
+WINDOWS = ("slab", "iid")
 
 
 def warp_bilinear(x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
@@ -215,6 +222,7 @@ class XSP2Term(nn.Module):
     REFINE_HIDDEN_ENV = "NETT_XSP2_REFINE_HIDDEN"
     LR_SCALE_ENV = "NETT_XSP2_LR_SCALE"
     SURPRISE_ENV = "NETT_XSP2_SURPRISE"
+    WINDOWS_ENV = "NETT_XSP2_WINDOWS"
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
@@ -240,6 +248,7 @@ class XSP2Term(nn.Module):
         self.lr_scale = _env_positive_float(self.LR_SCALE_ENV, 1.0)
         #: 0.0 = off (unset). Set, it must be a positive float (the knob refuses 0, negatives, junk).
         self.surprise = _env_positive_float(self.SURPRISE_ENV, 1.0) if self.SURPRISE_ENV in os.environ else 0.0
+        self.windows = _env_choice(self.WINDOWS_ENV, "slab", WINDOWS)
         self.map_stride = int(getattr(encoder, "map_stride", 8))
         self.cpf = int(encoder.cpf)
         device = next(encoder.parameters()).device
@@ -327,6 +336,8 @@ class XSP2Term(nn.Module):
         if self._memory is None:
             raise RuntimeError("XSP2Term draws its own windows; call attach_memory(memory) first.")
         device = next(encoder.parameters()).device
+        if self.windows == "iid":
+            return self._draw_iid(device)
         n_transit = int(round(TRANSIT_FRAC * self.batch))
         parts, turn_state = [], None
         for size, weighted in ((n_transit, True), (self.batch - n_transit, False)):
@@ -342,6 +353,32 @@ class XSP2Term(nn.Module):
         obs_tk = torch.cat([p.obs_tk for p in parts])
         actions = torch.cat([p.actions[:, 0] for p in parts])          # a_t: (B, A)
         return obs_t, obs_tk, actions, turn_state
+
+    def _draw_iid(self, device):
+        """B independent (obs_t, obs_{t+1}, a_t) windows, uniform over every episode-contiguous pair.
+
+        Validity is ``episode_window_starts(memory, (1,))``: no done flag at t and not across the
+        ring-buffer seam, the same rule the slab draw applies to each of its anchors. The RNG is
+        torch's global stream (as draw_episode_window). turn_state = mean |turn| of the drawn a_t
+        (published as window_turn; there is no transit weighting under "iid").
+        """
+        from .cltt_ref_aux import episode_window_starts
+        memory = self._memory
+        actions = memory.tensors.get("actions")
+        if actions is None or actions.ndim != 3 or actions.shape[-1] < 1:
+            raise ValueError("XSP2 iid windows need a rollout 'actions' tensor shaped (T, env, A).")
+        raw = memory.tensors["observations"]
+        valid = episode_window_starts(memory, (1,))[:, :raw.shape[1]]
+        flat = valid.reshape(-1).nonzero().flatten()
+        if flat.numel() == 0:
+            raise ValueError("XSP2 iid windows: no episode-contiguous (t, t+1) pair in the rollout.")
+        pick = flat[torch.randint(flat.numel(), (self.batch,))]
+        t, env = pick // valid.shape[1], pick % valid.shape[1]
+        t_d, env_d = t.to(raw.device), env.to(raw.device)
+        obs_t = raw[t_d, env_d].to(device)
+        obs_tk = raw[t_d + 1, env_d].to(device)
+        a = actions[t.to(actions.device), env.to(actions.device)].to(device)       # (B, A)
+        return obs_t, obs_tk, a, float(a[:, 0].abs().float().mean())
 
     # ------------------------------------------------------------------ objective
     def predict(self, encoder: nn.Module, prepared_t: torch.Tensor):

@@ -467,6 +467,15 @@
           "minimum": 1,
           "default": 1
         },
+        "train_decision_period": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "default": null,
+          "description": "TRAIN phase only: overrides screens.decision_period while training (null = decision_period). Test is never affected. Workspace DECISIONS \u00a7108."
+        },
         "enable_neck_flexion": {
           "type": "boolean",
           "default": false
