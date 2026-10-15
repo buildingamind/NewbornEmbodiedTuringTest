@@ -171,7 +171,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:1645`<br>`examples/train_binding_8brain_targets.py:38` |
 | `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1543` |
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:1957` |
-| `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:176`<br>`examples/campaign_train.py:1788` |
+| `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:216`<br>`examples/campaign_train.py:1788` |
 | `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:1901`<br>`examples/campaign_train.py:2079`<br>`examples/train_binding_8brain_targets.py:155` |
 | `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:98`<br>`examples/campaign_train.py:1604` |
 | `NETT_MOTOK_MODE` | `"faithful"` | `nett_skrl/brain/aux/motok_aux.py:323` |

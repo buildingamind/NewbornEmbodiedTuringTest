@@ -283,18 +283,31 @@ def minibatch_advantage_norm(agent):
     orig = agent.memory.sample
 
     def sample(*args, **kwargs):
-        batches = orig(*args, **kwargs)
-        out = []
-        for b in batches:
+        return _AdvNormBatches(orig(*args, **kwargs), k)
+
+    agent.memory.sample = sample   # instance attribute; the caller deletes it after the update
+    return True
+
+
+class _AdvNormBatches:
+    """The minibatches with advantages re-standardised, ONE AT A TIME as the update iterates (DECISIONS §117
+    addendum 4). Collecting them into a list first held every minibatch at once: on the GPU buffer a second copy
+    of the rollout, and on the hybrid (CPU) buffer the whole rollout moved onto the GPU before the first step."""
+
+    def __init__(self, batches, k) -> None:
+        self._batches, self._k = batches, k
+
+    def __len__(self) -> int:
+        return len(self._batches)
+
+    def __iter__(self):
+        k = self._k
+        for b in self._batches:
             b = list(b)
             a = b[k]
             if a.numel() > 1:
                 b[k] = (a - a.mean()) / (a.std() + 1e-8)
-            out.append(b)
-        return out
-
-    agent.memory.sample = sample   # instance attribute; the caller deletes it after the update
-    return True
+            yield b
 
 
 class MetricsPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):

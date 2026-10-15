@@ -861,7 +861,8 @@ DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight
 DP114_FILES = ("nett_skrl/brain/brain.py",)
 #: Unity-recipe++ eyes (owner 2026-10-15, workspace DECISIONS §117): a new fovea wrapper, its registry entry,
 #: and two labels (CNN-UnityRecipe+Fovea, CNN-UnityRecipe+DVS) that add one `pre` wrapper each.
-UPP117_FILES = ("nett_skrl/body/wrappers/fovea.py", "nett_skrl/body/wrappers/registry.py")
+UPP117_FILES = ("nett_skrl/body/wrappers/fovea.py", "nett_skrl/body/wrappers/registry.py",
+                "nett_skrl/brain/hybrid_memory.py", "nett_skrl/brain/ppo_metrics.py")
 UPP117_LABELS = {"CNN-UnityRecipe+Fovea", "CNN-UnityRecipe+DVS", "XSP2-MAP35x56"}
 
 

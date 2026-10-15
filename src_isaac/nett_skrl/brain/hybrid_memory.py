@@ -76,7 +76,47 @@ class _Uint8ImagesMixin:
         return super().add_samples(**tensors)
 
 
-class HybridDeviceMemory(RandomMemory):
+class _LazyIndexedBatches:
+    """skrl's minibatch list, indexed out of the buffer ONE minibatch at a time (owner, workspace DECISIONS §117
+    addendum 4: "Code fix to stop duplication of buffer").
+
+    ``RandomMemory.sample_by_index`` builds every minibatch up front -- ``tensors_view[name][batch]`` for all
+    ``mini_batches`` batches -- and advanced indexing copies, so the update holds a second, permuted copy of the
+    whole rollout beside the buffer (9.6 GB for one 448x280 RGB brain at 25.6k). This holds only the index splits
+    and indexes when a minibatch is asked for, so at most the minibatch in use is live. Same ``indexes``, same
+    ``np.array_split``, same per-name indexing: each minibatch is bit-identical to skrl's (tests/test_lazy_sample.py).
+    Safe because nothing writes the buffer between ``sample`` and the end of the minibatch loop (GAE runs before).
+    """
+
+    def __init__(self, memory, names, batches) -> None:
+        self._memory = memory
+        self._names = list(names)
+        self._batches = batches
+
+    def __len__(self) -> int:
+        return len(self._batches)
+
+    def __getitem__(self, i):
+        m, batch = self._memory, self._batches[i]
+        return [m.tensors_view[name][batch] if name in m.tensors else None for name in self._names]
+
+    def __iter__(self):
+        for i in range(len(self._batches)):
+            yield self[i]
+
+
+class _LazySampleMixin:
+    """``sample_by_index`` returning ``_LazyIndexedBatches`` when there is more than one minibatch.
+    One minibatch is the whole rollout either way, so that case keeps skrl's eager path."""
+
+    def sample_by_index(self, names, *, indexes, mini_batches=1):
+        if mini_batches > 1:
+            import numpy as np
+            return _LazyIndexedBatches(self, names, np.array_split(indexes, mini_batches))
+        return super().sample_by_index(names, indexes=indexes, mini_batches=mini_batches)
+
+
+class HybridDeviceMemory(_LazySampleMixin, RandomMemory):
     """``RandomMemory`` stored on ``device`` (CPU) but read back on ``compute_device``."""
 
     def __init__(self, *args, compute_device, **kwargs) -> None:
@@ -114,7 +154,7 @@ class _LazyDeviceBatches:
             yield [None if t is None else t.to(dev) for t in batch]
 
 
-class Uint8StatesMemory(_Uint8ImagesMixin, RandomMemory):
+class Uint8StatesMemory(_LazySampleMixin, _Uint8ImagesMixin, RandomMemory):
     """``RandomMemory`` (on the compute device) that stores the image **observation** buffers as uint8.
 
     Image observations are kept at 0–255 all the way to the encoder, whose
