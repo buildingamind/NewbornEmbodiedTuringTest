@@ -183,6 +183,20 @@ def _build_xsp2(encoder):
     return XSP2Term(encoder)
 
 
+def _build_ijepa(encoder):
+    """I-JEPA (owner 2026-10-15): predict EMA-teacher patch tokens of 4 target blocks from a
+    context block (brain/aux/jepa_aux.py)."""
+    from .jepa_aux import build_ijepa
+    return build_ijepa(encoder)
+
+
+def _build_vjepa(encoder):
+    """V-JEPA (owner 2026-10-15): predict EMA-teacher tubelet tokens under the short-range and
+    long-range multiblock masks (brain/aux/jepa_aux.py)."""
+    from .jepa_aux import build_vjepa
+    return build_vjepa(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -220,6 +234,9 @@ AUX_LOSSES = {
     "xsp": _build_xsp,
     # ── XSP2 (owner DECISIONS §87). Reward-detached streams, own optimizer (xsp2_aux.py).
     "xsp2": _build_xsp2,
+    # ── JEPA (owner 2026-10-15). EMA-teacher latent prediction under multiblock masks.
+    "ijepa": _build_ijepa,
+    "vjepa": _build_vjepa,
 }
 
 

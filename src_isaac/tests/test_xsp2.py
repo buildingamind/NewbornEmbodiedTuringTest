@@ -864,6 +864,10 @@ DP114_FILES = ("nett_skrl/brain/brain.py",)
 UPP117_FILES = ("nett_skrl/body/wrappers/fovea.py", "nett_skrl/body/wrappers/registry.py",
                 "nett_skrl/brain/hybrid_memory.py", "nett_skrl/brain/ppo_metrics.py")
 UPP117_LABELS = {"CNN-UnityRecipe+Fovea", "CNN-UnityRecipe+DVS", "XSP2-MAP35x56"}
+#: I-JEPA / V-JEPA (owner 2026-10-15, test_jepa.py): a new encoder and aux module, two labels; the shared
+#: registries gain additive entries only ("jepa"; "ijepa", "vjepa").
+JEPA_FILES = ("nett_skrl/brain/encoders/jepa.py", "nett_skrl/brain/aux/jepa_aux.py")
+JEPA_LABELS = {"I-JEPA", "V-JEPA", "I-JEPA-13M", "V-JEPA-13M"}
 
 
 def _git(*args):
@@ -914,7 +918,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -924,7 +928,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS
@@ -940,5 +944,5 @@ def test_registries_only_gained_the_xsp2_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == ({"xsp2", "matched"} if "registry" in rel else {"xsp2"}) and old <= new, rel
+        assert old and new - old == ({"xsp2", "matched", "jepa"} if "registry" in rel else {"xsp2", "ijepa", "vjepa"}) and old <= new, rel
         assert new <= set(live), rel

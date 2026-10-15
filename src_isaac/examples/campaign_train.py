@@ -279,6 +279,31 @@ XSP2_MAP40x64_F3_CFG = {**XSP2_MAP40x64_CFG, "stack_frames": 3}
 #: encoder refuses a features_dim that is not the map size, so the eye change needs its own label; nothing else differs.
 XSP2_MAP35x56_CFG = {**XSP2_CFG, "features_dim": 1960}
 
+#: ── I-JEPA / V-JEPA (owner 2026-10-15: "create an I-JEPA and V-JEPA implementation and run it ... keeping with the
+#: standards set by Unity match ++. Try to keep the parameters of the model to 500k ... binding on I-JEPA and parsing on
+#: V-JEPA"; answers 1-8 the same day). encoders/jepa.py + aux/jepa_aux.py. ViT trunk, patch 14 at the 448x280 eye = 20x32
+#: = 640 tokens per frame, D=96, 4 heads. I-JEPA: one frame, NO decision loop (answer 1), mean-pool + linear readout.
+#: V-JEPA: the 2-tick loop's two frames at TUBELET 1 (answer 2) = 1280 tokens, attentive-probe readout (answer 4: each
+#: paper's probe). 500k = encoder + probe + predictor, EMA target not counted (answer 3); tests/test_jepa.py pins them:
+#:   I-JEPA depth 3: encoder+readout 404,672 + predictor 94,320 = 498,992
+#:   V-JEPA depth 2: encoder+probe   404,768 + predictor 94,368 = 499,136
+#: Predictor (pred_dim 48, depth 3, 2 heads) and masks from the reference code (facebookresearch/ijepa, /jepa): I-JEPA
+#: smooth-L1 over 4 target blocks, EMA 0.996; V-JEPA L1 over (8 x 0.15) and (2 x 0.7) masks, EMA 0.998 (both held constant).
+_JEPA_TRUNK = {"trainable": True, "features_dim": 128, "patch_size": 14, "embed_dim": 96, "num_heads": 4, "mlp_ratio": 4.0}
+IJEPA_CFG = {**_JEPA_TRUNK, "num_frames": 1, "tubelet": 1, "depth": 3, "probe": "mean_linear",
+             "jepa": {"mode": "ijepa", "pred_dim": 48, "pred_depth": 3, "pred_heads": 2, "ema": 0.996, "aux_batch": 128, "loss": "smooth_l1"}}
+VJEPA_CFG = {**_JEPA_TRUNK, "num_frames": _FRAMESTACK_N, "tubelet": 1, "depth": 2, "probe": "attentive",
+             "jepa": {"mode": "vjepa", "pred_dim": 48, "pred_depth": 3, "pred_heads": 2, "ema": 0.998, "aux_batch": 128, "loss": "l1"}}
+#: ~13.2M versions (owner 2026-10-15 answer 3: "Plan a ~13.2M parameter model of I-JEPA and V-JEPA"), sized to CNN-UnityRecipe's
+#: measured 13,281,568 at 448x280 by the same rule (encoder + probe + predictor, EMA not counted). ViT-S width (D=384, 6 heads,
+#: 64/head); only width, depth and the predictor change, so each is its 500k label scaled:
+#:   I-JEPA-13M depth 6: encoder+readout 10,923,008 + predictor (192 x 5, 6 heads) 2,372,928 = 13,295,936
+#:   V-JEPA-13M depth 5: encoder+probe   10,923,392 + predictor (192 x 5, 6 heads) 2,373,120 = 13,296,512
+_JEPA13M = {"embed_dim": 384, "num_heads": 6}
+_JEPA13M_PRED = {"pred_dim": 192, "pred_depth": 5, "pred_heads": 6}
+IJEPA13M_CFG = {**IJEPA_CFG, **_JEPA13M, "depth": 6, "jepa": {**IJEPA_CFG["jepa"], **_JEPA13M_PRED}}
+VJEPA13M_CFG = {**VJEPA_CFG, **_JEPA13M, "depth": 5, "jepa": {**VJEPA_CFG["jepa"], **_JEPA13M_PRED}}
+
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
 VIT_MIXER_SP_CFG = {**VIT_SP, "embed_dim": 152, "attn_mode": "mixer"}  # 693,907 at 128x128
@@ -1029,6 +1054,11 @@ MODELS: dict[str, dict] = {
     "M-3DCNN-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
     "M-ViViT-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "vivit"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
     "M-3DCNN-G6-CLTT-Ref": dict(encoder="matched", cfg={"trainable": True, "features_dim": 128, "variant": "3dcnn_g6"}, framestack=True, head=dict(MATCHED_HEAD), aux="cltt_ref", aux_weight=1.0),
+    # ── I-JEPA / V-JEPA (owner 2026-10-15). Default head, like CNN-UnityRecipe. Cfgs above (IJEPA_CFG / VJEPA_CFG).
+    "I-JEPA": dict(encoder="jepa", cfg=IJEPA_CFG, framestack=False, aux="ijepa", aux_weight=1.0),
+    "V-JEPA": dict(encoder="jepa", cfg=VJEPA_CFG, framestack=True, aux="vjepa", aux_weight=1.0),
+    "I-JEPA-13M": dict(encoder="jepa", cfg=IJEPA13M_CFG, framestack=False, aux="ijepa", aux_weight=1.0),
+    "V-JEPA-13M": dict(encoder="jepa", cfg=VJEPA13M_CFG, framestack=True, aux="vjepa", aux_weight=1.0),
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -1110,6 +1140,18 @@ for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-C
     assert {k: v for k, v in _r.items() if k != "cfg"} == {k: v for k, v in _b.items() if k != "cfg"}, _lbl
     assert {k: v for k, v in _r["cfg"].items() if k != "embed_dim"} == {k: v for k, v in _b["cfg"].items() if k != "embed_dim"}, _lbl
     assert _r["cfg"]["embed_dim"] != _b["cfg"]["embed_dim"] and _r["cfg"]["embed_dim"] % _r["cfg"]["num_heads"] == 0, _lbl
+del _lbl, _r, _b
+# ⛔ THE JEPA LABELS ARE THEIR DECLARED CFGS; I and V share the trunk width and differ in frames, depth, probe and objective.
+assert MODELS["I-JEPA"] == dict(encoder="jepa", cfg=IJEPA_CFG, framestack=False, aux="ijepa", aux_weight=1.0)
+assert MODELS["V-JEPA"] == dict(encoder="jepa", cfg=VJEPA_CFG, framestack=True, aux="vjepa", aux_weight=1.0)
+assert VJEPA_CFG["num_frames"] == _FRAMESTACK_N and IJEPA_CFG["num_frames"] == 1
+assert {k: v for k, v in IJEPA_CFG.items() if k not in ("num_frames", "tubelet", "depth", "probe", "jepa")} == _JEPA_TRUNK
+assert {k: v for k, v in VJEPA_CFG.items() if k not in ("num_frames", "tubelet", "depth", "probe", "jepa")} == _JEPA_TRUNK
+for _lbl, _base in (("I-JEPA-13M", "I-JEPA"), ("V-JEPA-13M", "V-JEPA")):
+    _r, _b = MODELS[_lbl], MODELS[_base]
+    assert {k: v for k, v in _r.items() if k != "cfg"} == {k: v for k, v in _b.items() if k != "cfg"}, _lbl
+    assert {k for k in _r["cfg"] if _r["cfg"][k] != _b["cfg"][k]} == {"embed_dim", "num_heads", "depth", "jepa"}, _lbl
+    assert {k for k in _r["cfg"]["jepa"] if _r["cfg"]["jepa"][k] != _b["cfg"]["jepa"][k]} == set(_JEPA13M_PRED), _lbl
 del _lbl, _r, _b
 
 # ══════════════════════════════════════════════════════════════════════════════════════════

@@ -491,10 +491,22 @@ def test_every_registered_aux_kind_exposes_a_head():
         space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
         return encoder_mapping["xsp2"](space, features_dim=160)
 
+    def _jepa_host(frames):
+        """`ijepa` / `vjepa` REFUSE any encoder but the JEPA trunk in their own mode (owner 2026-10-15)."""
+        def build():
+            mode = "ijepa" if frames == 1 else "vjepa"
+            space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 3 * frames), dtype="uint8")
+            return encoder_mapping["jepa"](
+                space, num_frames=frames, probe="mean_linear" if frames == 1 else "attentive", patch_size=16,
+                embed_dim=32, depth=1, num_heads=2, features_dim=32,
+                jepa={"mode": mode, "pred_dim": 16, "pred_depth": 1, "pred_heads": 2, "ema": 0.996, "aux_batch": 4,
+                      "loss": "smooth_l1" if frames == 1 else "l1"})
+        return build
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
-                     _framestacked_host, _vit_host, _xsp_host, _xsp2_host):
+                     _framestacked_host, _vit_host, _xsp_host, _xsp2_host, _jepa_host(1), _jepa_host(2)):
             try:
                 aux = build(host())
                 break

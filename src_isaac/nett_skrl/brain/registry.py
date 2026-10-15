@@ -145,6 +145,8 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "xsp2": encoders.XSP2Encoder,
     # The owner's six matched baseline encoders (DECISIONS §92): one class, cfg key `variant`.
     "matched": encoders.MatchedEncoder,
+    # I-JEPA / V-JEPA (owner 2026-10-15): one class, num_frames 1 = I-JEPA, 2 = V-JEPA tubelet.
+    "jepa": encoders.JEPAEncoder,
 }
 
 
