@@ -162,3 +162,39 @@ def test_fovea_label_keeps_three_channels_through_the_real_chain():
     assert conv1.in_channels == 3
     obs, _ = chain.reset()
     assert enc(torch.as_tensor(obs["policy"]).float()).shape == (2, 16)
+
+
+def test_xsp2_map35x56_is_l738s_xsp2_at_the_448x280_eye(monkeypatch):
+    """§117's third arm: "the L738 model adapted to this". L738 is the "XSP2" label; XSP2-MAP35x56 is that encoder with
+    features_dim set to the 448x280 eye's stride-8 map. Control: the plain XSP2 cfg refuses that eye, naming 1960."""
+    from pathlib import Path
+    import torch.nn as nn
+    from nett_skrl.brain.config import EncoderCfg
+    from nett_skrl.brain.registry import encoder_mapping
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "examples"))
+    import campaign_train as campaign
+
+    spec, base = campaign.MODELS["XSP2-MAP35x56"], campaign.MODELS["XSP2"]
+    assert {k: v for k, v in spec.items() if k != "cfg"} == {k: v for k, v in base.items() if k != "cfg"}
+    assert spec["cfg"] == {**base["cfg"], "features_dim": 1960}
+
+    def kw(label):
+        k = EncoderCfg(**campaign.MODELS[label]["cfg"]).as_kwargs()
+        k.pop("trainable", None)
+        return k
+
+    eye = gym.spaces.Box(0, 255, shape=(6, 280, 448), dtype=np.uint8)
+    with pytest.raises(ValueError, match="features_dim must be 1960 at the 448x280 eye"):
+        encoder_mapping["xsp2"](eye, **kw("XSP2"))
+    big = encoder_mapping["xsp2"](eye, **kw("XSP2-MAP35x56"))
+    small = encoder_mapping["xsp2"](gym.spaces.Box(0, 255, shape=(6, 80, 128), dtype=np.uint8), **kw("XSP2"))
+    assert big.map_hw == (35, 56) and big.features_dim == 1960 and big.map_stride == 8
+    n = lambda m: sum(p.numel() for p in m.parameters())
+    assert n(big) == n(small) == 166_510
+    convs = lambda e: [(m.kernel_size, m.stride, m.padding, m.in_channels, m.out_channels)
+                       for m in e.modules() if isinstance(m, (nn.Conv2d, nn.Conv3d))]
+    assert convs(big) == convs(small)
+    x = torch.rand(2, 6, 280, 448, generator=torch.Generator().manual_seed(4))
+    with torch.no_grad():
+        assert big(x).shape == (2, 1960)

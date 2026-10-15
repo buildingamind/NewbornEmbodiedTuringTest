@@ -1058,7 +1058,7 @@ DP114_FILES = ("nett_skrl/brain/brain.py",)
 #: Unity-recipe++ eyes (owner 2026-10-15, workspace DECISIONS §117): a new fovea wrapper, its registry entry,
 #: and two labels (CNN-UnityRecipe+Fovea, CNN-UnityRecipe+DVS) that add one `pre` wrapper each.
 UPP117_FILES = ("nett_skrl/body/wrappers/fovea.py", "nett_skrl/body/wrappers/registry.py")
-UPP117_LABELS = {"CNN-UnityRecipe+Fovea", "CNN-UnityRecipe+DVS"}
+UPP117_LABELS = {"CNN-UnityRecipe+Fovea", "CNN-UnityRecipe+DVS", "XSP2-MAP35x56"}
 
 
 def _drop_admitted(path, removed):

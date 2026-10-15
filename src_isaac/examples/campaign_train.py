@@ -273,6 +273,11 @@ XSP2_MAP40x64_CFG = {**XSP2_CFG, "features_dim": 2560, "map_stride": 2}
 #: the map of o2, the newest frame; the aux's dorsal/ventral pair is (o0, o1) and its target o2. Same parameters.
 XSP2_MAP20x32_F3_CFG = {**XSP2_MAP20x32_CFG, "stack_frames": 3}
 XSP2_MAP40x64_F3_CFG = {**XSP2_MAP40x64_CFG, "stack_frames": 3}
+#: "XSP2-MAP35x56" (owner, workspace DECISIONS §117: "the L738 model adapted to this. Using the resolution, FOV, etc of
+#: Unity-recipe++"). L738 is the "XSP2" label; this is that encoder, unchanged (trunk stride 8, same kernels, same 166,510
+#: encoder parameters), at the Unity-recipe++ eye 448x280 (W x H), whose stride-8 map is 35x56 = 1960 policy features. The
+#: encoder refuses a features_dim that is not the map size, so the eye change needs its own label; nothing else differs.
+XSP2_MAP35x56_CFG = {**XSP2_CFG, "features_dim": 1960}
 
 VIT_SP = {**VIT_CFG, "pool": "spatial", "spatial_grid": 4, "spatial_reduce_dim": 16}
 VIT_SP_CFG = {**VIT_SP, "embed_dim": 136}                              # 696,000 at 128x128
@@ -990,6 +995,8 @@ MODELS: dict[str, dict] = {
                              aux_weight=1.0),
     "XSP2-MAP40x64-F3": dict(encoder="xsp2", cfg=dict(XSP2_MAP40x64_F3_CFG), framestack=True, aux="xsp2",
                              aux_weight=1.0),
+    # L738's XSP2 at the Unity-recipe++ 448x280 eye (owner, workspace DECISIONS §117).
+    "XSP2-MAP35x56": dict(encoder="xsp2", cfg=dict(XSP2_MAP35x56_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1094,6 +1101,9 @@ assert MODELS["XSP2-MAP40x64"] == {**MODELS["XSP2"], "cfg": XSP2_MAP40x64_CFG}
 assert XSP2_MAP40x64_CFG == {**XSP2_CFG, "features_dim": 2560, "map_stride": 2}
 for _lbl, _base in (("XSP2-MAP20x32-F3", XSP2_MAP20x32_CFG), ("XSP2-MAP40x64-F3", XSP2_MAP40x64_CFG)):
     assert MODELS[_lbl] == {**MODELS["XSP2"], "cfg": {**_base, "stack_frames": 3}}, _lbl
+# ⛔ XSP2-MAP35x56 IS XSP2 WITH features_dim SET TO THE 448x280 EYE'S STRIDE-8 MAP, NOTHING ELSE (§117).
+assert MODELS["XSP2-MAP35x56"] == {**MODELS["XSP2"], "cfg": XSP2_MAP35x56_CFG}
+assert XSP2_MAP35x56_CFG == {**XSP2_CFG, "features_dim": 1960}
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
