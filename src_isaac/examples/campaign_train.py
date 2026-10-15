@@ -856,6 +856,14 @@ MODELS: dict[str, dict] = {
     # brightness and contrast and keeps colour. No segmenter, so neither filter reshapes a mask's data.
     "CNN-UnityRecipe+Gray": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("grayscale",)),
     "CNN-UnityRecipe+LumNorm": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("lumnorm",)),
+    # ── UNITY-RECIPE++ EYES (owner 2026-10-15, workspace DECISIONS §117). CNN-UnityRecipe's encoder with ONE
+    # innermost wrapper and nothing else. +Fovea: crisp centre, small colour spot, slightly blurred BT.601
+    # grey x3 surround (3 channels; sizes from NETT_FOVEA_*, required). +DVS: the 2-channel ON/OFF event
+    # frame of dvs_polarity and nothing else, no framestack (in_channels=2 from the space). Run under
+    # NETT_DECISION_LOOP=2 the agent sees only the last tick, i.e. the change between the loop's two
+    # ticks (with NETT_VIDEO_FRAMES_PER_STEP=5: clip frames 0 and 5).
+    "CNN-UnityRecipe+Fovea": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("fovea",)),
+    "CNN-UnityRecipe+DVS": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 128, "conv_dim": 64, "spatial_pool": False}, framestack=False, pre=("dvs_polarity",)),
     # ⛔ ORACLE = A DIAGNOSTIC CONTROL, NEVER A CANDIDATE MODEL (2026-09-29, researcher2; owner, DECISIONS §53.1).
     # CNN-UnityRecipe's policy, one frame, behind the fixed red-object mask of CNN2F+ORACLE-RedSeg, and
     # nothing else changed. The earlier oracle arms ran a 128x80/300 deg eye where the objects are 7 and

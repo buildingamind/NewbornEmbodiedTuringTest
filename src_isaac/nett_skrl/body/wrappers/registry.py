@@ -58,6 +58,9 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # Black-and-white eye: RGB -> one BT.601 luminance channel, every phase. Removes hue and
     # saturation, keeps brightness and texture (owner 2026-09-28). ⚠ ORDER MATTERS: `pre`, innermost.
     "grayscale": ("nett_skrl.body.wrappers.grayscale", "Grayscale"),
+    # Foveated eye: crisp centre with a small colour spot, slightly blurred BT.601 grey (x3) surround
+    # (owner 2026-10-15, workspace DECISIONS §117). Sizes from NETT_FOVEA_* (required). ⚠ `pre`, innermost.
+    "fovea": ("nett_skrl.body.wrappers.fovea", "Fovea"),
     "retina": ("nett_skrl.body.wrappers.retina", "Retina"),
     "video": ("nett_skrl.body.wrappers.video", "Video"),
 }
