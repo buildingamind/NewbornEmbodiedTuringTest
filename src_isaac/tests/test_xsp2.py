@@ -871,6 +871,8 @@ JEPA_LABELS = {"I-JEPA", "V-JEPA", "I-JEPA-13M", "V-JEPA-13M"}
 #: fp16 for compact_vit (owner 2026-10-15, test_vit_fp16.py): the agent-level GradScaler hook (amp.py, called from
 #: agent_factory) and CompactViT's fp16 autocast branch; nature_cnn/matched only gain the knob's fp16 plumbing.
 FP16_FILES = ("nett_skrl/brain/amp.py", "nett_skrl/brain/encoders/compact_vit.py")
+#: strict_determinism restores BOTH determinism flags on exit (test_reproducibility.py).
+DETERMINISM_FILES = ("nett_skrl/brain/skrl_patches.py",)
 #: ...and the paper's ViT-Base trunk as a ViT-CLTT-Ref label (owner 2026-10-15, test_vit_fp16.py).
 FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", "ViT-CLTT-Ref-50M",
                "ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-5M-DVS"}
@@ -924,7 +926,8 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES,
+                                          "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
