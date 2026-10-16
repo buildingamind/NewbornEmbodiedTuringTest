@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import os
+import re
 from pathlib import Path
 
 logger = logging.getLogger("nett.brain")
@@ -27,6 +29,25 @@ def pick_checkpoint(ckpt_dir: Path) -> Path | None:
 
     best = ckpt_dir / "best_agent.pt"
     return best if best.exists() else None
+
+
+_TEST_CHECKPOINT_NAME = re.compile(r"(final_agent|best_agent|agent_[0-9]+)\.pt")
+
+
+def resolve_test_checkpoint() -> str | None:
+    """``NETT_TEST_CHECKPOINT``: the checkpoint FILE NAME every brain's TEST loads, e.g. ``agent_3800.pt``.
+
+    Opt-in (owner 2026-10-16: "add checkpoints at 1/2 and 3/4 into training ... test the checkpoint
+    models"). Unset = today's choice (``pick_checkpoint``: final, else newest numbered, else best).
+    TEST only -- a train resume never reads it. A bare file name from skrl's own set; anything else
+    (a path, another suffix) raises, so a typo cannot fall back to the final model.
+    """
+    v = os.environ.get("NETT_TEST_CHECKPOINT", "").strip()
+    if not v:
+        return None
+    if not _TEST_CHECKPOINT_NAME.fullmatch(v):
+        raise ValueError(f"NETT_TEST_CHECKPOINT={v!r}: want final_agent.pt, best_agent.pt or agent_<timestep>.pt")
+    return v
 
 
 class MissingCheckpointError(RuntimeError):
@@ -66,10 +87,23 @@ def load_latest_checkpoints(agents: list, config, *, context: str = "test") -> N
     (it measures memory, not a policy).
     """
     refuse = context == "test" and not bool(getattr(config, "dry_run", False))
+    override = resolve_test_checkpoint() if context == "test" else None
+    if override:
+        logger.warning("%s: NETT_TEST_CHECKPOINT=%s -- every brain loads that file, not its final model",
+                       context, override)
     problems = []
     for i, agent in enumerate(agents):
         ckpt_dir = brain_checkpoint_dir(config.path, i + 1)
-        chosen = pick_checkpoint(ckpt_dir)
+        if override:
+            chosen = ckpt_dir / override
+            if not chosen.is_file():
+                # A named checkpoint that is absent is ALWAYS a refusal, dry run or not: falling back
+                # to another file would test a different policy under this one's name.
+                logger.error("%s: brain_%d has no %s under %s", context, i + 1, override, ckpt_dir)
+                problems.append(f"brain_{i + 1}: NETT_TEST_CHECKPOINT {override} absent under {ckpt_dir}")
+                continue
+        else:
+            chosen = pick_checkpoint(ckpt_dir)
         if chosen is None:
             if refuse:
                 logger.error("%s: brain_%d has no checkpoint under %s", context, i + 1, ckpt_dir)

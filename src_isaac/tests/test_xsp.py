@@ -1073,6 +1073,8 @@ FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", 
 #: strict_determinism restores BOTH determinism flags on exit (test_reproducibility.py): it leaked
 #: use_deterministic_algorithms(True) into any caller whose ambient state had it disabled.
 DETERMINISM_FILES = ("nett_skrl/brain/skrl_patches.py",)
+#: NETT_TEST_CHECKPOINT: TEST loads a named mid-training checkpoint (test_test_checkpoint_override.py).
+CHECKPOINT_FILES = ("nett_skrl/recording/checkpoints.py",)
 
 
 def _drop_admitted(path, removed):
@@ -1125,7 +1127,7 @@ def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
-                                              + DETERMINISM_FILES}
+                                              + DETERMINISM_FILES + CHECKPOINT_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
