@@ -323,6 +323,30 @@ def test_loss_trains_encoder_and_predictor_never_the_target(frames, mode):
 
 
 @pytest.mark.parametrize("frames,mode", [(1, "ijepa"), (2, "vjepa")])
+def test_policy_loss_trains_the_probe_never_the_trunk(frames, mode):
+    """Owner, DECISIONS §131 add. 1 item 11: "JEPA should have its own aux loss and should be detached
+    from the policy loss." The RL path (encoder.forward) reaches the probe + readout only; the JEPA
+    loss reaches the trunk. Positive control: the same trunk DOES get gradient from the JEPA term, and
+    the probe does from the RL path -- so a zero below is the detach, not a dead graph."""
+    torch.manual_seed(0)
+    enc = _enc(frames, SMALL_H, SMALL_W, aux_batch=4)
+    obs = torch.randint(0, 256, (3, SMALL_H, SMALL_W, 3 * frames), dtype=torch.uint8).float()
+    enc(obs).sum().backward()                       # what features_forward does for the policy/value loss
+    trunk = [enc.patch_embed.weight, *[p for b in enc.blocks for p in b.parameters()], *enc.norm.parameters()]
+    assert all(p.grad is None for p in trunk), "the policy loss reached the JEPA trunk"
+    probe = [enc.head.weight] + ([enc.probe_query, *enc.probe_block.parameters()] if frames > 1 else [])
+    assert all(p.grad is not None and p.grad.abs().sum() > 0 for p in probe), "the probe must train on the RL loss"
+    enc.zero_grad(set_to_none=True)
+    JEPATerm(enc, mode).compute(enc, obs).backward()  # positive control: the JEPA loss reaches the trunk
+    assert enc.patch_embed.weight.grad is not None and enc.patch_embed.weight.grad.abs().sum() > 0
+    assert enc.blocks[0].qkv.weight.grad.abs().sum() > 0
+    # same features with or without a graph: the detach changes gradients, not values
+    with torch.no_grad():
+        ref = enc._readout(enc.tokens_prepared(enc._prepare_image(obs)))
+    assert torch.equal(enc(obs).detach(), ref)
+
+
+@pytest.mark.parametrize("frames,mode", [(1, "ijepa"), (2, "vjepa")])
 def test_target_is_the_ema_teacher_not_the_live_encoder(frames, mode):
     """Positive control: after the live encoder moves, a decay-1.0 teacher (frozen at init) and a
     decay-0.0 teacher (= live) must give different losses on the same masks. If the loss read the

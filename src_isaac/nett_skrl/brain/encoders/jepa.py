@@ -273,6 +273,24 @@ class JEPAEncoder(HWCFeatureExtractor):
         q = self.probe_query.to(tokens.dtype).expand(tokens.shape[0], -1, -1)
         return self.head(self.probe_block(q, tokens).squeeze(1))
 
+    def _rl_tokens(self, prepared: torch.Tensor) -> torch.Tensor:
+        """The trunk's tokens for the POLICY/VALUE path, built WITHOUT an autograd graph.
+
+        OWNER (workspace DECISIONS §131 add. 1, item 11): "JEPA should have its own aux loss and should
+        be detached from the policy loss." So the trunk (patch embed, blocks, norm) is shaped by the
+        JEPA loss alone -- JEPATerm calls ``tokens_prepared`` directly, with a graph -- and the RL loss
+        reaches only the paper probe (``_readout``: mean-linear / attentive) and the heads after it:
+        both papers' frozen-trunk + trained-probe protocol.
+
+        ⛔ NOT NETT_DECOUPLE_ENCODER. That detaches at the ENCODER OUTPUT, i.e. after the probe, so it
+        would also freeze the probe at its random init (nothing else trains it: the JEPA loss never
+        reads it). Detaching here, between trunk and probe, is the split the owner described.
+        no_grad rather than .detach(): the same values and the same (zero) trunk gradient, but the RL
+        forward keeps no trunk activations alive until the optimiser step.
+        """
+        with torch.no_grad():
+            return self.tokens_prepared(prepared)
+
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         x = self._prepare_image(observations)
         amp = _amp_dtype()
@@ -281,6 +299,6 @@ class JEPAEncoder(HWCFeatureExtractor):
                 from .matched import warn_if_bf16_without_tensor_cores
                 warn_if_bf16_without_tensor_cores(x.device, "NETT_AMP")
             with torch.autocast("cuda", dtype=amp):
-                out = self._readout(self.tokens_prepared(x))
+                out = self._readout(self._rl_tokens(x))
             return out.float()
-        return self._readout(self.tokens_prepared(x))
+        return self._readout(self._rl_tokens(x))

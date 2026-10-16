@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-280 variables.
+281 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -259,6 +259,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEARDOWN_BUDGET_S` | `300` | `nett_skrl/runtime/stall_guard.py:250` |
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
+| `NETT_TEST_CHECKPOINT` | `""` | `nett_skrl/recording/checkpoints.py:45` |
 | `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:610` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2142` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:407`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
