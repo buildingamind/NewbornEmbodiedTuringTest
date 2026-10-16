@@ -21,9 +21,12 @@ one CUDA-only test at the bottom):
      scale; the scale survives save -> load.
   5. REFUSALS. fp16 on a knob the agent's encoder does not read; fp16 under an agent class that does
      not step through the scaler; fp16 with an aux that owns its optimizer.
-  6. ViT-CLTT-Ref-Base (owner 2026-10-15): ViT-CLTT-Ref with the paper's ViT-B trunk (depth 12, width 768,
-     12 heads, MLP 3072) and nothing else; encoder and agent counts at 128x80 equal its MODELS comment;
-     the fp16 branch reaches it; it and every patch-16 ViT label refuse the 448x280 eye (280 % 16 != 0).
+  6. PATCH-14 LABELS (DECISIONS §124) for the Unity-recipe++ eye (448x280): -500K-P14 (depth 3), -5M and -50M
+     (depth 12, head_dim 64 rule) and -Base (the paper's ViT-B trunk: depth 12, width 768, 12 heads, MLP
+     3072), each ViT-CLTT-Ref with only its listed cfg fields moved; encoder and agent counts at 448x280
+     equal the MODELS comments; the widths follow the §124 rule (neighbours checked); a CPU forward at
+     448x280 gives (B, 512); the fp16 branch reaches them; they refuse 128x80 (80 % 14 != 0) and the
+     patch-16 labels refuse 448x280 (280 % 16 != 0).
 Run with CUDA_VISIBLE_DEVICES="".
 """
 
@@ -457,10 +460,22 @@ def test_cuda_fp16_forward_is_close_not_identical_and_fp32_out(monkeypatch):
     assert torch.nn.functional.cosine_similarity(out, ref).min() > 0.99
 
 
-# ── ViT-CLTT-Ref-Base: the paper's ViT-B trunk as a ViT-CLTT-Ref label ───────────────────────────────
+# ── Patch-14 ViT-CLTT-Ref labels at the Unity-recipe++ eye (DECISIONS §124): -500K-P14 / -5M / -50M / -Base ──
 
+EYE_H, EYE_W = 280, 448               # NETT_EYE_RES=448x280 is W x H
 BASE_LABEL = "ViT-CLTT-Ref-Base"
-BASE_ENC_128x80 = 86_662_400          # also written in campaign_train.py's comment; checked against it below
+# label -> (cfg fields moved off ViT-CLTT-Ref, encoder count at 448x280 x 6 ch, (depth, width, heads, mlp hidden)).
+# The counts are also written in campaign_train.py's MODELS comments; checked against them below.
+P14 = {
+    "ViT-CLTT-Ref-500K-P14": ({"patch_size": 14, "embed_dim": 104}, 506_160, (3, 104, 4, 208)),
+    "ViT-CLTT-Ref-5M": ({"patch_size": 14, "depth": 12, "embed_dim": 177, "num_heads": 3, "mlp_ratio": 4.0},
+                        4_952_441, (12, 177, 3, 708)),
+    "ViT-CLTT-Ref-50M": ({"patch_size": 14, "depth": 12, "embed_dim": 576, "num_heads": 9, "mlp_ratio": 4.0},
+                         49_209_920, (12, 576, 9, 2304)),
+    BASE_LABEL: ({"patch_size": 14, "depth": 12, "embed_dim": 768, "num_heads": 12, "mlp_ratio": 4.0},
+                 86_846_720, (12, 768, 12, 3072)),
+}
+TARGETS = {"ViT-CLTT-Ref-500K-P14": 500_000, "ViT-CLTT-Ref-5M": 5_000_000, "ViT-CLTT-Ref-50M": 50_000_000}
 
 
 @pytest.fixture()
@@ -483,54 +498,99 @@ def _label_encoder(campaign, label, h, w):
 
 
 def _declared(campaign, label):
-    """(enc, agent) from the label's MODELS line comment in campaign_train.py."""
+    """(enc, agent) from the label's MODELS line comment in campaign_train.py, which must name the 448x280 eye."""
     import re
     from pathlib import Path
     src = Path(campaign.__file__).read_text()
     line = next(ln for ln in src.splitlines() if ln.lstrip().startswith(f'"{label}":'))
-    m = re.search(r"enc ([\d,]+) / agent ([\d,]+) @ 128x80", line)
+    m = re.search(r"enc ([\d,]+) / agent ([\d,]+) @ 448x280", line)
     assert m, line
     return int(m[1].replace(",", "")), int(m[2].replace(",", ""))
 
 
-def test_base_label_is_the_paper_trunk_on_vit_cltt_ref(campaign):
-    base, ref = campaign.MODELS[BASE_LABEL], campaign.MODELS["ViT-CLTT-Ref"]
-    assert {k: v for k, v in base.items() if k != "cfg"} == {k: v for k, v in ref.items() if k != "cfg"}
-    diff = {k: base["cfg"][k] for k in set(base["cfg"]) | set(ref["cfg"]) if base["cfg"].get(k) != ref["cfg"].get(k)}
-    assert diff == {"depth": 12, "embed_dim": 768, "num_heads": 12, "mlp_ratio": 4.0}
-    assert base["cfg"]["patch_size"] == 16 and base["cfg"]["pool"] == "cls" and base["cfg"]["stem"] == "linear"
-    assert base["encoder"] == "compact_vit" and base["framestack"] is True and base["aux"] == "cltt_ref"
+@pytest.mark.parametrize("label", sorted(P14))
+def test_p14_label_is_vit_cltt_ref_with_only_its_fields_moved(campaign, label):
+    lab, ref = campaign.MODELS[label], campaign.MODELS["ViT-CLTT-Ref"]
+    assert {k: v for k, v in lab.items() if k != "cfg"} == {k: v for k, v in ref.items() if k != "cfg"}
+    diff = {k: lab["cfg"][k] for k in set(lab["cfg"]) | set(ref["cfg"]) if lab["cfg"].get(k) != ref["cfg"].get(k)}
+    assert diff == P14[label][0]
+    assert lab["cfg"]["pool"] == "cls" and lab["cfg"]["stem"] == "linear" and lab["cfg"]["features_dim"] == 512
+    assert lab["encoder"] == "compact_vit" and lab["framestack"] is True and lab["aux"] == "cltt_ref"
 
 
-def test_base_encoder_builds_the_paper_shape_and_its_count_matches_the_comment(campaign):
-    enc = _label_encoder(campaign, BASE_LABEL, 80, 128)
+@pytest.mark.parametrize("label", sorted(P14))
+def test_p14_encoder_shape_and_count_at_448x280_match_the_comment(campaign, label):
+    enc = _label_encoder(campaign, label, EYE_H, EYE_W)
     n = sum(p.numel() for p in enc.parameters())
-    assert n == BASE_ENC_128x80
-    assert _declared(campaign, BASE_LABEL) == (n, n + 1541)
-    assert len(enc.blocks) == 12
+    assert n == P14[label][1]
+    assert _declared(campaign, label) == (n, n + 1541)
+    depth, width, heads, hidden = P14[label][2]
+    assert len(enc.blocks) == depth
     for blk in enc.blocks:
-        assert blk.attn.num_heads == 12 and blk.attn.embed_dim == 768
+        assert blk.attn.num_heads == heads and blk.attn.embed_dim == width
         fc1, act, fc2 = blk.mlp
-        assert (fc1.in_features, fc1.out_features, fc2.out_features) == (768, 3072, 768)
+        assert (fc1.in_features, fc1.out_features, fc2.out_features) == (width, hidden, width)
         assert isinstance(act, torch.nn.GELU) and isinstance(blk.norm1, torch.nn.LayerNorm)   # pre-norm, GELU
-    assert enc.patch_embed.kernel_size == (16, 16) and enc.patch_embed.in_channels == 6
-    assert enc.pos_embed.shape == (1, 41, 768)          # 5 x 8 patches + CLS at 128x80
-    # the cltt_ref head is the same constant 329,216 as on every ViT-CLTT-Ref rung (built on features_dim)
+    assert enc.patch_embed.kernel_size == (14, 14) and enc.patch_embed.in_channels == 6
+    assert enc.pos_embed.shape == (1, 20 * 32 + 1, width)      # 20 x 32 patches + CLS at 448x280
+    # the cltt_ref head is the same constant 329,216 as on every ViT-CLTT-Ref label (built on features_dim)
     from nett_skrl.brain.aux.cltt_ref_aux import CLTTReferenceAuxLoss
     shared = {id(p) for p in enc.parameters()}
     assert sum(p.numel() for p in CLTTReferenceAuxLoss(enc).parameters() if id(p) not in shared) == 329_216
 
 
-@pytest.mark.parametrize("label", [BASE_LABEL, "ViT-CLTT-Ref", "ViT-CLTT-Ref-500K"])
+def test_p14_sizes_follow_the_section_124_rule(campaign):
+    """500K-P14: the multiple of 4 nearest 500K. 5M/50M: depth 12, head_dim 64 if a multiple of 64 lands within
+    +-10% (50M: 576), else the head count whose head_dim is nearest 64 and its multiple nearest the target (5M:
+    no multiple of 64 within 10%, so 3 heads, width 177). Controls: the neighbouring widths really are farther."""
+    from nett_skrl.brain.encoders.compact_vit import CompactViT
+
+    def count(**over):
+        cfg = {**campaign.VIT_CFG, "patch_size": 14, **over}
+        cfg.pop("trainable")
+        with torch.device("meta"):
+            enc = CompactViT(gym.spaces.Box(0, 255, (6, EYE_H, EYE_W), np.uint8), **cfg)
+        return sum(p.numel() for p in enc.parameters())
+
+    d12 = dict(depth=12, mlp_ratio=4.0)
+    err = lambda n, t: abs(n - t) / t
+    assert err(P14["ViT-CLTT-Ref-500K-P14"][1], 5e5) < min(err(count(embed_dim=w), 5e5) for w in (100, 108))
+    assert err(P14["ViT-CLTT-Ref-50M"][1], 5e7) < 0.10
+    assert all(err(count(embed_dim=w, num_heads=w // 64, **d12), 5e7) > 0.10 for w in (512, 640))
+    assert all(err(count(embed_dim=w, num_heads=w // 64, **d12), 5e6) > 0.10 for w in (128, 192))
+    assert count(embed_dim=192, num_heads=3, **d12) == 5_786_816                  # the DeiT-Ti trunk: +15.74%
+    assert err(P14["ViT-CLTT-Ref-5M"][1], 5e6) < min(err(count(embed_dim=w, num_heads=3, **d12), 5e6) for w in (174, 180))
+    for label, target in TARGETS.items():
+        assert err(P14[label][1], target) < 0.02, label
+
+
+@pytest.mark.parametrize("label", sorted(P14))
+def test_p14_forward_at_448x280_on_cpu(campaign, label):
+    enc = _label_encoder(campaign, label, EYE_H, EYE_W).eval()
+    x = torch.randint(0, 256, (2, 6, EYE_H, EYE_W), generator=torch.Generator().manual_seed(1)).float()
+    with torch.no_grad():
+        out = enc(x)
+    assert out.shape == (2, 512) and out.dtype == torch.float32 and torch.isfinite(out).all()
+    assert not torch.equal(out[0], out[1])
+
+
+@pytest.mark.parametrize("label", sorted(P14))
+def test_p14_labels_refuse_the_128x80_campaign_eye(campaign, label):
+    with pytest.raises(AssertionError, match="divisible by patch_size=14"):
+        _label_encoder(campaign, label, 80, 128)
+
+
+@pytest.mark.parametrize("label", ["ViT-CLTT-Ref", "ViT-CLTT-Ref-500K"])
 def test_patch16_vit_labels_refuse_the_448x280_eye(campaign, label):
     """The Unity-recipe++ eye (448x280, W x H) is not a multiple of patch 16 in height (280 = 17.5 x 16)."""
     with pytest.raises(AssertionError, match="divisible by patch_size=16"):
-        _label_encoder(campaign, label, 280, 448)
+        _label_encoder(campaign, label, EYE_H, EYE_W)
 
 
-def test_fp16_reaches_the_base_encoder(campaign, monkeypatch):
-    enc = _label_encoder(campaign, BASE_LABEL, 80, 128).eval()
-    x = torch.randint(0, 256, (1, 6, 80, 128), generator=torch.Generator().manual_seed(1)).float()
+def test_fp16_reaches_the_p14_encoders(campaign, monkeypatch):
+    """CPU fp16 autocast of the 5M trunk at 448x280 (the larger labels are the same class reading the same knob)."""
+    enc = _label_encoder(campaign, "ViT-CLTT-Ref-5M", EYE_H, EYE_W).eval()
+    x = torch.randint(0, 256, (1, 6, EYE_H, EYE_W), generator=torch.Generator().manual_seed(1)).float()
     with torch.no_grad():
         ref = enc(x)
     _cpu_gate(monkeypatch)
@@ -543,29 +603,34 @@ def test_fp16_reaches_the_base_encoder(campaign, monkeypatch):
     hook.remove()
     assert seen == [torch.float16] and out.dtype == torch.float32 and not torch.equal(out, ref)
     assert torch.nn.functional.cosine_similarity(out, ref).min() > 0.98
+    with torch.device("meta"):
+        base = _label_encoder(campaign, BASE_LABEL, EYE_H, EYE_W)
+    assert isinstance(base, CompactViT) and base.amp_dtype() is torch.float16
 
 
-def test_base_agent_count_matches_the_comment_and_fp16_enables_the_scaler(campaign, monkeypatch):
-    """The production path at the label's own cfg: Brain -> build_agents -> AuxLossPPO(cltt_ref), 128x80."""
+class _Env448:
+    num_envs = 1
+    num_agents = 1
+    observation_space = gym.spaces.Box(0, 255, (6, EYE_H, EYE_W), np.uint8)
+    action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
+    state_space = None
+
+
+@pytest.mark.parametrize("label", ["ViT-CLTT-Ref-500K-P14", BASE_LABEL])
+def test_p14_agent_count_at_448x280_matches_the_comment_and_fp16_enables_the_scaler(campaign, monkeypatch, label):
+    """The production path at the label's own cfg: Brain -> build_agents -> AuxLossPPO(cltt_ref), 448x280."""
     from nett_skrl.brain.agent_factory import build_agents
     from nett_skrl.brain.brain import Brain
 
-    class _Env128:
-        num_envs = 1
-        num_agents = 1
-        observation_space = gym.spaces.Box(0, 255, (6, 80, 128), np.uint8)
-        action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
-        state_space = None
-
     for k, v in (("NETT_AMP", "fp16"), ("NETT_AUX_LOSS", "cltt_ref"), ("NETT_AUX_WEIGHT", "1")):
         monkeypatch.setenv(k, v)
-    spec = campaign.MODELS[BASE_LABEL]
+    spec = campaign.MODELS[label]
     torch.manual_seed(0)
     brain = Brain(encoder=spec["encoder"], algorithm="PPO", encoder_cfg=dict(spec["cfg"]),
                   algorithm_cfg={"rollouts": 4},
                   model={"value_bound": None, "shared_encoder": True, "hidden_sizes": [], "clip_actions": False})
-    agent = build_agents(brain, _Env128(), torch.device("cpu"))[0]
+    agent = build_agents(brain, _Env448(), torch.device("cpu"))[0]
     params = {id(p): p for m in (agent.policy, agent.value) for p in m.parameters()}
-    assert sum(p.numel() for p in params.values()) == _declared(campaign, BASE_LABEL)[1]
+    assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
     assert type(agent).__name__ == "AuxLossPPO" and agent.scaler.is_enabled()
     assert agent.checkpoint_modules[SCALER_CHECKPOINT_KEY] is agent.scaler
