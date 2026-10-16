@@ -9,6 +9,14 @@ literally.
 
 from __future__ import annotations
 
+import os
+
+# cuBLAS reads CUBLAS_WORKSPACE_CONFIG ONCE, when the process creates its handle. In a combined run an earlier CUDA
+# test creates the handle first, so the CUDA test below set it too late and strict_determinism refused the bf16
+# backward ("uses CuBLAS ... CUBLAS_WORKSPACE_CONFIG"). Set at collection, before any test runs, as the driver
+# sets it at startup; it only selects the deterministic workspace.
+os.environ.setdefault("CUBLAS_WORKSPACE_CONFIG", ":4096:8")
+
 import gymnasium as gym
 import numpy as np
 import pytest
