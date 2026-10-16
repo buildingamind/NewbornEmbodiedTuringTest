@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-281 variables.
+282 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -31,7 +31,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:462` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:363` |
 | `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
-| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
+| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:117`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_patch_aux.py:98`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:892` |
@@ -105,8 +105,9 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2203`<br>`examples/campaign_train.py:2244` |
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
-| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:101` |
-| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:90` |
+| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:112` |
+| `NETT_DVS_COLOR` | `False` | `nett_skrl/body/wrappers/dvs_polarity.py:113` |
+| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:101` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:1799` |

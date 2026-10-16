@@ -875,6 +875,8 @@ FP16_FILES = ("nett_skrl/brain/amp.py", "nett_skrl/brain/encoders/compact_vit.py
 DETERMINISM_FILES = ("nett_skrl/brain/skrl_patches.py",)
 #: NETT_TEST_CHECKPOINT: TEST loads a named mid-training checkpoint (test_test_checkpoint_override.py).
 CHECKPOINT_FILES = ("nett_skrl/recording/checkpoints.py",)
+#: owner 2026-10-16 (workspace DECISIONS §131): NETT_DVS_COLOR, the 6-channel event frame (opt-in; unset is bit-identical).
+DVS6_FILES = ("nett_skrl/body/wrappers/dvs_polarity.py",)
 #: ...and the paper's ViT-Base trunk as a ViT-CLTT-Ref label (owner 2026-10-15, test_vit_fp16.py).
 FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", "ViT-CLTT-Ref-50M",
                "ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-5M-DVS"}
@@ -928,7 +930,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES,
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 

@@ -34,6 +34,15 @@ OFF pixel to produce "no event". As two channels both are non-negative and indep
     channel 0   ON  = 255 where d >= +threshold
     channel 1   OFF = 255 where d <= -threshold
 
+⚠ ``NETT_DVS_COLOR=1`` (owner 2026-10-16, workspace DECISIONS §131: "a 6 channel DVS (a positive and negative
+channel for each color)") replaces the luma line with the same rule applied to R, G and B separately:
+
+    channel 2k    ON  of colour k = 255 where blur(c_k,t) - blur(c_k,t-1) >= +threshold     (k = R, G, B)
+    channel 2k+1  OFF of colour k = 255 where that difference <= -threshold
+
+i.e. (R+, R-, G+, G-, B+, B-), six channels, the same threshold and blur per colour. Unset keeps the
+two luma channels bit for bit. The paragraph below describes the luma default.
+
 ⇒ COLOUR IS DISCARDED BY CONSTRUCTION, and that is a deliberate part of the hypothesis rather than
 a cost of it: the parsing task's backgrounds are cued by brightness and colour while its objects are
 matched for them, so an encoder that can only see motion cannot solve the task with the background
@@ -82,6 +91,8 @@ class DVSPolarity(gym.Wrapper):
                                 ``dvs.py``'s ``change_threshold``).
         ``NETT_DVS_BLUR``       3x3 Gaussian pre-blur, on by default, as in ``dvs.py``. Off makes
                                 the wrapper a pure difference and much noisier.
+        ``NETT_DVS_COLOR``      off by default (2 luma channels). On: 6 channels (R+, R-, G+, G-, B+, B-),
+                                the luma rule applied to each colour separately; needs a 3-channel frame.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -99,7 +110,15 @@ class DVSPolarity(gym.Wrapper):
                 "pixel fires BOTH polarities."
             )
         self.blur = _env_flag("NETT_DVS_BLUR", True)
-        self._prev = None                       # previous BLURRED luminance, (N,H,W) or (H,W)
+        self.color = _env_flag("NETT_DVS_COLOR", False)
+        self.n_out = 6 if self.color else 2
+        # ⛔ A consumer that reads the per-frame channel count from its own knob would split a 6-channel
+        # event frame as three 2-channel frames. Refuse the mismatch here rather than downstream.
+        cpf = os.environ.get("NETT_AUX_CLTT_CHANNELS_PER_FRAME")
+        if self.color and cpf is not None and cpf.strip() != "6":
+            raise ValueError(f"NETT_DVS_COLOR=1 makes one frame 6 channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
+        self._prev = None                       # previous BLURRED luma (N,H,W)|(H,W), or colour (N,3,H,W)|(3,H,W)
+        self._batched = False                   # whether the last frame carried a leading env axis
         self.observation_space = self._out_space(env.observation_space)
 
     # -- spaces ---------------------------------------------------------------------------
@@ -110,9 +129,9 @@ class DVSPolarity(gym.Wrapper):
         if len(shape) < 3:
             return space                        # not an image; ride through untouched
         if image_layout(shape[-3:]) == "chw":
-            out = shape[:-3] + (2,) + shape[-2:]
+            out = shape[:-3] + (self.n_out,) + shape[-2:]
         else:
-            out = shape[:-3] + shape[-3:-1] + (2,)
+            out = shape[:-3] + shape[-3:-1] + (self.n_out,)
         return gym.spaces.Box(low=0, high=255, shape=out, dtype=np.uint8)
 
     # -- the transform --------------------------------------------------------------------
@@ -162,12 +181,30 @@ class DVSPolarity(gym.Wrapper):
         pad = torch.nn.functional.pad(flat, (1, 1, 1, 1), mode="replicate")
         return torch.nn.functional.conv2d(pad, k).reshape(y.shape)
 
+    def _colour(self, t: torch.Tensor):
+        """(..., H, W, 3) or (..., 3, H, W) -> (..., 3, H, W) float32 colour planes in 0-255."""
+        chw = image_layout(tuple(t.shape[-3:])) == "chw"
+        x = t.to(torch.float32)
+        if not chw:
+            x = x.movedim(-1, -3)               # -> (..., C, H, W)
+        if x.shape[-3] != 3:
+            raise ValueError(
+                f"NETT_DVS_COLOR=1 needs a 3-channel RGB frame; got {x.shape[-3]} channels. More than 3 "
+                "means a stacking wrapper ran first -- order dvs_polarity BEFORE framestack."
+            )
+        return x, chw
+
     def _events(self, policy):
-        """Frame -> (ON, OFF) uint8, and update the previous-frame buffer."""
+        """Frame -> (ON, OFF) uint8 (or 3 such pairs under NETT_DVS_COLOR), and update the previous-frame buffer."""
         as_tensor = isinstance(policy, torch.Tensor)
         t = self._to_torch(policy)
-        y, chw = self._luma(t)
-        y = self._blur(y)
+        self._batched = t.ndim == 4
+        if self.color:
+            y, chw = self._colour(t)
+            y = self._blur(y)                   # per plane: _blur flattens every leading axis
+        else:
+            y, chw = self._luma(t)
+            y = self._blur(y)
         # ⛔ NO PREVIOUS FRAME => NO EVENTS, never a difference against zeros. Differencing the
         # first frame of an episode against a zero buffer reports the entire image as one giant
         # ON event -- a full-field flash at every reset, perfectly correlated with episode start.
@@ -178,7 +215,13 @@ class DVSPolarity(gym.Wrapper):
         self._prev = y
         on = (d >= self.threshold).to(torch.uint8) * 255
         off = (d <= -self.threshold).to(torch.uint8) * 255
-        out = torch.stack((on, off), dim=-3 if chw else -1)
+        if self.color:
+            # (..., 3, H, W) x2 -> (..., 3, 2, H, W) -> (..., 6, H, W): R+, R-, G+, G-, B+, B-
+            out = torch.stack((on, off), dim=-3).flatten(-4, -3)
+            if not chw:
+                out = out.movedim(-3, -1)
+        else:
+            out = torch.stack((on, off), dim=-3 if chw else -1)
         if not as_tensor:
             return out.cpu().numpy().astype(np.uint8)
         return out
@@ -199,7 +242,8 @@ class DVSPolarity(gym.Wrapper):
         # handles at `framestack.py:step`; a stateful wrapper that ignores `done` reports one
         # spurious full-field event per episode, on every env, forever.
         done = _done_mask(terminated, truncated)
-        if self._prev is not None and self._prev.ndim == 3:
+        # ⚠ `_batched`, not `_prev.ndim == 3`: a colour buffer is (N,3,H,W) batched and (3,H,W) not.
+        if self._prev is not None and self._batched:
             idx = np.where(np.asarray(done).ravel())[0]
             if len(idx):
                 sel = torch.as_tensor(idx, device=events.device if isinstance(events, torch.Tensor)
