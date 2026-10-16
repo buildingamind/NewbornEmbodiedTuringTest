@@ -508,6 +508,21 @@ VIT_BASE_CFG = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 768, "num
 # and the cltt_ref aux dies on its first step otherwise).
 VIT_500K_P14_DVS_CFG = {**VIT_500K_P14_CFG, "embed_dim": 108}   # enc 493,640 / agent 495,181 @ 448x280, 2 frames (4 input channels)
 VIT_5M_DVS_CFG       = dict(VIT_5M_CFG)                         # enc 4,883,057 / agent 4,884,598 @ 448x280, 2 frames (4 input channels)
+# PATCH-28 ViT-CLTT-Ref LABELS (owner, workspace DECISIONS §133, 2026-10-16): the patch-14 labels above at patch 28,
+# CURRENT WIDTHS -- patch_size is the only cfg field moved. 448x280 -> 16 x 10 = 160 tokens + CLS (vs 641 at patch 14),
+# so attention memory drops ~16x; the patch embed grows 4x (C x 28 x 28 inputs per token) and pos_embed shrinks, so
+# the counts no longer match the size in the label's name. Counts at 448x280; agent = enc + 1,541; cltt_ref head +329,216.
+#   500K-P28   enc 823,152    (6 ch)     5M-P28    enc 5,491,937  (6 ch)
+#   50M-P28    enc 50,965,568 (6 ch)     Base-P28  enc 89,187,584 (6 ch)
+#   500K-P28-DVS enc 695,816  (4 ch)     5M-P28-DVS enc 5,214,401 (4 ch)
+# NETT_VIT_FUSED_ATTN / NETT_VIT_ACT_CKPT stay ROW env knobs, not label fields: §133 has fused on all four and
+# checkpointing only where a FIT needs it, decided per size without a new tree.
+VIT_500K_P28_CFG     = {**VIT_500K_P14_CFG, "patch_size": 28}       # enc 823,152 / agent 824,693 @ 448x280, 2 frames
+VIT_5M_P28_CFG       = {**VIT_5M_CFG, "patch_size": 28}             # enc 5,491,937 / agent 5,493,478 @ 448x280, 2 frames
+VIT_50M_P28_CFG      = {**VIT_50M_CFG, "patch_size": 28}            # enc 50,965,568 / agent 50,967,109 @ 448x280, 2 frames
+VIT_BASE_P28_CFG     = {**VIT_BASE_CFG, "patch_size": 28}           # enc 89,187,584 / agent 89,189,125 @ 448x280, 2 frames
+VIT_500K_P28_DVS_CFG = {**VIT_500K_P14_DVS_CFG, "patch_size": 28}   # enc 695,816 / agent 697,357 @ 448x280, 2 frames (4 input channels)
+VIT_5M_P28_DVS_CFG   = {**VIT_5M_DVS_CFG, "patch_size": 28}         # enc 5,214,401 / agent 5,215,942 @ 448x280, 2 frames (4 input channels)
 
 # The owner's MATCHED BASELINE (workspace DECISIONS §92; spec docs/specs/matched_architectures_owner_2026-10-12.md).
 # MATCHED_HEAD is the spec's actor and critic: separate Linear(128,128)-Tanh-Linear(128,128)-Tanh MLPs on the
@@ -1003,6 +1018,14 @@ MODELS: dict[str, dict] = {
     # framestack), width re-sized for 4 input channels. ⛔ Rows set NETT_AUX_CLTT_CHANNELS_PER_FRAME=2 (see ViT-CLTT-Ref-DVS).
     "ViT-CLTT-Ref-500K-P14-DVS": dict(encoder="compact_vit", cfg=dict(VIT_500K_P14_DVS_CFG), framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 493,640 / agent 495,181 @ 448x280
     "ViT-CLTT-Ref-5M-DVS":       dict(encoder="compact_vit", cfg=dict(VIT_5M_DVS_CFG),       framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 4,883,057 / agent 4,884,598 @ 448x280
+    # Patch-28 labels (DECISIONS §133; VIT_*_P28*_CFG above): the patch-14 label with patch_size 28, nothing else moved.
+    # Counts no longer match the size in the name (patch embed x4, pos_embed /4). ⛔ -DVS rows set NETT_AUX_CLTT_CHANNELS_PER_FRAME=2.
+    "ViT-CLTT-Ref-500K-P28":     dict(encoder="compact_vit", cfg=dict(VIT_500K_P28_CFG),     framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 823,152 / agent 824,693 @ 448x280
+    "ViT-CLTT-Ref-5M-P28":       dict(encoder="compact_vit", cfg=dict(VIT_5M_P28_CFG),       framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 5,491,937 / agent 5,493,478 @ 448x280
+    "ViT-CLTT-Ref-50M-P28":      dict(encoder="compact_vit", cfg=dict(VIT_50M_P28_CFG),      framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 50,965,568 / agent 50,967,109 @ 448x280
+    "ViT-CLTT-Ref-Base-P28":     dict(encoder="compact_vit", cfg=dict(VIT_BASE_P28_CFG),     framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 89,187,584 / agent 89,189,125 @ 448x280
+    "ViT-CLTT-Ref-500K-P28-DVS": dict(encoder="compact_vit", cfg=dict(VIT_500K_P28_DVS_CFG), framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 695,816 / agent 697,357 @ 448x280
+    "ViT-CLTT-Ref-5M-P28-DVS":   dict(encoder="compact_vit", cfg=dict(VIT_5M_P28_DVS_CFG),   framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 5,214,401 / agent 5,215,942 @ 448x280
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
     # MLP-head PPO; aligned with the paper's Methods and the owner's figure the same day). ONE
@@ -1222,6 +1245,13 @@ for _lbl, _twin, _diff in (("ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-500K-P14"
     assert MODELS[_lbl]["cfg"] == {**MODELS[_twin]["cfg"], **_diff}, _lbl
     assert MODELS[_lbl]["cfg"]["embed_dim"] % MODELS[_lbl]["cfg"]["num_heads"] == 0, _lbl
 del _lbl, _twin, _diff
+# ⛔ A PATCH-28 LABEL (DECISIONS §133) IS ITS PATCH-14 LABEL WITH patch_size 28 AND NOTHING ELSE (current widths).
+for _lbl, _p14 in (("ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-500K-P14"), ("ViT-CLTT-Ref-5M-P28", "ViT-CLTT-Ref-5M"),
+                   ("ViT-CLTT-Ref-50M-P28", "ViT-CLTT-Ref-50M"), ("ViT-CLTT-Ref-Base-P28", "ViT-CLTT-Ref-Base"),
+                   ("ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-500K-P14-DVS"), ("ViT-CLTT-Ref-5M-P28-DVS", "ViT-CLTT-Ref-5M-DVS")):
+    assert {k: v for k, v in MODELS[_lbl].items() if k != "cfg"} == {k: v for k, v in MODELS[_p14].items() if k != "cfg"}, _lbl
+    assert MODELS[_p14]["cfg"]["patch_size"] == 14 and MODELS[_lbl]["cfg"] == {**MODELS[_p14]["cfg"], "patch_size": 28}, _lbl
+del _lbl, _p14
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # ⭐ NAS LABELS (owner, workspace DECISIONS §80 item 2, 2026-10-08). One label per searched

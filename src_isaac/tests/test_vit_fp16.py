@@ -905,3 +905,116 @@ def test_jepa_agent_precision_bf16_unchanged_fp16_refused(value, refused, monkey
             configure_fp16_grad_scaler(agent)
     else:
         assert configure_fp16_grad_scaler(agent) is False and agent.checkpoint_modules == {}
+
+
+# ── Patch-28 ViT-CLTT-Ref labels (DECISIONS §133): the patch-14 labels at patch 28, current widths ─────────────
+
+# label -> (patch-14 label, input channels, encoder count at 448x280, width)
+P28 = {
+    "ViT-CLTT-Ref-500K-P28": ("ViT-CLTT-Ref-500K-P14", 6, 823_152, 104),
+    "ViT-CLTT-Ref-5M-P28": ("ViT-CLTT-Ref-5M", 6, 5_491_937, 177),
+    "ViT-CLTT-Ref-50M-P28": ("ViT-CLTT-Ref-50M", 6, 50_965_568, 576),
+    "ViT-CLTT-Ref-Base-P28": (BASE_LABEL, 6, 89_187_584, 768),
+    "ViT-CLTT-Ref-500K-P28-DVS": ("ViT-CLTT-Ref-500K-P14-DVS", 4, 695_816, 108),
+    "ViT-CLTT-Ref-5M-P28-DVS": ("ViT-CLTT-Ref-5M-DVS", 4, 5_214_401, 177),
+}
+
+
+@pytest.mark.parametrize("label", sorted(P28))
+def test_p28_label_is_its_p14_label_with_only_patch_size_moved(campaign, label):
+    lab, p14 = campaign.MODELS[label], campaign.MODELS[P28[label][0]]
+    assert {k: v for k, v in lab.items() if k != "cfg"} == {k: v for k, v in p14.items() if k != "cfg"}
+    diff = {k: lab["cfg"][k] for k in set(lab["cfg"]) | set(p14["cfg"]) if lab["cfg"].get(k) != p14["cfg"].get(k)}
+    assert diff == {"patch_size": 28} and p14["cfg"]["patch_size"] == 14
+    # §133 keeps fused attention / checkpointing as row env knobs: never label fields
+    assert not {"fused_attn", "act_ckpt"} & set(lab["cfg"])
+
+
+@pytest.mark.parametrize("label", sorted(P28))
+def test_p28_token_grid_and_count_at_448x280_match_the_comment(campaign, label):
+    _, ch, want, width = P28[label]
+    with torch.device("meta"):
+        enc = _label_encoder(campaign, label, EYE_H, EYE_W)
+    n = sum(p.numel() for p in enc.parameters())
+    assert n == want
+    assert _declared(campaign, label) == (n, n + 1541)
+    assert enc.patch_embed.kernel_size == (28, 28) and enc.patch_embed.in_channels == ch
+    assert enc.pos_embed.shape == (1, 10 * 16 + 1, width)      # 10 x 16 patches + CLS at 448x280
+    # the delta from the patch-14 label is exactly the patch embed (x4 inputs) and pos_embed (161 vs 641 rows)
+    p14 = _declared(campaign, P28[label][0])[0]
+    assert n - p14 == ch * width * (28 * 28 - 14 * 14) - width * (641 - 161)
+
+
+@pytest.mark.parametrize("label", ["ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-5M-P28"])
+def test_p28_forward_at_448x280_on_cpu(campaign, label):
+    enc = _label_encoder(campaign, label, EYE_H, EYE_W).eval()
+    ch = P28[label][1]
+    x = torch.randint(0, 256, (2, ch, EYE_H, EYE_W), generator=torch.Generator().manual_seed(1)).float()
+    with torch.no_grad():
+        out = enc(x)
+    assert out.shape == (2, 512) and out.dtype == torch.float32 and torch.isfinite(out).all()
+    assert not torch.equal(out[0], out[1])
+
+
+@pytest.mark.parametrize("label", sorted(P28))
+def test_p28_labels_refuse_the_128x80_campaign_eye(campaign, label):
+    with pytest.raises(AssertionError, match="divisible by patch_size=28"):
+        _label_encoder(campaign, label, 80, 128)
+
+
+@pytest.mark.parametrize("label", ["ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-Base-P28"])
+def test_p28_agent_count_at_448x280_matches_the_comment(campaign, monkeypatch, label):
+    """The production path at the label's own cfg: Brain -> build_agents -> AuxLossPPO(cltt_ref), 448x280 x 6 ch."""
+    from nett_skrl.brain.agent_factory import build_agents
+    from nett_skrl.brain.brain import Brain
+
+    for k, v in (("NETT_AUX_LOSS", "cltt_ref"), ("NETT_AUX_WEIGHT", "1")):
+        monkeypatch.setenv(k, v)
+    spec = campaign.MODELS[label]
+    torch.manual_seed(0)
+    brain = Brain(encoder=spec["encoder"], algorithm="PPO", encoder_cfg=dict(spec["cfg"]),
+                  algorithm_cfg={"rollouts": 4},
+                  model={"value_bound": None, "shared_encoder": True, "hidden_sizes": [], "clip_actions": False})
+    agent = build_agents(brain, _Env448(), torch.device("cpu"))[0]
+    params = {id(p): p for m in (agent.policy, agent.value) for p in m.parameters()}
+    assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
+    assert type(agent).__name__ == "AuxLossPPO"
+
+
+def test_p28_dvs_agent_count_matches_the_comment(campaign, monkeypatch):
+    label = "ViT-CLTT-Ref-500K-P28-DVS"
+    agent = _dvs_agent(campaign, label, monkeypatch, None)
+    params = {id(p): p for m in (agent.policy, agent.value) for p in m.parameters()}
+    assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
+
+
+@pytest.mark.parametrize("label", ["ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-5M-P28"])
+def test_p28_fused_and_checkpointed_paths_match_the_plain_path(campaign, monkeypatch, label):
+    """The §133 row knobs on a patch-28 label: NETT_VIT_FUSED_ATTN=1 (+ NETT_VIT_ACT_CKPT=1) give the plain
+    path's outputs and gradients on the same weights. Positive control: a perturbed weight is seen."""
+    ch = P28[label][1]
+    x = torch.randint(0, 256, (2, ch, EYE_H, EYE_W), generator=torch.Generator().manual_seed(2)).float()
+
+    def build(fused, ckpt):
+        for k, v in (("NETT_VIT_FUSED_ATTN", fused), ("NETT_VIT_ACT_CKPT", ckpt)):
+            monkeypatch.setenv(k, v) if v else monkeypatch.delenv(k, raising=False)
+        return _label_encoder(campaign, label, EYE_H, EYE_W).train()
+
+    ref = build(None, None)
+    outs = []
+    for fused, ckpt in (("1", None), ("1", "1")):
+        enc = build(fused, ckpt)
+        enc.load_state_dict(ref.state_dict())
+        assert enc.fused_attn is True and enc.act_ckpt is (ckpt == "1")
+        outs.append(enc)
+    y_ref = ref(x)
+    y_ref.square().mean().backward()
+    for enc in outs:
+        y = enc(x)
+        assert torch.allclose(y, y_ref, atol=1e-5, rtol=1e-4)
+        y.square().mean().backward()
+        g, g_ref = enc.blocks[0].attn.in_proj_weight.grad, ref.blocks[0].attn.in_proj_weight.grad
+        assert torch.allclose(g, g_ref, atol=1e-5, rtol=1e-3)
+    with torch.no_grad():
+        outs[0].blocks[0].attn.in_proj_weight[0, 0] += 0.5
+    assert not torch.allclose(outs[0](x), y_ref, atol=1e-5, rtol=1e-4)
