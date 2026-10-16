@@ -27,6 +27,7 @@ import torch.nn.functional as F
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .nature_cnn import _amp_dtype
+from ..aux.knobs import _env_flag_strict
 from .utils.pool import DeterministicAvgPool2d
 
 
@@ -187,6 +188,18 @@ class _TransformerBlock(nn.Module):
         #: (CompactViT has always passed 0.0); the runtime path below drives that same
         #: attribute, so the two never both apply.
         self.live_p = 0.0
+        #: NETT_VIT_FUSED_ATTN (workspace DECISIONS §131 add. 1 item 16; set by CompactViT): False makes
+        #: nn.MultiheadAttention skip the (B, heads, N, N) weight map it otherwise materialises for its
+        #: second return value -- with need_weights=False it calls F.scaled_dot_product_attention, the
+        #: same operator, the same parameters, a fused kernel. A plain bool, so the state_dict is untouched.
+        self.need_weights = True
+
+    def _attend(self, normed: torch.Tensor) -> torch.Tensor:
+        if self.need_weights:
+            attn_out, _ = self.attn(normed, normed, normed)
+        else:
+            attn_out, _ = self.attn(normed, normed, normed, need_weights=False)
+        return attn_out
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         p = self.live_p
@@ -196,7 +209,9 @@ class _TransformerBlock(nn.Module):
         # gradients and the RNG stream of every existing ViT arm are untouched (pinned by
         # tests/test_compact_vit_token_hook.py against the frozen pre-hook copy).
         normed = self.norm1(x)
-        if self.attn_mode == "qk":
+        if self.attn_mode == "qk" and not self.need_weights:
+            attn_out = self._attend(normed)
+        elif self.attn_mode == "qk":
             attn_out, _ = self.attn(normed, normed, normed)
         else:
             attn_out = self.attn(normed)
@@ -216,7 +231,7 @@ class _TransformerBlock(nn.Module):
             prev = self.attn.dropout
             self.attn.dropout = p
             try:
-                attn_out, _ = self.attn(normed, normed, normed)
+                attn_out = self._attend(normed)
             finally:
                 self.attn.dropout = prev
         else:
@@ -335,6 +350,14 @@ class CompactViT(HWCFeatureExtractor):
              for _ in range(depth)]
         )
         self._set_live_dropout(dropout if dropout_scope == "all" else 0.0)
+        # NETT_VIT_FUSED_ATTN (opt-in; unset = every existing ViT arm, bit for bit). The update OOM of the
+        # 448x280 patch-14 DVS rows is this weight map: 641 tokens -> 641^2 per head per sample, kept for
+        # backward in every block (FINDINGS §4dh.44h.165 add. 1). Only the "qk" operator has one to skip.
+        self.fused_attn = _env_flag_strict("NETT_VIT_FUSED_ATTN", False)
+        if self.fused_attn and attn_mode != "qk":
+            raise ValueError(f"NETT_VIT_FUSED_ATTN=1 with attn_mode={attn_mode!r}: only 'qk' has attention weights")
+        for block in self.blocks:
+            block.need_weights = not self.fused_attn
         self.norm = nn.LayerNorm(embed_dim)
         if pool == "spatial":
             # Preserve object LOCATION (which CLS pooling destroys — the cause of
