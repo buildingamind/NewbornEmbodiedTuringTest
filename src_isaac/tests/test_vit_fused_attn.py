@@ -200,19 +200,22 @@ def test_runs_under_strict_determinism_and_repeats(monkeypatch):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
-@pytest.mark.parametrize("label_cfg,ckpt", [(dict(embed_dim=108, depth=3, num_heads=4), False),                  # VD500 (VIT_500K_P14_DVS)
-                                            (dict(embed_dim=177, depth=12, num_heads=3, mlp_ratio=4.0), True)])  # VD5M (VIT_5M_DVS)
-def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg, ckpt):
-    """The §128 shape: 4 channels at 448x280, patch 14 (641 tokens), bf16 autocast, a 400-sample minibatch
-    (25,600 / 64). Fused peak (VD5M: fused + activation checkpointing) must be lower, and two runs
-    bit-identical under strict_determinism."""
+@pytest.mark.parametrize("label_cfg,ckpt,b_ref", [(dict(embed_dim=108, depth=3, num_heads=4), False, 100),                  # VD500 (VIT_500K_P14_DVS)
+                                                  (dict(embed_dim=177, depth=12, num_heads=3, mlp_ratio=4.0), True, 50)])  # VD5M (VIT_5M_DVS)
+def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg, ckpt, b_ref):
+    """The §128 shape: 4 channels at 448x280, patch 14 (641 tokens), bf16 autocast.
+    1. At b_ref, a batch where the weight-map path FITS on a 24 GB card (A10: VD500 5.3 GiB at 100, VD5M 7.5 GiB at
+       50), the fused peak (VD5M: fused + activation checkpointing) is well below the weight-map peak. The weight-map
+       run must not OOM: an OOM there would make the comparison vacuous, so it fails the test instead.
+    2. At the 400-sample minibatch (25,600 / 64), the fused path runs, and two runs are bit-identical under
+       strict_determinism."""
     monkeypatch.setenv("NETT_AMP", "bf16")
-    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")   # as the driver sets it; cuBLAS reads it at handle creation
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")   # also set at collection (top of module)
     dev = torch.device("cuda")
     cfg = {**dict(features_dim=512, patch_size=14, pool="cls", stem="linear", mlp_ratio=2.0), **label_cfg}
     x = torch.randint(0, 256, (400, 4, 280, 448), device=dev, dtype=torch.uint8).float()
 
-    def peak(knob):
+    def peak(knob, n):
         if knob:
             monkeypatch.setenv("NETT_VIT_FUSED_ATTN", "1")
             monkeypatch.setenv("NETT_VIT_ACT_CKPT", "1" if ckpt else "0")
@@ -223,22 +226,20 @@ def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cf
         enc = CompactViT(gym.spaces.Box(0, 255, (4, 280, 448), np.uint8), **cfg).to(dev).train()
         torch.cuda.synchronize(); torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()
         with strict_determinism():
-            y = enc(x)
+            y = enc(x[:n])
             y.float().square().mean().backward()
         torch.cuda.synchronize()
         g = enc.blocks[0].attn.in_proj_weight.grad.detach().clone()
         p = torch.cuda.max_memory_allocated()
         del enc, y
+        torch.cuda.empty_cache()
         return p, g
 
-    p1, g1 = peak(True)
-    p2, g2 = peak(True)
-    p_ref = float("inf")
-    try:                         # last: a caught OOM's traceback pins the failed run's tensors
-        p_ref, _ = peak(False)
-    except torch.OutOfMemoryError:
-        pass
-    import gc; gc.collect(); torch.cuda.empty_cache()
-    print(f"peak MiB: weight-map path {p_ref / 2**20:.0f}, fused {p1 / 2**20:.0f}")
-    assert p1 < p_ref
+    p_ref, _ = peak(False, b_ref)
+    p_fused, _ = peak(True, b_ref)
+    print(f"peak MiB at B={b_ref}: weight-map path {p_ref / 2**20:.0f}, fused {p_fused / 2**20:.0f}")
+    assert p_fused < 0.6 * p_ref
+    p1, g1 = peak(True, 400)
+    p2, g2 = peak(True, 400)
+    print(f"peak MiB at B=400: fused {p1 / 2**20:.0f}")
     assert torch.equal(g1, g2)
