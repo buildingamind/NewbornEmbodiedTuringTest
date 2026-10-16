@@ -27,6 +27,11 @@ one CUDA-only test at the bottom):
      equal the MODELS comments; the widths follow the §124 rule (neighbours checked); a CPU forward at
      448x280 gives (B, 512); the fp16 branch reaches them; they refuse 128x80 (80 % 14 != 0) and the
      patch-16 labels refuse 448x280 (280 % 16 != 0).
+  7. PATCH-14 DVS LABELS (DECISIONS §128): -500K-P14-DVS / -5M-DVS are their twin + pre=["dvs_polarity"] with
+     only embed_dim re-sized (108 / unchanged 177) for 4 input channels; agent within +-10% of the twin's
+     (neighbouring widths checked); counts equal the MODELS comments; a CPU forward at 448x280 through the
+     real dvs_polarity -> framestack body gives (B, 512); they refuse 128x80. NETT_AMP=bf16 does NOT reach
+     CompactViT -- for these exactly as for every ViT label it is the unset path (fp32, no scaler); fp16 does.
 Run with CUDA_VISIBLE_DEVICES="".
 """
 
@@ -492,7 +497,8 @@ def _label_encoder(campaign, label, h, w):
     spec = campaign.MODELS[label]
     kw = EncoderCfg(**spec["cfg"]).as_kwargs()
     kw.pop("trainable", None)
-    ch = 3 * (campaign._FRAMESTACK_N if spec["framestack"] else 1)
+    per_frame = 2 if "dvs_polarity" in spec.get("pre", ()) else 3       # dvs_polarity: ON/OFF per frame
+    ch = per_frame * (campaign._FRAMESTACK_N if spec["framestack"] else 1)
     torch.manual_seed(0)
     return encoder_mapping[spec["encoder"]](gym.spaces.Box(0, 255, (ch, h, w), np.uint8), **kw)
 
@@ -634,3 +640,180 @@ def test_p14_agent_count_at_448x280_matches_the_comment_and_fp16_enables_the_sca
     assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
     assert type(agent).__name__ == "AuxLossPPO" and agent.scaler.is_enabled()
     assert agent.checkpoint_modules[SCALER_CHECKPOINT_KEY] is agent.scaler
+
+
+# ── Patch-14 ViT + DVS labels (DECISIONS §128): -500K-P14-DVS / -5M-DVS ─────────────────────────────
+
+# label -> (twin, cfg fields moved off the twin, encoder count at 448x280 x 4 ch, twin AGENT count)
+DVS = {
+    "ViT-CLTT-Ref-500K-P14-DVS": ("ViT-CLTT-Ref-500K-P14", {"embed_dim": 108}, 493_640, 507_701),
+    "ViT-CLTT-Ref-5M-DVS": ("ViT-CLTT-Ref-5M", {}, 4_883_057, 4_953_982),
+}
+
+
+@pytest.mark.parametrize("label", sorted(DVS))
+def test_dvs_label_is_its_twin_plus_the_dvs_prefilter_and_nothing_else(campaign, label):
+    twin_label, diff_want, _, _ = DVS[label]
+    lab, twin = campaign.MODELS[label], campaign.MODELS[twin_label]
+    assert lab["pre"] == ["dvs_polarity"] and "pre" not in twin
+    assert {k: v for k, v in lab.items() if k not in ("cfg", "pre")} == {k: v for k, v in twin.items() if k != "cfg"}
+    diff = {k: lab["cfg"][k] for k in set(lab["cfg"]) | set(twin["cfg"]) if lab["cfg"].get(k) != twin["cfg"].get(k)}
+    assert diff == diff_want
+    # built the way ViT-CLTT-Ref-DVS is built from ViT-CLTT-Ref
+    ref_dvs, ref = campaign.MODELS["ViT-CLTT-Ref-DVS"], campaign.MODELS["ViT-CLTT-Ref"]
+    assert {k: v for k, v in ref_dvs.items() if k != "cfg"} == {**{k: v for k, v in ref.items() if k != "cfg"}, "pre": ["dvs_polarity"]}
+    assert {k: v for k, v in lab.items() if k != "cfg"} == {k: v for k, v in ref_dvs.items() if k != "cfg"}
+    assert campaign.segmentation_wrappers(lab) == ["dvs_polarity", "framestack"]      # innermost, before framestack
+
+
+@pytest.mark.parametrize("label", sorted(DVS))
+def test_dvs_counts_at_448x280_match_the_comment_and_sit_within_10pct_of_the_twin(campaign, label):
+    enc = _label_encoder(campaign, label, EYE_H, EYE_W)
+    assert enc.patch_embed.in_channels == 4 and enc.patch_embed.kernel_size == (14, 14)
+    n = sum(p.numel() for p in enc.parameters())
+    assert n == DVS[label][2]
+    assert _declared(campaign, label) == (n, n + 1541)
+    twin_agent = DVS[label][3]
+    assert _declared(campaign, DVS[label][0])[1] == twin_agent
+    assert abs(n + 1541 - twin_agent) / twin_agent < 0.10
+
+
+def test_dvs_widths_are_the_nearest_to_the_twin(campaign):
+    """500K-P14-DVS re-solves embed_dim (multiple of 4) to the twin's agent count; 5M-DVS keeps 177, which is
+    inside +-10% AND the nearest multiple of 3. Controls: the neighbouring widths are farther."""
+    from nett_skrl.brain.encoders.compact_vit import CompactViT
+
+    def agent(**over):
+        cfg = {**campaign.VIT_CFG, "patch_size": 14, **over}
+        cfg.pop("trainable")
+        with torch.device("meta"):
+            enc = CompactViT(gym.spaces.Box(0, 255, (4, EYE_H, EYE_W), np.uint8), **cfg)
+        return sum(p.numel() for p in enc.parameters()) + 1541
+
+    err = lambda n, t: abs(n - t) / t
+    t500, t5m = DVS["ViT-CLTT-Ref-500K-P14-DVS"][3], DVS["ViT-CLTT-Ref-5M-DVS"][3]
+    assert err(agent(embed_dim=108), t500) < min(err(agent(embed_dim=w), t500) for w in (104, 112))
+    assert agent(embed_dim=104) == 466_933                       # the unchanged width: -8.03%, also inside 10%
+    d12 = dict(depth=12, num_heads=3, mlp_ratio=4.0)
+    assert err(agent(embed_dim=177, **d12), t5m) < 0.10
+    assert err(agent(embed_dim=177, **d12), t5m) < min(err(agent(embed_dim=w, **d12), t5m) for w in (174, 180))
+
+
+class _FakeIsaac448(gym.Env):
+    """Batched Isaac-shaped env at the 448x280 eye serving a bright block that moves every step."""
+    N = 2
+
+    def __init__(self):
+        self.observation_space = gym.spaces.Dict(
+            {"policy": gym.spaces.Box(0, 255, (self.N, EYE_H, EYE_W, 3), dtype=np.uint8)})
+        self.action_space = gym.spaces.Box(-1, 1, (self.N, 2))
+        self.t = 0
+
+    def _obs(self):
+        self.t += 1
+        f = np.full((self.N, EYE_H, EYE_W, 3), 40, dtype=np.uint8)
+        c = (self.t * 14) % 300
+        f[:, 100:160, c:c + 60, :] = 220
+        return {"policy": torch.as_tensor(f)}
+
+    def reset(self, **kw):
+        self.t = 0
+        return self._obs(), {}
+
+    def step(self, a):
+        z = np.zeros(self.N, dtype=bool)
+        return self._obs(), np.zeros(self.N), z, z.copy(), {}
+
+
+@pytest.mark.parametrize("label", sorted(DVS))
+def test_dvs_forward_at_448x280_through_the_real_dvs_polarity_body(campaign, label, monkeypatch):
+    from nett_skrl.body.body import Body
+    from nett_skrl.body.wrappers.registry import validate_wrappers
+    from nett_skrl.brain.aux.cltt_views import current_frame_stack
+
+    monkeypatch.setenv("NETT_AUX_CLTT_CHANNELS_PER_FRAME", "2")
+    spec = campaign.MODELS[label]
+    env = Body(wrappers=validate_wrappers(campaign.segmentation_wrappers(spec))).wrap(_FakeIsaac448())
+    env.reset()
+    for _ in range(2):
+        obs, *_ = env.step(torch.zeros(_FakeIsaac448.N, 2))
+    x = obs["policy"]
+    x = x if isinstance(x, torch.Tensor) else torch.as_tensor(np.asarray(x))
+    batched = env.observation_space["policy"]
+    assert tuple(batched.shape) == (_FakeIsaac448.N, 4, EYE_H, EYE_W)           # 2 frames x (ON, OFF), channels first
+    assert 0 < (x > 0).float().mean().item() < 0.20               # sparse edge events, not blank, not noise
+    cfg = dict(spec["cfg"])
+    cfg.pop("trainable", None)
+    torch.manual_seed(0)
+    per_env = gym.spaces.Box(0, 255, tuple(batched.shape[1:]), dtype=np.uint8)   # as the driver builds it
+    enc = encoder_mapping_for(spec["encoder"])(per_env, **cfg).eval()
+    with torch.no_grad():
+        out = enc(x)
+    assert out.shape == (_FakeIsaac448.N, 512) and out.dtype == torch.float32 and torch.isfinite(out).all()
+    prepared = enc._prepare_image(x)
+    assert current_frame_stack(prepared).shape == prepared.shape == (_FakeIsaac448.N, 4, EYE_H, EYE_W)
+
+
+def encoder_mapping_for(name):
+    from nett_skrl.brain.registry import encoder_mapping
+    return encoder_mapping[name]
+
+
+@pytest.mark.parametrize("label", sorted(DVS))
+def test_dvs_labels_refuse_the_128x80_campaign_eye(campaign, label):
+    with pytest.raises(AssertionError, match="divisible by patch_size=14"):
+        _label_encoder(campaign, label, 80, 128)
+
+
+def _dvs_agent(campaign, label, monkeypatch, amp):
+    from nett_skrl.brain.agent_factory import build_agents
+    from nett_skrl.brain.brain import Brain
+
+    class _EnvDVS(_Env448):
+        observation_space = gym.spaces.Box(0, 255, (4, EYE_H, EYE_W), np.uint8)
+
+    for k, v in (("NETT_AUX_LOSS", "cltt_ref"), ("NETT_AUX_WEIGHT", "1"), ("NETT_AUX_CLTT_CHANNELS_PER_FRAME", "2")):
+        monkeypatch.setenv(k, v)
+    if amp is None:
+        monkeypatch.delenv("NETT_AMP", raising=False)
+    else:
+        monkeypatch.setenv("NETT_AMP", amp)
+    spec = campaign.MODELS[label]
+    torch.manual_seed(0)
+    brain = Brain(encoder=spec["encoder"], algorithm="PPO", encoder_cfg=dict(spec["cfg"]),
+                  algorithm_cfg={"rollouts": 4},
+                  model={"value_bound": None, "shared_encoder": True, "hidden_sizes": [], "clip_actions": False})
+    return build_agents(brain, _EnvDVS(), torch.device("cpu"))[0]
+
+
+@pytest.mark.parametrize("label", sorted(DVS) + ["ViT-CLTT-Ref-500K-P14"])
+def test_bf16_does_not_reach_compact_vit_on_dvs_labels_exactly_as_on_their_twins(campaign, label, monkeypatch):
+    """NETT_AMP=bf16 is the unset path for EVERY CompactViT label (vit_amp_dtype: only fp16 reaches the ViT,
+    because NETT_AMP's unset default is bf16 for NatureCNN). Control: the same redirected gate under fp16 DOES
+    change the output, so the bf16 identity is not a gate that never opens."""
+    enc = _label_encoder(campaign, label, EYE_H, EYE_W).eval()
+    ch = enc.patch_embed.in_channels
+    x = torch.randint(0, 2, (1, ch, EYE_H, EYE_W), generator=torch.Generator().manual_seed(3)).float() * 255
+    _cpu_gate(monkeypatch)
+    with torch.no_grad():
+        ref = enc(x)
+    monkeypatch.setenv("NETT_AMP", "bf16")
+    assert enc.amp_dtype() is None
+    with torch.no_grad():
+        assert torch.equal(enc(x), ref)
+    monkeypatch.setenv("NETT_AMP", "fp16")
+    assert enc.amp_dtype() is torch.float16
+    with torch.no_grad():
+        assert not torch.equal(enc(x), ref)
+
+
+def test_dvs_agent_count_and_scaler_bf16_off_fp16_on(campaign, monkeypatch):
+    """Production path (Brain -> build_agents -> AuxLossPPO(cltt_ref)) at 448x280 x 4 ch: the agent count equals the
+    MODELS comment; bf16 leaves skrl's scaler disabled (as unset does), fp16 enables it."""
+    label = "ViT-CLTT-Ref-500K-P14-DVS"
+    for amp, enabled in ((None, False), ("bf16", False), ("fp16", True)):
+        agent = _dvs_agent(campaign, label, monkeypatch, amp)
+        params = {id(p): p for m in (agent.policy, agent.value) for p in m.parameters()}
+        assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
+        assert type(agent).__name__ == "AuxLossPPO" and agent.scaler.is_enabled() is enabled, amp
+        assert (SCALER_CHECKPOINT_KEY in agent.checkpoint_modules) is enabled, amp

@@ -1068,7 +1068,8 @@ JEPA_LABELS = {"I-JEPA", "V-JEPA", "I-JEPA-13M", "V-JEPA-13M"}
 #: agent_factory) and CompactViT's fp16 autocast branch; nature_cnn/matched only gain the knob's fp16 plumbing.
 FP16_FILES = ("nett_skrl/brain/amp.py", "nett_skrl/brain/encoders/compact_vit.py")
 #: ...and the paper's ViT-Base trunk as a ViT-CLTT-Ref label (owner 2026-10-15, test_vit_fp16.py).
-FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", "ViT-CLTT-Ref-50M"}
+FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", "ViT-CLTT-Ref-50M",
+               "ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-5M-DVS"}
 
 
 def _drop_admitted(path, removed):

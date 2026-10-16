@@ -496,6 +496,18 @@ VIT_50M_CFG      = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 576, 
 # (641 vs 197 tokens) + patch embed +313,344 (6 ch at 14x14 vs 3 ch at 16x16) + Linear(768->512) readout +393,728.
 # Also differs in: LayerNorm eps 1e-5 (torch default; the paper's reference code uses 1e-6), no dropout.
 VIT_BASE_CFG = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 768, "num_heads": 12, "mlp_ratio": 4.0}
+# PATCH-14 ViT + DVS (owner, workspace DECISIONS §128). The 500K-P14 and 5M labels fed EVENTS, built from them the
+# way "ViT-CLTT-Ref-DVS" is built from "ViT-CLTT-Ref": dvs_polarity emits 2 channels per frame, framestack makes 4
+# (vs 6), so the patch embedding loses 2 x 14 x 14 x width. Re-sized so the AGENT count is within +-10% of the twin's.
+# Counts at 448x280, 4 input channels; agent = enc + 1,541; the cltt_ref head adds 329,216 on top.
+#   500K-P14-DVS  depth 3, 4 heads, mlp 2: embed_dim re-solved 104 -> 108 (head_dim 27), agent 495,181 = -2.47% vs
+#                 507,701 (104 -> 466,933 -8.03%, also inside +-10%; 112 -> 524,197 +3.25%)
+#   5M-DVS        depth 12, 3 heads, mlp 4: embed_dim UNCHANGED at 177 (head_dim 59), agent 4,884,598 = -1.40% vs
+#                 4,953,982; 177 is also the nearest multiple of 3 (174 -> -4.59%, 180 -> +1.84%)
+# ⛔ ROWS NEED NETT_AUX_CLTT_CHANNELS_PER_FRAME=2 in their env block, exactly as "ViT-CLTT-Ref-DVS" does (4 % 3 != 0
+# and the cltt_ref aux dies on its first step otherwise).
+VIT_500K_P14_DVS_CFG = {**VIT_500K_P14_CFG, "embed_dim": 108}   # enc 493,640 / agent 495,181 @ 448x280, 2 frames (4 input channels)
+VIT_5M_DVS_CFG       = dict(VIT_5M_CFG)                         # enc 4,883,057 / agent 4,884,598 @ 448x280, 2 frames (4 input channels)
 
 # The owner's MATCHED BASELINE (workspace DECISIONS §92; spec docs/specs/matched_architectures_owner_2026-10-12.md).
 # MATCHED_HEAD is the spec's actor and critic: separate Linear(128,128)-Tanh-Linear(128,128)-Tanh MLPs on the
@@ -987,6 +999,10 @@ MODELS: dict[str, dict] = {
     "ViT-CLTT-Ref-50M":      dict(encoder="compact_vit", cfg=dict(VIT_50M_CFG),      framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 49,209,920 / agent 49,211,461 @ 448x280
     # The paper's ViT-Base trunk (owner 2026-10-15) at patch 14 (§124): depth/width/heads/MLP moved together, not a rung.
     "ViT-CLTT-Ref-Base":     dict(encoder="compact_vit", cfg=dict(VIT_BASE_CFG),     framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 86,846,720 / agent 86,848,261 @ 448x280
+    # Patch-14 ViT + DVS (DECISIONS §128; VIT_*_DVS_CFG above): the twin plus pre=["dvs_polarity"] (innermost, before
+    # framestack), width re-sized for 4 input channels. ⛔ Rows set NETT_AUX_CLTT_CHANNELS_PER_FRAME=2 (see ViT-CLTT-Ref-DVS).
+    "ViT-CLTT-Ref-500K-P14-DVS": dict(encoder="compact_vit", cfg=dict(VIT_500K_P14_DVS_CFG), framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 493,640 / agent 495,181 @ 448x280
+    "ViT-CLTT-Ref-5M-DVS":       dict(encoder="compact_vit", cfg=dict(VIT_5M_DVS_CFG),       framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),  # enc 4,883,057 / agent 4,884,598 @ 448x280
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
     # MLP-head PPO; aligned with the paper's Methods and the owner's figure the same day). ONE
@@ -1198,6 +1214,14 @@ for _lbl, _diff in (("ViT-CLTT-Ref-500K-P14", {"patch_size": 14, "embed_dim": 10
     assert MODELS[_lbl]["cfg"] == {**MODELS["ViT-CLTT-Ref"]["cfg"], **_diff}, _lbl
     assert _diff["embed_dim"] % _diff.get("num_heads", MODELS["ViT-CLTT-Ref"]["cfg"]["num_heads"]) == 0, _lbl
 del _lbl, _diff
+# ⛔ A PATCH-14 DVS LABEL (DECISIONS §128) IS ITS TWIN + pre=["dvs_polarity"], WITH embed_dim RE-SIZED FOR 4 CHANNELS, NOTHING ELSE.
+for _lbl, _twin, _diff in (("ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-500K-P14", {"embed_dim": 108}),
+                           ("ViT-CLTT-Ref-5M-DVS",       "ViT-CLTT-Ref-5M",       {})):
+    assert {k: v for k, v in MODELS[_lbl].items() if k not in ("cfg", "pre")} == {k: v for k, v in MODELS[_twin].items() if k != "cfg"}, _lbl
+    assert "pre" not in MODELS[_twin] and MODELS[_lbl]["pre"] == ["dvs_polarity"], _lbl
+    assert MODELS[_lbl]["cfg"] == {**MODELS[_twin]["cfg"], **_diff}, _lbl
+    assert MODELS[_lbl]["cfg"]["embed_dim"] % MODELS[_lbl]["cfg"]["num_heads"] == 0, _lbl
+del _lbl, _twin, _diff
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # ⭐ NAS LABELS (owner, workspace DECISIONS §80 item 2, 2026-10-08). One label per searched
