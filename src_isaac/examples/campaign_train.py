@@ -468,6 +468,17 @@ VIT_2M_CFG   = {**VIT_CFG, "embed_dim": 256}   # enc 2,117,632 / agent 2,119,173
 # ViT-CLTT-Ref size ladder (owner, workspace DECISIONS §82, 2026-10-09): the 0.25M rung, matched to
 # 3DCNN-250K (enc 248,762). 68 is the multiple of num_heads (4) nearest 250K; head_dim 17.
 VIT_250K_CFG = {**VIT_CFG, "embed_dim": 68}    # enc 256,056 / agent 257,597 @ 128x80, 2 frames
+# ViT-CLTT-Ref-Base (owner 2026-10-15: "the ViT-Base from the original ViT paper (~86M parameters, 12 layers, 768
+# hidden dimension, 12 attention heads)"). The paper's ViT-B trunk EXACTLY -- depth 12, width 768, 12 heads, MLP
+# 3072 (ratio 4) -- and every other field VIT_CFG's (patch 16, linear stem, CLS pool, features_dim 512), so the
+# input is ViT-CLTT-Ref's 6-channel 2-frame stack and the readout its Linear(768 -> 512). NOT sized to a target.
+# Encoder counts, 2 frames x 3 channels (agent = enc + 1,541; the cltt_ref head adds 329,216 on top):
+#   128x80  (5 x 8 = 40 tokens + CLS)   enc 86,662,400 / agent 86,663,941   <- the eye it builds at
+#   448x280 REFUSES: 280 % 16 != 0 (CompactViT asserts), as does every patch-16 ViT label at that eye.
+#   (paper input 224x224 x 3 ch, no readout: 85,798,656, of which pos_embed 151,296 = 197 x 768.)
+# Differs from ViT-B/16 in: 6 input channels (patch embed 1,180,416 vs 590,592), Linear(768->512) readout in
+# place of the classifier, LayerNorm eps 1e-5 (torch default; the paper's reference code uses 1e-6), no dropout.
+VIT_BASE_CFG = {**VIT_CFG, "depth": 12, "embed_dim": 768, "num_heads": 12, "mlp_ratio": 4.0}
 
 # The owner's MATCHED BASELINE (workspace DECISIONS §92; spec docs/specs/matched_architectures_owner_2026-10-12.md).
 # MATCHED_HEAD is the spec's actor and critic: separate Linear(128,128)-Tanh-Linear(128,128)-Tanh MLPs on the
@@ -952,6 +963,8 @@ MODELS: dict[str, dict] = {
     "ViT-CLTT-Ref-500K": dict(encoder="compact_vit", cfg=dict(VIT_500K_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 510,056 / agent 511,597
     "ViT-CLTT-Ref-1M":   dict(encoder="compact_vit", cfg=dict(VIT_1M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 994,680 / agent 996,221
     "ViT-CLTT-Ref-2M":   dict(encoder="compact_vit", cfg=dict(VIT_2M_CFG),   framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 2,117,632 / agent 2,119,173
+    # The paper's ViT-Base trunk (owner 2026-10-15; VIT_BASE_CFG above): depth/width/heads/MLP moved together, not a rung.
+    "ViT-CLTT-Ref-Base": dict(encoder="compact_vit", cfg=dict(VIT_BASE_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),  # enc 86,662,400 / agent 86,663,941 @ 128x80
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # XSP -- CROSS-STREAM PREDICTIVE LEARNING (owner 2026-10-09; experiment = PARSING; standard
     # MLP-head PPO; aligned with the paper's Methods and the owner's figure the same day). ONE
@@ -1153,6 +1166,9 @@ for _lbl, _base in (("I-JEPA-13M", "I-JEPA"), ("V-JEPA-13M", "V-JEPA")):
     assert {k for k in _r["cfg"] if _r["cfg"][k] != _b["cfg"][k]} == {"embed_dim", "num_heads", "depth", "jepa"}, _lbl
     assert {k for k in _r["cfg"]["jepa"] if _r["cfg"]["jepa"][k] != _b["cfg"]["jepa"][k]} == set(_JEPA13M_PRED), _lbl
 del _lbl, _r, _b
+# ⛔ ViT-CLTT-Ref-Base IS ViT-CLTT-Ref WITH THE PAPER'S ViT-B TRUNK (depth 12, width 768, 12 heads, MLP ratio 4), NOTHING ELSE.
+assert {k: v for k, v in MODELS["ViT-CLTT-Ref-Base"].items() if k != "cfg"} == {k: v for k, v in MODELS["ViT-CLTT-Ref"].items() if k != "cfg"}
+assert MODELS["ViT-CLTT-Ref-Base"]["cfg"] == {**MODELS["ViT-CLTT-Ref"]["cfg"], "depth": 12, "embed_dim": 768, "num_heads": 12, "mlp_ratio": 4.0}
 
 # ══════════════════════════════════════════════════════════════════════════════════════════
 # ⭐ NAS LABELS (owner, workspace DECISIONS §80 item 2, 2026-10-08). One label per searched

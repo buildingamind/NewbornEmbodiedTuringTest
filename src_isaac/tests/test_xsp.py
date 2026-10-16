@@ -1064,6 +1064,11 @@ UPP117_LABELS = {"CNN-UnityRecipe+Fovea", "CNN-UnityRecipe+DVS", "XSP2-MAP35x56"
 #: registries gain additive entries only ("jepa"; "ijepa", "vjepa").
 JEPA_FILES = ("nett_skrl/brain/encoders/jepa.py", "nett_skrl/brain/aux/jepa_aux.py")
 JEPA_LABELS = {"I-JEPA", "V-JEPA", "I-JEPA-13M", "V-JEPA-13M"}
+#: fp16 for compact_vit (owner 2026-10-15, test_vit_fp16.py): the agent-level GradScaler hook (amp.py, called from
+#: agent_factory) and CompactViT's fp16 autocast branch; nature_cnn/matched only gain the knob's fp16 plumbing.
+FP16_FILES = ("nett_skrl/brain/amp.py", "nett_skrl/brain/encoders/compact_vit.py")
+#: ...and the paper's ViT-Base trunk as a ViT-CLTT-Ref label (owner 2026-10-15, test_vit_fp16.py).
+FP16_LABELS = {"ViT-CLTT-Ref-Base"}
 
 
 def _drop_admitted(path, removed):
@@ -1115,7 +1120,7 @@ def test_shared_file_change_is_additive_only(path):
 def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
-               + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES}
+               + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1127,7 +1132,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
