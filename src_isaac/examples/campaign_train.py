@@ -483,9 +483,9 @@ VIT_250K_CFG = {**VIT_CFG, "embed_dim": 68}    # enc 256,056 / agent 257,597 @ 1
 #                          and the multiple of 3 nearest 5.0M: embed_dim 177  enc 4,952,441 -0.95%  head_dim 59
 #   ViT-CLTT-Ref-50M       depth 12, head_dim 64, mlp 4: embed_dim 576 (9 heads; 512 -> 38,760,960 -22.48%,
 #                          640 -> 60,575,872 +21.15%)  enc 49,209,920 -1.58%
-VIT_500K_P14_CFG = {**VIT_CFG, "patch_size": 14, "embed_dim": 104}                                          # enc 506,160 @ 448x280
-VIT_5M_CFG       = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 177, "num_heads": 3, "mlp_ratio": 4.0}   # enc 4,952,441 @ 448x280
-VIT_50M_CFG      = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 576, "num_heads": 9, "mlp_ratio": 4.0}   # enc 49,209,920 @ 448x280
+VIT_500K_P14_CFG = {**VIT_CFG, "patch_size": 14, "embed_dim": 104}                                          # enc 506,160 / agent 507,701 @ 448x280, 2 frames
+VIT_5M_CFG       = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 177, "num_heads": 3, "mlp_ratio": 4.0}   # enc 4,952,441 / agent 4,953,982 @ 448x280, 2 frames
+VIT_50M_CFG      = {**VIT_CFG, "patch_size": 14, "depth": 12, "embed_dim": 576, "num_heads": 9, "mlp_ratio": 4.0}   # enc 49,209,920 / agent 49,211,461 @ 448x280, 2 frames
 # ViT-CLTT-Ref-Base (owner 2026-10-15: "the ViT-Base from the original ViT paper (~86M parameters, 12 layers, 768
 # hidden dimension, 12 attention heads)"; patch 14 per §124). The paper's ViT-B trunk -- depth 12, width 768, 12
 # heads, MLP 3072 (ratio 4) -- at patch 14 ("B/14": the paper has H/14 but no B/14), every other field VIT_CFG's.
