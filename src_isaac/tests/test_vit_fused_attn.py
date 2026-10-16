@@ -35,16 +35,24 @@ def _obs(n=5, seed=1):
     return torch.randint(0, 256, (n, C, H, W), generator=g).float()
 
 
-def _record(enc):
-    """Wrap every block's attention module and record the need_weights each call passed (None = default)."""
+def _record(enc, monkeypatch):
+    """Record every attention call: ("mha", need_weights kwarg or None) for nn.MultiheadAttention.forward,
+    ("sdpa", padded head dim) for F.scaled_dot_product_attention."""
+    import torch.nn.functional as F
     seen = []
     for blk in enc.blocks:
         orig = blk.attn.forward
 
         def fwd(*a, _orig=orig, **kw):
-            seen.append(kw.get("need_weights"))
+            seen.append(("mha", kw.get("need_weights")))
             return _orig(*a, **kw)
         blk.attn.forward = fwd
+    real = F.scaled_dot_product_attention
+
+    def sdpa(q, *a, **kw):
+        seen.append(("sdpa", q.shape[-1]))
+        return real(q, *a, **kw)
+    monkeypatch.setattr(F, "scaled_dot_product_attention", sdpa)
     return seen
 
 
@@ -52,17 +60,25 @@ def _record(enc):
 def test_unset_or_off_keeps_the_weight_map_path(monkeypatch, knob):
     enc = _make(monkeypatch, knob)
     assert enc.fused_attn is False and all(b.need_weights for b in enc.blocks)
-    seen = _record(enc)
+    seen = _record(enc, monkeypatch)
     enc(_obs())
-    assert seen == [None] * CFG["depth"]          # the literal pre-knob call, no keyword at all
+    assert seen == [("mha", None)] * CFG["depth"]          # the literal pre-knob call, no keyword at all
 
 
 def test_on_calls_attention_without_weights(monkeypatch):
     enc = _make(monkeypatch, "1")
     assert enc.fused_attn is True and not any(b.need_weights for b in enc.blocks)
-    seen = _record(enc)
+    seen = _record(enc, monkeypatch)
     enc(_obs())
-    assert seen == [False] * CFG["depth"]
+    assert seen == [("sdpa", 8)] * CFG["depth"]            # head dim 24/4 = 6, zero-padded to 8
+
+
+@pytest.mark.parametrize("embed,heads,want", [(32, 4, 8), (108, 4, 32), (177, 3, 64), (24, 3, 8)])
+def test_head_dim_is_padded_to_a_multiple_of_8(monkeypatch, embed, heads, want):
+    enc = _make(monkeypatch, "1", embed_dim=embed, num_heads=heads)
+    seen = _record(enc, monkeypatch)
+    enc(_obs(n=2))
+    assert seen == [("sdpa", want)] * CFG["depth"]
 
 
 def test_misspelled_value_is_refused(monkeypatch):
@@ -104,9 +120,64 @@ def test_outputs_and_gradients_match_the_weight_map_path(monkeypatch, train):
 
 def test_dropout_path_also_skips_the_weight_map(monkeypatch):
     enc = _make(monkeypatch, "1", dropout=0.1, dropout_scope="all").train()
-    seen = _record(enc)
+    seen = _record(enc, monkeypatch)
     enc(_obs())
-    assert seen == [False] * CFG["depth"]
+    assert seen == [("sdpa", 8)] * CFG["depth"]
+
+
+@pytest.mark.parametrize("embed,heads", [(24, 4), (32, 4)])     # padded (d=6) and aligned (d=8)
+def test_fused_matches_the_weight_map_path_at_other_head_dims(monkeypatch, embed, heads):
+    ref, fused = _make(monkeypatch, None, embed_dim=embed, num_heads=heads), _make(monkeypatch, "1", embed_dim=embed, num_heads=heads)
+    fused.load_state_dict(ref.state_dict())
+    x = _obs()
+    assert torch.allclose(ref(x), fused(x), atol=1e-5, rtol=1e-4)
+
+
+# ---------------------------------------------------------------- NETT_VIT_ACT_CKPT
+
+def _make_ck(monkeypatch, ck, fused=None, **over):
+    if ck is None:
+        monkeypatch.delenv("NETT_VIT_ACT_CKPT", raising=False)
+    else:
+        monkeypatch.setenv("NETT_VIT_ACT_CKPT", ck)
+    return _make(monkeypatch, fused, **over)
+
+
+def test_act_ckpt_unset_is_off_and_misspelling_refused(monkeypatch):
+    assert _make_ck(monkeypatch, None).act_ckpt is False
+    assert _make_ck(monkeypatch, "0").act_ckpt is False
+    with pytest.raises(ValueError, match="NETT_VIT_ACT_CKPT"):
+        _make_ck(monkeypatch, "on please")
+
+
+@pytest.mark.parametrize("fused", [None, "1"])
+def test_act_ckpt_gives_identical_outputs_and_gradients(monkeypatch, fused):
+    ref = _make_ck(monkeypatch, None, fused).train()
+    ck = _make_ck(monkeypatch, "1", fused).train()
+    ck.load_state_dict(ref.state_dict())
+    calls = []
+    import torch.utils.checkpoint as tuc
+    real = tuc.checkpoint
+    monkeypatch.setattr(tuc, "checkpoint", lambda *a, **kw: (calls.append(kw.get("use_reentrant")), real(*a, **kw))[1])
+    x = _obs()
+    ya, yb = ref(x), ck(x)
+    assert calls == [False] * CFG["depth"]                   # positive control: the checkpoint path ran
+    assert torch.equal(ya, yb)
+    ya.square().sum().backward(); yb.square().sum().backward()
+    for (n, pa), (_, pb) in zip(ref.named_parameters(), ck.named_parameters()):
+        if pa.grad is not None:
+            assert torch.allclose(pa.grad, pb.grad, atol=1e-6, rtol=1e-5), n
+
+
+def test_act_ckpt_is_skipped_without_grad(monkeypatch):
+    ck = _make_ck(monkeypatch, "1").eval()
+    calls = []
+    import torch.utils.checkpoint as tuc
+    real = tuc.checkpoint
+    monkeypatch.setattr(tuc, "checkpoint", lambda *a, **kw: (calls.append(1), real(*a, **kw))[1])
+    with torch.no_grad():
+        ck(_obs())
+    assert calls == []
 
 
 def test_runs_under_strict_determinism_and_repeats(monkeypatch):
@@ -121,21 +192,25 @@ def test_runs_under_strict_determinism_and_repeats(monkeypatch):
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
-@pytest.mark.parametrize("label_cfg", [dict(embed_dim=108, depth=3, num_heads=4),                  # VD500 (VIT_500K_P14_DVS)
-                                       dict(embed_dim=177, depth=12, num_heads=3, mlp_ratio=4.0)])  # VD5M (VIT_5M_DVS)
-def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg):
+@pytest.mark.parametrize("label_cfg,ckpt", [(dict(embed_dim=108, depth=3, num_heads=4), False),                  # VD500 (VIT_500K_P14_DVS)
+                                            (dict(embed_dim=177, depth=12, num_heads=3, mlp_ratio=4.0), True)])  # VD5M (VIT_5M_DVS)
+def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg, ckpt):
     """The §128 shape: 4 channels at 448x280, patch 14 (641 tokens), bf16 autocast, a 400-sample minibatch
-    (25,600 / 64). Fused peak must be lower, and two runs bit-identical under strict_determinism."""
+    (25,600 / 64). Fused peak (VD5M: fused + activation checkpointing) must be lower, and two runs
+    bit-identical under strict_determinism."""
     monkeypatch.setenv("NETT_AMP", "bf16")
+    monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")   # as the driver sets it; cuBLAS reads it at handle creation
     dev = torch.device("cuda")
-    cfg = dict(features_dim=512, patch_size=14, pool="cls", stem="linear", mlp_ratio=2.0, **label_cfg)
+    cfg = {**dict(features_dim=512, patch_size=14, pool="cls", stem="linear", mlp_ratio=2.0), **label_cfg}
     x = torch.randint(0, 256, (400, 4, 280, 448), device=dev, dtype=torch.uint8).float()
 
     def peak(knob):
         if knob:
             monkeypatch.setenv("NETT_VIT_FUSED_ATTN", "1")
+            monkeypatch.setenv("NETT_VIT_ACT_CKPT", "1" if ckpt else "0")
         else:
             monkeypatch.delenv("NETT_VIT_FUSED_ATTN", raising=False)
+            monkeypatch.delenv("NETT_VIT_ACT_CKPT", raising=False)
         torch.manual_seed(0)
         enc = CompactViT(gym.spaces.Box(0, 255, (4, 280, 448), np.uint8), **cfg).to(dev).train()
         torch.cuda.synchronize(); torch.cuda.empty_cache(); torch.cuda.reset_peak_memory_stats()
@@ -148,13 +223,14 @@ def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cf
         del enc, y
         return p, g
 
-    try:
-        p_ref, _ = peak(False)
-    except torch.OutOfMemoryError:
-        p_ref = float("inf")
-    torch.cuda.empty_cache()
     p1, g1 = peak(True)
     p2, g2 = peak(True)
+    p_ref = float("inf")
+    try:                         # last: a caught OOM's traceback pins the failed run's tensors
+        p_ref, _ = peak(False)
+    except torch.OutOfMemoryError:
+        pass
+    import gc; gc.collect(); torch.cuda.empty_cache()
     print(f"peak MiB: weight-map path {p_ref / 2**20:.0f}, fused {p1 / 2**20:.0f}")
     assert p1 < p_ref
     assert torch.equal(g1, g2)

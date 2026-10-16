@@ -23,6 +23,7 @@ import gymnasium as gym
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.utils.checkpoint
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
@@ -188,18 +189,38 @@ class _TransformerBlock(nn.Module):
         #: (CompactViT has always passed 0.0); the runtime path below drives that same
         #: attribute, so the two never both apply.
         self.live_p = 0.0
-        #: NETT_VIT_FUSED_ATTN (workspace DECISIONS §131 add. 1 item 16; set by CompactViT): False makes
-        #: nn.MultiheadAttention skip the (B, heads, N, N) weight map it otherwise materialises for its
-        #: second return value -- with need_weights=False it calls F.scaled_dot_product_attention, the
-        #: same operator, the same parameters, a fused kernel. A plain bool, so the state_dict is untouched.
+        #: NETT_VIT_FUSED_ATTN (workspace DECISIONS §131 add. 1 item 16; set by CompactViT): False runs the
+        #: attention through F.scaled_dot_product_attention (`_sdpa`) instead of nn.MultiheadAttention's
+        #: weight-map path, which materialises the (B, heads, N, N) softmax for its second return value.
+        #: Same operator, same parameters, a fused kernel. A plain bool, so the state_dict is untouched.
         self.need_weights = True
 
     def _attend(self, normed: torch.Tensor) -> torch.Tensor:
         if self.need_weights:
             attn_out, _ = self.attn(normed, normed, normed)
-        else:
-            attn_out, _ = self.attn(normed, normed, normed, need_weights=False)
-        return attn_out
+            return attn_out
+        return self._sdpa(normed)
+
+    def _sdpa(self, x: torch.Tensor) -> torch.Tensor:
+        """nn.MultiheadAttention's own forward on its own parameters, through F.scaled_dot_product_attention,
+        with the head dim ZERO-PADDED to a multiple of 8 (presenter, 2026-10-16). The fused kernels need an
+        8-aligned head dim on some GPUs: Turing has no flash, and the memory-efficient kernel refuses 26/27/59.
+        Zero columns leave every q.k unchanged, the scale stays 1/sqrt(d) of the TRUE head dim, and the padded
+        output columns (zero-weighted sums of zeros) are sliced off. Attention dropout as MHA: its ``dropout``
+        attribute, train mode only."""
+        a = self.attn
+        b, n, dim = x.shape
+        h = a.num_heads
+        d = dim // h
+        qkv = F.linear(x, a.in_proj_weight, a.in_proj_bias).view(b, n, 3, h, d).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]
+        pad = (-d) % 8
+        if pad:
+            q, k, v = (F.pad(t, (0, pad)) for t in (q, k, v))
+        o = F.scaled_dot_product_attention(q, k, v, dropout_p=a.dropout if self.training else 0.0, scale=d ** -0.5)
+        if pad:
+            o = o[..., :d]
+        return a.out_proj(o.transpose(1, 2).reshape(b, n, dim))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         p = self.live_p
@@ -358,6 +379,10 @@ class CompactViT(HWCFeatureExtractor):
             raise ValueError(f"NETT_VIT_FUSED_ATTN=1 with attn_mode={attn_mode!r}: only 'qk' has attention weights")
         for block in self.blocks:
             block.need_weights = not self.fused_attn
+        # NETT_VIT_ACT_CKPT (opt-in; unset = the plain loop): activation checkpointing per block. For a
+        # deep 448x280 ViT the non-attention activations, not the weight map, are the update's wall
+        # (12 blocks of 641 tokens: VD5M fused ~57 MB/sample on A10, FINDINGS §4dh.44h.165).
+        self.act_ckpt = _env_flag_strict("NETT_VIT_ACT_CKPT", False)
         self.norm = nn.LayerNorm(embed_dim)
         if pool == "spatial":
             # Preserve object LOCATION (which CLS pooling destroys — the cause of
@@ -491,8 +516,15 @@ class CompactViT(HWCFeatureExtractor):
             idx = keep.unsqueeze(-1).expand(-1, -1, x.shape[-1])
             x = torch.cat([x[:, :1], torch.gather(x[:, 1:], 1, idx)], dim=1)
 
-        for block in self.blocks:
-            x = block(x)
+        if self.act_ckpt and torch.is_grad_enabled() and x.requires_grad:
+            # NETT_VIT_ACT_CKPT: keep only each block's INPUT for backward and recompute the block
+            # there. Same forward, same gradients (non-reentrant, RNG preserved); costs one more
+            # forward per block in the update.
+            for block in self.blocks:
+                x = torch.utils.checkpoint.checkpoint(block, x, use_reentrant=False)
+        else:
+            for block in self.blocks:
+                x = block(x)
 
         return self.norm(x)
 

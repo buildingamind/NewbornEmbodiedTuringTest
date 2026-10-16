@@ -16,13 +16,13 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-283 variables.
+284 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
 | `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:263`<br>`examples/campaign_train.py:2202`<br>`examples/campaign_train.py:2242` |
 | `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:276`<br>`examples/campaign_train.py:2203`<br>`examples/campaign_train.py:2243` |
-| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/compact_vit.py:49`<br>`nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
+| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/compact_vit.py:50`<br>`nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp2_aux.py:321`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
@@ -276,9 +276,10 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
 | `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |
 | `NETT_VIDEOS_ROOT` | `"/home/zlaborde/code/isaac/videos"` | `examples/_paths.py:18` |
+| `NETT_VIT_ACT_CKPT` | `False` | `nett_skrl/brain/encoders/compact_vit.py:385` |
 | `NETT_VIT_DROPOUT` | `"0.1"` | `examples/campaign_train.py:202` |
 | `NETT_VIT_EMBED` | `"128"` | `examples/train_binding_8brain_targets.py:87` |
-| `NETT_VIT_FUSED_ATTN` | `False` | `nett_skrl/brain/encoders/compact_vit.py:356` |
+| `NETT_VIT_FUSED_ATTN` | `False` | `nett_skrl/brain/encoders/compact_vit.py:377` |
 | `NETT_VIT_HEADS` | `"4"` | `examples/train_binding_8brain_targets.py:89` |
 | `NETT_VIT_POOL` | `"cls"` | `examples/train_binding_8brain_targets.py:93` |
 | `NETT_VIT_STEM` | `"linear"` | `examples/train_binding_8brain_targets.py:96` |
