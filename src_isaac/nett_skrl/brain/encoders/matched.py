@@ -141,14 +141,18 @@ def matched_amp_dtype() -> torch.dtype | None:
     (fp32/TF32) from §103, when bf16 was an opt-in speed test. "bf16" runs the trunk under CUDA autocast
     and returns fp32 features, as NatureCNN does under NETT_AMP (also bf16 by default); on CPU tensors
     the forward is fp32 either way. "off" (or "0", "fp32", "") restores the fp32 forward -- the recipe
-    of every row before §111 that did not name the knob. Anything else refuses, so a typo cannot
-    silently pick a precision."""
+    of every row before §111 that did not name the knob. "fp16" (also "float16", "half") runs the
+    trunk under float16 autocast, and the agent then scales its losses with a GradScaler
+    (brain/amp.py). Anything else refuses, so a typo cannot silently pick a precision."""
+    from .nature_cnn import FP16_SPELLINGS
     v = os.environ.get("NETT_MATCHED_AMP", "bf16").strip().lower()
     if v in ("off", "0", "fp32", ""):
         return None
     if v == "bf16":
         return torch.bfloat16
-    raise ValueError(f"NETT_MATCHED_AMP={v!r}; expected 'off' or 'bf16'")
+    if v in FP16_SPELLINGS:
+        return torch.float16
+    raise ValueError(f"NETT_MATCHED_AMP={v!r}; expected 'off', 'bf16' or 'fp16'")
 
 
 #: CUDA device indices already warned by warn_if_bf16_without_tensor_cores (one line per device per process).
@@ -181,6 +185,12 @@ class MatchedEncoder(HWCFeatureExtractor):
     """One of the owner's six matched encoders, chosen by ``variant`` (see the module docstring)."""
 
     OWNS_INIT = True
+    #: The precision knob this encoder's forward reads (see brain/amp.py).
+    AMP_KNOB = "NETT_MATCHED_AMP"
+
+    def amp_dtype(self) -> torch.dtype | None:
+        """The dtype this forward autocasts to on CUDA (None = fp32)."""
+        return matched_amp_dtype()
 
     def __init__(self, observation_space: gym.Space, variant: str, features_dim: int = OUT_DIM) -> None:
         # Explicit keywords only (no ``**_``): a cfg key this encoder does not read refuses at
@@ -222,7 +232,8 @@ class MatchedEncoder(HWCFeatureExtractor):
         x = self._prepare_image(observations)              # (B, 3T, 160, 256), [prev, cur], /255 once
         amp = matched_amp_dtype()
         if amp is not None and x.is_cuda:
-            warn_if_bf16_without_tensor_cores(x.device, "NETT_MATCHED_AMP")
+            if amp is torch.bfloat16:
+                warn_if_bf16_without_tensor_cores(x.device, "NETT_MATCHED_AMP")
             with torch.autocast("cuda", dtype=amp):
                 out = self._trunk(x)
             return out.float()

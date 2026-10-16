@@ -25,7 +25,28 @@ import torch.nn.functional as F
 
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
+from .nature_cnn import _amp_dtype
 from .utils.pool import DeterministicAvgPool2d
+
+
+def vit_amp_dtype() -> torch.dtype | None:
+    """NETT_AMP as CompactViT reads it: float16 at the fp16 spellings, None (fp32) at every other value.
+
+    ⛔ ONLY fp16 REACHES THE ViT. NETT_AMP defaults to bf16 for NatureCNN, and CompactViT has always run
+    fp32 whatever NETT_AMP said; honouring bf16 here would change every existing ViT row. So unset, "off"
+    and "bf16" all leave the ViT forward the literal pre-fp16 code, and fp16 is opt-in only. The value is
+    parsed by NatureCNN's own reader, so the two encoders agree on what "fp16" spells."""
+    return torch.float16 if _amp_dtype() is torch.float16 else None
+
+
+def _fp16_autocast(x: torch.Tensor):
+    """The float16 autocast context for a trunk pass on ``x``, or None for the fp32 path.
+
+    CUDA only (as NatureCNN): on a CPU tensor the forward is fp32 whatever the knob says. One function,
+    so a CPU test can substitute a CPU autocast and exercise the fp16 branch."""
+    if x.is_cuda and vit_amp_dtype() is torch.float16:
+        return torch.autocast("cuda", dtype=torch.float16)
+    return None
 
 
 class _TokenMixer(nn.Module):
@@ -195,7 +216,20 @@ class CompactViT(HWCFeatureExtractor):
         2 Transformer: ~264 K
         Head         :  ~16 K
         Total encoder: ~313 K
+
+    PRECISION (NETT_AMP=fp16 only, see ``vit_amp_dtype``): every trunk consumer (``forward``,
+    ``encode_tokens``, ``encode_visible_prepared``, hence ``encode_prepared`` and
+    ``encode_tokens_prepared``) runs under float16 autocast on CUDA and returns float32, so the
+    policy/value heads and every aux head see fp32 exactly as before. The agent scales its
+    losses through a GradScaler (brain/amp.py). Default/off/bf16 run the unwrapped code.
     """
+
+    #: The precision knob this encoder's forward reads (see brain/amp.py).
+    AMP_KNOB = "NETT_AMP"
+
+    def amp_dtype(self) -> torch.dtype | None:
+        """The dtype this forward autocasts to on CUDA (None = fp32)."""
+        return vit_amp_dtype()
 
     def __init__(
         self,
@@ -420,6 +454,11 @@ class CompactViT(HWCFeatureExtractor):
 
     def encode_visible_prepared(self, prepared: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
         """Post-norm (B, 1+N_vis, D) tokens of the patches in ``keep`` only (CLS first). MAE."""
+        amp = _fp16_autocast(prepared)
+        if amp is not None:
+            with amp:
+                out = self._trunk(prepared, keep)
+            return out.float()
         return self._trunk(prepared, keep)
 
     def encode_tokens(self, observations: torch.Tensor) -> tuple[torch.Tensor, tuple[int, int]]:
@@ -439,11 +478,26 @@ class CompactViT(HWCFeatureExtractor):
         ⚠ The patch grid is fixed by construction (height//patch, width//patch); at the
         campaign eye (80x128, patch 16) it is 5x8 = 40 tokens.
         """
-        x = self._trunk(self._prepare_image(observations))
+        prepared = self._prepare_image(observations)
+        amp = _fp16_autocast(prepared)
+        if amp is not None:
+            with amp:
+                x = self._trunk(prepared)
+            return x[:, 1:].float(), (self._n_h, self._n_w)
+        x = self._trunk(prepared)
         return x[:, 1:], (self._n_h, self._n_w)
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
-        x = self._trunk(self._prepare_image(observations))   # (B, 1+N, D), post-norm
+        prepared = self._prepare_image(observations)
+        amp = _fp16_autocast(prepared)
+        if amp is not None:
+            with amp:
+                out = self._readout(self._trunk(prepared))
+            return out.float()
+        return self._readout(self._trunk(prepared))
+
+    def _readout(self, x: torch.Tensor) -> torch.Tensor:
+        """(B, 1+N, D) post-norm tokens -> (B, features_dim): the pre-fp16 forward's readout lines."""
         B = x.shape[0]
         if self.pool == "spatial":
             tok = self.token_reduce(x[:, 1:])                 # (B, N, rdim), drop CLS

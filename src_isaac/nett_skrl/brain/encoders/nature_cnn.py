@@ -55,6 +55,12 @@ from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.pool import DeterministicAvgPool2d, pool_grid_for
 
 
+#: The NETT_AMP / NETT_MATCHED_AMP spellings that select float16 autocast. fp16 has a 5-bit exponent, so
+#: an fp16 forward needs loss scaling: the agent then steps through an enabled torch GradScaler
+#: (brain/amp.py, wired in agent_factory.build_agents; refused where no fp16 path exists).
+FP16_SPELLINGS = ("fp16", "float16", "half")
+
+
 def _amp_dtype() -> torch.dtype | None:
     """Autocast dtype for the encoder conv/linear (NETT_AMP). DEFAULT = bf16.
 
@@ -64,12 +70,14 @@ def _amp_dtype() -> torch.dtype | None:
     (no GradScaler needed). It shifts values ~1e-2 vs fp32 -> runs are NOT
     bit-identical to fp32 (a one-time change, like the Fabric adoption); replay
     determinism holds. Opt OUT to full fp32 with NETT_AMP in
-    {off,0,none,fp32,float32,""}. NETT_AMP=fp16 selects float16 (needs care re:
-    underflow). Only wraps the NatureCNN encoder (the recipe encoder)."""
+    {off,0,none,fp32,float32,""}. NETT_AMP=fp16 selects float16; the agent then scales its
+    losses with a GradScaler (brain/amp.py). NETT_AMP reaches NatureCNN at every value and
+    CompactViT at the fp16 spellings only (compact_vit.vit_amp_dtype: its default stays fp32).
+    ⚠ Any other string falls through to bf16 rather than refusing (pre-existing behaviour)."""
     v = os.environ.get("NETT_AMP", "bf16").lower()
     if v in ("off", "0", "none", "fp32", "float32", ""):
         return None
-    if v in ("fp16", "float16", "half"):
+    if v in FP16_SPELLINGS:
         return torch.float16
     return torch.bfloat16
 
@@ -80,6 +88,14 @@ class NatureCNN(HWCFeatureExtractor):
     ``input_frames`` selects the last N RGB frames from a channel stack and
     builds conv1 for 3*N channels. None preserves the full-input architecture.
     """
+
+    #: The precision knob this encoder's forward reads (brain/amp.py refuses fp16 on a knob the
+    #: agent's encoder does not read).
+    AMP_KNOB = "NETT_AMP"
+
+    def amp_dtype(self) -> torch.dtype | None:
+        """The dtype this forward autocasts to on CUDA (None = fp32)."""
+        return _amp_dtype()
 
     def __init__(
         self,

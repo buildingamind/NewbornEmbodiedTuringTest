@@ -22,15 +22,15 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 |---|---|---|
 | `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:263`<br>`examples/campaign_train.py:2133`<br>`examples/campaign_train.py:2173` |
 | `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:276`<br>`examples/campaign_train.py:2134`<br>`examples/campaign_train.py:2174` |
-| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:69`<br>`examples/probe_frozen_features.py:57` |
+| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp2_aux.py:321`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
 | `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:462` |
-| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:57`<br>`nett_skrl/brain/aux/ppo_aux.py:363` |
-| `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:72`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
+| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:363` |
+| `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
@@ -44,7 +44,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_EGO_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/ego_residual_aux.py:123` |
 | `NETT_AUX_EMA_DECAY` | `0.996` | `nett_skrl/brain/aux/ema_teacher.py:52` |
-| `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:36`<br>`examples/campaign_train.py:1788`<br>`examples/campaign_train.py:2122` |
+| `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:37`<br>`examples/campaign_train.py:1788`<br>`examples/campaign_train.py:2122` |
 | `NETT_AUX_MAE_BATCH` | `64` | `nett_skrl/brain/aux/mae_aux.py:203` |
 | `NETT_AUX_MAE_DEC_DEPTH` | `1` | `nett_skrl/brain/aux/mae_aux.py:205` |
 | `NETT_AUX_MAE_DEC_DIM` | `64` | `nett_skrl/brain/aux/mae_aux.py:204` |
@@ -81,7 +81,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |
-| `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:37`<br>`examples/campaign_train.py:1793`<br>`examples/campaign_train.py:2123` |
+| `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:38`<br>`examples/campaign_train.py:1793`<br>`examples/campaign_train.py:2123` |
 | `NETT_AUX_WEIGHT_OVERRIDE` | *(required / no literal default)* | `examples/campaign_train.py:1793` |
 | `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:1679`<br>`examples/train_binding_8brain_targets.py:41` |
 | `NETT_BRAIN_OFFSET` | `"0"`, `'0'` | `examples/campaign_train.py:1680`<br>`examples/train_binding_8brain_targets.py:190`<br>`examples/train_binding_8brain_targets.py:208` |
@@ -167,7 +167,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_LR_WARMUP` | *(required / no literal default)* | `examples/train_binding_8brain_targets.py:119`<br>`examples/train_binding_8brain_targets.py:125` |
 | `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
 | `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
-| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/encoders/matched.py:146` |
+| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/amp.py:51`<br>`nett_skrl/brain/encoders/matched.py:148` |
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:1687`<br>`examples/train_binding_8brain_targets.py:38` |
 | `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1585` |
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:1999` |
@@ -269,7 +269,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:2024` |
 | `NETT_UINT8_BUFFER` | `"1"` | `nett_skrl/brain/hybrid_memory.py:32` |
 | `NETT_UNIFIED_WANDB` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:83`<br>`nett_skrl/recording/wandb.py:296` |
-| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:115`<br>`examples/campaign_train.py:2133`<br>`examples/campaign_train.py:2172` |
+| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:116`<br>`examples/campaign_train.py:2133`<br>`examples/campaign_train.py:2172` |
 | `NETT_VICREG_COV` | `"10"` | `nett_skrl/brain/aux/vicreg_aux.py:101`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:102` |
 | `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
 | `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |

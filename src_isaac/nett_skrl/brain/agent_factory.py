@@ -18,6 +18,7 @@ from .hybrid_memory import (
     uint8_buffer_enabled,
 )
 
+from .amp import configure_fp16_grad_scaler
 from .aux import AuxLossPPO
 from .experiment import apply_experiment_cfg
 from .models import build_models_for_algorithm
@@ -282,6 +283,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             device=device,
             **agent_kwargs,
         )
+        # fp16 encoder autocast (NETT_AMP=fp16 / NETT_MATCHED_AMP=fp16) -> enabled GradScaler on the
+        # existing skrl scaler slot + checkpoint key; refuses an fp16 request it cannot honour. A no-op
+        # (returns False, agent untouched) at the defaults, "off" and "bf16". See brain/amp.py.
+        configure_fp16_grad_scaler(agent)
         agent._nett_brain_id = brain_id + 1   # 1-based; used for unified-wandb namespacing
         if config is not None:
             attach_wandb_init_hook(agent)
