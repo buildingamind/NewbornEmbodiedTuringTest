@@ -72,7 +72,7 @@ def _amp_dtype() -> torch.dtype | None:
     determinism holds. Opt OUT to full fp32 with NETT_AMP in
     {off,0,none,fp32,float32,""}. NETT_AMP=fp16 selects float16; the agent then scales its
     losses with a GradScaler (brain/amp.py). NETT_AMP reaches NatureCNN at every value and
-    CompactViT at the fp16 spellings only (compact_vit.vit_amp_dtype: its default stays fp32).
+    CompactViT only when SET to fp16 or bf16 (compact_vit.vit_amp_dtype: unset stays fp32 there).
     ⚠ Any other string falls through to bf16 rather than refusing (pre-existing behaviour)."""
     v = os.environ.get("NETT_AMP", "bf16").lower()
     if v in ("off", "0", "none", "fp32", "float32", ""):

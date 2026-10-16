@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import contextlib
 import math
+import os
 
 import gymnasium as gym
 import torch
@@ -29,24 +30,44 @@ from .nature_cnn import _amp_dtype
 from .utils.pool import DeterministicAvgPool2d
 
 
+#: The NETT_AMP spellings that select bf16 for CompactViT -- only when SET explicitly (see vit_amp_dtype).
+BF16_SPELLINGS = ("bf16", "bfloat16")
+
+
 def vit_amp_dtype() -> torch.dtype | None:
-    """NETT_AMP as CompactViT reads it: float16 at the fp16 spellings, None (fp32) at every other value.
+    """NETT_AMP as CompactViT reads it: float16 at the fp16 spellings, bfloat16 when EXPLICITLY set to a bf16
+    spelling, None (fp32) otherwise -- unset, "off", or any other string.
 
-    ⛔ ONLY fp16 REACHES THE ViT. NETT_AMP defaults to bf16 for NatureCNN, and CompactViT has always run
-    fp32 whatever NETT_AMP said; honouring bf16 here would change every existing ViT row. So unset, "off"
-    and "bf16" all leave the ViT forward the literal pre-fp16 code, and fp16 is opt-in only. The value is
-    parsed by NatureCNN's own reader, so the two encoders agree on what "fp16" spells."""
-    return torch.float16 if _amp_dtype() is torch.float16 else None
+    ⛔ UNSET IS fp32 FOR THE ViT, NOT bf16. Unset NETT_AMP means bf16 for NatureCNN (and JEPA), but CompactViT
+    has always run fp32 with it unset, and every existing ViT row leaves it unset (or "off"): no queue row
+    has ever set NETT_AMP=bf16 on a ViT label (checked across every queue file, workspace DECISIONS §128). So
+    only an EXPLICIT value may change the ViT: "bf16" -> bfloat16 autocast (fp32 range, no GradScaler; the
+    §128 ViT+DVS rows), "fp16" -> float16 autocast + GradScaler (brain/amp.py). An unrecognised string stays
+    fp32 here (NatureCNN's reader turns it into bf16; that fall-through is pre-existing and not copied). The
+    fp16 and off spellings are parsed by NatureCNN's own reader, so the encoders agree on what they spell."""
+    raw = os.environ.get("NETT_AMP")
+    if raw is None:
+        return None
+    dtype = _amp_dtype()
+    if dtype is torch.float16:
+        return torch.float16
+    if dtype is torch.bfloat16 and raw.lower() in BF16_SPELLINGS:
+        return torch.bfloat16
+    return None
 
 
-def _fp16_autocast(x: torch.Tensor):
-    """The float16 autocast context for a trunk pass on ``x``, or None for the fp32 path.
+def _amp_autocast(x: torch.Tensor):
+    """The autocast context (vit_amp_dtype's dtype) for a trunk pass on ``x``, or None for the fp32 path.
 
     CUDA only (as NatureCNN): on a CPU tensor the forward is fp32 whatever the knob says. One function,
-    so a CPU test can substitute a CPU autocast and exercise the fp16 branch."""
-    if x.is_cuda and vit_amp_dtype() is torch.float16:
-        return torch.autocast("cuda", dtype=torch.float16)
-    return None
+    so a CPU test can substitute a CPU autocast and exercise the reduced-precision branch."""
+    dtype = vit_amp_dtype()
+    if not x.is_cuda or dtype is None:
+        return None
+    if dtype is torch.bfloat16:
+        from .matched import warn_if_bf16_without_tensor_cores      # logs once per device below sm_80
+        warn_if_bf16_without_tensor_cores(x.device, "NETT_AMP")
+    return torch.autocast("cuda", dtype=dtype)
 
 
 class _TokenMixer(nn.Module):
@@ -217,11 +238,11 @@ class CompactViT(HWCFeatureExtractor):
         Head         :  ~16 K
         Total encoder: ~313 K
 
-    PRECISION (NETT_AMP=fp16 only, see ``vit_amp_dtype``): every trunk consumer (``forward``,
-    ``encode_tokens``, ``encode_visible_prepared``, hence ``encode_prepared`` and
-    ``encode_tokens_prepared``) runs under float16 autocast on CUDA and returns float32, so the
-    policy/value heads and every aux head see fp32 exactly as before. The agent scales its
-    losses through a GradScaler (brain/amp.py). Default/off/bf16 run the unwrapped code.
+    PRECISION (NETT_AMP set explicitly to fp16 or bf16, see ``vit_amp_dtype``): every trunk consumer
+    (``forward``, ``encode_tokens``, ``encode_visible_prepared``, hence ``encode_prepared`` and
+    ``encode_tokens_prepared``) runs under that autocast on CUDA and returns float32, so the
+    policy/value heads and every aux head see fp32 exactly as before. Under fp16 the agent scales
+    its losses through a GradScaler (brain/amp.py); bf16 needs none. Unset/off run the unwrapped code.
     """
 
     #: The precision knob this encoder's forward reads (see brain/amp.py).
@@ -454,7 +475,7 @@ class CompactViT(HWCFeatureExtractor):
 
     def encode_visible_prepared(self, prepared: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
         """Post-norm (B, 1+N_vis, D) tokens of the patches in ``keep`` only (CLS first). MAE."""
-        amp = _fp16_autocast(prepared)
+        amp = _amp_autocast(prepared)
         if amp is not None:
             with amp:
                 out = self._trunk(prepared, keep)
@@ -479,7 +500,7 @@ class CompactViT(HWCFeatureExtractor):
         campaign eye (80x128, patch 16) it is 5x8 = 40 tokens.
         """
         prepared = self._prepare_image(observations)
-        amp = _fp16_autocast(prepared)
+        amp = _amp_autocast(prepared)
         if amp is not None:
             with amp:
                 x = self._trunk(prepared)
@@ -489,7 +510,7 @@ class CompactViT(HWCFeatureExtractor):
 
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         prepared = self._prepare_image(observations)
-        amp = _fp16_autocast(prepared)
+        amp = _amp_autocast(prepared)
         if amp is not None:
             with amp:
                 out = self._readout(self._trunk(prepared))

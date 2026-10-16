@@ -22,7 +22,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 |---|---|---|
 | `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:263`<br>`examples/campaign_train.py:2202`<br>`examples/campaign_train.py:2242` |
 | `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:276`<br>`examples/campaign_train.py:2203`<br>`examples/campaign_train.py:2243` |
-| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
+| `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/compact_vit.py:48`<br>`nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp2_aux.py:321`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
@@ -167,7 +167,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_LR_WARMUP` | *(required / no literal default)* | `examples/train_binding_8brain_targets.py:119`<br>`examples/train_binding_8brain_targets.py:125` |
 | `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
 | `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
-| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/amp.py:51`<br>`nett_skrl/brain/encoders/matched.py:148` |
+| `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/amp.py:53`<br>`nett_skrl/brain/encoders/matched.py:148` |
 | `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:1756`<br>`examples/train_binding_8brain_targets.py:38` |
 | `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1654` |
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:2068` |

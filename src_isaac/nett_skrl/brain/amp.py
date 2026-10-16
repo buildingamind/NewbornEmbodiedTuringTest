@@ -1,7 +1,7 @@
 """fp16 loss scaling for the encoder-level autocast knobs (NETT_AMP, NETT_MATCHED_AMP).
 
 The fleet's mixed precision is ENCODER-LEVEL: an encoder's forward runs under CUDA autocast and returns
-fp32 features (NatureCNN and CompactViT read NETT_AMP, MatchedEncoder reads NETT_MATCHED_AMP), so the
+fp32 features (NatureCNN, CompactViT and JEPA read NETT_AMP, MatchedEncoder reads NETT_MATCHED_AMP), so the
 policy/value heads, the distribution and GAE stay fp32. bf16 has fp32's exponent range and needs no loss
 scaling. fp16 does not: small gradients underflow to zero in the fp16 backward. This module gives the
 fp16 encoders the standard remedy -- a torch GradScaler on the optimizer that steps their graphs.
@@ -15,14 +15,16 @@ unscale-before-clip and skip-on-inf/nan come from that existing code. ``cfg.mixe
 False on purpose: it would also autocast the heads and the value/GAE path, which no bf16 row does.
 
 ⛔ REFUSALS (a precision that is asked for and cannot be honoured is never ignored):
-  * a knob set to fp16 that no encoder of the agent reads (e.g. NETT_AMP=fp16 on a 3DCNN, or
-    NETT_MATCHED_AMP=fp16 on a CompactViT);
+  * a knob set to fp16 that no encoder of the agent reads under this scaler -- an encoder declares that
+    with ``AMP_KNOB`` (NatureCNN, CompactViT: NETT_AMP; MatchedEncoder: NETT_MATCHED_AMP). E.g. NETT_AMP=fp16
+    on a 3DCNN (ignores it), NETT_MATCHED_AMP=fp16 on a CompactViT, or NETT_AMP=fp16 on JEPA (which DOES
+    autocast to fp16 but is not wired here, so it would step unscaled fp16 gradients);
   * an fp16 encoder under an agent class whose update does not step through ``self.scaler``;
   * an fp16 encoder with an aux term that steps its OWN optimizer (``owns_optimizer``, e.g. xsp2):
     that optimizer would step unscaled fp16 graphs.
 
 Default (both knobs unset), "off" and "bf16" leave the agent exactly as before: the disabled skrl scaler
-and no extra checkpoint key. Under fp16 the scaler's state is checkpointed as ``grad_scaler`` beside
+and no extra checkpoint key (explicit NETT_AMP=bf16 does put CompactViT under bf16 autocast, which needs none). Under fp16 the scaler's state is checkpointed as ``grad_scaler`` beside
 the optimizer, so a resume restores the loss scale.
 """
 
@@ -74,8 +76,9 @@ def configure_fp16_grad_scaler(agent) -> bool:
         if not any(type(e).AMP_KNOB == knob for e in encoders):
             raise ValueError(
                 f"{knob}={os.environ.get(knob)!r} asks for fp16, but this agent's encoder ({', '.join(names)}) "
-                f"does not read {knob}, so it would run at another precision while the row records fp16. "
-                f"fp16 paths: NETT_AMP -> NatureCNN, CompactViT; NETT_MATCHED_AMP -> MatchedEncoder.")
+                f"does not read {knob} under the GradScaler (it would run another precision, or fp16 with no loss "
+                f"scaling, while the row records fp16). fp16 paths: NETT_AMP -> NatureCNN, CompactViT; "
+                f"NETT_MATCHED_AMP -> MatchedEncoder.")
     fp16 = [e for e in encoders if e.amp_dtype() is torch.float16]
     if not fp16:
         return False

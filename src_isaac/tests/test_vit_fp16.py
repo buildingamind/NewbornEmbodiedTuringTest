@@ -2,8 +2,9 @@
 
 Known answers, each with a control that can fail (everything here is CPU; CUDA fp16 numerics are the
 one CUDA-only test at the bottom):
-  1. KNOBS. CompactViT reads NETT_AMP at the fp16 spellings ONLY: unset/off/bf16/anything else = fp32,
-     as it has always run. NatureCNN's reading of NETT_AMP is unchanged (default bf16; the pre-existing
+  1. KNOBS. CompactViT reads NETT_AMP only when SET: fp16 spellings -> float16, explicit bf16/bfloat16 ->
+     bfloat16 (DECISIONS §128); unset/off/anything else = fp32, as it has always run (unset means bf16 for
+     NatureCNN/JEPA, and no existing ViT row sets NETT_AMP). NatureCNN's reading of NETT_AMP is unchanged (default bf16; the pre-existing
      fall-through of an unknown value to bf16 is pinned so a change to it is a decision, not drift).
      NETT_MATCHED_AMP gains fp16 and still refuses a typo.
   2. ENCODER. On CPU tensors the ViT forward / encode_tokens / encode_visible_prepared are bit-identical
@@ -30,8 +31,11 @@ one CUDA-only test at the bottom):
   7. PATCH-14 DVS LABELS (DECISIONS §128): -500K-P14-DVS / -5M-DVS are their twin + pre=["dvs_polarity"] with
      only embed_dim re-sized (108 / unchanged 177) for 4 input channels; agent within +-10% of the twin's
      (neighbouring widths checked); counts equal the MODELS comments; a CPU forward at 448x280 through the
-     real dvs_polarity -> framestack body gives (B, 512); they refuse 128x80. NETT_AMP=bf16 does NOT reach
-     CompactViT -- for these exactly as for every ViT label it is the unset path (fp32, no scaler); fp16 does.
+     real dvs_polarity -> framestack body gives (B, 512); they refuse 128x80. Precision on these labels and a
+     non-DVS twin: unset and "off" are bit-identical to fp32; EXPLICIT bf16 runs the trunk in bfloat16 and
+     changes the output (scaler stays off through build_agents); fp16 likewise, with the scaler on.
+  8. JEPA / NatureCNN NETT_AMP handling is untouched (same reader object; unset = bf16 for them); NETT_AMP=fp16
+     on a JEPA agent is refused (JEPA autocasts but declares no GradScaler path).
 Run with CUDA_VISIBLE_DEVICES="".
 """
 
@@ -70,11 +74,22 @@ def _env(monkeypatch):
 
 # ── 1. knobs ────────────────────────────────────────────────────────────────────────────────────────
 
-@pytest.mark.parametrize("value", [None, "", "off", "0", "none", "fp32", "bf16", "BF16", "bfloat16", "typo"])
-def test_vit_reads_fp32_at_every_non_fp16_value(monkeypatch, value):
+@pytest.mark.parametrize("value", [None, "", "off", "0", "none", "fp32", "float32", "typo"])
+def test_vit_reads_fp32_unset_off_and_unknown(monkeypatch, value):
+    """Unset stays fp32 for the ViT (NatureCNN's bf16 default never reaches it); "typo" too, although
+    NatureCNN's reader turns it into bf16 -- only an explicit bf16 spelling moves the ViT."""
     if value is not None:
         monkeypatch.setenv("NETT_AMP", value)
     assert vit_amp_dtype() is None
+
+
+@pytest.mark.parametrize("value", ["bf16", "BF16", "bfloat16"])
+def test_vit_reads_bf16_only_when_set_explicitly(monkeypatch, value):
+    monkeypatch.setenv("NETT_AMP", value)
+    assert vit_amp_dtype() is torch.bfloat16
+    assert _amp_dtype() is torch.bfloat16             # NatureCNN agrees on the spelling
+    monkeypatch.delenv("NETT_AMP")
+    assert _amp_dtype() is torch.bfloat16 and vit_amp_dtype() is None   # the default differs, on purpose
 
 
 @pytest.mark.parametrize("value", ["fp16", "FP16", "float16", "half"])
@@ -162,10 +177,31 @@ def test_cpu_passes_are_bit_identical_whatever_nett_amp_says(monkeypatch, pool):
 
 
 def _cpu_gate(monkeypatch):
-    """Redirect the CUDA-only gate to CPU fp16 autocast, still keyed on the knob (vit_amp_dtype)."""
+    """Redirect the CUDA-only gate to CPU autocast at vit_amp_dtype's dtype (fp16 or bf16), still keyed on the knob."""
     def gate(x):
-        return torch.autocast("cpu", dtype=torch.float16) if cv.vit_amp_dtype() is torch.float16 else None
-    monkeypatch.setattr(cv, "_fp16_autocast", gate)
+        dtype = cv.vit_amp_dtype()
+        return torch.autocast("cpu", dtype=dtype) if dtype is not None else None
+    monkeypatch.setattr(cv, "_amp_autocast", gate)
+
+
+def test_explicit_bf16_branch_runs_the_trunk_in_bfloat16_and_returns_fp32(monkeypatch):
+    enc, x = _vit(), _obs()
+    with torch.no_grad():
+        ref, grid = _passes(enc, x)
+    _cpu_gate(monkeypatch)
+    seen = []
+    hook = enc.blocks[0].mlp[0].register_forward_hook(lambda m, i, o: seen.append(o.dtype))
+    monkeypatch.setenv("NETT_AMP", "bf16")
+    with torch.no_grad():
+        out, grid16 = _passes(enc, x)
+    hook.remove()
+    assert seen and set(seen) == {torch.bfloat16}, "the trunk did not run in bfloat16"
+    assert grid16 == grid
+    for k in ref:
+        assert out[k].dtype == torch.float32 and out[k].shape == ref[k].shape, k
+        assert not torch.equal(out[k], ref[k]), f"{k}: bf16 branch did not engage"
+        cos = torch.nn.functional.cosine_similarity(out[k].flatten(1), ref[k].flatten(1))
+        assert cos.min() > 0.98, (k, float(cos.min()))
 
 
 def test_fp16_branch_runs_the_trunk_in_half_and_returns_fp32(monkeypatch):
@@ -453,16 +489,17 @@ def test_amp_encoders_finds_a_nested_encoder_once():
     assert amp_mod.amp_encoders(_A()) == [enc]
 
 
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="fp16 autocast engages on CUDA only")
-def test_cuda_fp16_forward_is_close_not_identical_and_fp32_out(monkeypatch):
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="fp16/bf16 autocast engages on CUDA only")
+@pytest.mark.parametrize("value,floor", [("fp16", 0.99), ("bf16", 0.98)])
+def test_cuda_fp16_forward_is_close_not_identical_and_fp32_out(monkeypatch, value, floor):
     enc, x = _vit(), _obs()
     enc, x = enc.cuda(), x.cuda()
     with torch.no_grad():
         ref = enc(x)
-        monkeypatch.setenv("NETT_AMP", "fp16")
+        monkeypatch.setenv("NETT_AMP", value)
         out = enc(x)
     assert out.dtype == torch.float32 and not torch.equal(out, ref)
-    assert torch.nn.functional.cosine_similarity(out, ref).min() > 0.99
+    assert torch.nn.functional.cosine_similarity(out, ref).min() > floor
 
 
 # ── Patch-14 ViT-CLTT-Ref labels at the Unity-recipe++ eye (DECISIONS §124): -500K-P14 / -5M / -50M / -Base ──
@@ -787,29 +824,42 @@ def _dvs_agent(campaign, label, monkeypatch, amp):
 
 
 @pytest.mark.parametrize("label", sorted(DVS) + ["ViT-CLTT-Ref-500K-P14"])
-def test_bf16_does_not_reach_compact_vit_on_dvs_labels_exactly_as_on_their_twins(campaign, label, monkeypatch):
-    """NETT_AMP=bf16 is the unset path for EVERY CompactViT label (vit_amp_dtype: only fp16 reaches the ViT,
-    because NETT_AMP's unset default is bf16 for NatureCNN). Control: the same redirected gate under fp16 DOES
-    change the output, so the bf16 identity is not a gate that never opens."""
+def test_precision_on_dvs_labels_and_their_twin_unset_off_fp32_explicit_bf16_and_fp16_engage(campaign, label, monkeypatch):
+    """(DECISIONS §128) unset and "off" are the fp32 forward bit for bit (no change for existing rows); EXPLICIT
+    bf16 runs the trunk in bfloat16 and changes the output (the positive control that the gate opens); fp16
+    runs it in float16, as before. Gate redirected to CPU autocast, keyed on the same knob reader."""
     enc = _label_encoder(campaign, label, EYE_H, EYE_W).eval()
     ch = enc.patch_embed.in_channels
     x = torch.randint(0, 2, (1, ch, EYE_H, EYE_W), generator=torch.Generator().manual_seed(3)).float() * 255
+    with torch.no_grad():
+        fp32 = enc(x)
     _cpu_gate(monkeypatch)
-    with torch.no_grad():
-        ref = enc(x)
-    monkeypatch.setenv("NETT_AMP", "bf16")
-    assert enc.amp_dtype() is None
-    with torch.no_grad():
-        assert torch.equal(enc(x), ref)
-    monkeypatch.setenv("NETT_AMP", "fp16")
-    assert enc.amp_dtype() is torch.float16
-    with torch.no_grad():
-        assert not torch.equal(enc(x), ref)
+    seen = []
+    hook = enc.blocks[-1].mlp[0].register_forward_hook(lambda m, i, o: seen.append(o.dtype))
+    for value, dtype in ((None, None), ("off", None), ("bf16", torch.bfloat16), ("fp16", torch.float16)):
+        if value is None:
+            monkeypatch.delenv("NETT_AMP", raising=False)
+        else:
+            monkeypatch.setenv("NETT_AMP", value)
+        assert enc.amp_dtype() is dtype, value
+        seen.clear()
+        with torch.no_grad():
+            out = enc(x)
+        assert out.dtype == torch.float32 and out.shape == (1, 512), value
+        assert seen == [dtype or torch.float32], value
+        if dtype is None:
+            assert torch.equal(out, fp32), value
+        else:
+            assert not torch.equal(out, fp32), value
+            assert torch.nn.functional.cosine_similarity(out, fp32).min() > 0.95, value
+    hook.remove()
 
 
 def test_dvs_agent_count_and_scaler_bf16_off_fp16_on(campaign, monkeypatch):
     """Production path (Brain -> build_agents -> AuxLossPPO(cltt_ref)) at 448x280 x 4 ch: the agent count equals the
-    MODELS comment; bf16 leaves skrl's scaler disabled (as unset does), fp16 enables it."""
+    MODELS comment; explicit bf16 (bfloat16 autocast) and unset leave skrl's scaler disabled, fp16 enables it."""
+    monkeypatch.setenv("NETT_AMP", "bf16")
+    assert vit_amp_dtype() is torch.bfloat16                        # bf16 reaches the ViT, and needs no scaler
     label = "ViT-CLTT-Ref-500K-P14-DVS"
     for amp, enabled in ((None, False), ("bf16", False), ("fp16", True)):
         agent = _dvs_agent(campaign, label, monkeypatch, amp)
@@ -817,3 +867,41 @@ def test_dvs_agent_count_and_scaler_bf16_off_fp16_on(campaign, monkeypatch):
         assert sum(p.numel() for p in params.values()) == _declared(campaign, label)[1]
         assert type(agent).__name__ == "AuxLossPPO" and agent.scaler.is_enabled() is enabled, amp
         assert (SCALER_CHECKPOINT_KEY in agent.checkpoint_modules) is enabled, amp
+
+
+# ── JEPA / NatureCNN NETT_AMP handling is untouched ──────────────────────────────────────────────────
+
+def test_jepa_and_nature_cnn_read_nett_amp_through_the_unchanged_reader(monkeypatch):
+    from nett_skrl.brain.aux import jepa_aux
+    from nett_skrl.brain.encoders import jepa, nature_cnn
+    assert jepa._amp_dtype is nature_cnn._amp_dtype and jepa_aux._amp_dtype is nature_cnn._amp_dtype
+    assert nature_cnn._amp_dtype() is torch.bfloat16 and vit_amp_dtype() is None     # unset: bf16 there, fp32 here
+    for value, want in (("off", None), ("bf16", torch.bfloat16), ("fp16", torch.float16)):
+        monkeypatch.setenv("NETT_AMP", value)
+        assert nature_cnn._amp_dtype() is want, value
+
+
+@pytest.mark.parametrize("value,refused", [(None, False), ("bf16", False), ("off", False), ("fp16", True)])
+def test_jepa_agent_precision_bf16_unchanged_fp16_refused(value, refused, monkeypatch, campaign):
+    """JEPA declares no AMP_KNOB, so it never gets the GradScaler: unset/bf16/off leave the agent as before;
+    fp16 is refused rather than stepping unscaled fp16 gradients (JEPA's forward does autocast to fp16)."""
+    from nett_skrl.brain.registry import encoder_mapping
+
+    if value is not None:
+        monkeypatch.setenv("NETT_AMP", value)
+    cfg = dict(campaign.IJEPA_CFG)
+    cfg.pop("trainable", None)
+    with torch.device("meta"):
+        enc = encoder_mapping["jepa"](gym.spaces.Box(0, 255, (3, EYE_H, EYE_W), np.uint8), **cfg)
+
+    class _Agent:
+        models = {"policy": enc}
+        device = "cpu"
+        checkpoint_modules = {}
+
+    agent = _Agent()
+    if refused:
+        with pytest.raises(ValueError, match="does not read NETT_AMP under the GradScaler"):
+            configure_fp16_grad_scaler(agent)
+    else:
+        assert configure_fp16_grad_scaler(agent) is False and agent.checkpoint_modules == {}
