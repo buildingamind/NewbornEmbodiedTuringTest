@@ -202,14 +202,17 @@ def test_runs_under_strict_determinism_and_repeats(monkeypatch):
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 @pytest.mark.parametrize("label_cfg,ckpt,b_ref", [(dict(embed_dim=108, depth=3, num_heads=4), False, 100),                  # VD500 (VIT_500K_P14_DVS)
                                                   (dict(embed_dim=177, depth=12, num_heads=3, mlp_ratio=4.0), True, 50)])  # VD5M (VIT_5M_DVS)
-def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg, ckpt, b_ref):
-    """The §128 shape: 4 channels at 448x280, patch 14 (641 tokens), bf16 autocast.
+def test_cuda_amp_448x280_update_memory_drops_and_repeats(monkeypatch, label_cfg, ckpt, b_ref):
+    """The §128 shape: 4 channels at 448x280, patch 14 (641 tokens), under the autocast the card's rows run: bf16 on
+    sm80+ (lion/insect A10), fp16 below (chicken sm75: no bf16 mem-efficient SDPA kernel there, so a bf16 run falls
+    back to the math kernel and cannot show the drop; presenter, 2026-10-16).
     1. At b_ref, a batch where the weight-map path FITS on a 24 GB card (A10: VD500 5.3 GiB at 100, VD5M 7.5 GiB at
        50), the fused peak (VD5M: fused + activation checkpointing) is well below the weight-map peak. The weight-map
        run must not OOM: an OOM there would make the comparison vacuous, so it fails the test instead.
     2. At the 400-sample minibatch (25,600 / 64), the fused path runs, and two runs are bit-identical under
        strict_determinism."""
-    monkeypatch.setenv("NETT_AMP", "bf16")
+    amp = "bf16" if torch.cuda.get_device_capability() >= (8, 0) else "fp16"
+    monkeypatch.setenv("NETT_AMP", amp)
     monkeypatch.setenv("CUBLAS_WORKSPACE_CONFIG", ":4096:8")   # also set at collection (top of module)
     dev = torch.device("cuda")
     cfg = {**dict(features_dim=512, patch_size=14, pool="cls", stem="linear", mlp_ratio=2.0), **label_cfg}
@@ -237,9 +240,10 @@ def test_cuda_bf16_448x280_update_memory_drops_and_repeats(monkeypatch, label_cf
 
     p_ref, _ = peak(False, b_ref)
     p_fused, _ = peak(True, b_ref)
-    print(f"peak MiB at B={b_ref}: weight-map path {p_ref / 2**20:.0f}, fused {p_fused / 2**20:.0f}")
+    print(f"{amp} peak MiB at B={b_ref}: weight-map path {p_ref / 2**20:.0f}, fused {p_fused / 2**20:.0f}")
     assert p_fused < 0.6 * p_ref
     p1, g1 = peak(True, 400)
     p2, g2 = peak(True, 400)
     print(f"peak MiB at B=400: fused {p1 / 2**20:.0f}")
+    assert torch.isfinite(g1).all()      # a NaN gradient would also fail torch.equal; say why
     assert torch.equal(g1, g2)
