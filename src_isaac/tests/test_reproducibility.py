@@ -292,6 +292,33 @@ def test_strict_determinism_context_restores_the_ambient_policy():
         torch.use_deterministic_algorithms(True, warn_only=True)
 
 
+def test_strict_determinism_context_restores_disabled_determinism():
+    """Ambient determinism DISABLED must come back disabled.
+
+    Exit used to hardcode ``use_deterministic_algorithms(True, ...)``, so a caller that
+    entered with determinism off left with it on. A later CUDA test in the same process
+    then hit cuBLAS's refusal (no CUBLAS_WORKSPACE_CONFIG), insect 2026-10-16.
+    """
+    from nett_skrl.brain.skrl_patches import strict_determinism
+
+    was = (torch.are_deterministic_algorithms_enabled(),
+           torch.is_deterministic_algorithms_warn_only_enabled())
+    try:
+        torch.use_deterministic_algorithms(False)
+        with strict_determinism():
+            assert torch.are_deterministic_algorithms_enabled() is True
+            assert torch.is_deterministic_algorithms_warn_only_enabled() is False
+        assert torch.are_deterministic_algorithms_enabled() is False
+        # Positive control: an ambient ENABLED state still comes back enabled.
+        torch.use_deterministic_algorithms(True, warn_only=True)
+        with strict_determinism():
+            pass
+        assert torch.are_deterministic_algorithms_enabled() is True
+        assert torch.is_deterministic_algorithms_warn_only_enabled() is True
+    finally:
+        torch.use_deterministic_algorithms(was[0], warn_only=was[1])
+
+
 def test_nett_env_seed_override_reasserts_warn_only():
     """The env's seed() override calls configure_seed (strict) then relaxes to
     warn_only, mirroring set_seeds. Regression guard for Critic Warning 1.

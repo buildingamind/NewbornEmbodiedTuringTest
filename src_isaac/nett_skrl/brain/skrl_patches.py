@@ -37,12 +37,18 @@ def strict_determinism():
     diagnostic after the first PPO update -- i.e. exactly the window where the
     run-to-run divergence accumulates.
     """
+    # Save and restore BOTH flags (as relaxed_determinism below does): hardcoding True on exit
+    # left determinism ENABLED for a caller whose ambient state had it disabled -- benign in
+    # production (task.py always enables it first, so the restored state is identical), but it
+    # poisoned later CUDA tests in the same process (cuBLAS refuses without
+    # CUBLAS_WORKSPACE_CONFIG; tests/test_vit_fp16.py's CUDA forward, insect 2026-10-16).
+    was_enabled = torch.are_deterministic_algorithms_enabled()
     was_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     torch.use_deterministic_algorithms(True, warn_only=False)
     try:
         yield
     finally:
-        torch.use_deterministic_algorithms(True, warn_only=was_warn_only)
+        torch.use_deterministic_algorithms(was_enabled, warn_only=was_warn_only)
 
 
 @contextmanager
