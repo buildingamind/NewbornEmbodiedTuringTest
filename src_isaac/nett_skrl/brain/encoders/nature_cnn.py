@@ -104,6 +104,7 @@ class NatureCNN(HWCFeatureExtractor):
         conv_dim: int = 64,
         spatial_pool: bool = True,
         input_frames: int | None = None,
+        extra_convs: int = 0,
         **_,
     ):
         super().__init__(observation_space, features_dim)
@@ -133,6 +134,14 @@ class NatureCNN(HWCFeatureExtractor):
             nn.Conv2d(64, conv_dim, kernel_size=3, stride=1, padding=0),
             nn.ReLU(),
         ]
+        # ``extra_convs`` (workspace DECISIONS §135): N more 3x3 / stride 1 / padding 1 conv+ReLU at the final
+        # width, after conv3. The spatial map, the pool grid and the head are unchanged; each adds
+        # conv_dim*conv_dim*9 + conv_dim params. 0 (default) leaves the Sequential -- and its checkpoint keys -- as before.
+        if type(extra_convs) is not int or extra_convs < 0:
+            raise ValueError(f"NatureCNN extra_convs must be a non-negative integer, got {extra_convs!r}")
+        self.extra_convs = extra_convs
+        for _ in range(extra_convs):
+            layers += [nn.Conv2d(conv_dim, conv_dim, kernel_size=3, stride=1, padding=1), nn.ReLU()]
         if spatial_pool:
             # Pool the final conv map to a small grid before flattening so the linear
             # head's input size (and thus param count) is independent of

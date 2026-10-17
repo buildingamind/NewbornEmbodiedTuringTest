@@ -882,6 +882,9 @@ DVS6_FILES = ("nett_skrl/body/wrappers/dvs_polarity.py",)
 DVS134_FILES = ("nett_skrl/brain/aux/cltt_views.py",)
 #: ...and 3DCNN-DVS on the 6-channel colour event frame (test_dvs_blur_kernel.py).
 DVS134_LABELS = {"3DCNN-DVS6"}
+#: owner 2026-10-17 (workspace DECISIONS §135): NatureCNN extra_convs + CNN2F+CLTT-Ref-X1/X2/X3 (test_nature_cnn_extra_convs.py).
+XCONV135_FILES = ("nett_skrl/brain/encoders/nature_cnn.py",)
+XCONV135_LABELS = {"CNN2F+CLTT-Ref-X1", "CNN2F+CLTT-Ref-X2", "CNN2F+CLTT-Ref-X3"}
 #: owner 2026-10-16 (workspace DECISIONS §133): patch-28 twins of the patch-14 ViT-CLTT-Ref labels (test_vit_fp16.py).
 P28_LABELS = {"ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-5M-P28", "ViT-CLTT-Ref-50M-P28", "ViT-CLTT-Ref-Base-P28",
               "ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-5M-P28-DVS"}
@@ -938,7 +941,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES,
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
@@ -949,7 +952,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

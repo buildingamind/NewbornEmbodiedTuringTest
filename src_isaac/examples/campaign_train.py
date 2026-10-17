@@ -992,6 +992,10 @@ MODELS: dict[str, dict] = {
     # 2-D CNN over the channel stack and would be degenerate for a motion encoder -- nature_cnn
     # is the former, so this pairing is sound where 3DCNN+CLTT would not be.
     "CNN2F+CLTT-Ref":  dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # DECISIONS §135 (owner, confirmed 2026-10-17): CNN2F+CLTT-Ref plus 1/2/3 extra 3x3 conv layers at width 75 after conv3.
+    "CNN2F+CLTT-Ref-X1": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 1}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "CNN2F+CLTT-Ref-X2": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 2}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "CNN2F+CLTT-Ref-X3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 3}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     # ⚠ ~803K with the SlotContrast head on nature_cnn (trunk 666,272 + 137,025), against a
     # ~700K SOFT budget, and the EMA target doubles trunk ACTIVATION memory on top. Declared
     # here rather than discovered at launch: this arm is the wave's memory outlier and the
