@@ -1,4 +1,4 @@
-"""Owner 2026-10-17 (workspace DECISIONS §138): CNN2F+CLTT-Ref with 1, 2, 3 or 4 extra MLP layers at the end of the encoder.
+"""Owner 2026-10-17 (workspace DECISIONS §138, extended by §142): CNN2F+CLTT-Ref with 1..8 extra MLP layers at the end of the encoder.
 
 NatureCNN ``extra_mlp`` = N more Linear(features_dim, features_dim) + ReLU appended to ``self.linear``, after the
 n_flatten->512 projection and before the policy/value heads. The conv stack and the projection are unchanged; each
@@ -56,7 +56,7 @@ def test_default_is_the_old_encoder_bit_for_bit():
     assert sum(isinstance(m, nn.Linear) for m in a.linear) == 1
 
 
-@pytest.mark.parametrize("n", [1, 2, 3, 4])
+@pytest.mark.parametrize("n", [1, 2, 3, 4, 5, 6, 7, 8])
 def test_mn_appends_n_512_linears_after_the_projection(campaign, n):
     base = _enc(campaign.MODELS["CNN2F+CLTT-Ref"])
     enc = _enc(campaign.MODELS[f"CNN2F+CLTT-Ref-M{n}"])

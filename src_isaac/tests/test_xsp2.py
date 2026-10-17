@@ -885,7 +885,8 @@ DVS134_LABELS = {"3DCNN-DVS6"}
 #: owner 2026-10-17 (workspace DECISIONS §135): NatureCNN extra_convs + CNN2F+CLTT-Ref-X1/X2/X3 (test_nature_cnn_extra_convs.py).
 XCONV135_FILES = ("nett_skrl/brain/encoders/nature_cnn.py",)
 XCONV135_LABELS = {"CNN2F+CLTT-Ref-X1", "CNN2F+CLTT-Ref-X2", "CNN2F+CLTT-Ref-X3"}
-XMLP138_LABELS = {"CNN2F+CLTT-Ref-M1", "CNN2F+CLTT-Ref-M2", "CNN2F+CLTT-Ref-M3", "CNN2F+CLTT-Ref-M4"}
+XMLP138_LABELS = {"CNN2F+CLTT-Ref-M1", "CNN2F+CLTT-Ref-M2", "CNN2F+CLTT-Ref-M3", "CNN2F+CLTT-Ref-M4",
+                  "CNN2F+CLTT-Ref-M5", "CNN2F+CLTT-Ref-M6", "CNN2F+CLTT-Ref-M7", "CNN2F+CLTT-Ref-M8"}  # M5..M8: §142
 #: owner 2026-10-16 (workspace DECISIONS §133): patch-28 twins of the patch-14 ViT-CLTT-Ref labels (test_vit_fp16.py).
 P28_LABELS = {"ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-5M-P28", "ViT-CLTT-Ref-50M-P28", "ViT-CLTT-Ref-Base-P28",
               "ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-5M-P28-DVS"}
