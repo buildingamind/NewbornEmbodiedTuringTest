@@ -59,6 +59,7 @@ the channel axis would no longer mean what either wrapper thinks it means.
 
 from __future__ import annotations
 
+import math
 import os
 
 import gymnasium as gym
@@ -93,6 +94,13 @@ class DVSPolarity(gym.Wrapper):
                                 the wrapper a pure difference and much noisier.
         ``NETT_DVS_COLOR``      off by default (2 luma channels). On: 6 channels (R+, R-, G+, G-, B+, B-),
                                 the luma rule applied to each colour separately; needs a 3-channel frame.
+        ``NETT_DVS_BLUR_KERNEL``  side of the pre-blur's binomial kernel, odd and >= 3 (default unset = 3, the
+                                [1,2,1] kernel, bit for bit). Owner 2026-10-17 (workspace DECISIONS §134): "a single
+                                passed blur that is just a larger gaussian filter". Side 2N+1 is the binomial
+                                kernel of order 2N, which equals N passes of the 3x3 kernel exactly in the
+                                interior (9 = 4 passes, sigma sqrt(2) px; 5 = 2 passes). Within N px of the frame
+                                edge it differs, because one replicate pad by N is not N replicate pads by 1.
+                                Refused with ``NETT_DVS_BLUR`` off, where it would do nothing.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -110,6 +118,7 @@ class DVSPolarity(gym.Wrapper):
                 "pixel fires BOTH polarities."
             )
         self.blur = _env_flag("NETT_DVS_BLUR", True)
+        self.blur_kernel = self._blur_kernel_side(self.blur)
         self.color = _env_flag("NETT_DVS_COLOR", False)
         self.n_out = 6 if self.color else 2
         # ⛔ A consumer that reads the per-frame channel count from its own knob would split a 6-channel
@@ -163,6 +172,21 @@ class DVSPolarity(gym.Wrapper):
         w = w / w.sum()                         # a 2-channel input must still average to 0-255
         return (x[..., :c] * w).sum(-1), chw
 
+    @staticmethod
+    def _blur_kernel_side(blur_on: bool) -> int:
+        """``NETT_DVS_BLUR_KERNEL`` -> the kernel side (unset = 3). Refuses even, < 3, non-integer, or a non-3 side with blur off."""
+        raw = os.environ.get("NETT_DVS_BLUR_KERNEL", "3")
+        try:
+            k = int(raw.strip())
+        except ValueError as exc:
+            raise ValueError(f"NETT_DVS_BLUR_KERNEL must be an odd integer >= 3; got {raw!r}.") from exc
+        if k < 3 or k % 2 == 0:
+            raise ValueError(f"NETT_DVS_BLUR_KERNEL must be an odd integer >= 3; got {raw!r}.")
+        # ⛔ A non-default kernel with the blur off would change nothing and still name a blurred condition.
+        if not blur_on and k != 3:
+            raise ValueError(f"NETT_DVS_BLUR_KERNEL={raw!r} with NETT_DVS_BLUR off: the kernel would never run.")
+        return k
+
     def _blur(self, y: torch.Tensor) -> torch.Tensor:
         """3x3 binomial [1,2,1] blur, replicate-padded.
 
@@ -174,11 +198,14 @@ class DVSPolarity(gym.Wrapper):
         """
         if not self.blur:
             return y
-        k1 = torch.tensor([1.0, 2.0, 1.0], device=y.device, dtype=y.dtype)
+        n = self.blur_kernel
+        # Binomial row of length n (n = 3 -> [1, 2, 1], the original kernel; same ops, so bit-identical).
+        k1 = torch.tensor([float(math.comb(n - 1, i)) for i in range(n)], device=y.device, dtype=y.dtype)
         k = torch.outer(k1, k1)
-        k = (k / k.sum()).view(1, 1, 3, 3)
+        k = (k / k.sum()).view(1, 1, n, n)
         flat = y.reshape(-1, 1, *y.shape[-2:])
-        pad = torch.nn.functional.pad(flat, (1, 1, 1, 1), mode="replicate")
+        r = n // 2
+        pad = torch.nn.functional.pad(flat, (r, r, r, r), mode="replicate")
         return torch.nn.functional.conv2d(pad, k).reshape(y.shape)
 
     def _colour(self, t: torch.Tensor):

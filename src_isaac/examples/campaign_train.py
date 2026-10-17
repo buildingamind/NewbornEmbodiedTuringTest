@@ -632,6 +632,9 @@ MODELS: dict[str, dict] = {
     # input-channel count changes, so no re-solve is needed. No aux, so no
     # NETT_AUX_CLTT_CHANNELS_PER_FRAME. Same stationary-scene blind spot as the ViT row above.
     "3DCNN-DVS":         dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "channels_per_frame": 2}, framestack=True, pre=["dvs_polarity"]),   # enc 695,405
+    # owner 2026-10-17 (workspace DECISIONS §134): 3DCNN-DVS on the 6-channel colour event frame (NETT_DVS_COLOR=1).
+    # channels_per_frame is checked EXACTLY, so 3DCNN-DVS refuses a colour run; this label states 6.
+    "3DCNN-DVS6":        dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"]),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # U35 -- DROPOUT AND NEXT-FRAME PREDICTIVE CODING (owner request 2026-10-05: "dropout
     # everywhere, and dropout only CLTT aux loss ... for ViT-CLTT-Ref"; "Implement your suggested

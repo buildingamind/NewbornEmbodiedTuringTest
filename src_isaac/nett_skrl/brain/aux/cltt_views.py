@@ -30,6 +30,13 @@ def resolve_channels_per_frame(value: int | None = None) -> int:
         return int(value)
     raw = os.environ.get("NETT_AUX_CLTT_CHANNELS_PER_FRAME")
     if raw is None or raw == "":
+        # ⛔ The "missing setting fails loudly" argument above does NOT hold for colour DVS: a 2-frame
+        # stack of 6-channel event frames is 12 channels, and 12 % 3 == 0, so the default would slice
+        # it as four RGB frames, silently. NETT_DVS_COLOR=1 must state the channel count (workspace
+        # DECISIONS §134; dvs_polarity.py refuses a stated value other than 6).
+        if os.environ.get("NETT_DVS_COLOR", "").strip().lower() in {"1", "true", "yes", "on"}:
+            raise ValueError("NETT_DVS_COLOR=1 makes one frame 6 channels; set NETT_AUX_CLTT_CHANNELS_PER_FRAME=6 "
+                             "(unset would default to 3 and divide a 12-channel stack into four RGB frames).")
         return DEFAULT_CHANNELS_PER_FRAME
     try:
         n = int(raw)
