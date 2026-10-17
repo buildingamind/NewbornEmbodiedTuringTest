@@ -885,6 +885,7 @@ DVS134_LABELS = {"3DCNN-DVS6"}
 #: owner 2026-10-17 (workspace DECISIONS §135): NatureCNN extra_convs + CNN2F+CLTT-Ref-X1/X2/X3 (test_nature_cnn_extra_convs.py).
 XCONV135_FILES = ("nett_skrl/brain/encoders/nature_cnn.py",)
 XCONV135_LABELS = {"CNN2F+CLTT-Ref-X1", "CNN2F+CLTT-Ref-X2", "CNN2F+CLTT-Ref-X3"}
+XMLP138_LABELS = {"CNN2F+CLTT-Ref-M1", "CNN2F+CLTT-Ref-M2", "CNN2F+CLTT-Ref-M3", "CNN2F+CLTT-Ref-M4"}
 #: owner 2026-10-16 (workspace DECISIONS §133): patch-28 twins of the patch-14 ViT-CLTT-Ref labels (test_vit_fp16.py).
 P28_LABELS = {"ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-5M-P28", "ViT-CLTT-Ref-50M-P28", "ViT-CLTT-Ref-Base-P28",
               "ViT-CLTT-Ref-500K-P28-DVS", "ViT-CLTT-Ref-5M-P28-DVS"}
@@ -952,7 +953,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

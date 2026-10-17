@@ -105,6 +105,7 @@ class NatureCNN(HWCFeatureExtractor):
         spatial_pool: bool = True,
         input_frames: int | None = None,
         extra_convs: int = 0,
+        extra_mlp: int = 0,
         **_,
     ):
         super().__init__(observation_space, features_dim)
@@ -167,7 +168,17 @@ class NatureCNN(HWCFeatureExtractor):
         self.cnn = nn.Sequential(*layers)
         with torch.no_grad():
             n_flatten = self.cnn(torch.zeros(1, channels, height, width)).shape[1]
-        self.linear = nn.Sequential(nn.Linear(n_flatten, features_dim), nn.ReLU())
+        # ``extra_mlp`` (workspace DECISIONS §138): N more Linear(features_dim, features_dim) + ReLU appended to
+        # ``self.linear``, i.e. inside the encoder after the projection and before the policy/value heads, so every
+        # consumer of forward() (CLTT-Ref included) reads the post-MLP feature. Each adds features_dim^2 + features_dim
+        # params. 0 (default) leaves ``self.linear`` -- and its checkpoint keys -- as before.
+        if type(extra_mlp) is not int or extra_mlp < 0:
+            raise ValueError(f"NatureCNN extra_mlp must be a non-negative integer, got {extra_mlp!r}")
+        self.extra_mlp = extra_mlp
+        head: list[nn.Module] = [nn.Linear(n_flatten, features_dim), nn.ReLU()]
+        for _ in range(extra_mlp):
+            head += [nn.Linear(features_dim, features_dim), nn.ReLU()]
+        self.linear = nn.Sequential(*head)
 
     @staticmethod
     def pool_grid_for_layers(layers, channels, height, width):

@@ -996,6 +996,11 @@ MODELS: dict[str, dict] = {
     "CNN2F+CLTT-Ref-X1": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 1}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "CNN2F+CLTT-Ref-X2": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 2}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "CNN2F+CLTT-Ref-X3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_convs": 3}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # DECISIONS §138 (owner, confirmed 2026-10-17): CNN2F+CLTT-Ref plus 1/2/3/4 Linear 512->512 + ReLU after the projection.
+    "CNN2F+CLTT-Ref-M1": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_mlp": 1}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "CNN2F+CLTT-Ref-M2": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_mlp": 2}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "CNN2F+CLTT-Ref-M3": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_mlp": 3}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "CNN2F+CLTT-Ref-M4": dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "extra_mlp": 4}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     # ⚠ ~803K with the SlotContrast head on nature_cnn (trunk 666,272 + 137,025), against a
     # ~700K SOFT budget, and the EMA target doubles trunk ACTIVATION memory on top. Declared
     # here rather than discovered at launch: this arm is the wave's memory outlier and the
