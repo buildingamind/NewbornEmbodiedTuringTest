@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-285 variables.
+287 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -31,7 +31,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:462` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:363` |
 | `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
-| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:126`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
+| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:139`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_patch_aux.py:98`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:892` |
@@ -90,7 +90,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:2046`<br>`examples/campaign_train.py:2047` |
 | `NETT_CLTT_REF_DEDUP` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:106` |
 | `NETT_CONV3D_ORTHO_INIT` | `"1"` | `nett_skrl/brain/models/utils/init.py:26` |
-| `NETT_DECISION_LOOP` | `""` | `nett_skrl/brain/env_wrappers.py:207` |
+| `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:214`<br>`nett_skrl/body/wrappers/dvs_polarity.py:237`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
 | `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2114` |
 | `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:1792`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
@@ -105,10 +105,12 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2250`<br>`examples/campaign_train.py:2291` |
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
-| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:120` |
-| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:178` |
-| `NETT_DVS_COLOR` | `""`, `False` | `nett_skrl/body/wrappers/dvs_polarity.py:122`<br>`nett_skrl/brain/aux/cltt_views.py:37` |
-| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:109` |
+| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:133` |
+| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:273` |
+| `NETT_DVS_COLOR` | `""`, `False` | `nett_skrl/body/wrappers/dvs_polarity.py:135`<br>`nett_skrl/brain/aux/cltt_views.py:37` |
+| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:122` |
+| `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:202` |
+| `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:203` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:1846` |
