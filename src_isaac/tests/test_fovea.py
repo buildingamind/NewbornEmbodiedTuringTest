@@ -198,3 +198,41 @@ def test_xsp2_map35x56_is_l738s_xsp2_at_the_448x280_eye(monkeypatch):
     x = torch.rand(2, 6, 280, 448, generator=torch.Generator().manual_seed(4))
     with torch.no_grad():
         assert big(x).shape == (2, 1960)
+
+
+@pytest.mark.parametrize("label, hw, stride", [("XSP2-MAP70x112", (70, 112), 4), ("XSP2-MAP140x224", (140, 224), 2)])
+def test_xsp2_larger_maps_are_map35x56_at_a_finer_stride(monkeypatch, label, hw, stride):
+    """§151: "expand their map size even more than 35x56". Each label is XSP2-MAP35x56 with map_stride moved to 4 / 2 at
+    the 448x280 eye: the map and the policy width change, the kernels' shapes and the 166,510 parameters do not.
+    Control: XSP2-MAP35x56's own features_dim at the finer stride refuses, naming the width the finer map needs."""
+    from pathlib import Path
+    import torch.nn as nn
+    from nett_skrl.brain.config import EncoderCfg
+    from nett_skrl.brain.registry import encoder_mapping
+
+    monkeypatch.syspath_prepend(str(Path(__file__).resolve().parents[1] / "examples"))
+    import campaign_train as campaign
+
+    spec, base = campaign.MODELS[label], campaign.MODELS["XSP2-MAP35x56"]
+    assert {k: v for k, v in spec.items() if k != "cfg"} == {k: v for k, v in base.items() if k != "cfg"}
+    n_map = hw[0] * hw[1]
+    assert spec["cfg"] == {**base["cfg"], "features_dim": n_map, "map_stride": stride}
+
+    def kw(cfg):
+        k = EncoderCfg(**cfg).as_kwargs()
+        k.pop("trainable", None)
+        return k
+
+    eye = gym.spaces.Box(0, 255, shape=(6, 280, 448), dtype=np.uint8)
+    with pytest.raises(ValueError, match=f"features_dim must be {n_map} at the 448x280 eye"):
+        encoder_mapping["xsp2"](eye, **kw({**base["cfg"], "map_stride": stride}))
+    enc = encoder_mapping["xsp2"](eye, **kw(spec["cfg"]))
+    ref = encoder_mapping["xsp2"](eye, **kw(base["cfg"]))
+    assert enc.map_hw == hw and enc.features_dim == n_map and enc.map_stride == stride
+    n = lambda m: sum(p.numel() for p in m.parameters())
+    assert n(enc) == n(ref) == 166_510
+    shapes = lambda e: [(m.kernel_size, m.in_channels, m.out_channels) for m in e.modules() if isinstance(m, (nn.Conv2d, nn.Conv3d))]
+    assert shapes(enc) == shapes(ref)
+    x = torch.rand(1, 6, 280, 448, generator=torch.Generator().manual_seed(4))
+    with torch.no_grad():
+        assert enc(x).shape == (1, n_map)

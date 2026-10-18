@@ -278,6 +278,13 @@ XSP2_MAP40x64_F3_CFG = {**XSP2_MAP40x64_CFG, "stack_frames": 3}
 #: encoder parameters), at the Unity-recipe++ eye 448x280 (W x H), whose stride-8 map is 35x56 = 1960 policy features. The
 #: encoder refuses a features_dim that is not the map size, so the eye change needs its own label; nothing else differs.
 XSP2_MAP35x56_CFG = {**XSP2_CFG, "features_dim": 1960}
+#: "XSP2-MAP70x112" / "XSP2-MAP140x224" (owner, workspace DECISIONS §151: "variations of the XSP2-MAP35x56, encoder lr
+#: x0.3333 runs ... expand their map size even more than 35x56"): XSP2-MAP35x56 with the trunk stride moved to 4 / 2 at the
+#: same 448x280 eye (MAP_STRIDES: only phi_e's first conv changes), so the map is 70x112 = 7840 / 140x224 = 31360 policy
+#: features; same kernels, same 166,510 encoder parameters. At this eye the encoder admits exactly these two maps above
+#: 35x56 (map_stride in {8, 4, 2}). The encoder lr x0.3333 stays a row env knob (NETT_XSP2_LR_SCALE), as in I670-I674.
+XSP2_MAP70x112_CFG = {**XSP2_MAP35x56_CFG, "features_dim": 7840, "map_stride": 4}
+XSP2_MAP140x224_CFG = {**XSP2_MAP35x56_CFG, "features_dim": 31360, "map_stride": 2}
 
 #: ── I-JEPA / V-JEPA (owner 2026-10-15: "create an I-JEPA and V-JEPA implementation and run it ... keeping with the
 #: standards set by Unity match ++. Try to keep the parameters of the model to 500k ... binding on I-JEPA and parsing on
@@ -1113,6 +1120,8 @@ MODELS: dict[str, dict] = {
                              aux_weight=1.0),
     # L738's XSP2 at the Unity-recipe++ 448x280 eye (owner, workspace DECISIONS §117).
     "XSP2-MAP35x56": dict(encoder="xsp2", cfg=dict(XSP2_MAP35x56_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    "XSP2-MAP70x112": dict(encoder="xsp2", cfg=dict(XSP2_MAP70x112_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    "XSP2-MAP140x224": dict(encoder="xsp2", cfg=dict(XSP2_MAP140x224_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
     # ══════════════════════════════════════════════════════════════════════════════════════════
     # MATCHED BASELINE -- owner spec, workspace DECISIONS §92 (2026-10-12): six encoders that differ
     # ONLY in the token mixer (Conv2d / attention / Conv3d) and how many frames it sees (1 / 2 per
@@ -1225,6 +1234,12 @@ for _lbl, _base in (("XSP2-MAP20x32-F3", XSP2_MAP20x32_CFG), ("XSP2-MAP40x64-F3"
 # ⛔ XSP2-MAP35x56 IS XSP2 WITH features_dim SET TO THE 448x280 EYE'S STRIDE-8 MAP, NOTHING ELSE (§117).
 assert MODELS["XSP2-MAP35x56"] == {**MODELS["XSP2"], "cfg": XSP2_MAP35x56_CFG}
 assert XSP2_MAP35x56_CFG == {**XSP2_CFG, "features_dim": 1960}
+# ⛔ XSP2-MAP70x112 / -MAP140x224 ARE XSP2-MAP35x56 WITH THE MAP STRIDE (AND SO THE POLICY WIDTH) MOVED, NOTHING ELSE (§151).
+for _lbl, _cfg, _n, _st in (("XSP2-MAP70x112", XSP2_MAP70x112_CFG, 7840, 4), ("XSP2-MAP140x224", XSP2_MAP140x224_CFG, 31360, 2)):
+    assert MODELS[_lbl] == {**MODELS["XSP2-MAP35x56"], "cfg": _cfg}, _lbl
+    assert _cfg == {**XSP2_MAP35x56_CFG, "features_dim": _n, "map_stride": _st}, _lbl
+    assert _n == (448 // _st) * (280 // _st), _lbl
+del _lbl, _cfg, _n, _st
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
