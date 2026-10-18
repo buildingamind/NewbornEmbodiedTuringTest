@@ -2,7 +2,8 @@
 5 frames but convert it into a single 6-channel observation". FINDINGS §4dh.44h.183.
 
 NETT_DVS_WINDOW=W      the last W per-tick event maps, weighted and summed into one map of the same channels
-                       (unset = one tick, bit for bit). Must equal NETT_DECISION_LOOP.
+                       (unset = one tick, bit for bit). Needs NETT_DECISION_LOOP=P >= W: the decision's last W ticks.
+                       DECISIONS §149 add. 1: P = 6, W = 5 drops the move tick ("drop the first frame").
 NETT_DVS_WINDOW_TAU    lam = exp(-1/tau), weight lam^k on the map k ticks old (unset = lam 1, a plain count).
 """
 
@@ -168,8 +169,8 @@ def test_numpy_obs_path(monkeypatch):
 
 # ---------------------------------------------------------------- guards
 
-@pytest.mark.parametrize("w,loop", [("5", None), ("5", "2"), ("5", "10"), ("3", "")])
-def test_window_must_equal_decision_loop(monkeypatch, w, loop):
+@pytest.mark.parametrize("w,loop", [("5", None), ("5", "2"), ("5", "4"), ("3", ""), ("3", "x")])
+def test_window_needs_a_decision_loop_at_least_as_long(monkeypatch, w, loop):
     monkeypatch.setenv("NETT_DVS_WINDOW", w)
     if loop is not None:
         monkeypatch.setenv("NETT_DECISION_LOOP", loop)
@@ -199,12 +200,62 @@ def test_tau_without_window_refuses(monkeypatch):
         DVSPolarity(FakeEnv([const(0)]))
 
 
-def test_banner_and_density_line(monkeypatch, capsys):
-    _window(monkeypatch, 2, tau=5)
-    env = DVSPolarity(FakeEnv(_flashes([0, 100] + [100] * 120)))
-    assert "[NETT dvs window] W=2 tau=5.0" in capsys.readouterr().out
+@pytest.mark.parametrize("loop", ["5", "6", "10"])
+def test_window_shorter_than_the_loop_is_allowed(monkeypatch, loop):
+    _window(monkeypatch, 5, loop=loop)
+    assert DVSPolarity(FakeEnv([const(0)])).window == 5
+
+
+def _decision_tick_maps(levels, p, w, tau=None, monkeypatch=None):
+    """Drive one env tick by tick; return the map at every decision tick c = 1 + kP (c counts maps since reset)."""
+    _window(monkeypatch, w, tau=tau, loop=p)
+    out = drive(_flashes(levels))
+    return [out[c - 1] for c in range(1, len(out) + 1) if (c - 1) % p == 0]
+
+
+def test_loop6_window5_drops_the_move_tick(monkeypatch):
+    """P = 6, W = 5 (DECISIONS §149 add. 1). Maps c = 2..7 are decision 1's ticks; c = 2 is tick 0, the move tick.
+    An event only on the move tick is absent from the decision-tick map; one on the next tick is in it."""
+    move_only = [0, 100] + [100] * 11                      # event at c = 2 only
+    held = [0, 0, 100] + [100] * 10                        # event at c = 3 only
+    m = _decision_tick_maps(move_only, 6, 5, monkeypatch=monkeypatch)
+    assert int(m[1][0, 0, 0]) == 0                         # decision tick c = 7: window c = 3..7
+    m = _decision_tick_maps(held, 6, 5, monkeypatch=monkeypatch)
+    assert int(m[1][0, 0, 0]) == 51                        # plain count, 1 of 5
+    assert int(m[2][0, 0, 0]) == 0                         # next decision: gone
+
+
+def test_loop6_window5_covers_the_five_held_ticks(monkeypatch):
+    """Events on all five held ticks of a decision (c = 3..7) saturate the decision-tick map at 255."""
+    levels = [0, 0, 40, 80, 120, 160, 200] + [200] * 6
+    m = _decision_tick_maps(levels, 6, 5, tau=5, monkeypatch=monkeypatch)
+    assert int(m[1][0, 0, 0]) == 255
+
+
+def test_banner(monkeypatch, capsys):
+    _window(monkeypatch, 5, tau=5, loop=6)
+    DVSPolarity(FakeEnv([const(0)]))
+    assert "[NETT dvs window] W=5 tau=5.0" in capsys.readouterr().out
+
+
+def test_density_line_reports_window_and_matched_single_difference(monkeypatch, capsys):
+    """P = 6, W = 5. Each decision: the move tick FALLS 200 -> 0 (an OFF event the window must drop), then five +40 rises
+    on the held ticks. At every decision tick the window has all 5 ON events on the 3 ON planes and nothing else:
+    non-zero 0.5 of pixels x 6 channels, all at 255 (intermediate 0). One 5-frame difference over the same frames
+    (move-tick frame 0 -> 200) is ON on the same planes: 0.5. Had the move tick leaked in, the OFF planes would fire."""
+    _window(monkeypatch, 5, loop=6)
+    levels = [0]
+    for _ in range(DVSPolarity.DENSITY_DECISIONS + 2):
+        levels += [0, 40, 80, 120, 160, 200]
+    env = DVSPolarity(FakeEnv(_flashes(levels)))
+    capsys.readouterr()
     env.reset()
-    for _ in range(100):
+    for _ in range(len(levels) - 1):
         env.step(0)
     out = capsys.readouterr().out
-    assert out.count("density after 100 ticks") == 1
+    assert out.count("density over the first 50 decisions") == 1
+    line = [x for x in out.splitlines() if "density over" in x][0]
+    nz = float(line.split("window non-zero ")[1].split(",")[0])
+    mid = float(line.split("intermediate (0<v<255) ")[1].split(";")[0])
+    one = float(line.split("same threshold: non-zero ")[1].split(" ")[0])
+    assert (nz, mid, one) == (pytest.approx(0.5), pytest.approx(0.0), pytest.approx(0.5))

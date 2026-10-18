@@ -106,10 +106,12 @@ class DVSPolarity(gym.Wrapper):
                                 would receive 5 frames but convert it into a single 6-channel observation". The
                                 wrapper keeps the last W per-tick event maps and emits, every tick,
                                     out = 255 * sum_k lam^k e_{t-k} / sum_k lam^k,   k = 0..W-1,  e in {0, 1}
-                                rounded to uint8, same channels as one tick. W must equal NETT_DECISION_LOOP: the
-                                loop returns the LAST tick's observation, and at that tick the window is exactly
-                                the decision's W ticks (move tick included, first difference against the previous
-                                window's last frame). Smaller would drop the move tick; larger straddles decisions.
+                                rounded to uint8, same channels as one tick. Needs NETT_DECISION_LOOP=P >= W: the
+                                loop returns the LAST tick's observation, and at that tick the window is the
+                                decision's last W ticks. W < P drops the first P-W ticks' changes -- the agent moves
+                                on tick 0 of a decision, so W = P-1 keeps only held ticks (owner, DECISIONS §149
+                                add. 1: "take in 6 frames, drop the first frame and feed the other 5"). W > P would
+                                sum across two decisions and refuses.
         ``NETT_DVS_WINDOW_TAU`` decay constant tau > 0 in ticks, lam = exp(-1/tau) (FINDINGS §4dh.44h.183). Unset =
                                 lam 1, a plain per-polarity event count (W events = 255). Needs NETT_DVS_WINDOW.
     """
@@ -145,7 +147,9 @@ class DVSPolarity(gym.Wrapper):
             print(f"[NETT dvs window] W={self.window} tau={'none (plain count)' if self.tau is None else self.tau} "
                   f"weights newest->oldest {[round(x / w[0], 3) for x in w]} (workspace DECISIONS §149)", flush=True)
         self._hist: list = []                   # last W per-tick event maps (uint8 0/255), NEWEST LAST
-        self._ticks = 0                         # emitted maps, for the one-time density line
+        self._phase_c = 0                       # maps emitted since reset(): decision ticks are c = 1 + kP
+        self._ref = None                        # blurred frame just before the window (diagnostic only)
+        self._dens: list = []                   # (window non-zero, window intermediate, single-diff non-zero) per decision
         self._prev = None                       # previous BLURRED luma (N,H,W)|(H,W), or colour (N,3,H,W)|(3,H,W)
         self._batched = False                   # whether the last frame carried a leading env axis
         self.observation_space = self._out_space(env.observation_space)
@@ -208,8 +212,9 @@ class DVSPolarity(gym.Wrapper):
         # observation; a shorter window drops the move tick, a longer one sums across two decisions, and with no
         # loop at all every tick is a decision, so W ticks would mean W decisions of history.
         loop = os.environ.get("NETT_DECISION_LOOP", "").strip()
-        if loop != str(w):
-            raise ValueError(f"NETT_DVS_WINDOW={w} needs NETT_DECISION_LOOP={w}; got NETT_DECISION_LOOP={loop!r}.")
+        if not loop.isdigit() or int(loop) < w:
+            raise ValueError(f"NETT_DVS_WINDOW={w} needs NETT_DECISION_LOOP=P with P >= {w} (the window is the decision's "
+                             f"last W ticks); got NETT_DECISION_LOOP={loop!r}.")
         tau = None
         if raw_t != "":
             try:
@@ -219,6 +224,31 @@ class DVSPolarity(gym.Wrapper):
             if not (tau > 0 and math.isfinite(tau)):
                 raise ValueError(f"NETT_DVS_WINDOW_TAU={raw_t!r}: expected a finite number > 0 (unset = plain count).")
         return w, tau
+
+    #: decisions averaged for the one-time density line
+    DENSITY_DECISIONS = 50
+
+    def _density(self, y: torch.Tensor, res: torch.Tensor) -> None:
+        """Diagnostic only (never changes an output): at decision ticks, the window map's density beside the density of ONE
+        difference over the same span (the frame just before the window -> this frame, same threshold) -- what a
+        P-frames-per-tick arm would show for those frames. Averaged over the first DENSITY_DECISIONS decisions, printed once."""
+        if len(self._dens) >= self.DENSITY_DECISIONS:
+            return
+        p = int(os.environ["NETT_DECISION_LOOP"])
+        phase = (self._phase_c - 1) % p
+        if phase == 0 and self._phase_c > 1 and self._ref is not None and self._ref.shape == y.shape:
+            d = y - self._ref
+            single = 0.5 * float((d >= self.threshold).float().mean() + (d <= -self.threshold).float().mean())
+            self._dens.append((float((res > 0).float().mean()), float(((res > 0) & (res < 255)).float().mean()), single))
+        # AFTER the decision-tick read: with W = P the reference IS the decision-tick frame, for the next decision.
+        if phase == (p - self.window) % p:
+            self._ref = y.clone()
+        if len(self._dens) == self.DENSITY_DECISIONS and not getattr(self, "_dens_printed", False):
+            self._dens_printed = True
+            nz, mid, one = (sum(x[i] for x in self._dens) / len(self._dens) for i in range(3))
+            print(f"[NETT dvs window] density over the first {len(self._dens)} decisions (decision ticks, P={p}, W={self.window}): "
+                  f"window non-zero {nz:.6f}, intermediate (0<v<255) {mid:.6f}; one {self.window}-frame difference over the same "
+                  f"frames, same threshold: non-zero {one:.6f} (fractions of pixels x channels)", flush=True)
 
     def _accumulate(self, out: torch.Tensor) -> torch.Tensor:
         """One tick's uint8 0/255 event map -> the W-tick weighted map (uint8). Episode start = fewer maps, never padding."""
@@ -230,14 +260,7 @@ class DVSPolarity(gym.Wrapper):
         acc = torch.zeros(out.shape, dtype=torch.float32, device=out.device)
         for k, e in enumerate(reversed(self._hist)):            # k = 0 is this tick
             acc += self._weights[k] * e.to(torch.float32)
-        res = torch.round(acc).clamp_(0, 255).to(torch.uint8)
-        self._ticks += 1
-        if self._ticks == 50 * self.window:
-            nz = float((res > 0).float().mean())
-            mid = float(((res > 0) & (res < 255)).float().mean())
-            print(f"[NETT dvs window] density after {self._ticks} ticks: non-zero {nz:.5f}, "
-                  f"intermediate (0<v<255) {mid:.5f} of all pixels x channels", flush=True)
-        return res
+        return torch.round(acc).clamp_(0, 255).to(torch.uint8)
 
     def _clear_hist(self, idx) -> None:
         """Zero the history of the envs in ``idx`` (an episode boundary): a new episode never sums the old one's events."""
@@ -323,6 +346,8 @@ class DVSPolarity(gym.Wrapper):
             out = torch.stack((on, off), dim=-3 if chw else -1)
         if self.window is not None:
             out = self._accumulate(out)
+            self._phase_c += 1
+            self._density(y, out)
         if not as_tensor:
             return out.cpu().numpy().astype(np.uint8)
         return out
@@ -331,6 +356,7 @@ class DVSPolarity(gym.Wrapper):
     def reset(self, **kwargs):
         self._prev = None
         self._hist = []
+        self._phase_c = 0
         obs, info = self.env.reset(**kwargs)
         return _replace_policy_obs(obs, self._events(_policy_obs(obs))), info
 
