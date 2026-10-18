@@ -101,6 +101,17 @@ class DVSPolarity(gym.Wrapper):
                                 interior (9 = 4 passes, sigma sqrt(2) px; 5 = 2 passes). Within N px of the frame
                                 edge it differs, because one replicate pad by N is not N replicate pads by 1.
                                 Refused with ``NETT_DVS_BLUR`` off, where it would do nothing.
+        ``NETT_DVS_WINDOW``     integer W >= 2 (default unset = one tick's events, bit for bit). Owner 2026-10-18
+                                (workspace DECISIONS §149): "the video would play at 1 frame a tick and the new DVS
+                                would receive 5 frames but convert it into a single 6-channel observation". The
+                                wrapper keeps the last W per-tick event maps and emits, every tick,
+                                    out = 255 * sum_k lam^k e_{t-k} / sum_k lam^k,   k = 0..W-1,  e in {0, 1}
+                                rounded to uint8, same channels as one tick. W must equal NETT_DECISION_LOOP: the
+                                loop returns the LAST tick's observation, and at that tick the window is exactly
+                                the decision's W ticks (move tick included, first difference against the previous
+                                window's last frame). Smaller would drop the move tick; larger straddles decisions.
+        ``NETT_DVS_WINDOW_TAU`` decay constant tau > 0 in ticks, lam = exp(-1/tau) (FINDINGS §4dh.44h.183). Unset =
+                                lam 1, a plain per-polarity event count (W events = 255). Needs NETT_DVS_WINDOW.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -126,6 +137,15 @@ class DVSPolarity(gym.Wrapper):
         cpf = os.environ.get("NETT_AUX_CLTT_CHANNELS_PER_FRAME")
         if self.color and cpf is not None and cpf.strip() != "6":
             raise ValueError(f"NETT_DVS_COLOR=1 makes one frame 6 channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
+        self.window, self.tau = self._window_knobs()
+        if self.window is not None:
+            lam = 1.0 if self.tau is None else math.exp(-1.0 / self.tau)
+            w = [lam ** k for k in range(self.window)]          # k = 0 is the NEWEST tick
+            self._weights = [x / sum(w) for x in w]
+            print(f"[NETT dvs window] W={self.window} tau={'none (plain count)' if self.tau is None else self.tau} "
+                  f"weights newest->oldest {[round(x / w[0], 3) for x in w]} (workspace DECISIONS §149)", flush=True)
+        self._hist: list = []                   # last W per-tick event maps (uint8 0/255), NEWEST LAST
+        self._ticks = 0                         # emitted maps, for the one-time density line
         self._prev = None                       # previous BLURRED luma (N,H,W)|(H,W), or colour (N,3,H,W)|(3,H,W)
         self._batched = False                   # whether the last frame carried a leading env axis
         self.observation_space = self._out_space(env.observation_space)
@@ -171,6 +191,58 @@ class DVSPolarity(gym.Wrapper):
         w = torch.tensor(_LUMA[:c], device=x.device, dtype=x.dtype)
         w = w / w.sum()                         # a 2-channel input must still average to 0-255
         return (x[..., :c] * w).sum(-1), chw
+
+    @staticmethod
+    def _window_knobs():
+        """``NETT_DVS_WINDOW`` / ``NETT_DVS_WINDOW_TAU`` -> (W | None, tau | None). Refuses anything ambiguous."""
+        raw_w = os.environ.get("NETT_DVS_WINDOW", "").strip()
+        raw_t = os.environ.get("NETT_DVS_WINDOW_TAU", "").strip()
+        if raw_w == "":
+            if raw_t != "":
+                raise ValueError(f"NETT_DVS_WINDOW_TAU={raw_t!r} without NETT_DVS_WINDOW: there is no window to weight.")
+            return None, None
+        if not raw_w.isdigit() or int(raw_w) < 2:
+            raise ValueError(f"NETT_DVS_WINDOW={raw_w!r}: expected an integer >= 2 (leave it unset for one tick).")
+        w = int(raw_w)
+        # ⛔ The window must BE the decision window. The decision loop hands the agent only the last tick's
+        # observation; a shorter window drops the move tick, a longer one sums across two decisions, and with no
+        # loop at all every tick is a decision, so W ticks would mean W decisions of history.
+        loop = os.environ.get("NETT_DECISION_LOOP", "").strip()
+        if loop != str(w):
+            raise ValueError(f"NETT_DVS_WINDOW={w} needs NETT_DECISION_LOOP={w}; got NETT_DECISION_LOOP={loop!r}.")
+        tau = None
+        if raw_t != "":
+            try:
+                tau = float(raw_t)
+            except ValueError as exc:
+                raise ValueError(f"NETT_DVS_WINDOW_TAU={raw_t!r}: expected a number > 0.") from exc
+            if not (tau > 0 and math.isfinite(tau)):
+                raise ValueError(f"NETT_DVS_WINDOW_TAU={raw_t!r}: expected a finite number > 0 (unset = plain count).")
+        return w, tau
+
+    def _accumulate(self, out: torch.Tensor) -> torch.Tensor:
+        """One tick's uint8 0/255 event map -> the W-tick weighted map (uint8). Episode start = fewer maps, never padding."""
+        if self._hist and self._hist[-1].shape != out.shape:
+            self._hist = []
+        self._hist.append(out)
+        if len(self._hist) > self.window:
+            self._hist.pop(0)
+        acc = torch.zeros(out.shape, dtype=torch.float32, device=out.device)
+        for k, e in enumerate(reversed(self._hist)):            # k = 0 is this tick
+            acc += self._weights[k] * e.to(torch.float32)
+        res = torch.round(acc).clamp_(0, 255).to(torch.uint8)
+        self._ticks += 1
+        if self._ticks == 50 * self.window:
+            nz = float((res > 0).float().mean())
+            mid = float(((res > 0) & (res < 255)).float().mean())
+            print(f"[NETT dvs window] density after {self._ticks} ticks: non-zero {nz:.5f}, "
+                  f"intermediate (0<v<255) {mid:.5f} of all pixels x channels", flush=True)
+        return res
+
+    def _clear_hist(self, idx) -> None:
+        """Zero the history of the envs in ``idx`` (an episode boundary): a new episode never sums the old one's events."""
+        for e in self._hist:
+            e[idx] = 0
 
     @staticmethod
     def _blur_kernel_side(blur_on: bool) -> int:
@@ -249,6 +321,8 @@ class DVSPolarity(gym.Wrapper):
                 out = out.movedim(-3, -1)
         else:
             out = torch.stack((on, off), dim=-3 if chw else -1)
+        if self.window is not None:
+            out = self._accumulate(out)
         if not as_tensor:
             return out.cpu().numpy().astype(np.uint8)
         return out
@@ -256,6 +330,7 @@ class DVSPolarity(gym.Wrapper):
     # -- gym API --------------------------------------------------------------------------
     def reset(self, **kwargs):
         self._prev = None
+        self._hist = []
         obs, info = self.env.reset(**kwargs)
         return _replace_policy_obs(obs, self._events(_policy_obs(obs))), info
 
@@ -279,4 +354,6 @@ class DVSPolarity(gym.Wrapper):
                     events.index_fill_(0, sel, 0)
                 else:
                     events[idx] = 0
+                if self.window is not None:
+                    self._clear_hist(torch.as_tensor(idx, dtype=torch.long))
         return _replace_policy_obs(obs, events), reward, terminated, truncated, info
