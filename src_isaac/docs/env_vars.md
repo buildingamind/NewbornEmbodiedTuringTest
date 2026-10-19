@@ -20,8 +20,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 
 | variable | default(s) | read at |
 |---|---|---|
-| `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:263`<br>`examples/campaign_train.py:2264`<br>`examples/campaign_train.py:2304` |
-| `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:276`<br>`examples/campaign_train.py:2265`<br>`examples/campaign_train.py:2305` |
+| `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:290`<br>`examples/campaign_train.py:2264`<br>`examples/campaign_train.py:2304` |
+| `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:303`<br>`examples/campaign_train.py:2265`<br>`examples/campaign_train.py:2305` |
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/compact_vit.py:50`<br>`nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp2_aux.py:321`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
@@ -100,8 +100,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DEVICE_LOST_FORENSICS` | `"1"` | `nett_skrl/runtime/crash_guard.py:164` |
 | `NETT_DEVICE_LOST_GUARD` | `"1"` | `nett_skrl/runtime/crash_guard.py:175` |
 | `NETT_DIAG_DUMP` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:81` |
-| `NETT_DIAG_ENT_START` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:243` |
-| `NETT_DIAG_LR_ANNEAL` | `""` | `nett_skrl/brain/ppo_metrics.py:249` |
+| `NETT_DIAG_ENT_START` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:270` |
+| `NETT_DIAG_LR_ANNEAL` | `""` | `nett_skrl/brain/ppo_metrics.py:276` |
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2265`<br>`examples/campaign_train.py:2306` |
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
@@ -214,7 +214,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:2005` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
-| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/body/wrappers/oracle_shape.py:156`<br>`nett_skrl/runtime/task_runner.py:484` |
+| `NETT_SEG_ALLOW_UNTRAINED` | `"0"` | `nett_skrl/body/wrappers/oracle_shape.py:156`<br>`nett_skrl/runtime/task_runner.py:485` |
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:55` |
 | `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:57` |
@@ -264,7 +264,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
 | `NETT_TEST_CHECKPOINT` | `""` | `nett_skrl/recording/checkpoints.py:45` |
-| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:610` |
+| `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:611` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2204` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:407`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
