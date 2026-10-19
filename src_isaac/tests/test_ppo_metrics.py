@@ -197,3 +197,66 @@ def test_metrics_ppo_update_calls_the_schedules():
     import inspect
     src = inspect.getsource(MetricsPPO.update)
     assert "apply_diag_schedules(self" in src and src.index("apply_diag_schedules") < src.index("super().update")
+
+
+# ── resumed optimizer (CONTINUE_FROM): the anneal restarts from the configured lr (DECISIONS §164) ──
+def _adam_pair(parent_end_lr=9.146e-8, configured=7.5e-4, aux=False):
+    """A child optimizer built at the configured lr, then loaded with a parent's state whose groups ended at
+    ``parent_end_lr`` -- the agent.load path of a CONTINUE_FROM row (FINDINGS §4dh.44h.192 add. 2)."""
+    import torch
+    def build():
+        ws = [torch.nn.Parameter(torch.ones(3)), torch.nn.Parameter(torch.ones(2))]
+        opt = torch.optim.Adam([ws[0]], lr=configured)
+        if aux:
+            opt.add_param_group({"params": [ws[1]]})       # ppo_aux.py: no lr -> optimizer.defaults["lr"]
+        return ws, opt
+    pw, parent = build()
+    sum(w.sum() for w in pw).backward(); parent.step()
+    for g in parent.param_groups:
+        g["lr"] = parent_end_lr
+    _, child = build()
+    child.load_state_dict(parent.state_dict())
+    return child
+
+
+def _real_agent(opt):
+    return types.SimpleNamespace(cfg=types.SimpleNamespace(entropy_loss_scale=0.0), optimizer=opt, scheduler=None)
+
+
+@pytest.mark.parametrize("aux", [False, True])
+def test_lr_anneal_resumed_optimizer_restarts_from_configured_lr(monkeypatch, capsys, aux):
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
+    opt = _adam_pair(aux=aux)
+    assert all(g["lr"] == pytest.approx(9.146e-8) for g in opt.param_groups)    # the defect's precondition
+    a = _real_agent(opt)
+    for t, want in ((0, 7.5e-4), (500, 3.75e-4), (1000, 0.0)):
+        apply_diag_schedules(a, timestep=t, timesteps=1000)
+        assert [g["lr"] for g in opt.param_groups] == pytest.approx([want] * len(opt.param_groups))
+    out = capsys.readouterr().out
+    assert out.count("[NETT lr] linear anneal base 0.00075 (resumed optimizer at lr 9.146e-08;") == 1
+
+
+def test_lr_anneal_fresh_real_optimizer_base_unchanged(monkeypatch, capsys):
+    import torch
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
+    w = torch.nn.Parameter(torch.ones(2))
+    opt = torch.optim.Adam([w], lr=7.5e-4)
+    opt.param_groups[0]["lr"] = 3e-4                     # a fresh run reads the group lr, as before §164
+    apply_diag_schedules(_real_agent(opt), timestep=250, timesteps=1000)
+    assert opt.param_groups[0]["lr"] == pytest.approx(3e-4 * 0.75)
+    assert "[NETT lr] linear anneal base 0.0003 (fresh optimizer)" in capsys.readouterr().out
+
+
+def test_lr_anneal_resumed_unequal_groups_refuses(monkeypatch):
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
+    opt = _adam_pair(aux=True)
+    opt.param_groups[1]["lr"] = 1e-7
+    with pytest.raises(ValueError, match="different lrs"):
+        apply_diag_schedules(_real_agent(opt), timestep=0, timesteps=10)
+
+
+def test_lr_anneal_resume_check_is_off_without_the_knob(monkeypatch):
+    monkeypatch.delenv("NETT_DIAG_LR_ANNEAL", raising=False)
+    opt = _adam_pair()
+    apply_diag_schedules(_real_agent(opt), timestep=0, timesteps=10)
+    assert opt.param_groups[0]["lr"] == pytest.approx(9.146e-8)   # constant-lr rows keep the loaded lr (unchanged)

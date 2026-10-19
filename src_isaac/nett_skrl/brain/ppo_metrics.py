@@ -222,6 +222,25 @@ def track_ppo_health_metrics(agent: PPO) -> None:
         pass
 
 
+def _lr_anneal_base(optimizer) -> list:
+    """Per-group base lr for NETT_DIAG_LR_ANNEAL=linear (see ``apply_diag_schedules``)."""
+    groups = optimizer.param_groups
+    current = [float(g["lr"]) for g in groups]
+    state = getattr(optimizer, "state", None) or {}
+    resumed = any(state.get(p) for g in groups for p in g.get("params", ()))
+    if not resumed:
+        print(f"[NETT lr] linear anneal base {current[0]:.6g} (fresh optimizer)", flush=True)
+        return current
+    configured = float(optimizer.defaults["lr"])
+    if len(set(current)) != 1:
+        raise ValueError(
+            f"NETT_DIAG_LR_ANNEAL=linear on a resumed optimizer whose param groups hold different lrs "
+            f"{sorted(set(current))}: the configured per-group lrs cannot be recovered (DECISIONS §164)")
+    print(f"[NETT lr] linear anneal base {configured:.6g} (resumed optimizer at lr {current[0]:.6g}; "
+          f"the schedule restarts from the configured lr, DECISIONS §164)", flush=True)
+    return [configured] * len(groups)
+
+
 def apply_diag_schedules(agent, *, timestep: int, timesteps: int) -> None:
     """Env-gated linear schedules applied before each PPO update (default: no change).
 
@@ -237,6 +256,14 @@ def apply_diag_schedules(agent, *, timestep: int, timesteps: int) -> None:
       ``progress_remaining * lr`` schedule the Unity rA10 arm ran (FINDINGS §4dh.44: 7.5e-4
       -> 0). ``base`` is the optimizer's lr at the first update. Any other value is refused
       rather than read as "off" -- a typo must not silently train at a constant rate.
+      ⛔ A RESUMED OPTIMIZER (CONTINUE_FROM, workspace DECISIONS §164 / FINDINGS §4dh.44h.192 add. 2):
+      ``agent.load`` restores the parent's param groups, so "the lr at the first update" is the
+      PARENT'S END lr (9.1e-8 for an annealed parent) and the continuation trained at ~1e-7. When
+      the optimizer already holds Adam state at the first update, ``base`` is the configured lr
+      (``optimizer.defaults["lr"]``, which ``load_state_dict`` never touches) and the schedule
+      restarts: configured lr -> 0 over THIS run. A fresh run's base is unchanged. A resumed
+      optimizer whose groups hold different lrs is refused (the configured per-group lrs are not
+      recoverable). One "[NETT lr]" line states the base either way.
     """
     import os as _os
     frac = min(1.0, max(0.0, timestep / max(1, timesteps)))
@@ -254,7 +281,7 @@ def apply_diag_schedules(agent, *, timestep: int, timesteps: int) -> None:
             raise ValueError("NETT_DIAG_LR_ANNEAL=linear with a skrl learning_rate_scheduler set: "
                              "two schedules would fight over the same optimizer")
         if not hasattr(agent, "_lr_base"):
-            agent._lr_base = [float(g["lr"]) for g in agent.optimizer.param_groups]
+            agent._lr_base = _lr_anneal_base(agent.optimizer)
         for g, base in zip(agent.optimizer.param_groups, agent._lr_base):
             g["lr"] = base * (1.0 - frac)
     # NETT_ADAM_EPS: SB3's policy optimizer uses Adam eps 1e-5; skrl's is the torch 1e-8.
