@@ -247,6 +247,13 @@ XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input
 #: anything but 2 (its dorsal Conv3d has a depth-2 kernel). Every XSP2 knob is an AUX knob
 #: (NETT_XSP2_*, read in brain/aux/xsp2_aux.py), recorded by the launcher's environ capture.
 XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames": _FRAMESTACK_N}
+#: The "ViT-SlotRecon" label's encoder cfg (owner, workspace DECISIONS §162; encoders/vit_slot_recon.py). The trunk
+#: keys are VIT_CFG's (asserted below), on ONE RGB frame; 3 slots x 64 = 192 policy features (no readout, as XSP2).
+VIT_SLOT_RECON_CFG = {"trainable": True, "features_dim": 192, "patch_size": 16, "embed_dim": 144, "depth": 3,
+                      "num_heads": 4, "mlp_ratio": 2.0, "num_slots": 3, "slot_dim": 64, "slot_iters": 3,
+                      "num_frames": _FRAMESTACK_N}
+assert all(VIT_SLOT_RECON_CFG[k] == VIT_CFG[k] for k in ("patch_size", "embed_dim", "depth", "num_heads", "mlp_ratio"))
+assert (VIT_CFG["pool"], VIT_CFG["stem"]) == ("cls", "linear")      # what ViTSlotRecon builds its CompactViT with
 #: The "XSP2-MAP20x32" label (owner, workspace DECISIONS §104): XSP2 with the finer figure map. Trunk
 #: stride 4 instead of 8 (phi_e's first conv only: stride 2, padding 3), so 128x80 -> 20x32 = 640
 #: policy features; same kernels, same 166,510 encoder parameters. Every other key is XSP2_CFG's.
@@ -1130,6 +1137,23 @@ MODELS: dict[str, dict] = {
     # ventral 31,169 + dorsal 53,058, all aux-trained; predictor 12,451 (warp, R=32) | 78,531 (conv,
     # H=64). Policy input 160 (no readout).
     "XSP2": dict(encoder="xsp2", cfg=dict(XSP2_CFG), framestack=True, aux="xsp2", aux_weight=1.0),
+    # ⭐ ViT-SlotRecon (owner, workspace DECISIONS §162, item 4 as the owner changed it: "the encoder [should]
+    # receive frame t and the loss calculated against frame t+1 ... similar to ... the XSP2 loss"). Built on the
+    # XSP2 machinery (brain/aux/slot_recon_aux.py):
+    #   * encoder: VIT_CFG's CompactViT trunk on the NEWEST frame of obs = [x_(t-1), x_t] -> 40 tokens ->
+    #     LayerNorm + MLP 144->64->64 -> Slot Attention, 3 slots x 64, 3 iterations. Policy input = the 192
+    #     flattened slots of x_t, under no_grad (detached by construction) with the FIXED slot noise.
+    #   * aux slot_recon ONLY (no CLTT): a spatial-broadcast decoder (RGB + alpha per slot, softmax over slots)
+    #     predicts x_(t+1), the NEWEST frame of obs_(t+1), from the slots of x_t; e = SUM of squares. Windows
+    #     from rollout memory (xsp2's slab draw; none crosses a done). Every encoder parameter is removed from
+    #     PPO's optimizer; the term's own Adam (PPO's current lr x NETT_SLOTRECON_LR_SCALE, no clip) steps once
+    #     per PPO minibatch and returns a detached zero. Refuses an unshared encoder and aux_weight != 1.
+    # Knobs (aux side): NETT_SLOTRECON_BATCH >=4 (64), NETT_SLOTRECON_LR_SCALE >0 (1.0); REFUSED on other labels.
+    # Sizes at the 128x80 eye (tests/test_vit_slot_recon.py pins them): encoder 687,552 = ViT trunk 619,488 +
+    # slot MLP 13,728 + Slot Attention 54,336; decoder (aux-side, not in the policy) 514,948. Policy input 192.
+    # Experiment: viewinvariance.
+    "ViT-SlotRecon": dict(encoder="vit_slot_recon", cfg=dict(VIT_SLOT_RECON_CFG), framestack=True, aux="slot_recon",
+                          aux_weight=1.0),
     # XSP2 with a 20x32 figure map (owner, workspace DECISIONS §104): trunk stride 4 via phi_e's first
     # conv (stride 2, padding 3); policy input 640; c_t upsampled x4. Same aux, knobs and parameters.
     "XSP2-MAP20x32": dict(encoder="xsp2", cfg=dict(XSP2_MAP20x32_CFG), framestack=True, aux="xsp2",
@@ -1586,6 +1610,16 @@ def refuse_stray_xsp2_knobs(model: str, spec: dict) -> None:
                          f"{spec.get('encoder')!r}); nothing would read them. Unset them.")
 
 
+def refuse_stray_slot_recon_knobs(model: str, spec: dict) -> None:
+    """A NETT_SLOTRECON_* knob on a label whose aux is not "slot_recon" is read by NOTHING (the xsp2 rule)."""
+    if spec.get("aux") == "slot_recon":
+        return
+    stray = sorted(k for k in os.environ if k.startswith("NETT_SLOTRECON_"))
+    if stray:
+        raise ValueError(f"{stray} set but arm {model!r} is not a slot_recon arm (aux "
+                         f"{spec.get('aux')!r}); nothing would read them. Unset them.")
+
+
 def _slug(s: str) -> str:
     return s.replace("+", "").replace("-", "").replace(" ", "")
 
@@ -1947,6 +1981,7 @@ def main() -> int:
     export_seg_flow(model, spec)
     refuse_stray_xsp_knobs(model, spec)
     refuse_stray_xsp2_knobs(model, spec)
+    refuse_stray_slot_recon_knobs(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

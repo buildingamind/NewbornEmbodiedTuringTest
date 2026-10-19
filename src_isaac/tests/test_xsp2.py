@@ -896,6 +896,13 @@ P28_LABELS = {"ViT-CLTT-Ref-500K-P28", "ViT-CLTT-Ref-5M-P28", "ViT-CLTT-Ref-50M-
 FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", "ViT-CLTT-Ref-50M",
                "ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-5M-DVS"}
 
+#: owner 2026-10-19 (workspace DECISIONS §162): ViViT channels_per_frame (test_dvs6_cltt_labels.py), the Slot Attention
+#: `sample` override and ViT-SlotRecon's encoder + aux (test_vit_slot_recon.py); 3DCNN-CLTT-Ref-T1's temporal_kernel_depth
+#: is in compact_3dcnn.py, already admitted above (test_3dcnn_t1.py holds every existing 3DCNN label bitwise).
+S162_FILES = ("nett_skrl/brain/encoders/compact_vivit.py", "nett_skrl/brain/aux/slot_attention_ae.py",
+              "nett_skrl/brain/encoders/vit_slot_recon.py", "nett_skrl/brain/aux/slot_recon_aux.py")
+S162_LABELS = {"3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref-T2", "3DCNN-CLTT-Ref-DVS6", "3DCNN-CLTT-Ref-T1-DVS6",
+               "ViViT-CLTT-Ref-DVS6", "ViViT-CLTT-Ref-T2-DVS6", "ViT-SlotRecon"}
 
 def _git(*args):
     env = {k: v for k, v in os.environ.items()
@@ -945,7 +952,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES,
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
@@ -956,7 +963,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS
@@ -972,5 +979,6 @@ def test_registries_only_gained_the_xsp2_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == ({"xsp2", "matched", "jepa"} if "registry" in rel else {"xsp2", "ijepa", "vjepa"}) and old <= new, rel
+        assert old and new - old == ({"xsp2", "matched", "jepa", "vit_slot_recon"} if "registry" in rel
+                                  else {"xsp2", "ijepa", "vjepa", "slot_recon"}) and old <= new, rel
         assert new <= set(live), rel

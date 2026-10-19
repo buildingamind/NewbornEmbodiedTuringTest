@@ -21,6 +21,7 @@ from .simclr_cltt import SimCLRCLTT
 from .small_cnn import SmallCNN
 from .xsp import XSPEncoder
 from .xsp2 import XSP2Encoder
+from .vit_slot_recon import ViTSlotRecon
 
 __all__ = [
     "Compact3DCNN",
@@ -42,4 +43,5 @@ __all__ = [
     "SmallCNN",
     "XSPEncoder",
     "XSP2Encoder",
+    "ViTSlotRecon",
 ]

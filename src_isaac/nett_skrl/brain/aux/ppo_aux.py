@@ -183,6 +183,13 @@ def _build_xsp2(encoder):
     return XSP2Term(encoder)
 
 
+def _build_slot_recon(encoder):
+    """ViT-SlotRecon (owner DECISIONS §162): frame t+1 decoded from the slots of frame t, sum-of-squares loss,
+    the term's OWN Adam over the whole encoder (brain/aux/slot_recon_aux.py, built on xsp2's machinery)."""
+    from .slot_recon_aux import SlotReconTerm
+    return SlotReconTerm(encoder)
+
+
 def _build_ijepa(encoder):
     """I-JEPA (owner 2026-10-15): predict EMA-teacher patch tokens of 4 target blocks from a
     context block (brain/aux/jepa_aux.py)."""
@@ -234,6 +241,8 @@ AUX_LOSSES = {
     "xsp": _build_xsp,
     # ── XSP2 (owner DECISIONS §87). Reward-detached streams, own optimizer (xsp2_aux.py).
     "xsp2": _build_xsp2,
+    # ── ViT-SlotRecon (owner DECISIONS §162). Slots of frame t -> frame t+1, own optimizer (slot_recon_aux.py).
+    "slot_recon": _build_slot_recon,
     # ── JEPA (owner 2026-10-15). EMA-teacher latent prediction under multiblock masks.
     "ijepa": _build_ijepa,
     "vjepa": _build_vjepa,

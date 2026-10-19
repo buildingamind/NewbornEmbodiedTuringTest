@@ -103,9 +103,12 @@ class SlotAttention(nn.Module):
         self.gru = nn.GRUCell(dim, dim)
         self.mlp = nn.Sequential(nn.Linear(dim, mlp_hidden), nn.ReLU(), nn.Linear(mlp_hidden, dim))
 
-    def forward(self, inputs: torch.Tensor) -> torch.Tensor:      # inputs: (B, N, D)
+    def forward(self, inputs: torch.Tensor, sample: bool | None = None) -> torch.Tensor:   # inputs: (B, N, D)
+        """``sample``: None (every caller before §162) = fresh noise in train(), ``eval_noise`` in eval();
+        True / False force one of the two regardless of the module mode (ViT-SlotRecon: the aux draws, the
+        policy path always reads the fixed draw, so PPO's update recomputes the rollout's features)."""
         b, k, d = inputs.shape[0], self.num_slots, self.dim
-        if self.training:
+        if self.training if sample is None else sample:
             noise = torch.randn(b, k, d, device=inputs.device, dtype=inputs.dtype)
         else:
             noise = self.eval_noise.expand(b, -1, -1)

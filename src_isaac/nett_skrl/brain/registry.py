@@ -143,6 +143,8 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "xsp": encoders.XSPEncoder,
     # XSP2 (owner DECISIONS §87): reward-detached streams with their own Adam; policy reads the map.
     "xsp2": encoders.XSP2Encoder,
+    # ViT-SlotRecon (owner DECISIONS §162): ViT + 3 slots of frame t, trained only by slot_recon; policy reads slots.
+    "vit_slot_recon": encoders.ViTSlotRecon,
     # The owner's six matched baseline encoders (DECISIONS §92): one class, cfg key `variant`.
     "matched": encoders.MatchedEncoder,
     # I-JEPA / V-JEPA (owner 2026-10-15): one class, num_frames 1 = I-JEPA, 2 = V-JEPA tubelet.
