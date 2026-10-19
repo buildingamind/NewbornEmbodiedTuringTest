@@ -48,6 +48,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         duplicate_frame: bool = False,
         stem_kernel_hw: int = 3,
         channels_per_frame: int | None = None,
+        temporal_kernel_depth: int | None = None,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -87,11 +88,26 @@ class Compact3DCNN(HWCFeatureExtractor):
         # the grid is (d - 1)//2 + 1 for every k (asserted below). ODD k is UNCHANGED: same
         # Conv3d padding, no F.pad, no new module, so every existing arm rebuilds byte-identically.
         self._stem_pad = None if k % 2 else ((k - 1) // 2, k // 2, (k - 1) // 2, k // 2)
+        # ⭐ TEMPORAL KERNEL DEPTH (owner, workspace DECISIONS §162: "3DCNN-CLTT-Ref-T1"). None (every
+        # existing arm) = num_frames: the kernel spans the whole stack and collapses time to 1, and the
+        # statements below are the pre-change ones in the same order. 1 = a (1, k, k) kernel SHARED
+        # across the frames; the per-frame stem maps are concatenated T-major along channels
+        # ([t-1 stem, t stem], the framestack's own order), so the first Conv2d takes T * stem_dim.
+        # Any other depth would leave a partial time axis no downstream stage reads, so it refuses.
+        depth = self.num_frames if temporal_kernel_depth is None else int(temporal_kernel_depth)
+        if depth not in (1, self.num_frames):
+            raise ValueError(f"{type(self).__name__}: temporal_kernel_depth must be 1 or num_frames="
+                             f"{self.num_frames}; got {temporal_kernel_depth!r}.")
+        if depth == 1 and self.num_frames > 1 and self.duplicate_frame:
+            raise ValueError(f"{type(self).__name__}: temporal_kernel_depth=1 with duplicate_frame=True "
+                             f"would stack {self.num_frames} copies of one frame's stem; refusing.")
+        self.temporal_kernel_depth = depth
+        stem_out = stem_dim * (self.num_frames - depth + 1)    # stem_dim, or T * stem_dim at depth 1
 
         # Temporal-spatial convolution: T×H×W kernel collapses time to 1
         self.conv3d = nn.Conv3d(
             self.base_channels, stem_dim,
-            kernel_size=(self.num_frames, k, k),
+            kernel_size=(depth, k, k),
             stride=(1, 2, 2),
             padding=(0, k // 2, k // 2) if k % 2 else (0, 0, 0),
         )
@@ -109,7 +125,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         # features_dim. Default 64 preserves the original architecture.
         self.cnn2d = nn.Sequential(
             nn.ReLU(),
-            nn.Conv2d(stem_dim, mid_dim, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(stem_out, mid_dim, kernel_size=3, stride=2, padding=1),
             nn.ReLU(),
             nn.Conv2d(mid_dim, conv_dim, kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
@@ -120,7 +136,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         # Compute flat size dynamically
         with torch.no_grad():
             dummy = torch.zeros(1, self.base_channels, self.num_frames, height, width)
-            stem = self._stem_conv(dummy).squeeze(2)
+            stem = self._fold_time(self._stem_conv(dummy))
             assert tuple(stem.shape[-2:]) == ((height - 1) // 2 + 1, (width - 1) // 2 + 1), stem.shape
             n_flat = self.cnn2d(stem).shape[1]
 
@@ -132,7 +148,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         if self.duplicate_frame:
             # ONE frame (B, C, H, W) handed to every temporal slot: (B, C, T, H, W).
             x = x.unsqueeze(2).expand(B, CT, self.num_frames, H, W).contiguous()
-            x = self._stem_conv(x).squeeze(2)
+            x = self._stem_conv(x).squeeze(2)          # depth 1 is refused with duplicate_frame
             x = self.cnn2d(x)
             return self.linear(x)
         # ⛔★★★★★ THIS WAS `x.view(B, base_channels, num_frames, H, W)` AND IT
@@ -147,7 +163,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         # whatsoever. The parameter count is identical either way, which is why no
         # capacity check could ever have seen it.
         # T-major data must be viewed T-major and then transposed.
-        x = self._temporal_stem(x)             # (B, 32, H', W')
+        x = self._temporal_stem(x)             # (B, 32, H', W'); (B, T*32, H', W') at depth 1
         x = self.cnn2d(x)
         return self.linear(x)
 
@@ -162,7 +178,19 @@ class Compact3DCNN(HWCFeatureExtractor):
         B, _, H, W = x.shape
         x = x.view(B, self.num_frames, self.base_channels, H, W)
         x = x.permute(0, 2, 1, 3, 4).contiguous()
-        return self._stem_conv(x).squeeze(2)
+        return self._fold_time(self._stem_conv(x))
+
+    def _fold_time(self, y: torch.Tensor) -> torch.Tensor:
+        """Conv3d output (B, stem_dim, T_out, H', W') -> (B, T_out * stem_dim, H', W').
+
+        Full-depth kernel (every existing arm): T_out = 1 and this is the `.squeeze(2)` it replaced.
+        Depth 1: T_out = T, folded T-MAJOR -- channel block t holds frame t's stem map, the same
+        order the framestack wrapper concatenates frames in (observation.py:96).
+        """
+        if self.temporal_kernel_depth == self.num_frames:
+            return y.squeeze(2)
+        B, D, T, H, W = y.shape
+        return y.permute(0, 2, 1, 3, 4).reshape(B, T * D, H, W)
 
     def _stem_conv(self, x: torch.Tensor) -> torch.Tensor:
         """(B, C, T, H, W) -> Conv3d stem output. Even stem kernels are zero-padded asymmetrically

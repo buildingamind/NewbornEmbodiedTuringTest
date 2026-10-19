@@ -767,6 +767,13 @@ MODELS: dict[str, dict] = {
     # gets real temporal gradient. Run BOTH -- one arm cannot separate "a contrastive objective
     # helps this encoder" from "a contrastive objective OVER MOTION helps this encoder".
     "3DCNN-CLTT-Stack": dict(encoder="compact_3dcnn",  cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}, framestack=True, aux="cltt_ref_stack", aux_weight=1.0),
+    # ⭐ TEMPORAL KERNEL DEPTH 1 (owner, workspace DECISIONS §162). 3DCNN-CLTT-Ref in every field but
+    # temporal_kernel_depth: the Conv3d kernel is (1,3,3), SHARED across the 2 frames, and the two
+    # per-frame stem maps are concatenated T-major along channels, so the first Conv2d takes 2 x 32.
+    # Time is mixed by that Conv2d, not by the stem. Same features_dim 512 / conv_dim 77, NOT
+    # re-matched: enc 713,549 / agent 715,090 @ 128x80 against 3DCNN-CLTT-Ref's 695,981 / 697,522
+    # (+17,568, +2.52%: Conv3d -864, first Conv2d +18,432). cltt_ref head 329,216 either way.
+    "3DCNN-CLTT-Ref-T1": dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "temporal_kernel_depth": 1}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     # Schneider's single-frame temporal positives come from attached rollout memory.
     "SimCLR-CLTT-Schneider": dict(encoder="simclr_cltt", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77}, framestack=False, aux="cltt_schneider", aux_weight=1.0),
     "ViT-CLTT-Schneider":    dict(encoder="compact_vit", cfg=dict(VIT_CFG), framestack=False, aux="cltt_schneider", aux_weight=1.0),
