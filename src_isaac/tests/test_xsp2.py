@@ -902,7 +902,10 @@ FP16_LABELS = {"ViT-CLTT-Ref-Base", "ViT-CLTT-Ref-500K-P14", "ViT-CLTT-Ref-5M", 
 S162_FILES = ("nett_skrl/brain/encoders/compact_vivit.py", "nett_skrl/brain/aux/slot_attention_ae.py",
               "nett_skrl/brain/encoders/vit_slot_recon.py", "nett_skrl/brain/aux/slot_recon_aux.py")
 S162_LABELS = {"3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref-T2", "3DCNN-CLTT-Ref-DVS6", "3DCNN-CLTT-Ref-T1-DVS6",
-               "ViViT-CLTT-Ref-DVS6", "ViViT-CLTT-Ref-T2-DVS6", "ViT-SlotRecon"}
+               "ViViT-CLTT-Ref-DVS6", "ViViT-CLTT-Ref-T2-DVS6", "ViT-SlotRecon",
+               # §162 add. 3: the ~500K rungs (test_s162_500k.py)
+               *(f"{a}-500K-CLTT-Ref{b}" for a in ("3DCNN", "ViViT")
+                 for b in ("", "-T1" if a == "3DCNN" else "-T2", "-DVS6", "-T1-DVS6" if a == "3DCNN" else "-T2-DVS6"))}
 
 def _git(*args):
     env = {k: v for k, v in os.environ.items()

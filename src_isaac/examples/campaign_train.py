@@ -247,6 +247,8 @@ XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input
 #: anything but 2 (its dorsal Conv3d has a depth-2 kernel). Every XSP2 knob is an AUX knob
 #: (NETT_XSP2_*, read in brain/aux/xsp2_aux.py), recorded by the launcher's environ capture.
 XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames": _FRAMESTACK_N}
+#: 3DCNN-CLTT-Ref's cfg, spread by its §162 add. 3 ~500K rungs (asserted equal to the label's after MODELS).
+MODELS_S162_3DCNN_REF = {"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}
 #: The "ViT-SlotRecon" label's encoder cfg (owner, workspace DECISIONS §162; encoders/vit_slot_recon.py). The trunk
 #: keys are VIT_CFG's (asserted below), on ONE RGB frame; 3 slots x 64 = 192 policy features (no readout, as XSP2).
 VIT_SLOT_RECON_CFG = {"trainable": True, "features_dim": 192, "patch_size": 16, "embed_dim": 144, "depth": 3,
@@ -867,6 +869,36 @@ MODELS: dict[str, dict] = {
     "3DCNN-CLTT-Ref-T1-DVS6": dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "temporal_kernel_depth": 1, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
     "ViViT-CLTT-Ref-DVS6":    dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
     "ViViT-CLTT-Ref-T2-DVS6": dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "temporal_mode": "early", "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    # ⭐ ~500K RUNGS OF THE §162 LABELS (owner, workspace DECISIONS §162 add. 3: "~500K versions" = ~500K
+    # PARAMETERS, trained 500K steps). None of the eight labels above is within +-10% of 500K, so each gets a
+    # sized twin, scaled the way the existing ladders were:
+    #   3DCNN: conv_dim ONLY (the 3DCNN-250K / -2M recipe, _RUNG_AXIS): 55 is the conv_dim nearest 500K.
+    #   ViViT: embed_dim ONLY (the ViT-CLTT-Ref-500K / ViViT-1M recipe), a multiple of num_heads (3).
+    #          ViT-CLTT-Ref-500K's own 108 is 427,328 on the joint ViViT (-14.5%, outside +-10%), so the
+    #          joint rung takes the multiple of 3 nearest 500K (120); 108 is where the T2 and DVS6 rungs land.
+    #   T1 / T2 / DVS6: their sibling's sized value when that stays within +-10% of the sibling (T1: +3.5%,
+    #   3DCNN DVS6: +0.3%, the 1-frame kernel and 6-channel stem cost ~17.6K / ~1.7K); otherwise ONLY the
+    #   recipe's axis moves, to the value nearest the sibling (ViViT T2 at 120: +18.0% -> 108; DVS6 at 120:
+    #   +18.1% -> 108; T2-DVS6: nearest 500K, 87). Each rung is asserted after MODELS.
+    # enc @ 128x80 (6 ch; 12 for -DVS6), +1,541 policy/value heads, +329,216 cltt_ref head
+    # (tests/test_s162_500k.py pins every number):
+    #   3DCNN-500K-CLTT-Ref          conv_dim 55          503,063 (+0.61%)
+    #   3DCNN-500K-CLTT-Ref-T1       conv_dim 55, T1      520,631 (+4.13%; +3.49% vs its sibling)
+    #   3DCNN-500K-CLTT-Ref-DVS6     conv_dim 55          504,791 (+0.96%)
+    #   3DCNN-500K-CLTT-Ref-T1-DVS6  conv_dim 55, T1      521,495 (+4.30%)
+    #   ViViT-500K-CLTT-Ref          embed_dim 120        509,312 (+1.86%)
+    #   ViViT-500K-CLTT-Ref-T2       embed_dim 108, early 510,056 (+2.01%; +0.15% vs its sibling; = ViT-CLTT-Ref-500K's
+    #                                                     encoder to the digit: a (2,16,16) tubelet IS a 6-channel patch)
+    #   ViViT-500K-CLTT-Ref-DVS6     embed_dim 108        510,272 (+2.05%)
+    #   ViViT-500K-CLTT-Ref-T2-DVS6  embed_dim 87, early  500,762 (+0.15%)
+    "3DCNN-500K-CLTT-Ref":         dict(encoder="compact_3dcnn", cfg={**MODELS_S162_3DCNN_REF, "conv_dim": 55}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "3DCNN-500K-CLTT-Ref-T1":      dict(encoder="compact_3dcnn", cfg={**MODELS_S162_3DCNN_REF, "conv_dim": 55, "temporal_kernel_depth": 1}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "3DCNN-500K-CLTT-Ref-DVS6":    dict(encoder="compact_3dcnn", cfg={**MODELS_S162_3DCNN_REF, "conv_dim": 55, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "3DCNN-500K-CLTT-Ref-T1-DVS6": dict(encoder="compact_3dcnn", cfg={**MODELS_S162_3DCNN_REF, "conv_dim": 55, "temporal_kernel_depth": 1, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "ViViT-500K-CLTT-Ref":         dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "embed_dim": 120}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "ViViT-500K-CLTT-Ref-T2":      dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "embed_dim": 108, "temporal_mode": "early"}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    "ViViT-500K-CLTT-Ref-DVS6":    dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "embed_dim": 108, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "ViViT-500K-CLTT-Ref-T2-DVS6": dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "embed_dim": 87, "temporal_mode": "early", "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
@@ -1327,6 +1359,24 @@ for _twin in ("3DCNN-CLTT-Ref", "3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref", "ViViT-CL
     assert MODELS[_lbl]["cfg"] == {**MODELS[_twin]["cfg"], "channels_per_frame": 6}, _lbl
     assert {k: v for k, v in MODELS[_lbl].items() if k not in ("cfg", "pre")} == \
         {k: v for k, v in MODELS[_twin].items() if k != "cfg"}, _lbl
+# ⛔ A §162 ~500K RUNG (DECISIONS §162 add. 3) IS ITS FULL-SIZE LABEL WITH ONLY THE LADDER AXIS MOVED (3DCNN:
+# conv_dim, the _RUNG_AXIS recipe; ViViT: embed_dim, the ViT-CLTT-Ref-500K recipe), NOTHING ELSE.
+assert MODELS["3DCNN-CLTT-Ref"]["cfg"] == MODELS_S162_3DCNN_REF
+for _lbl, _full, _diff in (("3DCNN-500K-CLTT-Ref",         "3DCNN-CLTT-Ref",         {"conv_dim": 55}),
+                           ("3DCNN-500K-CLTT-Ref-T1",      "3DCNN-CLTT-Ref-T1",      {"conv_dim": 55}),
+                           ("3DCNN-500K-CLTT-Ref-DVS6",    "3DCNN-CLTT-Ref-DVS6",    {"conv_dim": 55}),
+                           ("3DCNN-500K-CLTT-Ref-T1-DVS6", "3DCNN-CLTT-Ref-T1-DVS6", {"conv_dim": 55}),
+                           ("ViViT-500K-CLTT-Ref",         "ViViT-CLTT-Ref",         {"embed_dim": 120}),
+                           ("ViViT-500K-CLTT-Ref-T2",      "ViViT-CLTT-Ref-T2",      {"embed_dim": 108}),
+                           ("ViViT-500K-CLTT-Ref-DVS6",    "ViViT-CLTT-Ref-DVS6",    {"embed_dim": 108}),
+                           ("ViViT-500K-CLTT-Ref-T2-DVS6", "ViViT-CLTT-Ref-T2-DVS6", {"embed_dim": 87})):
+    assert _lbl.replace("-500K", "") == _full, _lbl
+    assert {k: v for k, v in MODELS[_lbl].items() if k != "cfg"} == {k: v for k, v in MODELS[_full].items() if k != "cfg"}, _lbl
+    assert MODELS[_lbl]["cfg"] == {**MODELS[_full]["cfg"], **_diff}, _lbl
+    assert all(MODELS[_lbl]["cfg"][k] != MODELS[_full]["cfg"][k] for k in _diff), _lbl
+    if "embed_dim" in _diff:
+        assert _diff["embed_dim"] % MODELS[_lbl]["cfg"]["num_heads"] == 0, _lbl
+del _lbl, _full, _diff
 # ⛔ A PATCH-14 DVS LABEL (DECISIONS §128) IS ITS TWIN + pre=["dvs_polarity"], WITH embed_dim RE-SIZED FOR 4 CHANNELS, NOTHING ELSE.
 for _lbl, _twin, _diff in (("ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-500K-P14", {"embed_dim": 108}),
                            ("ViT-CLTT-Ref-5M-DVS",       "ViT-CLTT-Ref-5M",       {})):
