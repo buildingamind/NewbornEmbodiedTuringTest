@@ -259,3 +259,33 @@ def test_density_line_reports_window_and_matched_single_difference(monkeypatch, 
     mid = float(line.split("intermediate (0<v<255) ")[1].split(";")[0])
     one = float(line.split("same threshold: non-zero ")[1].split(" ")[0])
     assert (nz, mid, one) == (pytest.approx(0.5), pytest.approx(0.0), pytest.approx(0.5))
+
+
+# ---------------------------------------------------------------- no-window density line (DECISIONS §162 add. 3)
+
+def test_no_window_density_line_once_over_steps_with_a_previous_frame(monkeypatch, capsys):
+    """No window: alternating 0/100 grey -> every step is one full-field ON or OFF event on 1 of the 2 luma planes:
+    non-zero 0.5. The reset frame (no previous frame, all-zero events) is NOT counted -- counting it would read 0.49."""
+    monkeypatch.setenv("NETT_DVS_THRESHOLD", "24")
+    n = DVSPolarity.DENSITY_DECISIONS
+    levels = [0 if k % 2 == 0 else 100 for k in range(n + 5)]
+    env = DVSPolarity(FakeEnv(_flashes(levels)))
+    capsys.readouterr()
+    env.reset()
+    for k in range(len(levels) - 1):
+        env.step(0)
+        if k == n - 2:
+            assert "density over" not in capsys.readouterr().out      # 49 steps with a previous frame: not yet
+    out = capsys.readouterr().out
+    lines = [x for x in out.splitlines() if x.startswith("[NETT dvs] density over the first 50 steps")]
+    assert len(lines) == 1 and "threshold 24" in lines[0]
+    assert float(lines[0].split("non-zero ")[1].split(" ")[0]) == pytest.approx(0.5)
+
+
+def test_no_window_density_line_absent_under_a_window(monkeypatch, capsys):
+    _window(monkeypatch, 2, loop=2)
+    env = DVSPolarity(FakeEnv(_flashes([0, 100] * 40)))
+    env.reset()
+    for _ in range(79):
+        env.step(0)
+    assert "[NETT dvs] density over" not in capsys.readouterr().out

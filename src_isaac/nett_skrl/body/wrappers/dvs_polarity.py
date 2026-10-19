@@ -150,6 +150,7 @@ class DVSPolarity(gym.Wrapper):
         self._phase_c = 0                       # maps emitted since reset(): decision ticks are c = 1 + kP
         self._ref = None                        # blurred frame just before the window (diagnostic only)
         self._dens: list = []                   # (window non-zero, window intermediate, single-diff non-zero) per decision
+        self._dens_plain: list = []             # no window: per-step event non-zero fraction (diagnostic only)
         self._prev = None                       # previous BLURRED luma (N,H,W)|(H,W), or colour (N,3,H,W)|(3,H,W)
         self._batched = False                   # whether the last frame carried a leading env axis
         self.observation_space = self._out_space(env.observation_space)
@@ -250,6 +251,17 @@ class DVSPolarity(gym.Wrapper):
                   f"window non-zero {nz:.6f}, intermediate (0<v<255) {mid:.6f}; one {self.window}-frame difference over the same "
                   f"frames, same threshold: non-zero {one:.6f} (fractions of pixels x channels)", flush=True)
 
+    def _density_plain(self, out: torch.Tensor) -> None:
+        """Diagnostic only (never changes an output), NO window: the event map's non-zero fraction (pixels x channels) over
+        the first DENSITY_DECISIONS steps that have a previous frame, printed once -- the density the §162 add. 3 floor
+        (mean non-zero >= 1e-3) is read against when a row steps the threshold down (workspace DECISIONS §162 add. 3)."""
+        if len(self._dens_plain) >= self.DENSITY_DECISIONS:
+            return
+        self._dens_plain.append(float((out > 0).float().mean()))
+        if len(self._dens_plain) == self.DENSITY_DECISIONS:
+            print(f"[NETT dvs] density over the first {len(self._dens_plain)} steps (no window, threshold {self.threshold:g}): "
+                  f"non-zero {sum(self._dens_plain) / len(self._dens_plain):.6f} (fractions of pixels x channels)", flush=True)
+
     def _accumulate(self, out: torch.Tensor) -> torch.Tensor:
         """One tick's uint8 0/255 event map -> the W-tick weighted map (uint8). Episode start = fewer maps, never padding."""
         if self._hist and self._hist[-1].shape != out.shape:
@@ -330,7 +342,8 @@ class DVSPolarity(gym.Wrapper):
         # ⛔ NO PREVIOUS FRAME => NO EVENTS, never a difference against zeros. Differencing the
         # first frame of an episode against a zero buffer reports the entire image as one giant
         # ON event -- a full-field flash at every reset, perfectly correlated with episode start.
-        if self._prev is None or self._prev.shape != y.shape:
+        had_prev = not (self._prev is None or self._prev.shape != y.shape)
+        if not had_prev:
             d = torch.zeros_like(y)
         else:
             d = y - self._prev
@@ -348,6 +361,8 @@ class DVSPolarity(gym.Wrapper):
             out = self._accumulate(out)
             self._phase_c += 1
             self._density(y, out)
+        elif had_prev:
+            self._density_plain(out)
         if not as_tensor:
             return out.cpu().numpy().astype(np.uint8)
         return out

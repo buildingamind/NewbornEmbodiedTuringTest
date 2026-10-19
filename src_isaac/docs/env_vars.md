@@ -90,7 +90,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:2180`<br>`examples/campaign_train.py:2181` |
 | `NETT_CLTT_REF_DEDUP` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:106` |
 | `NETT_CONV3D_ORTHO_INIT` | `"1"` | `nett_skrl/brain/models/utils/init.py:26` |
-| `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:214`<br>`nett_skrl/body/wrappers/dvs_polarity.py:237`<br>`nett_skrl/brain/env_wrappers.py:207` |
+| `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:215`<br>`nett_skrl/body/wrappers/dvs_polarity.py:238`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
 | `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2248` |
 | `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:1925`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
@@ -106,11 +106,11 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
 | `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:133` |
-| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:273` |
+| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:285` |
 | `NETT_DVS_COLOR` | `""`, `False` | `nett_skrl/body/wrappers/dvs_polarity.py:135`<br>`nett_skrl/brain/aux/cltt_views.py:37` |
 | `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:122` |
-| `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:202` |
-| `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:203` |
+| `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:203` |
+| `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:204` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:1979` |
