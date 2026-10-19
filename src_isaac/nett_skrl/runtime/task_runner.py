@@ -78,6 +78,7 @@ def _run_train_with_eval_milestones(task: Task) -> None:
 
     eval_num_envs = _compute_eval_num_envs(task)
     boundaries = _training_boundaries(total, eval_freq=eval_freq)
+    _refuse_schedules_across_chunks(len(boundaries))
     previous = 0
     for boundary in boundaries:
         chunk = boundary - previous
@@ -630,6 +631,24 @@ def _compute_eval_num_envs(task: Task) -> int:
             want, num_brains, total_test_episodes, best,
         )
     return best
+
+
+def _refuse_schedules_across_chunks(n_chunks: int) -> None:
+    """⛔ NETT_DIAG_LR_ANNEAL / NETT_DIAG_ENT_START are per-PROCESS schedules (ppo_metrics.
+    apply_diag_schedules: progress = skrl's chunk-local ``timestep / timesteps``), so a train split
+    into eval_freq chunks would run each schedule once PER CHUNK -- and since DECISIONS §164 a
+    resumed chunk restarts the lr anneal at the configured lr, a sawtooth. No row has done this
+    (campaign_train pins eval_freq 10,000,000; workspace FINDINGS §4dh.44h.192 add. 3). Refused
+    before the first chunk spawns rather than silently trained.
+    """
+    if n_chunks <= 1:
+        return
+    on = [k for k in ("NETT_DIAG_LR_ANNEAL", "NETT_DIAG_ENT_START")
+          if (os.environ.get(k, "").strip() if k == "NETT_DIAG_LR_ANNEAL" else os.environ.get(k)) not in (None, "")]
+    if on:
+        raise ValueError(
+            f"{' and '.join(on)} set on a train split into {n_chunks} eval_freq chunks: the schedules are "
+            f"per process and would restart in every chunk. Run it as one chunk (eval_freq >= train steps).")
 
 
 def _training_boundaries(total: int, *, eval_freq: int) -> list[int]:

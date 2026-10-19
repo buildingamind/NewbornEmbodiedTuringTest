@@ -749,3 +749,49 @@ def test_orchestration_wandb_timestep_offset_per_chunk(tmp_path):
             f"Chunk {chunk_idx}: expected initial_timestep={expected_offset}, "
             f"got {cfg.initial_timestep}"
         )
+
+
+# ---------------------------------------------------------------------------
+# ⛔ per-process schedules refuse a chunked train (workspace DECISIONS §164, FINDINGS §4dh.44h.192 add. 3)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("knob,val", [("NETT_DIAG_LR_ANNEAL", "linear"), ("NETT_DIAG_ENT_START", "0.15")])
+def test_orchestration_chunked_train_refuses_schedules_before_any_spawn(tmp_path, monkeypatch, knob, val):
+    from nett_skrl.runtime.task_runner import _run_train_with_eval_milestones
+
+    monkeypatch.delenv("NETT_DIAG_LR_ANNEAL", raising=False)
+    monkeypatch.delenv("NETT_DIAG_ENT_START", raising=False)
+    monkeypatch.setenv(knob, val)
+    task = _make_orchestration_task(tmp_path, eval_freq=2000, total_train_steps=6000, episodes_test=3,
+                                    num_test_tasks=2, max_parallel_envs=6)
+    spawned = []
+    with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", lambda t, m, **o: spawned.append(m)):
+        with pytest.raises(ValueError, match=f"{knob} set on a train split into 3 eval_freq chunks"):
+            _run_train_with_eval_milestones(task)
+    assert spawned == []
+
+
+@pytest.mark.parametrize("env", [{}, {"NETT_DIAG_LR_ANNEAL": "linear", "NETT_DIAG_ENT_START": "0.15"}])
+def test_orchestration_one_chunk_train_keeps_schedules(tmp_path, monkeypatch, env):
+    from nett_skrl.runtime.task_runner import _run_train_with_eval_milestones
+
+    monkeypatch.delenv("NETT_DIAG_LR_ANNEAL", raising=False)
+    monkeypatch.delenv("NETT_DIAG_ENT_START", raising=False)
+    for k, v in env.items():
+        monkeypatch.setenv(k, v)
+    task = _make_orchestration_task(tmp_path, eval_freq=10_000_000, total_train_steps=6000, episodes_test=3,
+                                    num_test_tasks=2, max_parallel_envs=6)
+    spawned = []
+    with patch("nett_skrl.runtime.task_runner._spawn_mode_subprocess", lambda t, m, **o: spawned.append(m)):
+        _run_train_with_eval_milestones(task)
+    assert spawned and spawned[0] == "train"
+
+
+def test_chunked_train_without_schedules_is_unchanged(monkeypatch):
+    from nett_skrl.runtime.task_runner import _refuse_schedules_across_chunks
+
+    monkeypatch.delenv("NETT_DIAG_LR_ANNEAL", raising=False)
+    monkeypatch.delenv("NETT_DIAG_ENT_START", raising=False)
+    _refuse_schedules_across_chunks(3)            # no knob -> no refusal
+    monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", " ")
+    _refuse_schedules_across_chunks(3)            # blank = unset, as apply_diag_schedules reads it
