@@ -127,13 +127,17 @@ class CompactViViT(HWCFeatureExtractor):
         temporal_mode: str = "joint",
         spatial_grid: int = 4,
         spatial_reduce_dim: int = 16,
+        channels_per_frame: int | None = None,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
         total_channels, height, width = image_channels_hw(observation_space)
+        # channels_per_frame: None (every existing arm) keeps the 1/3/4 image-depth check; the colour-DVS
+        # labels (workspace DECISIONS §162) state 6 (dvs_polarity's R+,R-,G+,G-,B+,B-), checked EXACTLY,
+        # as Compact3DCNN's "3DCNN-DVS6" does.
         self.num_frames = validate_framestack_depth(
-            total_channels, num_frames, type(self).__name__)
-        self.base_channels = total_channels // self.num_frames  # 3 for RGB
+            total_channels, num_frames, type(self).__name__, channels_per_frame)
+        self.base_channels = total_channels // self.num_frames  # 3 for RGB, 6 for colour DVS
         self.total_channels = total_channels
         self.patch_size = patch_size
         self.embed_dim = embed_dim

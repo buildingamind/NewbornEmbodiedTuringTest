@@ -847,6 +847,19 @@ MODELS: dict[str, dict] = {
     # enc 804,320 / agent 805,861 @ 128x80 against ViViT-CLTT-Ref's 694,016 / 695,557 (+110,304,
     # +15.9%: patch embed +110,592, temporal pos -288). cltt_ref head 329,216 either way.
     "ViViT-CLTT-Ref-T2":  dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "temporal_mode": "early"}, framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # ⭐ COLOUR-DVS TWINS (owner, workspace DECISIONS §162 add. 1): each is its twin + pre=["dvs_polarity"]
+    # + channels_per_frame 6, NOTHING ELSE (asserted after MODELS), as "3DCNN-DVS6" is "3DCNN-DVS" + 6.
+    # The event frame of one RGB difference is 6 channels (R+,R-,G+,G-,B+,B-; dvs_polarity._events), and
+    # framestack 2 makes 12, T-major: [dvs(t-1,t-2), dvs(t,t-1)]. channels_per_frame is checked EXACTLY,
+    # so an RGB stack (6) refuses these and a colour stack (12) refuses the twins. Not re-matched.
+    # ⛔ MODELS HAS NO ENV FIELD: rows set NETT_DVS_COLOR=1, NETT_AUX_CLTT_CHANNELS_PER_FRAME=6,
+    # NETT_DVS_THRESHOLD=24 and NETT_DVS_BLUR_KERNEL=5 (the 5x5 blur) themselves.
+    # enc @ 128x80, 12 channels: 3DCNN-CLTT-Ref-DVS6 697,709 / -T1-DVS6 714,413 / ViViT-CLTT-Ref-DVS6
+    # 804,608 / -T2-DVS6 1,025,504 (the early patch embed is 2*6*16*16 = 3,072 wide).
+    "3DCNN-CLTT-Ref-DVS6":    dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "3DCNN-CLTT-Ref-T1-DVS6": dict(encoder="compact_3dcnn", cfg={"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N, "temporal_kernel_depth": 1, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "ViViT-CLTT-Ref-DVS6":    dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
+    "ViViT-CLTT-Ref-T2-DVS6": dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "temporal_mode": "early", "channels_per_frame": 6}, framestack=True, pre=["dvs_polarity"], aux="cltt_ref", aux_weight=1.0),
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
@@ -1283,6 +1296,13 @@ for _lbl, _diff in (("ViT-CLTT-Ref-500K-P14", {"patch_size": 14, "embed_dim": 10
     assert MODELS[_lbl]["cfg"] == {**MODELS["ViT-CLTT-Ref"]["cfg"], **_diff}, _lbl
     assert _diff["embed_dim"] % _diff.get("num_heads", MODELS["ViT-CLTT-Ref"]["cfg"]["num_heads"]) == 0, _lbl
 del _lbl, _diff
+# ⛔ A COLOUR-DVS LABEL (DECISIONS §162 add. 1) IS ITS TWIN + pre=["dvs_polarity"] + channels_per_frame 6, NOTHING ELSE.
+for _twin in ("3DCNN-CLTT-Ref", "3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref", "ViViT-CLTT-Ref-T2"):
+    _lbl = _twin + "-DVS6"
+    assert "pre" not in MODELS[_twin] and MODELS[_lbl]["pre"] == ["dvs_polarity"], _lbl
+    assert MODELS[_lbl]["cfg"] == {**MODELS[_twin]["cfg"], "channels_per_frame": 6}, _lbl
+    assert {k: v for k, v in MODELS[_lbl].items() if k not in ("cfg", "pre")} == \
+        {k: v for k, v in MODELS[_twin].items() if k != "cfg"}, _lbl
 # ⛔ A PATCH-14 DVS LABEL (DECISIONS §128) IS ITS TWIN + pre=["dvs_polarity"], WITH embed_dim RE-SIZED FOR 4 CHANNELS, NOTHING ELSE.
 for _lbl, _twin, _diff in (("ViT-CLTT-Ref-500K-P14-DVS", "ViT-CLTT-Ref-500K-P14", {"embed_dim": 108}),
                            ("ViT-CLTT-Ref-5M-DVS",       "ViT-CLTT-Ref-5M",       {})):
