@@ -503,10 +503,17 @@ def test_every_registered_aux_kind_exposes_a_head():
                       "loss": "smooth_l1" if frames == 1 else "l1"})
         return build
 
+    def _slot_recon_host():
+        """`slot_recon` REFUSES any encoder but ViT-SlotRecon's (workspace DECISIONS §162); a 1-block trunk."""
+        space = gym.spaces.Box(low=0, high=255, shape=(80, 128, 6), dtype="uint8")
+        return encoder_mapping["vit_slot_recon"](space, features_dim=48, embed_dim=32, depth=1, num_heads=2,
+                                                 slot_dim=16, slot_mlp_hidden=32)
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
-                     _framestacked_host, _vit_host, _xsp_host, _xsp2_host, _jepa_host(1), _jepa_host(2)):
+                     _framestacked_host, _vit_host, _xsp_host, _xsp2_host, _jepa_host(1), _jepa_host(2),
+                     _slot_recon_host):
             try:
                 aux = build(host())
                 break
