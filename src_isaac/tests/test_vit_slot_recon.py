@@ -418,6 +418,32 @@ def test_after_a_ppo_backward_the_encoder_has_no_grad_and_the_heads_do(monkeypat
         assert trained and agent._aux.n_steps == 4                    # one aux Adam step per minibatch
 
 
+def test_ppo_is_bit_identical_to_plain_metricsppo_on_the_same_encoder(monkeypatch):
+    """compute() returns a detached zero, so PPO's gradients, clip norm and head updates are plain PPO's:
+    1 epoch x 1 minibatch, same seed, slot_recon vs aux=None -- every PPO gradient and every head weight equal."""
+    a = _agent(monkeypatch, seed=0)
+    b = _agent(monkeypatch, aux=None, seed=0)
+    assert type(a).__name__ == "AuxLossPPO" and type(b).__name__ != "AuxLossPPO"
+    for name in ("policy", "value"):
+        sa, sb = _state(getattr(a, name)), _state(getattr(b, name))
+        assert list(sa) == list(sb) and all(torch.equal(sa[k], sb[k]) for k in sa), name
+    ga, gb = _record_ppo_grads(a), _record_ppo_grads(b)
+    enc_before = _state(a.policy.encoder)
+    _rollout(a)
+    _rollout(b)
+    assert a._aux.n_steps == 1 and len(ga) == len(gb) == 1
+    for k in ga[0]:
+        va, vb = ga[0][k], gb[0][k]
+        assert (va is None) == (vb is None), k
+        if va is not None:
+            assert torch.equal(va, vb), k
+    heads = lambda m: {k: v for k, v in _state(m).items() if not k.startswith("encoder.")}
+    for name in ("policy", "value"):
+        ha, hb = heads(getattr(a, name)), heads(getattr(b, name))
+        assert all(torch.equal(ha[k], hb[k]) for k in ha), name
+    assert any(not torch.equal(v, a.policy.encoder.state_dict()[k]) for k, v in enc_before.items())
+
+
 def test_aux_gives_every_encoder_parameter_a_gradient():
     """(b) The summed reconstruction error reaches the trunk, the slot MLP and Slot Attention."""
     enc = _enc()
