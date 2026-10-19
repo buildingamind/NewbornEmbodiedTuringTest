@@ -840,6 +840,13 @@ MODELS: dict[str, dict] = {
     "VideoMAE":           dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae", aux_weight=1.0),
     "VideoMAE-CLTT-Ref":  dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="mae_with_cltt_ref", aux_weight=1.0),
     "ViViT-CLTT-Ref":     dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="cltt_ref", aux_weight=1.0),
+    # ⭐ A 2-FRAME-DEEP PATCH (owner, workspace DECISIONS §162). ViViT-CLTT-Ref in every field but
+    # temporal_mode: "early" concatenates both frames' 16x16 patches at each location (T-major,
+    # 2*3*16*16 = 1,536) into ONE Linear token -- a (2,16,16) tubelet, 40 tokens, spatial pos only --
+    # where "joint" embeds each frame's patch separately (80 tokens + temporal pos). Not re-matched:
+    # enc 804,320 / agent 805,861 @ 128x80 against ViViT-CLTT-Ref's 694,016 / 695,557 (+110,304,
+    # +15.9%: patch embed +110,592, temporal pos -288). cltt_ref head 329,216 either way.
+    "ViViT-CLTT-Ref-T2":  dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "temporal_mode": "early"}, framestack=True, aux="cltt_ref", aux_weight=1.0),
     "GuessWhatMoves": dict(encoder="guess_what_moves", cfg={"trainable": True, "features_dim": 512, "conv_dim": 75, "num_frames": _FRAMESTACK_N}, framestack=True),  # ~698K
 
     # ── MOTION-LOSS ARMS (added 2026-08-28 under the owner's (encoder, aux loss)
