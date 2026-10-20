@@ -841,6 +841,21 @@ MODELS: dict[str, dict] = {
     "ViViT+VICReg":   dict(encoder="compact_vivit",   cfg=dict(VIVIT_CFG),                                                           framestack=True,  aux="vicreg"),
     "ViViT-VICReg-TT": dict(encoder="compact_vivit", cfg=dict(VIVIT_CFG), framestack=True, aux="vicreg_tt", aux_weight=1.0),
     "ViViT-1M":       dict(encoder="compact_vivit",   cfg=dict(VIVIT_1M_CFG),                                                     framestack=True),   # enc 993,128 -- size series
+    # ⭐ SPATIAL-POOLED ViViT ON A WIDE GRID (owner direct, workspace DECISIONS §173, 2026-10-20): "test
+    # ViViT with joint fusion + spatial pooling at a 1x4 grid and at a 2x8 grid" (rows x cols; horizontal
+    # information matters more than vertical) BEFORE any default changes. Each is plain "ViViT" (VIVIT_CFG:
+    # temporal_mode "joint", no aux) with pool "spatial", spatial_grid (rows, cols), reduce 16, NOTHING
+    # ELSE; the defaults (VIVIT_CFG pool "cls", CompactViViT spatial_grid 4) are untouched.
+    # The grid must DIVIDE the patch-16 token grid (H/16, W/16) per axis, refused at construction:
+    #     eye 128x80  ->  5x8 tokens:  1x4 valid | 2x8 INVALID (5 % 2) -> ViViT-SP2x8 refuses here
+    #     eye 256x160 -> 10x16:        1x4 valid | 2x8 valid
+    #     eye 448x280 -> no grid at all: 280 % 16 = 8, so CompactViViT's patch assert refuses ANY
+    #                    patch-16 ViViT there (17.5 rows), cls included -- neither label builds.
+    # Not re-matched (as ViViT-CLTT-Ref-T2). enc, MEASURED (tests/test_vivit_spatial_rect.py pins them):
+    #     128x80:  ViViT 694,016 | SP1x4 655,088 (-5.61%) | SP2x8 refused
+    #     256x160: ViViT 711,296 | SP1x4 672,368 (-5.47%) | SP2x8 770,672 (+8.35%)
+    "ViViT-SP1x4":    dict(encoder="compact_vivit",   cfg={**VIVIT_CFG, "pool": "spatial", "spatial_grid": (1, 4), "spatial_reduce_dim": 16}, framestack=True),
+    "ViViT-SP2x8":    dict(encoder="compact_vivit",   cfg={**VIVIT_CFG, "pool": "spatial", "spatial_grid": (2, 8), "spatial_reduce_dim": 16}, framestack=True),
     # ── U35 MAE (owner request 2026-10-05, DECISIONS §71 follow-up). Each label is its base
     # verbatim except `aux` (brain/aux/mae_aux.py chooses the masking scheme from the encoder):
     #   ViT-CLTT-Ref-MAE   = ViT-CLTT-Ref   + token MAE (75%; a token spans BOTH stacked frames,
@@ -1562,6 +1577,11 @@ def nas_spec(label: str, raw: str) -> dict:
     schema = dict(fam["schema"])
     if label == "NAS-ViT" and c.get("pool") == "spatial":
         schema["spatial_grid"] = _NAS_SPATIAL_GRID
+    # ⚠ STALE REASON, KEPT REFUSAL (workspace DECISIONS §173): CompactViViT's spatial head now pools
+    # deterministically (DeterministicAvgPool2d, refusing a non-dividing grid at construction), so the
+    # message below no longer describes the code. The refusal stays because the NAS-ViViT search space
+    # was not reopened -- its schema samples no spatial_grid -- and reopening it is an owner call.
+    # tests/test_nas_labels.py pins the message text.
     if label == "NAS-ViViT" and c.get("pool") == "spatial":
         raise ValueError("NAS-ViViT: pool 'spatial' is refused -- CompactViViT's spatial head uses "
                          "adaptive pooling, whose CUDA backward is nondeterministic. Use 'cls'.")

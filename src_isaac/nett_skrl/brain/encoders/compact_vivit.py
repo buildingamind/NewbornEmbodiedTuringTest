@@ -36,9 +36,11 @@ Pooling (``pool``)
               feature map instead of collapsing them. The patch tokens are
               resolved to an (n_h x n_w x D) grid (meaned over frames for the
               multi-frame temporal modes), channel-reduced with a Linear, then
-              adaptive-avg-pooled (NOT a convolution) to a GxG grid, flattened
-              and projected to features_dim. This preserves WHERE information
-              for the downstream policy (like the CNN encoders' feature maps).
+              average-pooled (NOT a convolution) to a GxG or rows x cols grid
+              that must DIVIDE (n_h, n_w) (deterministic pooling; see
+              ``CompactViViT.__init__``), flattened and projected to
+              features_dim. This preserves WHERE information for the
+              downstream policy (like the CNN encoders' feature maps).
 
 Defaults reproduce ViViT Model 1: ``temporal_mode="joint", pool="cls"``.
 """
@@ -50,6 +52,7 @@ import torch
 import torch.nn as nn
 
 from ...body.observation import image_channels_hw
+from .utils.pool import DeterministicAvgPool2d
 from .utils.temporal import validate_framestack_depth
 from .hwc_feature_extractor import HWCFeatureExtractor
 
@@ -107,10 +110,24 @@ class CompactViViT(HWCFeatureExtractor):
             docstring).
         temporal_mode: "joint", "early", "factored", or "late" (see module
             docstring). Default "joint" (ViViT Model 1).
-        spatial_grid: GxG output grid size for ``pool="spatial"`` (default 4).
-        spatial_reduce_dim: per-token channel width after the reduce Linear in
-            ``pool="spatial"`` (default 16; chosen so all of joint/early/late
-            stay under the 700k-param budget at G=4).
+        spatial_grid: output grid for ``pool="spatial"``: an int G (GxG, the
+            default 4) or a (rows, cols) pair, as CompactViT takes it. Must
+            divide the (H/P, W/P) token grid in each axis -- refused at
+            construction otherwise. The head is Linear(rows*cols*R,
+            features_dim), so the grid sets the head's width.
+        spatial_reduce_dim: per-token channel width R after the reduce Linear
+            in ``pool="spatial"`` (default 16; chosen when the eye was a square
+            128x128 so joint/early/late stayed near the 700k-param budget at
+            G=4. ⚠ G=4 divides neither the 5x8 nor the 10x16 token grid of
+            the 128x80 / 256x160 eyes, so the default grid refuses there).
+
+    Encoder counts at VIVIT_CFG (joint, embed_dim 144, 3 RGB channels x 2 frames),
+    MEASURED on CPU (workspace DECISIONS §173, "ViViT-SP1x4" / "ViViT-SP2x8", R=16).
+    NOT re-matched to plain ViViT: the spatial head drops cls + cls pos (288) and
+    Linear(144, 512) and adds reduce (2,320) + Linear(rows*cols*16, 512):
+        128x80  (5x8 tokens):  cls 694,016 | (1, 4) 655,088 | (2, 8) refused (5 % 2)
+        256x160 (10x16):       cls 711,296 | (1, 4) 672,368 | (2, 8) 770,672
+        128x128 (8x8):         cls 697,472 | (1, 4) 658,544 | (2, 8) = 4 = 756,848
     """
 
     def __init__(
@@ -125,7 +142,7 @@ class CompactViViT(HWCFeatureExtractor):
         num_frames: int = 2,
         pool: str = "cls",
         temporal_mode: str = "joint",
-        spatial_grid: int = 4,
+        spatial_grid: int | tuple[int, int] = 4,
         spatial_reduce_dim: int = 16,
         channels_per_frame: int | None = None,
         **_,
@@ -203,15 +220,50 @@ class CompactViViT(HWCFeatureExtractor):
 
         self.norm = nn.LayerNorm(embed_dim)
         if self.use_spatial:
-            # Spatial feature-map head: reduce channels per token, adaptive
-            # pool the (n_h x n_w) grid to GxG, then a Linear to features_dim.
-            self.spatial_grid = int(spatial_grid)
+            # Spatial feature-map head: reduce channels per token, average-pool
+            # the (n_h x n_w) grid to (rows, cols), then a Linear to features_dim.
+            # ★ RECTANGULAR GRIDS ALLOWED (owner, workspace DECISIONS §173). `spatial_grid`
+            # is an int G (=> (G, G), every pre-§173 caller unchanged) or a (rows, cols)
+            # pair, parsed exactly as CompactViT parses it (a pair may arrive as a list
+            # after a JSON / EncoderCfg round trip). The owner's reason: on a wide eye the
+            # horizontal axis carries more of the task than the vertical, so §173 asks for
+            # 1x4 and 2x8 rather than a square.
+            g = (int(spatial_grid), int(spatial_grid)) if isinstance(spatial_grid, int) \
+                else tuple(int(v) for v in spatial_grid)
+            self.spatial_grid = g
             self.spatial_reduce_dim = int(spatial_reduce_dim)
+            # ⚠ MUST NOT be F.adaptive_avg_pool2d (which this head used until §173). Its
+            # CUDA backward (adaptive_avg_pool2d_backward_cuda) has no deterministic
+            # implementation, and skrl_patches raises the PPO update to
+            # use_deterministic_algorithms(True, warn_only=False) -- so a spatial-pooled
+            # ViViT would die at the FIRST optimizer step on a GPU, exactly as the first
+            # spatial CompactViT arm did on 2026-08-03 (see compact_vit.py). A CPU test
+            # host can never see that death. DeterministicAvgPool2d is F.avg_pool2d on
+            # an evenly-divisible grid: the SAME windows and the same value (pinned by
+            # tests/test_vivit_spatial_rect.py), with a deterministic backward.
+            #
+            # ⚠ FAIL AT CONSTRUCTION, NOT AT THE FIRST FORWARD. A ragged grid would need
+            # the adaptive kernel, so it is refused here, before a slot is spent. The
+            # grid checked is (self.n_h, self.n_w) = (height//P, width//P), and that IS
+            # the grid the head receives in every temporal_mode: joint, early, factored
+            # and late all reshape their patch tokens to (B, n_h, n_w, D) before
+            # `_spatial_head` (one check covers all four). E.g. at patch 16:
+            #   128x80  -> 5x8 tokens:  (1, 4) divides; (2, 8) does NOT (5 % 2); 4 does not
+            #   256x160 -> 10x16:       (1, 4) and (2, 8) both divide; 4 does not (10 % 4)
+            #   448x280 -> never reaches here: 280 % 16 = 8 trips the patch assert above.
+            if n_h % g[0] or n_w % g[1]:
+                oh = [d for d in range(1, n_h + 1) if n_h % d == 0]
+                ow = [d for d in range(1, n_w + 1) if n_w % d == 0]
+                raise ValueError(
+                    f"CompactViViT(pool='spatial', spatial_grid={spatial_grid}) does not divide "
+                    f"the {n_h}x{n_w} token grid from {height}x{width} at patch "
+                    f"{patch_size}. Valid rows {oh}, valid cols {ow} -- pass a pair, e.g. "
+                    f"spatial_grid=({oh[-1]}, {ow[-2] if len(ow) > 1 else ow[-1]}). Falling "
+                    f"back to adaptive pooling is NOT an option: its CUDA backward is "
+                    f"nondeterministic.")
+            self.spatial_pool = DeterministicAvgPool2d(g)
             self.reduce = nn.Linear(embed_dim, self.spatial_reduce_dim)
-            self.head = nn.Linear(
-                self.spatial_grid * self.spatial_grid * self.spatial_reduce_dim,
-                features_dim,
-            )
+            self.head = nn.Linear(g[0] * g[1] * self.spatial_reduce_dim, features_dim)
         else:
             self.head = (
                 nn.Linear(embed_dim, features_dim)
@@ -250,18 +302,17 @@ class CompactViViT(HWCFeatureExtractor):
     def _spatial_head(self, grid: torch.Tensor) -> torch.Tensor:
         """(B, n_h, n_w, D) grid -> (B, features_dim) spatial feature vector.
 
-        Applies the final norm + per-token channel reduction, adaptive-avg-pools
-        the (n_h x n_w) grid to GxG (pooling, not convolution), flattens and
-        projects with the head.
+        Applies the final norm + per-token channel reduction, average-pools
+        the (n_h x n_w) grid to (rows, cols) with the deterministic pool built
+        in ``__init__`` (pooling, not convolution), flattens and projects with
+        the head.
         """
         grid = self.norm(grid)                      # (B, n_h, n_w, D)
         grid = self.reduce(grid)                    # (B, n_h, n_w, R)
-        # -> (B, R, n_h, n_w) for adaptive pooling over the spatial grid.
+        # -> (B, R, n_h, n_w) for pooling over the spatial grid.
         grid = grid.permute(0, 3, 1, 2)
-        grid = torch.nn.functional.adaptive_avg_pool2d(
-            grid, (self.spatial_grid, self.spatial_grid)
-        )                                           # (B, R, G, G)
-        flat = grid.reshape(grid.shape[0], -1)      # (B, G*G*R)
+        grid = self.spatial_pool(grid)              # (B, R, rows, cols)
+        flat = grid.reshape(grid.shape[0], -1)      # (B, rows*cols*R)
         return self.head(flat)
 
     def _run_blocks(self, tok: torch.Tensor) -> torch.Tensor:

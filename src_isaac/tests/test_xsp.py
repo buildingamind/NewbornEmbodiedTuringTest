@@ -1111,6 +1111,10 @@ STP170_FILES = ("nett_skrl/body/wrappers/stp_pose.py", "nett_skrl/brain/encoders
                 "nett_skrl/brain/aux/stp_aux.py")
 STP170_LABELS = {"STP-E", "STP-E-NoWarp", "STP-E-Cmd", "CNN2F-630K"}
 
+#: owner 2026-10-20 (workspace DECISIONS §173): spatial-pooled joint ViViT at 1x4 / 2x8 (test_vivit_spatial_rect.py);
+#: compact_vivit.py is already admitted by S162_FILES, campaign_train.py by SHARED.
+VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
+
 def _drop_admitted(path, removed):
     """removed lines (diff '-' lines) minus each line §103 is admitted to remove, one occurrence each."""
     left = list(removed)
@@ -1174,7 +1178,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.

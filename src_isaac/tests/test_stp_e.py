@@ -47,6 +47,8 @@ _SRC = Path(__file__).resolve().parents[1]
 _TRAIN = _SRC / "examples" / "campaign_train.py"
 STP_LABELS = ("STP-E", "STP-E-NoWarp", "STP-E-Cmd")
 NEW_LABELS = {*STP_LABELS, "CNN2F-630K"}
+#: admitted after §170: owner 2026-10-20 (workspace DECISIONS §173), spatial-pooled ViViT (test_vivit_spatial_rect.py)
+VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1083,7 +1085,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
