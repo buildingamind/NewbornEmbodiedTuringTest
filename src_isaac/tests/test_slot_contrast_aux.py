@@ -509,11 +509,16 @@ def test_every_registered_aux_kind_exposes_a_head():
         return encoder_mapping["vit_slot_recon"](space, features_dim=48, embed_dim=32, depth=1, num_heads=2,
                                                  slot_dim=16, slot_mlp_hidden=32)
 
+    def _stp_host():
+        """`stp` REFUSES any encoder but STP-E's (workspace DECISIONS §170); 2 frames + the pose row at 128x80."""
+        space = gym.spaces.Box(low=0, high=255, shape=(81, 128, 6), dtype="uint8")
+        return encoder_mapping["stp_e"](space, features_dim=32, fov_deg=150.0)
+
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
                      _framestacked_host, _vit_host, _xsp_host, _xsp2_host, _jepa_host(1), _jepa_host(2),
-                     _slot_recon_host):
+                     _slot_recon_host, _stp_host):
             try:
                 aux = build(host())
                 break

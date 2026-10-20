@@ -149,6 +149,9 @@ encoder_mapping: dict[str, type[NETTFeatureExtractor]] = {
     "matched": encoders.MatchedEncoder,
     # I-JEPA / V-JEPA (owner 2026-10-15): one class, num_frames 1 = I-JEPA, 2 = V-JEPA tubelet.
     "jepa": encoders.JEPAEncoder,
+    # STP-E (workspace DECISIONS §170): az/el remap, action-warp predictor (own Adam, aux "stp"), policy CNN on
+    # [residual, current frame]. Reads the pose row of body/wrappers/stp_pose.py.
+    "stp_e": encoders.STPEEncoder,
 }
 
 

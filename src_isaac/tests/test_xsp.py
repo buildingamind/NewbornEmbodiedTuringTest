@@ -1105,6 +1105,12 @@ S162_LABELS = {"3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref-T2", "3DCNN-CLTT-Ref-DVS6", 
                *(f"{a}-500K-CLTT-Ref{b}" for a in ("3DCNN", "ViViT")
                  for b in ("", "-T1" if a == "3DCNN" else "-T2", "-DVS6", "-T1-DVS6" if a == "3DCNN" else "-T2-DVS6"))}
 
+#: owner 2026-10-20 (workspace DECISIONS §170): STP-E's pose wrapper, encoder and aux (test_stp_e.py); the shared
+#: registries gain "stp_pose_exec" / "stp_pose_cmd", "stp_e" and "stp" only.
+STP170_FILES = ("nett_skrl/body/wrappers/stp_pose.py", "nett_skrl/brain/encoders/stp_e.py",
+                "nett_skrl/brain/aux/stp_aux.py")
+STP170_LABELS = {"STP-E", "STP-E-NoWarp", "STP-E-Cmd", "CNN2F-630K"}
+
 def _drop_admitted(path, removed):
     """removed lines (diff '-' lines) minus each line §103 is admitted to remove, one occurrence each."""
     left = list(removed)
@@ -1155,7 +1161,8 @@ def test_no_other_brain_file_changed():
     changed = set(_diff("--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
-                                              + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES}
+                                              + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
+                                              + STP170_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1167,7 +1174,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
@@ -1193,8 +1200,8 @@ def test_registries_only_gained_the_xsp_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == ({"xsp", "xsp2", "matched", "jepa", "vit_slot_recon"} if "registry" in rel
-                                  else {"xsp", "xsp2", "ijepa", "vjepa", "slot_recon"}) and old <= new, rel
+        assert old and new - old == ({"xsp", "xsp2", "matched", "jepa", "vit_slot_recon", "stp_e"} if "registry" in rel
+                                  else {"xsp", "xsp2", "ijepa", "vjepa", "slot_recon", "stp"}) and old <= new, rel
         assert new <= set(live), rel
 
 

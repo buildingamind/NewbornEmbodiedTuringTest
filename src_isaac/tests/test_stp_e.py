@@ -1,0 +1,920 @@
+"""STP-E -- the presenter's ego-STP, approved for parsing at eye 448x280 (workspace DECISIONS §170).
+
+Pose row body/wrappers/stp_pose.py, encoder brain/encoders/stp_e.py, aux brain/aux/stp_aux.py, labels "STP-E",
+"STP-E-NoWarp", "STP-E-Cmd" and the size-matched control "CNN2F-630K" in examples/campaign_train.py.
+
+Run with CUDA_VISIBLE_DEVICES="" (everything here is CPU). The owner's list:
+  * parameter counts per arm (printed, and pinned)
+  * a = 0 -> identity, exactly
+  * the dead zone
+  * NoWarp residual == frame difference
+  * the predictor optimizer is separate and no policy-loss gradient reaches predictor params
+  * obs / space shapes at 448x280 and 128x80
+  * the knobs refuse bad values
+  * existing models unchanged
+  * the MODELS import-time assertions
+  + the remap against repo B's lens and rim mask, the warp against F.grid_sample, the byte transport, the
+    wrappers on a fake NETTEnv, the aux never drawing across a reset, and the loss decreasing.
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import math
+import os
+import subprocess
+from pathlib import Path
+
+import gymnasium as gym
+import numpy as np
+import pytest
+import torch
+import torch.nn.functional as F
+
+from nett_skrl.body.wrappers.channels_first import ChannelsFirst
+from nett_skrl.body.wrappers.framestack import FrameStack
+from nett_skrl.body.wrappers.registry import _load_wrapper
+from nett_skrl.body.wrappers.stp_pose import (POSE_BYTES, STPPoseCommanded, STPPoseExecuted, bytes_to_pose,
+                                              pose_to_row)
+from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
+from nett_skrl.brain.aux.stp_aux import STPTerm, charbonnier
+from nett_skrl.brain.encoders.stp_e import (DEADZONE, STPEEncoder, STPPredictor, lens_azel_taps, warp_affine)
+from nett_skrl.brain.registry import encoder_mapping
+from nett_skrl.body.observation import prepare_image_tensor
+
+_SRC = Path(__file__).resolve().parents[1]
+_TRAIN = _SRC / "examples" / "campaign_train.py"
+STP_LABELS = ("STP-E", "STP-E-NoWarp", "STP-E-Cmd")
+NEW_LABELS = {*STP_LABELS, "CNN2F-630K"}
+KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
+H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
+FOV = 150.0
+
+# Pinned counts (encoder only; the policy / value MLP heads on top are not included).
+STP_COUNTS = {(448, 280, 150.0): {"predictor": 201_085, "policy_cnn": 427_544, "total": 628_629},
+              (128, 80, 300.0): {"predictor": 201_085, "policy_cnn": 1_169_432, "total": 1_370_517}}
+GRIDS = {(448, 280, 150.0): (60, 100), (128, 80, 300.0): (99, 200)}
+CNN_COUNTS = {"CNN2F-630K": {(448, 280): 628_155, (128, 80): 835_530},
+              "CNN2F": {(448, 280): 588_139, (128, 80): 780_139}}
+#: DVSC6 = "CNN-UnityRecipe+DVS" with NETT_DVS_COLOR=1 (FINDINGS §4dh.44h.168 add. 1): 6 event channels.
+DVSC6_COUNTS = {(448, 280): 13_287_712, (128, 80): 672_032}
+
+
+@pytest.fixture(autouse=True)
+def _env(monkeypatch):
+    for name in KNOBS + ("NETT_AUX_CLTT_CHANNELS_PER_FRAME", "NETT_AUX_LOSS", "NETT_AUX_WEIGHT",
+                         "NETT_AUX_WEIGHT_OVERRIDE", "NETT_AUX_BATCH", "NETT_AUX_STRICT", "NETT_AMP",
+                         "NETT_DISABLE_FEATURE_CACHE", "NETT_DECOUPLE_ENCODER", "NETT_FISHEYE_METHOD",
+                         "NETT_WHEEL_TURNMOVE", "NETT_FRAMESTACK_N", "NETT_FRAMESTACK_SHUFFLE", "NETT_DVS_COLOR"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("NETT_STP_BATCH", "4")
+    threads = torch.get_num_threads()
+    torch.set_num_threads(1)
+    try:
+        torch.manual_seed(9)
+        yield
+    finally:
+        torch.set_num_threads(threads)
+
+
+@pytest.fixture()
+def campaign(monkeypatch):
+    monkeypatch.syspath_prepend(str(_TRAIN.parent))
+    import campaign_train
+
+    return campaign_train
+
+
+def _space(h=H, w=W, layout="chw"):
+    shape = (6, h + 1, w) if layout == "chw" else (h + 1, w, 6)
+    return gym.spaces.Box(low=0, high=255, shape=shape, dtype=np.uint8)
+
+
+def _enc(h=H, w=W, fov=FOV, warp="affine", seed=0, features_dim=32, layout="chw"):
+    torch.manual_seed(seed)
+    return STPEEncoder(_space(h, w, layout), features_dim=features_dim, fov_deg=fov, warp=warp, num_frames=2)
+
+
+def _frames(b, h=H, w=W, seed=0):
+    g = torch.Generator().manual_seed(seed)
+    return torch.randint(0, 256, (b, 3, h, w), generator=g, dtype=torch.uint8)
+
+
+def _obs(pose, prev, cur, layout="chw"):
+    """(B, 4) pose of the NEWEST frame, (B, 3, H, W) uint8 frames -> the stored 2-frame observation."""
+    b, _, h, w = cur.shape
+    row = pose_to_row(pose, w, 3).permute(0, 3, 1, 2)                     # (B, 3, 1, W)
+    old = pose_to_row(torch.zeros(b, 4), w, 3).permute(0, 3, 1, 2)
+    chw = torch.cat([torch.cat([old, prev], 2), torch.cat([row, cur], 2)], 1)
+    return chw if layout == "chw" else chw.permute(0, 2, 3, 1).contiguous()
+
+
+def _pose(*rows):
+    return torch.tensor(rows, dtype=torch.float32)
+
+
+def _n(params):
+    return sum(p.numel() for p in params)
+
+
+def _state(module):
+    return {k: v.detach().clone() for k, v in module.state_dict().items()}
+
+
+def _git(*args):
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR")}
+    try:
+        return subprocess.run(["git", *args], cwd=_SRC, capture_output=True, text=True, check=True, env=env).stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        pytest.skip(f"git unavailable here: {exc}")
+
+
+def _base():
+    """The commit before STP-E: the parent of the commit that added encoders/stp_e.py (HEAD while uncommitted)."""
+    added = _git("log", "--diff-filter=A", "--format=%H", "--", "nett_skrl/brain/encoders/stp_e.py").split()
+    return f"{added[-1]}^" if added else "HEAD"
+
+
+# ================================================================ parameter counts
+
+def _label_encoder(campaign, label, w, h, fov):
+    spec = campaign.MODELS[label]
+    cfg = campaign.stp_encoder_cfg(spec, fov)
+    kwargs = {k: v for k, v in cfg.items() if k != "trainable"}
+    extra = 1 if spec.get("pre") and spec["pre"][0].startswith("stp_pose") else 0
+    channels = 6 if spec.get("framestack") else 3
+    torch.manual_seed(0)
+    return encoder_mapping[spec["encoder"]](
+        gym.spaces.Box(0, 255, (channels, h + extra, w), np.uint8), **kwargs)
+
+
+@pytest.mark.parametrize("w,h,fov", [(448, 280, 150.0), (128, 80, 300.0)])
+def test_param_counts_per_arm_are_printed_and_pinned(campaign, w, h, fov, capsys):
+    lines = []
+    for label in STP_LABELS:
+        enc = _label_encoder(campaign, label, w, h, fov)
+        counts = enc.parameter_counts()
+        assert counts == STP_COUNTS[(w, h, fov)], (label, counts)
+        assert enc.grid_hw == GRIDS[(w, h, fov)]
+        assert counts["total"] == _n(enc.parameters()) == counts["predictor"] + counts["policy_cnn"]
+        lines.append(f"{label:14s} {w}x{h} fov {fov:g}: grid {enc.grid_hw}  predictor {counts['predictor']:,}  "
+                     f"policy CNN {counts['policy_cnn']:,}  total {counts['total']:,}")
+    for label in ("CNN2F-630K", "CNN2F"):
+        enc = _label_encoder(campaign, label, w, h, fov)
+        assert _n(enc.parameters()) == CNN_COUNTS[label][(w, h)], label
+        lines.append(f"{label:14s} {w}x{h}: total {_n(enc.parameters()):,}")
+    dvs = encoder_mapping["nature_cnn"](gym.spaces.Box(0, 255, (6, h, w), np.uint8),
+                                        **{k: v for k, v in campaign.MODELS["CNN-UnityRecipe+DVS"]["cfg"].items()
+                                           if k != "trainable"})
+    assert _n(dvs.parameters()) == DVSC6_COUNTS[(w, h)]
+    lines.append(f"{'DVSC6 ref':14s} {w}x{h}: CNN-UnityRecipe+DVS + NETT_DVS_COLOR=1, total {_n(dvs.parameters()):,}")
+    with capsys.disabled():
+        print("\n" + "\n".join(lines))
+    if (w, h) == (448, 280):
+        # the budget: ~0.63M, <= 1M; the control within 0.1% of STP-E; plain CNN2F is 6.4% short (> 5%: new key)
+        stp = STP_COUNTS[(w, h, fov)]["total"]
+        assert stp <= 1_000_000 and abs(stp - 630_000) / 630_000 < 0.01
+        assert abs(CNN_COUNTS["CNN2F-630K"][(w, h)] - stp) / stp < 0.001
+        assert (stp - CNN_COUNTS["CNN2F"][(w, h)]) / stp > 0.05
+
+
+def test_nowarp_keeps_every_parameter():
+    a, b = _enc(warp="affine"), _enc(warp="identity")
+    assert a.parameter_counts() == b.parameter_counts()
+    assert [k for k, _ in a.named_parameters()] == [k for k, _ in b.named_parameters()]
+    sa, sb = _state(a), _state(b)
+    assert all(torch.equal(sa[k], sb[k]) for k in sa)                   # same seed, same init
+
+
+# ================================================================ a = 0 -> identity, exactly
+
+def test_a_zero_gives_exactly_the_identity_affine_and_the_input_frame():
+    pred = STPPredictor(100, 4)
+    A = pred.affines(torch.zeros(3, 3))
+    eye = torch.eye(3)[:2].expand(3, 4, 2, 3)
+    assert torch.equal(A, eye)
+    torch.manual_seed(1)
+    x = torch.rand(3, 3, 60, 100)
+    vm = (torch.rand(60, 100) > 0.2).float()
+    a = torch.tensor([[0.0, 0.0, 0.0], [0.0, 0.0, 0.7], [0.0, 0.0, 0.0]])
+    xhat, wv, m = pred(x, a, vm)
+    for i in (0, 2):
+        assert torch.equal(xhat[i], x[i]) and torch.equal(wv[i, 0], vm)
+    assert not torch.equal(xhat[1], x[1])
+    assert torch.allclose(m.sum(1), torch.ones(3, 60, 100), atol=1e-6)
+
+
+def test_still_or_dead_zone_rows_give_exactly_the_nowarp_residual():
+    """valid = 0, an exactly-zero pose and a pose inside the dead zone all give the plain frame difference."""
+    a, b = _enc(warp="affine"), _enc(warp="identity")
+    prev, cur = _frames(4, seed=1), _frames(4, seed=2)
+    pose = _pose([0, 0, 0, 1], [0.029, -0.03, 0.5, 1], [5.0, 3.0, 40.0, 0], [0.02, 0.0, -0.49, 1])
+    obs = _obs(pose, prev, cur)
+    assert torch.equal(a.action(a.split(obs)[0]), torch.zeros(4, 3))
+    assert torch.equal(a.residual_input(obs), b.residual_input(obs))
+    moving = _obs(_pose([0, 0, 6.0, 1]), prev[:1], cur[:1])
+    assert not torch.equal(a.residual_input(moving), b.residual_input(moving))
+
+
+# ================================================================ dead zone
+
+def test_dead_zone_is_exact_and_soft_beyond_it():
+    enc = _enc()
+    assert tuple(enc.deadzone.tolist()) == pytest.approx(DEADZONE) and DEADZONE == (0.03, 0.03, 0.5)
+    inside = _pose([0.03, -0.03, 0.5, 1], [-0.0299, 0.01, -0.4999, 1], [0.0, 0.0, 0.0, 1])
+    assert torch.equal(enc.action(inside), torch.zeros(3, 3))
+    out = enc.action(_pose([0.13, -0.53, 10.5, 1], [-1.03, 0.0, -2.5, 1]))
+    assert out.tolist()[0] == pytest.approx([0.10, -0.50, 1.0], abs=1e-6)          # turn scale 10 deg
+    assert out.tolist()[1] == pytest.approx([-1.00, 0.0, -0.2], abs=1e-6)
+    assert torch.equal(enc.action(_pose([3.0, 2.0, 20.0, 0])), torch.zeros(1, 3))  # invalid -> 0
+
+
+# ================================================================ NoWarp residual == frame difference
+
+def test_nowarp_residual_is_the_frame_difference_and_never_runs_the_predictor():
+    enc = _enc(warp="identity")
+
+    def boom(*_a, **_k):
+        raise AssertionError("NoWarp ran the predictor")
+
+    enc.predictor.forward = boom
+    prev, cur = _frames(3, seed=3), _frames(3, seed=4)
+    obs = _obs(_pose([0.5, 0.1, 12.0, 1], [0, 0, 0, 1], [-1.0, 0, -18.0, 1]), prev, cur)
+    out = enc.residual_input(obs)
+    g_prev = enc.azel(prev.float() / 255.0)
+    g_cur = enc.azel(cur.float() / 255.0)
+    assert out.shape == (3, 6, 60, 100)
+    assert torch.equal(out[:, :3], (g_cur - g_prev) * enc.vm)
+    assert torch.equal(out[:, 3:], g_cur)
+    assert enc(obs).shape == (3, 32)
+
+
+# ================================================================ the remap and the warp
+
+def test_remap_matches_repo_b_lens_and_respects_its_rim_mask():
+    lens_mod = pytest.importorskip("nett_isaac.lens")
+    rim_mod = pytest.importorskip("nett_isaac.eye_rim_mask")
+    for (w, h, fov) in ((448, 280, 150.0), (128, 80, 300.0)):
+        enc = _enc(h=h, w=w, fov=fov)
+        lens = lens_mod.LensSpec(method="equisolid", fov_h_deg=fov, width=w, height=h)
+        ho, wo = enc.grid_hw
+        # A linear ramp is reproduced exactly by bilinear interpolation: azel(x + 0.5) is the source u in px.
+        ramp_u = (torch.arange(w, dtype=torch.float32) + 0.5).expand(1, 1, h, w)
+        ramp_v = (torch.arange(h, dtype=torch.float32) + 0.5).view(1, 1, h, 1).expand(1, 1, h, w)
+        u_got = enc.azel(ramp_u.contiguous())[0, 0].double()
+        v_got = enc.azel(ramp_v.contiguous())[0, 0].double()
+        tv = math.degrees(math.asin(min(1.0, lens.cy / (lens.cx / math.sin(math.radians(fov / 4))))) * 2)
+        az = torch.deg2rad((torch.arange(wo, dtype=torch.float64) + 0.5) * 1.5 - fov / 2)
+        el = torch.deg2rad(tv - (torch.arange(ho, dtype=torch.float64) + 0.5) * 1.5)
+        EL, AZ = torch.meshgrid(el, az, indexing="ij")
+        d = torch.stack([EL.cos() * AZ.sin(), EL.sin(), EL.cos() * AZ.cos()])
+        theta = torch.arccos(d[2].clamp(-1, 1))
+        phi = torch.atan2(d[1], d[0])
+        r = torch.as_tensor(lens.r_px(theta), dtype=torch.float64)
+        u_ref, v_ref = lens.cx + r * phi.cos(), lens.cy - r * phi.sin()
+        valid = enc.vm.bool()
+        assert int(valid.sum()) > 0.5 * ho * wo
+        assert torch.allclose(u_got[valid], u_ref[valid], atol=2e-3)
+        assert torch.allclose(v_got[valid], v_ref[valid], atol=2e-3)
+        assert torch.equal(u_got[~valid], torch.zeros_like(u_got[~valid]))      # invalid cells read 0
+        # every tap with weight lands on a pixel repo B's rim mask keeps
+        keep = rim_mod.rim_keep_mask(lens)[..., 0].reshape(-1)
+        used = enc.tap_idx[enc.tap_wt > 0]
+        assert bool((keep[used] == 1).all())
+        # and the rim zone cannot reach the grid
+        x = torch.rand(1, 3, h, w)
+        loud = x.clone().reshape(1, 3, -1)
+        loud[:, :, keep == 0] = 1000.0
+        assert torch.equal(enc.azel(x), enc.azel(loud.view(1, 3, h, w)))
+        ones = enc.azel(torch.ones(1, 1, h, w))[0, 0]
+        assert torch.allclose(ones, enc.vm, atol=1e-6)
+
+
+def test_lens_taps_refuse_bad_fov():
+    for fov in (0.0, -10.0, 361.0):
+        with pytest.raises(ValueError, match="fov_deg"):
+            lens_azel_taps(128, 80, fov)
+
+
+def test_warp_affine_matches_grid_sample_in_value_and_gradient():
+    torch.manual_seed(3)
+    x = torch.rand(2, 4, 9, 13, dtype=torch.float64)
+    A = (torch.eye(3, dtype=torch.float64)[:2].expand(2, 3, 2, 3)
+         + 0.15 * torch.randn(2, 3, 2, 3, dtype=torch.float64)).clone().requires_grad_(True)
+    out = warp_affine(x, A)
+    A2 = A.detach().clone().requires_grad_(True)
+    ref = torch.stack([F.grid_sample(x, F.affine_grid(A2[:, i], list(x.shape), align_corners=False),
+                                     mode="bilinear", padding_mode="zeros", align_corners=False)
+                       for i in range(3)], 1)
+    assert out.shape == ref.shape == (2, 3, 4, 9, 13)
+    assert torch.allclose(out, ref, atol=1e-12)
+    wgt = torch.randn_like(ref)
+    (out * wgt).sum().backward()
+    (ref * wgt).sum().backward()
+    assert torch.allclose(A.grad, A2.grad, atol=1e-9)
+
+
+# ================================================================ the byte transport
+
+def test_every_byte_survives_uint8_float_and_prepare_image():
+    b = torch.arange(256, dtype=torch.uint8)
+    assert torch.equal(torch.round(b.float() / 255.0 * 255.0).to(torch.uint8), b)
+    img = b.view(1, 1, 16, 16).expand(1, 3, 16, 16).contiguous()
+    space = gym.spaces.Box(0, 255, (3, 16, 16), np.uint8)
+    for stored in (img, img.float(), img.reshape(1, -1), img.reshape(1, -1).float()):   # uint8 / float buffers
+        prepared = prepare_image_tensor(stored, space)
+        assert prepared.dtype == torch.float32 and float(prepared.max()) <= 1.0
+        assert torch.equal(torch.round(prepared * 255.0).to(torch.uint8), img)
+
+
+def test_pose_row_round_trips_any_float32_bit_exactly():
+    torch.manual_seed(0)
+    pose = torch.cat([torch.randn(64, 4) * 100, _pose([0, -0.0, 1e-30, 1], [3.4e38, -1e-7, 179.99, 0])])
+    row = pose_to_row(pose, 20, 3)
+    assert row.shape == (66, 1, 20, 3) and row.dtype == torch.uint8
+    assert int(row[:, :, POSE_BYTES:].abs().sum()) == 0 and int(row[..., 1:].abs().sum()) == 0
+    got = bytes_to_pose(row[:, 0, :POSE_BYTES, 0])
+    assert torch.equal(got.view(torch.int32), pose.view(torch.int32))
+    assert torch.equal(bytes_to_pose(row[:, 0, :POSE_BYTES, 0].float()).view(torch.int32), pose.view(torch.int32))
+    with pytest.raises(ValueError, match="16 px"):
+        pose_to_row(pose, 15, 3)
+
+
+@pytest.mark.parametrize("layout", ["chw", "hwc"])
+def test_encoder_decodes_the_pose_from_uint8_and_float_storage(layout):
+    enc = _enc(layout=layout)
+    pose = _pose([0.25, -0.125, 7.5, 1], [0, 0, 0, 0])
+    obs = _obs(pose, _frames(2, seed=5), _frames(2, seed=6), layout=layout)
+    for stored in (obs, obs.float(), obs.reshape(2, -1), obs.reshape(2, -1).float()):
+        assert torch.equal(enc.stored_pose(stored), pose)
+    for stored in (obs, obs.float()):
+        got, _, _ = enc.split(stored)
+        assert torch.equal(got, pose)
+    assert torch.equal(enc.residual_input(obs), enc.residual_input(obs.float()))
+
+
+def test_split_refuses_an_observation_without_a_pose_row():
+    enc = _enc()
+    obs = torch.full((1, 6, H + 1, W), 7, dtype=torch.uint8)
+    with pytest.raises(ValueError, match="does not carry a pose row"):
+        enc.split(obs)
+
+
+# ================================================================ the wrappers on a fake NETTEnv
+
+class _Cfg:
+    body_turn_speed_limit = 20.0
+    body_move_speed_limit = 1.5
+
+
+class _Motor:
+    def __init__(self, n):
+        self.x = torch.zeros(n)
+        self.y_pos = torch.zeros(n)
+        self.yaw_deg = torch.zeros(n)
+        self.cfg = _Cfg()
+
+
+class _FakeNett(gym.Env):
+    """Just enough NETTEnv for the pose wrappers: a motor, the gated actions, batched uint8 frames in a dict."""
+
+    def __init__(self, n=2, h=6, w=20, channels=3, dtype=np.uint8, effective=True):
+        self.num_envs = n
+        self._step_in_episode = torch.zeros(n)
+        self._decision_period = 1
+        self.motor = _Motor(n)
+        if effective:
+            self._effective_actions = torch.zeros(n, 2)
+        self.observation_space = gym.spaces.Box(0, 255, (n, h, w, channels), dtype)
+        self.action_space = gym.spaces.Box(-1, 1, (n, 2), np.float32)
+        self._dtype = torch.uint8 if dtype == np.uint8 else torch.float32
+        self.t = 0
+        self.script = []          # per step: (x, y, yaw, done) tensors, applied to the motor
+        self.h, self.w, self.c, self.n = h, w, channels, n
+
+    def _frame(self):
+        g = torch.Generator().manual_seed(100 + self.t)
+        return {"policy": torch.randint(0, 256, (self.n, self.h, self.w, self.c), generator=g).to(self._dtype)}
+
+    def reset(self, **kwargs):
+        self.t = 0
+        return self._frame(), {}
+
+    def step(self, action):
+        x, y, yaw, done = self.script[self.t]
+        self.t += 1
+        self.motor.x, self.motor.y_pos, self.motor.yaw_deg = (torch.tensor(v, dtype=torch.float32) for v in (x, y, yaw))
+        if hasattr(self, "_effective_actions"):
+            self._effective_actions = torch.as_tensor(action, dtype=torch.float32)
+        term = torch.tensor(done, dtype=torch.bool).view(-1, 1)
+        return self._frame(), torch.zeros(self.n), term, torch.zeros_like(term), {}
+
+
+def test_executed_pose_is_the_body_frame_change_and_zero_at_reset_and_done():
+    env = _FakeNett(n=2)
+    env.motor.yaw_deg = torch.tensor([0.0, 179.0])
+    wrap = _load_wrapper("stp_pose_exec")(env)
+    assert type(wrap) is STPPoseExecuted
+    assert wrap.observation_space.shape == (2, 7, 20, 3)
+    obs, _ = wrap.reset()
+    assert obs["policy"].shape == (2, 7, 20, 3) and obs["policy"].dtype == torch.uint8
+    assert torch.equal(bytes_to_pose(obs["policy"][:, 0, :16, 0]), torch.zeros(2, 4))
+    env.script = [
+        # env 0: forward at yaw 0 is +y; env 1: yaw 179 -> -179 is a +2 deg turn
+        ([0.5, 0.0], [1.0, 0.0], [0.0, -179.0], [False, False]),
+        # env 0 at yaw 0 -> 90: no translation, +90; env 1 ends its episode (any pose) -> zeros, valid 0
+        ([0.5, 30.0], [1.0, -7.0], [90.0, 33.0], [False, True]),
+        # env 0 at yaw 90: forward is (-1, 0); env 1's delta is from the RESET pose it reported at done
+        ([-1.5, 30.0], [1.0, -6.0], [90.0, 33.0], [False, False]),
+    ]
+    seen = []
+    for _ in env.script:
+        obs, *_ = wrap.step(env.action_space.sample())
+        seen.append(bytes_to_pose(obs["policy"][:, 0, :16, 0]))
+        assert torch.equal(seen[-1], wrap.last_pose)
+        assert torch.equal(obs["policy"][:, 1:], env._frame()["policy"])      # the eye is untouched
+    assert seen[0].tolist()[0] == pytest.approx([1.0, 0.5, 0.0, 1.0])      # fwd +y, lat +x (right of heading)
+    assert seen[0].tolist()[1] == pytest.approx([0.0, 0.0, 2.0, 1.0], abs=1e-5)
+    assert seen[1].tolist()[0] == pytest.approx([0.0, 0.0, 90.0, 1.0], abs=1e-6)
+    assert seen[1][1].tolist() == [0.0, 0.0, 0.0, 0.0]
+    yaw33 = math.radians(33.0)
+    assert seen[2].tolist()[0] == pytest.approx([2.0, 0.0, 0.0, 1.0], abs=1e-5)
+    assert seen[2].tolist()[1] == pytest.approx([math.cos(yaw33), math.sin(yaw33), 0.0, 1.0], abs=1e-5)
+
+
+def test_commanded_pose_is_the_clamped_turn_move_in_physical_units():
+    env = _FakeNett(n=2)
+    wrap = _load_wrapper("stp_pose_cmd")(env)
+    assert type(wrap) is STPPoseCommanded
+    wrap.reset()
+    env.script = [([9.0, 9.0], [9.0, 9.0], [9.0, 9.0], [False, True])]
+    obs, *_ = wrap.step(torch.tensor([[0.5, -2.0], [1.0, 1.0]]))
+    got = bytes_to_pose(obs["policy"][:, 0, :16, 0])
+    assert got[0].tolist() == pytest.approx([-1.5, 0.0, 10.0, 1.0])         # move clamped to -1 x 1.5; turn 0.5 x 20
+    assert got[1].tolist() == [0.0, 0.0, 0.0, 0.0]                         # done -> zero, valid 0
+
+
+def test_pose_wrappers_refuse(monkeypatch):
+    with pytest.raises(ValueError, match="BEFORE framestack"):
+        STPPoseExecuted(_FakeNett(channels=6))
+    with pytest.raises(ValueError, match="16 px"):
+        STPPoseExecuted(_FakeNett(w=15))
+    with pytest.raises(ValueError, match="uint8"):
+        STPPoseExecuted(_FakeNett(dtype=np.float32)).reset()
+    with pytest.raises(RuntimeError, match="before reset"):
+        env = _FakeNett()
+        env.script = [([0, 0], [0, 0], [0, 0], [False, False])]
+        STPPoseExecuted(env).step(np.zeros((2, 2)))
+    env = _FakeNett(effective=False)
+    env.script = [([0, 0], [0, 0], [0, 0], [False, False])]
+    wrap = STPPoseCommanded(env)
+    wrap.reset()
+    with pytest.raises(RuntimeError, match="_effective_actions"):
+        wrap.step(np.zeros((2, 2)))
+    monkeypatch.setenv("NETT_WHEEL_TURNMOVE", "0")
+    with pytest.raises(ValueError, match="NETT_WHEEL_TURNMOVE=0"):
+        STPPoseCommanded(_FakeNett())
+    STPPoseExecuted(_FakeNett())                                            # executed does not care
+
+
+# ================================================================ shapes at 448x280 and 128x80
+
+@pytest.mark.parametrize("w,h,fov", [(448, 280, 150.0), (128, 80, 300.0)])
+def test_obs_and_space_shapes_through_the_arm_wrapper_chain(w, h, fov):
+    env = _FakeNett(n=2, h=h, w=w)
+    chain = ChannelsFirst(FrameStack(STPPoseExecuted(env), n_stack=2))
+    assert chain.observation_space.shape == (2, 6, h + 1, w)
+    obs, _ = chain.reset()
+    env.script = [([0.0, 0.0], [0.4, 0.0], [3.0, -2.0], [False, False])]
+    obs, *_ = chain.step(np.zeros((2, 2), np.float32))
+    pol = torch.as_tensor(np.asarray(obs["policy"]))                       # FrameStack hands numpy back
+    assert tuple(pol.shape) == (2, 6, h + 1, w) and pol.dtype == torch.uint8
+    enc = STPEEncoder(gym.spaces.Box(0, 255, chain.observation_space.shape[1:], np.uint8), features_dim=184,
+                      fov_deg=fov, num_frames=2)
+    pose, prev, cur = enc.split(pol)
+    assert pose.tolist()[0] == pytest.approx([0.4, 0.0, 3.0, 1.0], abs=1e-6)
+    assert prev.shape == cur.shape == (2, 3, h, w)
+    assert torch.equal(torch.round(cur * 255).to(torch.uint8), env._frame()["policy"].permute(0, 3, 1, 2))
+    assert enc.residual_input(pol).shape == (2, 6, *GRIDS[(w, h, fov)])
+    assert enc(pol).shape == (2, 184)
+
+
+# ================================================================ the agent: separate optimizer, no RL gradient
+
+class _AgentEnv:
+    num_envs = 1
+    num_agents = 1
+    observation_space = _space()
+    action_space = gym.spaces.Box(-1.0, 1.0, (2,), dtype=np.float32)
+    state_space = None
+
+
+def _agent(monkeypatch, *, warp="affine", aux="stp", seed=0, epochs=1, mini_batches=1, rollouts=16, shared=True,
+           weight="1"):
+    from nett_skrl.brain.agent_factory import build_agents
+    from nett_skrl.brain.brain import Brain
+    if aux is None:
+        monkeypatch.delenv("NETT_AUX_LOSS", raising=False)
+        monkeypatch.delenv("NETT_AUX_WEIGHT", raising=False)
+    else:
+        monkeypatch.setenv("NETT_AUX_LOSS", aux)
+        monkeypatch.setenv("NETT_AUX_WEIGHT", weight)
+    torch.manual_seed(seed)
+    brain = Brain(encoder="stp_e", algorithm="PPO",
+                  encoder_cfg={"trainable": True, "features_dim": 32, "num_frames": 2, "warp": warp, "fov_deg": FOV},
+                  algorithm_cfg={"rollouts": rollouts, "mini_batches": mini_batches, "learning_epochs": epochs,
+                                 "grad_norm_clip": 0.5, "learning_rate": 1e-4},
+                  model={"shared_encoder": shared, "hidden_sizes": []})
+    agent = build_agents(brain, _AgentEnv(), torch.device("cpu"))[0]
+    agent.init(trainer_cfg=None)
+    agent.enable_training_mode(True)
+    return agent
+
+
+def _flat_obs(t, moving=True):
+    pose = _pose([0.4, 0.0, 6.0 if moving else 0.0, 0.0 if t == 0 else 1.0])
+    return _obs(pose, _frames(1, seed=2 * t), _frames(1, seed=2 * t + 1)).reshape(1, -1).float()
+
+
+def _rollout(agent, seed=1, steps=16):
+    g = torch.Generator().manual_seed(seed)
+    torch.manual_seed(seed)
+    obs = _flat_obs(0)
+    with torch.no_grad():
+        for t in range(steps):
+            acts, _ = agent.act(obs, None, timestep=t, timesteps=100)
+            nxt = _flat_obs(t + 1)
+            agent.record_transition(observations=obs, states=None, actions=acts,
+                                    rewards=torch.rand(1, 1, generator=g), next_observations=nxt,
+                                    next_states=None, terminated=torch.zeros(1, 1, dtype=torch.bool),
+                                    truncated=torch.zeros(1, 1, dtype=torch.bool), infos={},
+                                    timestep=t, timesteps=100)
+            obs = nxt
+    torch.manual_seed(seed + 1000)
+    agent.update(timestep=steps, timesteps=100)
+
+
+def _record_ppo_grads(agent):
+    steps = []
+    named = [*(("policy." + k, p) for k, p in agent.policy.named_parameters()),
+             *(("value." + k, p) for k, p in agent.value.named_parameters())]
+
+    def hook(_opt, _args, _kwargs):
+        steps.append({k: None if p.grad is None else p.grad.detach().clone() for k, p in named})
+
+    agent.optimizer.register_step_pre_hook(hook)
+    return steps
+
+
+@pytest.mark.parametrize("warp", ["affine", "identity"])
+def test_predictor_leaves_ppo_and_has_its_own_adam(monkeypatch, warp):
+    agent = _agent(monkeypatch, warp=warp)
+    term, enc = agent._aux, agent.policy.encoder
+    assert isinstance(term, STPTerm) and agent.value.encoder is enc
+    ppo_ids = {id(p) for g in agent.optimizer.param_groups for p in g["params"]}
+    pred_ids = {id(p) for p in enc.predictor_parameters()}
+    assert pred_ids and not ppo_ids & pred_ids
+    assert {id(p) for p in enc.policy_parameters()} <= ppo_ids              # the policy CNN stays PPO's
+    assert list(term.head.parameters()) == []
+    if warp == "affine":
+        aux_ids = [id(p) for g in term.optimizer.param_groups for p in g["params"]]
+        assert set(aux_ids) == pred_ids and len(aux_ids) == len(pred_ids)
+        assert isinstance(term.optimizer, torch.optim.Adam) and term.optimizer.param_groups[0]["lr"] == 2e-3
+        assert agent.checkpoint_modules["stp_optimizer"] is term.optimizer
+    else:
+        assert term.optimizer is None and "stp_optimizer" not in agent.checkpoint_modules
+
+
+def test_policy_loss_reaches_the_policy_cnn_and_never_the_predictor(monkeypatch):
+    agent = _agent(monkeypatch, epochs=2, mini_batches=2)
+    steps = _record_ppo_grads(agent)
+    pred_before = _state(agent.policy.encoder.predictor)
+    _rollout(agent)
+    assert len(steps) == 4 and agent._aux.n_steps == 4
+    for step in steps:
+        pred = [k for k in step if k.startswith("policy.encoder.predictor.")]
+        cnn = [k for k in step if k.startswith("policy.encoder.policy_cnn.")]
+        assert pred and all(step[k] is None for k in pred)
+        assert cnn and all(step[k] is not None for k in cnn) and any(float(step[k].abs().sum()) > 0 for k in cnn)
+    after = agent.policy.encoder.predictor.state_dict()
+    assert any(not torch.equal(v, after[k]) for k, v in pred_before.items())     # the aux trained it
+
+
+def test_plain_ppo_alone_never_moves_the_predictor(monkeypatch):
+    """aux=None: the predictor is in PPO's optimizer but the policy loss gives it no gradient -> unchanged."""
+    agent = _agent(monkeypatch, aux=None)
+    before = _state(agent.policy.encoder.predictor)
+    cnn_before = _state(agent.policy.encoder.policy_cnn)
+    _rollout(agent)
+    after = agent.policy.encoder.predictor.state_dict()
+    assert all(torch.equal(v, after[k]) for k, v in before.items())
+    assert any(not torch.equal(v, agent.policy.encoder.policy_cnn.state_dict()[k]) for k, v in cnn_before.items())
+
+
+def test_bind_agent_refuses_unshared_encoder_and_inert_weight(monkeypatch):
+    with pytest.raises(ValueError, match="shared_encoder=True"):
+        _agent(monkeypatch, shared=False)
+    with pytest.raises(ValueError, match="aux_weight=2"):
+        _agent(monkeypatch, weight="2")
+
+
+# ================================================================ the aux on a memory
+
+class _Memory:
+    """skrl's layout: flat (T, env, D) uint8 rows."""
+
+    def __init__(self, valid, moving=True, seed=0):
+        t_max, n_env = valid.shape
+        rows = []
+        for t in range(t_max):
+            for e in range(n_env):
+                pose = _pose([0.4, 0.0, 6.0 if moving else 0.0, float(valid[t, e])]) if valid[t, e] \
+                    else torch.zeros(1, 4)
+                k = seed + 2 * (t * n_env + e)
+                rows.append(_obs(pose, _frames(1, seed=k), _frames(1, seed=k + 1)).reshape(-1))
+        self.tensors = {"observations": torch.stack(rows).view(t_max, n_env, -1)}
+        self.memory_size, self.filled, self.memory_index = t_max, True, 0
+
+
+def _term(enc):
+    term = STPTerm(enc)
+    term.build_optimizer()
+    return term
+
+
+def test_aux_never_draws_a_reset_row_and_steps_only_the_predictor():
+    enc = _enc()
+    valid = torch.zeros(6, 2, dtype=torch.bool)
+    valid[1, 0] = valid[4, 1] = True
+    term = _term(enc)
+    term.attach_memory(_Memory(valid))
+    for _ in range(20):
+        obs, frac = term._draw(enc)
+        assert frac == pytest.approx(2 / 12)
+        assert bool((enc.stored_pose(obs)[:, 3] == 1).all())
+    cnn = _state(enc.policy_cnn)
+    pred = _state(enc.predictor)
+    out = term.compute(enc, None)
+    assert out.shape == () and float(out) == 0.0 and not out.requires_grad
+    assert term.n_steps == 1 and all(p.grad is None for p in enc.parameters())
+    assert all(torch.equal(v, enc.policy_cnn.state_dict()[k]) for k, v in cnn.items())
+    assert any(not torch.equal(v, enc.predictor.state_dict()[k]) for k, v in pred.items())
+    for key in ("B", "loss", "copy_loss", "skill", "valid_frac", "moving_frac", "mask_bg", "g_turn",
+                "valid_rows", "lr"):
+        assert key in term.last_scalars, key
+
+
+def test_aux_with_no_valid_row_takes_no_step_and_a_partial_ring_reads_only_written_rows():
+    enc = _enc()
+    term = _term(enc)
+    term.attach_memory(_Memory(torch.zeros(4, 2, dtype=torch.bool)))
+    w0 = enc.predictor.G.detach().clone()
+    out = term.compute(enc, None)
+    assert float(out) == 0.0 and term.n_steps == 0 and term.last_scalars == {"valid_rows": 0.0}
+    assert torch.equal(enc.predictor.G, w0)
+    valid = torch.zeros(6, 2, dtype=torch.bool)
+    valid[:, :] = True
+    mem = _Memory(valid)
+    mem.tensors["observations"][3:] = 0                                     # unwritten rows: valid 0 anyway ...
+    mem.tensors["observations"][3:, :, 3 * (H + 1) * W:3 * (H + 1) * W + 16] = torch.tensor(
+        np.frombuffer(np.array([0, 0, 0, 1], np.float32).tobytes(), np.uint8))  # ... except this valid junk
+    mem.filled, mem.memory_index = False, 3
+    term.attach_memory(mem)
+    for _ in range(10):
+        obs, frac = term._draw(enc)
+        assert frac == 1.0
+        hits = [(t, e) for t in range(6) for e in range(2) if any(torch.equal(o, mem.tensors["observations"][t, e])
+                                                                  for o in obs)]
+        assert hits and all(t < 3 for t, _ in hits)
+
+
+def test_nowarp_aux_scores_but_never_steps():
+    enc = _enc(warp="identity")
+    term = _term(enc)
+    assert term.optimizer is None
+    term.attach_memory(_Memory(torch.ones(3, 2, dtype=torch.bool)))
+    before = _state(enc)
+    out = term.compute(enc, None)
+    assert float(out) == 0.0 and term.n_steps == 0
+    assert term.last_scalars["loss"] == pytest.approx(term.last_scalars["copy_loss"])
+    assert term.last_scalars["lr"] == 0.0
+    assert all(torch.equal(v, enc.state_dict()[k]) for k, v in before.items())
+
+
+def test_charbonnier_is_the_masked_mean():
+    p, t = torch.zeros(1, 3, 2, 2), torch.ones(1, 3, 2, 2)
+    w = torch.tensor([[[[1.0, 0.0], [0.0, 0.0]]]])
+    assert float(charbonnier(p, t, w)) == pytest.approx(math.sqrt(1 + 1e-6))
+    assert float(charbonnier(p, t, torch.zeros_like(w))) == 0.0
+
+
+def _shift_rows(n=6, shift=6, seed=0):
+    """A smooth texture and the same texture shifted `shift` px in the eye, with a matching turn in the pose."""
+    g = torch.Generator().manual_seed(seed)
+    rows = []
+    for i in range(n):
+        lo = torch.rand(1, 3, 10, 18, generator=g)
+        big = F.interpolate(lo, size=(H, W + shift), mode="bilinear", align_corners=False)
+        prev = (big[..., shift:] * 255).round().to(torch.uint8)
+        cur = (big[..., :W] * 255).round().to(torch.uint8)
+        rows.append(_obs(_pose([0.0, 0.0, 6.0, 1.0]), prev, cur).reshape(-1))
+    return torch.stack(rows)
+
+
+def test_prediction_loss_decreases_over_cpu_steps():
+    enc = _enc(seed=0)
+    term = _term(enc)
+    rows = _shift_rows()
+    mem = _Memory(torch.ones(1, 1, dtype=torch.bool))
+    mem.tensors["observations"] = rows.view(rows.shape[0], 1, -1)
+    mem.memory_size = rows.shape[0]
+    term.attach_memory(mem)
+    torch.manual_seed(0)
+    losses = []
+    for _ in range(40):
+        term.compute(enc, None)
+        losses.append(term.last_scalars["loss"])
+    first, last = sum(losses[:5]) / 5, sum(losses[-5:]) / 5
+    assert all(math.isfinite(v) for v in losses)
+    assert last < 0.8 * first, (first, last)
+    assert term.n_steps == 40
+
+
+# ================================================================ knobs and refusals
+
+@pytest.mark.parametrize("value", ["0", "-1e-3", "nan", "inf", "abc", ""])
+def test_lr_knob_refuses(monkeypatch, value):
+    monkeypatch.setenv("NETT_STP_LR", value)
+    with pytest.raises(ValueError, match="NETT_STP_LR"):
+        STPTerm(_enc())
+
+
+@pytest.mark.parametrize("value", ["1", "0", "-4", "2.5", "x", ""])
+def test_batch_knob_refuses(monkeypatch, value):
+    monkeypatch.setenv("NETT_STP_BATCH", value)
+    with pytest.raises(ValueError, match="NETT_STP_BATCH"):
+        STPTerm(_enc())
+
+
+def test_knobs_accept_good_values(monkeypatch):
+    monkeypatch.setenv("NETT_STP_LR", "5e-4")
+    monkeypatch.setenv("NETT_STP_BATCH", "16")
+    term = _term(_enc())
+    assert term.lr == 5e-4 and term.batch == 16 and term.optimizer.param_groups[0]["lr"] == 5e-4
+    monkeypatch.delenv("NETT_STP_LR")
+    monkeypatch.delenv("NETT_STP_BATCH")
+    term = STPTerm(_enc())
+    assert term.lr == 2e-3 and term.batch == 32
+
+
+def test_term_refuses_another_encoder():
+    host = encoder_mapping["nature_cnn"](gym.spaces.Box(0, 255, (6, 80, 128), np.uint8), features_dim=16)
+    with pytest.raises(TypeError, match="STP-E predictor"):
+        STPTerm(host)
+
+
+@pytest.mark.parametrize("kw,match", [
+    ({"warp": "bogus"}, "warp must be one of"),
+    ({"fov_deg": None}, "RESOLVED camera aperture"),
+    ({"fov_deg": 0.0}, "RESOLVED camera aperture"),
+    ({"fov_deg": 400.0}, "RESOLVED camera aperture"),
+    ({"fov_deg": "150"}, "RESOLVED camera aperture"),
+    ({"num_warps": 0}, "num_warps"),
+    ({"features_dim": 0}, "features_dim"),
+    ({"channels_per_frame": 6}, "channels_per_frame"),
+    ({"num_frames": 3}, "num_frames|frames"),
+])
+def test_encoder_refusals(kw, match):
+    args = {"features_dim": 32, "fov_deg": FOV, "num_frames": 2, **kw}
+    with pytest.raises(ValueError, match=match):
+        STPEEncoder(_space(), **args)
+
+
+def test_encoder_refuses_wrong_lens_channels_and_room(monkeypatch):
+    with pytest.raises(ValueError, match="6 channels|stacked RGB"):
+        STPEEncoder(gym.spaces.Box(0, 255, (3, H + 1, W), np.uint8), features_dim=8, fov_deg=FOV)
+    with pytest.raises(ValueError, match="pose row"):
+        STPEEncoder(gym.spaces.Box(0, 255, (6, H + 1, 12), np.uint8), features_dim=8, fov_deg=FOV)
+    monkeypatch.setenv("NETT_FISHEYE_METHOD", "equidistant")
+    with pytest.raises(ValueError, match="equisolid"):
+        _enc()
+
+
+def test_stray_stp_knob_on_another_label_refuses(campaign, monkeypatch):
+    monkeypatch.delenv("NETT_STP_BATCH")
+    for label, spec in campaign.MODELS.items():
+        assert campaign.refuse_stray_stp_knobs(label, spec) is None
+    monkeypatch.setenv("NETT_STP_LR", "1e-3")
+    for label in ("CNN2F", "CNN2F-630K", "XSP2", "CNN-UnityRecipe+DVS"):
+        with pytest.raises(ValueError, match="not an STP-E arm"):
+            campaign.refuse_stray_stp_knobs(label, campaign.MODELS[label])
+    for label in STP_LABELS:
+        assert campaign.refuse_stray_stp_knobs(label, campaign.MODELS[label]) is None
+
+
+def test_stp_encoder_cfg_injects_the_resolved_fov_only_for_stp_e(campaign):
+    for label, spec in campaign.MODELS.items():
+        out = campaign.stp_encoder_cfg(spec, 150.0)
+        if spec["encoder"] != "stp_e":
+            assert out is spec["cfg"], label                               # the same object: nothing changes
+        else:
+            assert out == {**spec["cfg"], "fov_deg": 150.0} and "fov_deg" not in spec["cfg"], label
+            assert type(out["fov_deg"]) is float
+    with pytest.raises(ValueError, match="must not carry fov_deg"):
+        campaign.stp_encoder_cfg({"encoder": "stp_e", "cfg": {"fov_deg": 150.0}}, 150.0)
+
+
+def test_knobs_are_literal_reads_and_in_the_env_index():
+    text = (_SRC / "nett_skrl" / "brain" / "aux" / "stp_aux.py").read_text()
+    index = (_SRC / "docs" / "env_vars.md").read_text()
+    for k in KNOBS:
+        assert f'"{k}"' in text and f"`{k}`" in index, k
+
+
+# ================================================================ existing models unchanged
+
+def _old_module(src, name):
+    spec = importlib.util.spec_from_loader(name, loader=None)
+    mod = importlib.util.module_from_spec(spec)
+    mod.__dict__["__file__"] = str(_TRAIN)
+    exec(compile(src, name, "exec"), mod.__dict__)
+    return mod
+
+
+def test_labels_and_registries(campaign):
+    for label in STP_LABELS:
+        spec = campaign.MODELS[label]
+        assert spec["encoder"] == "stp_e" and spec["aux"] == "stp" and spec["framestack"] is True
+        assert spec["pre"] == (("stp_pose_cmd",) if label == "STP-E-Cmd" else ("stp_pose_exec",))
+    assert campaign.MODELS["STP-E-NoWarp"]["cfg"]["warp"] == "identity"
+    assert campaign.MODELS["CNN2F-630K"] == {**campaign.MODELS["CNN2F"],
+                                             "cfg": {**campaign.MODELS["CNN2F"]["cfg"], "features_dim": 553}}
+    assert encoder_mapping["stp_e"] is STPEEncoder and "stp" in AUX_LOSSES
+    assert _load_wrapper("stp_pose_exec") is STPPoseExecuted and _load_wrapper("stp_pose_cmd") is STPPoseCommanded
+
+
+def test_existing_models_and_registries_are_unchanged(campaign):
+    base = _base()
+    old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS
+    assert set(old.MODELS) <= set(campaign.MODELS)
+    for label, spec_old in old.MODELS.items():
+        assert campaign.MODELS[label] == spec_old, label
+        assert campaign.stp_encoder_cfg(campaign.MODELS[label], 150.0) is campaign.MODELS[label]["cfg"], label
+    assert campaign.EXPERIMENTS == old.EXPERIMENTS
+    # no existing label reaches the pose row or the stp aux
+    for label, spec in campaign.MODELS.items():
+        if label not in STP_LABELS:
+            assert not {"stp_pose_exec", "stp_pose_cmd"} & set(spec.get("pre", ())), label
+            assert spec.get("aux") != "stp" and spec["encoder"] != "stp_e", label
+
+    def keys(src, opener):
+        body = src.split(opener, 1)[1].split("\n}", 1)[0]
+        return {ln.split('"')[1] for ln in body.splitlines() if ln.strip().startswith('"')}
+
+    for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
+                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp"}),
+                                ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
+                                 {"stp_pose_exec", "stp_pose_cmd"})):
+        before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
+        after = keys((_SRC / rel).read_text(), opener)
+        assert before and after - before == gained and before <= after, rel
+
+
+def test_existing_encoder_builds_are_bit_identical_to_the_base(campaign):
+    """CNN2F, XSP2 and DVSC6's encoder built from the base tree's MODELS spec equal today's, weight for weight."""
+    old = _old_module(_git("show", f"{_base()}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp2")
+    for label in ("CNN2F", "CNN-UnityRecipe+DVS"):
+        built = []
+        for mod in (old, campaign):
+            cfg = {k: v for k, v in campaign.stp_encoder_cfg(mod.MODELS[label], 150.0).items() if k != "trainable"}
+            torch.manual_seed(0)
+            built.append(encoder_mapping[mod.MODELS[label]["encoder"]](
+                gym.spaces.Box(0, 255, (6, 80, 128), np.uint8), **cfg))
+        a, b = (_state(m) for m in built)
+        assert list(a) == list(b) and all(torch.equal(a[k], b[k]) for k in a), label
+
+
+# ================================================================ the MODELS import-time assertions
+
+@pytest.mark.parametrize("old,new", [
+    # the commanded arm silently reading the executed pose
+    ('"STP-E-Cmd":    dict(encoder="stp_e", cfg=dict(STP_E_CFG), framestack=True, pre=("stp_pose_cmd",)',
+     '"STP-E-Cmd":    dict(encoder="stp_e", cfg=dict(STP_E_CFG), framestack=True, pre=("stp_pose_exec",)'),
+    # NoWarp differing in more than the warp
+    ('STP_E_NOWARP_CFG = {**STP_E_CFG, "warp": "identity"}',
+     'STP_E_NOWARP_CFG = {**STP_E_CFG, "warp": "identity", "features_dim": 100}'),
+    # the pose row leaking into another model's observation
+    ('"CNN2F-630K":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 553, "conv_dim": 75}, framestack=True)',
+     '"CNN2F-630K":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 553, "conv_dim": 75}, framestack=True, pre=("stp_pose_exec",))'),
+    # the control drifting off CNN2F
+    ('"CNN2F-630K":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 553, "conv_dim": 75}',
+     '"CNN2F-630K":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 553, "conv_dim": 64}'),
+])
+def test_import_time_assertions_fire_on_a_mutated_models(campaign, old, new):
+    src = _TRAIN.read_text()
+    assert src.count(old) == 1, old
+    _old_module(src, "_campaign_train_unmutated")                           # the real source passes
+    with pytest.raises(AssertionError):
+        _old_module(src.replace(old, new), "_campaign_train_mutated")

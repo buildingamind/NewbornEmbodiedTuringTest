@@ -19,6 +19,7 @@ from .resnet10_cnn import Resnet10CNN
 from .resnet18_cnn import Resnet18CNN
 from .simclr_cltt import SimCLRCLTT
 from .small_cnn import SmallCNN
+from .stp_e import STPEEncoder
 from .xsp import XSPEncoder
 from .xsp2 import XSP2Encoder
 from .vit_slot_recon import ViTSlotRecon
@@ -41,6 +42,7 @@ __all__ = [
     "Resnet18CNN",
     "SimCLRCLTT",
     "SmallCNN",
+    "STPEEncoder",
     "XSPEncoder",
     "XSP2Encoder",
     "ViTSlotRecon",

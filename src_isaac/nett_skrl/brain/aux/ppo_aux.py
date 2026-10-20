@@ -190,6 +190,13 @@ def _build_slot_recon(encoder):
     return SlotReconTerm(encoder)
 
 
+def _build_stp(encoder):
+    """STP-E (workspace DECISIONS §170): the action-warp predictor of the stp_e encoder, trained ONLY by a
+    Charbonnier next-frame loss with the term's OWN Adam (brain/aux/stp_aux.py); AuxLossPPO calls its bind_agent."""
+    from .stp_aux import STPTerm
+    return STPTerm(encoder)
+
+
 def _build_ijepa(encoder):
     """I-JEPA (owner 2026-10-15): predict EMA-teacher patch tokens of 4 target blocks from a
     context block (brain/aux/jepa_aux.py)."""
@@ -243,6 +250,8 @@ AUX_LOSSES = {
     "xsp2": _build_xsp2,
     # ── ViT-SlotRecon (owner DECISIONS §162). Slots of frame t -> frame t+1, own optimizer (slot_recon_aux.py).
     "slot_recon": _build_slot_recon,
+    # ── STP-E (owner DECISIONS §170). Action-warp predictor, own optimizer (stp_aux.py).
+    "stp": _build_stp,
     # ── JEPA (owner 2026-10-15). EMA-teacher latent prediction under multiblock masks.
     "ijepa": _build_ijepa,
     "vjepa": _build_vjepa,

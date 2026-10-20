@@ -247,6 +247,15 @@ XSP_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 75, "policy_input
 #: anything but 2 (its dorsal Conv3d has a depth-2 kernel). Every XSP2 knob is an AUX knob
 #: (NETT_XSP2_*, read in brain/aux/xsp2_aux.py), recorded by the launcher's environ capture.
 XSP2_CFG = {"trainable": True, "features_dim": 160, "conv_dim": 75, "num_frames": _FRAMESTACK_N}
+#: The "STP-E" label's encoder cfg (workspace DECISIONS §170; encoders/stp_e.py, aux brain/aux/stp_aux.py). The
+#: policy CNN's last Linear is sized so the encoder is ~0.63M at the 448x280 / FOV 150 eye (the presenter's budget):
+#: predictor 201,085 + policy CNN 427,544 = 628,629 (tests/test_stp_e.py pins it). The az/el grid is fixed at 1.5
+#: deg per cell, so a wider aperture grows the grid and the Linear: 128x80 / FOV 300 gives 1,370,517. fov_deg is
+#: NOT here: main() writes the resolved aperture into the cfg it hands the brain (stp_encoder_cfg). num_frames is
+#: _FRAMESTACK_N; the encoder refuses anything but 2.
+STP_E_CFG = {"trainable": True, "features_dim": 184, "num_frames": _FRAMESTACK_N, "warp": "affine"}
+#: "STP-E-NoWarp": the same modules and parameter count, warps forced to the identity (the plain frame difference).
+STP_E_NOWARP_CFG = {**STP_E_CFG, "warp": "identity"}
 #: 3DCNN-CLTT-Ref's cfg, spread by its §162 add. 3 ~500K rungs (asserted equal to the label's after MODELS).
 MODELS_S162_3DCNN_REF = {"trainable": True, "features_dim": 512, "conv_dim": 77, "num_frames": _FRAMESTACK_N}
 #: The "ViT-SlotRecon" label's encoder cfg (owner, workspace DECISIONS §162; encoders/vit_slot_recon.py). The trunk
@@ -1242,6 +1251,23 @@ MODELS: dict[str, dict] = {
     "V-JEPA": dict(encoder="jepa", cfg=VJEPA_CFG, framestack=True, aux="vjepa", aux_weight=1.0),
     "I-JEPA-13M": dict(encoder="jepa", cfg=IJEPA13M_CFG, framestack=False, aux="ijepa", aux_weight=1.0),
     "V-JEPA-13M": dict(encoder="jepa", cfg=VJEPA13M_CFG, framestack=True, aux="vjepa", aux_weight=1.0),
+    # ══════════════════════════════════════════════════════════════════════════════════════════
+    # STP-E -- the presenter's ego-STP, approved for parsing at eye 448x280 (workspace DECISIONS §170). The
+    # policy reads [residual x_t - xhat_t, x_t] on a fixed az/el grid, where xhat_t is x_{t-1} warped by the
+    # pose change between the two frames (encoders/stp_e.py). The predictor is trained ONLY by its own Adam
+    # (aux "stp", brain/aux/stp_aux.py: Charbonnier, never across a reset); no RL gradient reaches it.
+    # The pose change rides in one extra image row per frame (body/wrappers/stp_pose.py), so the wrapper is
+    # `pre` (innermost) and these are the only labels that declare it. Default head, like CNN2F.
+    #   STP-E         EXECUTED pose change (motor pose after physics), body frame of the previous pose
+    #   STP-E-NoWarp  the same model, warps forced to the identity: the residual is the plain frame difference
+    #   STP-E-Cmd     the COMMANDED [turn, move] in the same physical units (lat = 0)
+    # ENCODER params at 448x280 / FOV 150: 628,629 each (predictor 201,085 + policy CNN 427,544).
+    "STP-E":        dict(encoder="stp_e", cfg=dict(STP_E_CFG), framestack=True, pre=("stp_pose_exec",), aux="stp", aux_weight=1.0),
+    "STP-E-NoWarp": dict(encoder="stp_e", cfg=dict(STP_E_NOWARP_CFG), framestack=True, pre=("stp_pose_exec",), aux="stp", aux_weight=1.0),
+    "STP-E-Cmd":    dict(encoder="stp_e", cfg=dict(STP_E_CFG), framestack=True, pre=("stp_pose_cmd",), aux="stp", aux_weight=1.0),
+    # The size-matched plain-CNN control: "CNN2F" with features_dim moved 512 -> 553, NOTHING else, so the encoder
+    # is 628,155 at 448x280 (STP-E 628,629; CNN2F itself is 588,139 there, 6.4% short). 128x80: 835,530.
+    "CNN2F-630K":   dict(encoder="nature_cnn", cfg={"trainable": True, "features_dim": 553, "conv_dim": 75}, framestack=True),
 }
 
 # ⛔ `_3DCNN_BASE_CFG` above is a SECOND COPY of "3DCNN"'s cfg literal, and a second copy is a
@@ -1323,6 +1349,20 @@ for _lbl, _cfg, _n, _st in (("XSP2-MAP70x112", XSP2_MAP70x112_CFG, 7840, 4), ("X
     assert _cfg == {**XSP2_MAP35x56_CFG, "features_dim": _n, "map_stride": _st}, _lbl
     assert _n == (448 // _st) * (280 // _st), _lbl
 del _lbl, _cfg, _n, _st
+# ⛔ THE STP-E LABELS ARE THEIR DECLARED CFGS (DECISIONS §170): the three differ ONLY in the warp mode and in which
+# pose wrapper writes the row; the control is CNN2F with features_dim moved, nothing else.
+assert MODELS["STP-E"] == dict(encoder="stp_e", cfg=STP_E_CFG, framestack=True, pre=("stp_pose_exec",), aux="stp",
+                               aux_weight=1.0)
+assert MODELS["STP-E-NoWarp"] == {**MODELS["STP-E"], "cfg": STP_E_NOWARP_CFG}
+assert MODELS["STP-E-Cmd"] == {**MODELS["STP-E"], "pre": ("stp_pose_cmd",)}
+assert set(STP_E_CFG) == {"trainable", "features_dim", "num_frames", "warp"}, sorted(STP_E_CFG)
+assert STP_E_CFG["num_frames"] == _FRAMESTACK_N and STP_E_CFG["warp"] == "affine"
+assert {k: v for k, v in STP_E_NOWARP_CFG.items() if k != "warp"} == {k: v for k, v in STP_E_CFG.items() if k != "warp"}
+assert MODELS["CNN2F-630K"] == {**MODELS["CNN2F"], "cfg": {**MODELS["CNN2F"]["cfg"], "features_dim": 553}}
+# ⛔ THE POSE ROW REACHES NO OTHER MODEL: only the STP-E encoder strips it, so only its labels may declare it.
+assert {k for k, v in MODELS.items() if {"stp_pose_exec", "stp_pose_cmd"} & set(v.get("pre", ()))} \
+    == {k for k, v in MODELS.items() if v["encoder"] == "stp_e"} == {"STP-E", "STP-E-NoWarp", "STP-E-Cmd"}
+assert {k for k, v in MODELS.items() if v.get("aux") == "stp"} == {"STP-E", "STP-E-NoWarp", "STP-E-Cmd"}
 # ⛔ A ViT-CLTT-Ref SIZE RUNG IS ViT-CLTT-Ref WITH embed_dim MOVED, NOTHING ELSE (DECISIONS §82).
 for _lbl in ("ViT-CLTT-Ref-250K", "ViT-CLTT-Ref-500K", "ViT-CLTT-Ref-1M", "ViT-CLTT-Ref-2M"):
     _r, _b = MODELS[_lbl], MODELS["ViT-CLTT-Ref"]
@@ -1668,6 +1708,28 @@ def refuse_stray_slot_recon_knobs(model: str, spec: dict) -> None:
     if stray:
         raise ValueError(f"{stray} set but arm {model!r} is not a slot_recon arm (aux "
                          f"{spec.get('aux')!r}); nothing would read them. Unset them.")
+
+
+def refuse_stray_stp_knobs(model: str, spec: dict) -> None:
+    """A NETT_STP_* knob on a label whose aux is not "stp" is read by NOTHING (the xsp2 rule)."""
+    if spec.get("aux") == "stp":
+        return
+    stray = sorted(k for k in os.environ if k.startswith("NETT_STP_"))
+    if stray:
+        raise ValueError(f"{stray} set but arm {model!r} is not an STP-E arm (aux "
+                         f"{spec.get('aux')!r}); nothing would read them. Unset them.")
+
+
+def stp_encoder_cfg(spec: dict, fov_deg: float) -> dict:
+    """The encoder cfg the brain gets: ``spec["cfg"]`` itself (the same object) for every encoder but "stp_e";
+    for "stp_e", a copy with the RESOLVED aperture as ``fov_deg``, because its az/el grid -- and so the policy
+    CNN's Linear -- is a function of the field of view (encoders/stp_e.py). Resolved here, never typed: the
+    encoder refuses a missing value, and a cfg that already names one refuses rather than being overwritten."""
+    if spec.get("encoder") != "stp_e":
+        return spec["cfg"]
+    if "fov_deg" in spec["cfg"]:
+        raise ValueError("an stp_e cfg must not carry fov_deg; main() writes the resolved camera aperture.")
+    return {**spec["cfg"], "fov_deg": float(fov_deg)}
 
 
 def _slug(s: str) -> str:
@@ -2032,6 +2094,7 @@ def main() -> int:
     refuse_stray_xsp_knobs(model, spec)
     refuse_stray_xsp2_knobs(model, spec)
     refuse_stray_slot_recon_knobs(model, spec)
+    refuse_stray_stp_knobs(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:
@@ -2241,6 +2304,9 @@ def main() -> int:
                      *( ["random-first-frame"] if _env_flag("NETT_RANDOM_FIRST_FRAME") else [] )],
         },
     }
+    # STP-E (DECISIONS §170): the stp_e encoder's az/el grid depends on the aperture, so it gets the RESOLVED one in
+    # its cfg; every other encoder keeps spec["cfg"] itself (stp_encoder_cfg returns the same object).
+    brain["encoder_cfg"] = stp_encoder_cfg(spec, camera_fov_resolved)
 
     config: dict = {
         "name": name,

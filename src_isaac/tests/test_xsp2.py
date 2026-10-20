@@ -907,6 +907,12 @@ S162_LABELS = {"3DCNN-CLTT-Ref-T1", "ViViT-CLTT-Ref-T2", "3DCNN-CLTT-Ref-DVS6", 
                *(f"{a}-500K-CLTT-Ref{b}" for a in ("3DCNN", "ViViT")
                  for b in ("", "-T1" if a == "3DCNN" else "-T2", "-DVS6", "-T1-DVS6" if a == "3DCNN" else "-T2-DVS6"))}
 
+#: owner 2026-10-20 (workspace DECISIONS §170): STP-E's pose wrapper, encoder and aux (test_stp_e.py); the shared
+#: registries gain "stp_pose_exec" / "stp_pose_cmd", "stp_e" and "stp" only.
+STP170_FILES = ("nett_skrl/body/wrappers/stp_pose.py", "nett_skrl/brain/encoders/stp_e.py",
+                "nett_skrl/brain/aux/stp_aux.py")
+STP170_LABELS = {"STP-E", "STP-E-NoWarp", "STP-E-Cmd", "CNN2F-630K"}
+
 def _git(*args):
     env = {k: v for k, v in os.environ.items()
            if k not in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_PREFIX", "GIT_COMMON_DIR")}
@@ -955,7 +961,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
-                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES,
+                                          *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
                                           "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
@@ -966,7 +972,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS
@@ -982,6 +988,6 @@ def test_registries_only_gained_the_xsp2_entries():
                               ("nett_skrl/brain/registry.py", "encoder_mapping: dict", encoder_mapping)):
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
-        assert old and new - old == ({"xsp2", "matched", "jepa", "vit_slot_recon"} if "registry" in rel
-                                  else {"xsp2", "ijepa", "vjepa", "slot_recon"}) and old <= new, rel
+        assert old and new - old == ({"xsp2", "matched", "jepa", "vit_slot_recon", "stp_e"} if "registry" in rel
+                                  else {"xsp2", "ijepa", "vjepa", "slot_recon", "stp"}) and old <= new, rel
         assert new <= set(live), rel
