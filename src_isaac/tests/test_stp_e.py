@@ -1144,3 +1144,185 @@ def test_import_time_assertions_fire_on_a_mutated_models(campaign, old, new):
     _old_module(src, "_campaign_train_unmutated")                           # the real source passes
     with pytest.raises(AssertionError):
         _old_module(src.replace(old, new), "_campaign_train_mutated")
+
+
+# ================================================================ presenter review check (1): the turn sign, from physics
+#
+# The convention chain (each link is a file:line; repo B = nett_isaac):
+#   world      +Z up; a body's forward is (-sin yaw, cos yaw) (repo B motor_system.py:141-142), so +yaw turns
+#              forward from +Y toward -X: COUNTER-CLOCKWISE seen from above, i.e. a LEFT turn. The wheeled drive
+#              commands wz = +d_yaw / dt for +turn (camera_rig.py:481 d_yaw, :500 vel[:, 5]).
+#   yaw read   motor.yaw_deg = atan2 yaw about world +Z of the PhysX root quaternion, in [0, 360)
+#              (camera_rig.py:129-137 _quat_wxyz_to_yaw_deg, assigned at :694); kinematic: yaw += turn * limit
+#              (motor_system.py:136). The eye is root (x) head (x) optical-roll Rx(-90) (camera_rig.py:32-38), so the
+#              camera's yaw about world Z changes by exactly the root's: the presenter's offline yaw
+#              (2 atan2(q_z, q_w) of the camera sensor quaternion) has the same sign.
+#   dyaw       stp_pose.py:187: (yaw_t - yaw_{t-1} + 180) mod 360 - 180, degrees, no sign flip.
+#   image      ros optical frame: image +x = world +X when the body faces +Y (camera_rig.py:32-34) = forward x up,
+#              the camera's RIGHT (stp_pose.py's lat axis (cos yaw, sin yaw)). Not mirrored.
+#   az/el      stp_e.py:110 grid column j -> az = (j + 0.5) dpp - fov/2, increasing; :113 the camera-frame x of the
+#              ray is cos(el) sin(az), so +az = camera right; :117 u = cx + r cos(phi) = image right.
+#   physics    a LEFT turn by d moves every distant point d to the camera's RIGHT: content moves toward +az by d.
+#   the warp   stp_e.py:206 G[TURN, :, 0, 2] = -(10 / dpp)(2 / Wo) gains; a_turn = dyaw / 10 (ACTION_SCALE); the
+#              generator is a pure translation, so expm gives A = [I | a_turn G]; warp_affine (stp_e.py:170-178,
+#              grid_sample's convention) samples the input at x + A[0, 2] = x - shift, so content moves toward
+#              +x = +az by a_turn * 10 / dpp * gain cells = +dyaw / dpp cells for warp 0. Sign +1, as measured
+#              offline (presenter_stp README §7a; tools/presenter_stp_offline.py shift_az / EgoSTP.build sgn = +1).
+# The tests below do not trust that chain: they render the turn from the env's yaw convention and check the warp.
+
+_EYE_W, _EYE_H, _EYE_FOV = 448, 280, 150.0
+
+
+def _scene(bearing_deg, el_deg):
+    """A distant panorama as a function of WORLD bearing (deg, CCW from +X) and elevation: a narrow red bar, a
+    green step edge and a blue grating, so a horizontal shift of either sign is visible in every channel."""
+    def wrap(d):
+        return (d + 180.0) % 360.0 - 180.0
+    red = 0.15 + 0.8 * np.exp(-0.5 * (wrap(bearing_deg - 95.0) / 3.0) ** 2)
+    green = 0.2 + 0.6 / (1.0 + np.exp(-wrap(bearing_deg - 70.0) / 2.0)) * (wrap(bearing_deg - 70.0) < 60)
+    blue = 0.5 + 0.35 * np.sin(np.radians(bearing_deg) * 9.0) * np.cos(np.radians(el_deg) * 2.0)
+    return np.stack([red, green, blue], -1)
+
+
+def _render_eye(yaw_deg, w=_EYE_W, h=_EYE_H, fov=_EYE_FOV):
+    """The equisolid eye at body yaw ``yaw_deg`` in the ENV's convention (forward (-sin, cos), right (cos, sin),
+    +Z up), rendered analytically at pixel centres -> (h, w, 3) uint8. Independent of stp_e's remap code."""
+    cx, cy = w / 2.0, h / 2.0
+    k = cx / math.sin(math.radians(fov / 4.0))
+    U, V = np.meshgrid(np.arange(w) + 0.5, np.arange(h) + 0.5)
+    du, dv = U - cx, -(V - cy)                                             # image right, image up
+    r = np.hypot(du, dv)
+    th = 2.0 * np.arcsin(np.clip(r / k, 0.0, 1.0))
+    ph = np.arctan2(dv, du)
+    xc, yc, zc = np.sin(th) * np.cos(ph), np.sin(th) * np.sin(ph), np.cos(th)     # camera right, up, forward
+    psi = math.radians(yaw_deg)
+    fwd, right = (-math.sin(psi), math.cos(psi)), (math.cos(psi), math.sin(psi))
+    wx = xc * right[0] + zc * fwd[0]
+    wy = xc * right[1] + zc * fwd[1]
+    bearing = np.degrees(np.arctan2(wy, wx))
+    el = np.degrees(np.arcsin(np.clip(yc, -1.0, 1.0)))
+    img = _scene(bearing, el) * (th <= math.radians(fov / 2.0))[..., None]
+    return np.round(np.clip(img, 0, 1) * 255).astype(np.uint8)
+
+
+class _TurningNett(_FakeNett):
+    """A fake NETTEnv whose eye renders the panorama at the motor's yaw (camera at the origin: pure rotation)."""
+
+    def __init__(self, yaws):
+        super().__init__(n=len(yaws), h=_EYE_H, w=_EYE_W)
+        self.motor.yaw_deg = torch.tensor(yaws, dtype=torch.float32)
+
+    def _frame(self):
+        frames = np.stack([_render_eye(float(y)) for y in self.motor.yaw_deg])
+        return {"policy": torch.from_numpy(frames)}
+
+    def step(self, action):
+        x, y, yaw, done = self.script[self.t]
+        self.t += 1
+        # camera_rig reports yaw in [0, 360) (_quat_wxyz_to_yaw_deg .remainder(360))
+        self.motor.yaw_deg = torch.tensor(yaw, dtype=torch.float32).remainder(360.0)
+        term = torch.tensor(done, dtype=torch.bool).view(-1, 1)
+        return self._frame(), torch.zeros(self.n), term, torch.zeros_like(term), {}
+
+
+def _turn_obs(yaws, delta):
+    env = _TurningNett(yaws)
+    chain = ChannelsFirst(FrameStack(STPPoseExecuted(env), n_stack=2))
+    chain.reset()
+    env.script = [([0.0] * len(yaws), [0.0] * len(yaws), [y + d for y, d in zip(yaws, delta)], [False] * len(yaws))]
+    obs, *_ = chain.step(np.zeros((len(yaws), 2), np.float32))
+    return torch.as_tensor(np.asarray(obs["policy"]))
+
+
+def _bar_column(g):
+    """Sub-cell column centroid of the red bar on the az/el grid (rows near the horizon)."""
+    red = g[:, 0, 25:35].mean(1) - 0.15                                    # (B, Wo), background removed
+    red = red.clamp_min(0) ** 2
+    cols = torch.arange(red.shape[-1], dtype=red.dtype)
+    return (red * cols).sum(-1) / red.sum(-1)
+
+
+def test_a_left_turn_moves_eye_content_toward_plus_azimuth_in_the_env_convention():
+    """Physics alone: +dyaw (CCW, the env's yaw) moves a distant bar toward +az by dyaw / dpp cells on the remap."""
+    enc = STPEEncoder(gym.spaces.Box(0, 255, (6, _EYE_H + 1, _EYE_W), np.uint8), features_dim=8,
+                      fov_deg=_EYE_FOV, num_frames=2)
+    pol = _turn_obs([0.0, 0.0, 357.0], [10.0, -10.0, 10.0])               # the last one wraps 357 -> 7
+    pose, x_prev, x_cur = enc.split(pol)
+    assert pose[:, 2].tolist() == pytest.approx([10.0, -10.0, 10.0], abs=1e-4)   # stp_pose's dyaw, wrap included
+    shift = _bar_column(enc.azel(x_cur)) - _bar_column(enc.azel(x_prev))
+    assert shift.tolist() == pytest.approx([10.0 / 1.5, -10.0 / 1.5, 10.0 / 1.5], abs=0.3)
+
+
+def test_positive_a_turn_moves_a_bright_column_toward_plus_azimuth():
+    """The warm-start warp 0 under a_turn > 0 moves a bright grid column the way the physics test above does."""
+    pred = STPPredictor(100, 4)
+    g = torch.zeros(2, 3, 60, 100)
+    g[:, :, :, 40] = 1.0
+    a = torch.tensor([[0.0, 0.0, 1.0], [0.0, 0.0, -1.0]])                 # dyaw = +-10 deg after the scale
+    out = warp_affine(g, pred.affines(a)[:, :1])[:, 0]
+    prof = out[:, 0, 30]
+    cols = torch.arange(100, dtype=prof.dtype)
+    centroid = (prof * cols).sum(-1) / prof.sum(-1)
+    assert centroid.tolist() == pytest.approx([40 + 10 / 1.5, 40 - 10 / 1.5], abs=1e-4)
+    assert int(prof[0].argmax()) > 40 > int(prof[1].argmax())
+
+
+def _err(a, b, w):
+    return float((((a - b) ** 2) * w).sum() / (w.sum() * a.shape[1]))
+
+
+@pytest.mark.parametrize("delta", [12.0, -12.0, 6.0, -6.0])
+def test_warm_start_warp_predicts_the_rendered_turn_better_than_copy_and_than_the_flipped_sign(delta):
+    """Render t and t+1 at yaw psi and psi + delta (env convention), carry the pose row stp_pose_exec writes, remap with
+    the encoder, and apply warp 0 of the warm-start predictor at a and at -a."""
+    enc = STPEEncoder(gym.spaces.Box(0, 255, (6, _EYE_H + 1, _EYE_W), np.uint8), features_dim=8,
+                      fov_deg=_EYE_FOV, num_frames=2)
+    pol = _turn_obs([30.0, 355.0], [delta, delta])
+    pose, x_prev, x_cur = enc.split(pol)
+    assert pose[:, 2].tolist() == pytest.approx([delta, delta], abs=1e-4)
+    g_prev, g_cur = enc.azel(x_prev), enc.azel(x_cur)
+    a = enc.action(pose)
+    assert a[:, :2].abs().max() == 0 and bool((a[:, 2] * delta > 0).all())
+    vmb = enc.vm.expand(2, 1, 60, 100)
+    warped = {}
+    for name, act in (("warm", a), ("flip", -a)):
+        J = warp_affine(torch.cat([g_prev, vmb], 1), enc.predictor.affines(act)[:, :1])[:, 0]
+        warped[name] = J
+    w = enc.vm * (warped["warm"][:, 3:] > 0.999) * (warped["flip"][:, 3:] > 0.999)     # the same cells for all three
+    assert float(w.mean()) > 0.4
+    e_copy = _err(g_prev, g_cur, w)
+    e_warm = _err(warped["warm"][:, :3], g_cur, w)
+    e_flip = _err(warped["flip"][:, :3], g_cur, w)
+    print(f"\ndelta {delta:+.0f}: error / copy  warm {e_warm / e_copy:.3f}  flipped {e_flip / e_copy:.3f}")
+    assert e_warm < 0.25 * e_copy, (e_warm, e_copy)
+    assert e_warm < 0.25 * e_flip, (e_warm, e_flip)
+    assert e_flip > e_copy                                                 # the wrong sign is worse than copy
+
+
+@pytest.mark.parametrize("delta", [12.0, -12.0])
+def test_full_encoder_residual_shrinks_on_a_rendered_turn_and_grows_with_the_sign_flipped(delta):
+    """The real residual path (split -> remap -> action -> predictor -> r), masks pinned to warp 0: smaller than the
+    NoWarp frame difference, and larger again if the turn generator's sign is flipped."""
+    space = gym.spaces.Box(0, 255, (6, _EYE_H + 1, _EYE_W), np.uint8)
+    pol = _turn_obs([30.0, 200.0], [delta, delta])
+    out = {}
+    for name in ("warm", "flip", "nowarp"):
+        torch.manual_seed(0)
+        enc = STPEEncoder(space, features_dim=8, fov_deg=_EYE_FOV, num_frames=2,
+                          warp="identity" if name == "nowarp" else "affine")
+        if name == "flip":
+            with torch.no_grad():
+                enc.predictor.G[2].neg_()
+
+        def onehot(x, m=enc.predictor.M):
+            masks = torch.zeros(x.shape[0], m + 1, *x.shape[-2:])
+            masks[:, 0] = 1.0
+            return masks
+
+        enc.predictor.masks = onehot
+        out[name] = enc.residual_input(pol)[:, :3]
+    common = (out["warm"] != 0) | (out["flip"] != 0) | (out["nowarp"] != 0)
+    energy = {k: float((v ** 2).sum()) for k, v in out.items()}
+    assert energy["warm"] < 0.3 * energy["nowarp"], energy
+    assert energy["flip"] > energy["warm"] * 3, energy
+    assert bool(common.any())
