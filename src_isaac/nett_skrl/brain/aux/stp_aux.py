@@ -5,14 +5,26 @@ Labels "STP-E", "STP-E-NoWarp", "STP-E-Cmd" (encoder brain/encoders/stp_e.py). B
 returns a detached zero.
 
 ```
-row     <- B stored observations, iid uniform over the rollout's rows whose pose row says valid = 1
-           (each row IS a transition: its 2-frame stack holds x_{t-1}, x_t and the t-1 -> t pose change)
+row     <- B stored observations from the rollout's MOVING rows: valid = 1 AND the arm's own predictor input
+           a = encoder.action(pose) nonzero after the dead zone (each row IS a transition: its 2-frame stack holds
+           x_{t-1}, x_t and the t-1 -> t pose change). >= B such rows: B distinct; fewer: with replacement;
+           none: the step is SKIPPED (no optimizer step, no zeros averaged in; ``skipped`` = 1, ``n_skipped``)
 g_s     = encoder.azel(x_s)                            s = t-1, t   (fixed remap, no gradient)
 a       = encoder.action(pose)                         dead zone, scaled
 xhat, wv = encoder.predictor(g_{t-1}, a, vm)
 w       = vm * (wv > 0.999)                            pixels the warps can fill; rim and border excluded
 e       = sum_{b,c,p} sqrt((xhat - g_t)^2 + 1e-6) w  /  max(3 sum w, 1)      Charbonnier, mean over valid pixels
 ```
+
+WHY ONLY MOVING ROWS (presenter, follow-up Q1 option a). A row with a = 0 takes the exact-identity branch
+(stp_e.STPPredictor.forward, ``torch.where(still, x, xhat)``), so it gives NO gradient to any predictor parameter;
+in the batch it only dilutes the mean. Parsing agents move on ~10% of ticks. "Moving" is the arm's OWN input:
+STP-E the executed change after the dead zone (a body pinned at a wall is still); STP-E-Cmd the COMMANDED action
+after the dead zone (a pinned agent that commands a step IS moving there -- kept on purpose).
+
+STEP BUDGET. ``compute`` runs once per PPO minibatch (AuxLossPPO.update), so one PPO update takes
+learning_epochs x mini_batches aux steps, minus skips: 20 x 64 = 1,280 at the Unity-recipe++ parsing setup, x 19
+updates = 24,320 >= the offline 3,000 (tests/test_stp_e.py pins the arithmetic). No steps knob is needed.
 
 ACROSS EPISODE RESETS. A stored row whose pose row says valid = 0 is the first frame of an episode (the wrapper
 marks it at reset() and for every env that reset in a step), and its stack is [x_new, x_new]. Such rows are
@@ -41,10 +53,16 @@ KNOBS (each refuses junk; a stray NETT_STP_* on another label refuses in campaig
 * NETT_STP_LR     finite float > 0, default 2e-3.
 * NETT_STP_BATCH  integer >= 2, default 32 (the offline recipe).
 
-TELEMETRY (last_scalars): B, loss (the Charbonnier mean), copy_loss (g_{t-1} as the prediction, same w), skill
-(1 - loss / copy_loss), valid_frac (w's share of the grid), moving_frac (rows with a != 0), mask_bg (mean weight
-of the unchanged copy), g_turn (mean |turn generator x-shift|), valid_rows (share of rollout rows with valid = 1),
-lr.
+TELEMETRY (last_scalars -> ``Loss / Aux stp <key>`` in tfevents, averaged per PPO update by AuxLossPPO,
+sentinel-aware), all over the SAME drawn moving rows:
+* loss / copy_loss: Charbonnier of the prediction / of the copy (xhat = g_{t-1}, the frame difference), same w;
+  gain = copy_loss / loss.
+* mse / copy_mse / gain_mse: the same with a squared error (the offline 2.8x parsing / 3.3x binding are MSE).
+* skill (1 - loss / copy_loss), valid_frac (w's share of the grid), moving_frac (drawn rows with a != 0: 1 by
+  construction), mask_bg (mean weight of the unchanged copy), g_turn (mean |turn generator x-shift|), B, lr.
+* moving_rows: the count of moving rows in the rollout; moving_rows_frac: their share; valid_rows: the share of
+  rows with valid = 1; skipped: 1 on a skipped step, else 0 (its update mean x epochs x minibatches = the count).
+On a skipped step the loss keys are NOT_MEASURED (the aggregation then reports their fire_rate).
 """
 
 from __future__ import annotations
@@ -67,6 +85,11 @@ def charbonnier(pred: torch.Tensor, target: torch.Tensor, w: torch.Tensor) -> to
     return (d * w).sum() / (w.sum() * pred.shape[1]).clamp_min(1.0)
 
 
+def masked_mse(pred: torch.Tensor, target: torch.Tensor, w: torch.Tensor) -> torch.Tensor:
+    """Mean squared error over the pixels with weight ``w`` and the channels; 0 if none is valid."""
+    return ((pred - target).pow(2) * w).sum() / (w.sum() * pred.shape[1]).clamp_min(1.0)
+
+
 class STPTerm(nn.Module):
     """The `stp` objective: owns the Adam over the STP-E predictor."""
 
@@ -77,6 +100,8 @@ class STPTerm(nn.Module):
 
     LR_ENV = "NETT_STP_LR"
     BATCH_ENV = "NETT_STP_BATCH"
+    #: Published as NOT_MEASURED on a skipped step.
+    LOSS_KEYS = ("loss", "copy_loss", "gain", "mse", "copy_mse", "gain_mse", "skill")
 
     def __init__(self, encoder: nn.Module) -> None:
         super().__init__()
@@ -95,6 +120,8 @@ class STPTerm(nn.Module):
         self._pred_params = encoder.predictor_parameters()
         self.optimizer: torch.optim.Optimizer | None = None
         self.n_steps = 0
+        #: aux calls skipped because the rollout held no moving row (module docstring).
+        self.n_skipped = 0
         self._memory = None
         self.last_scalars: dict = {}
 
@@ -145,23 +172,33 @@ class STPTerm(nn.Module):
         self._memory = memory
 
     def _draw(self, encoder: nn.Module):
-        """B stored observations, iid uniform over rows whose newest frame's pose row says valid = 1."""
+        """-> (B stored observations or None, stats): drawn from the rollout's MOVING rows (module docstring)."""
         if self._memory is None:
             raise RuntimeError("STPTerm draws its own rows; call attach_memory(memory) first.")
         raw = self._memory.tensors["observations"]
         # Rows written so far: all of them once the ring has filled (PPO updates on a full rollout).
         t_max = raw.shape[0] if bool(getattr(self._memory, "filled", True)) else int(self._memory.memory_index)
-        from ...body.wrappers.stp_pose import VALID
-        pose = encoder.stored_pose(raw[:t_max])                                    # (T, env, 4)
-        valid = pose[..., VALID] == 1.0
-        idx = valid.reshape(-1).nonzero().flatten()
-        frac = float(valid.float().mean()) if valid.numel() else 0.0
-        if idx.numel() == 0:
-            return None, frac
-        pick = idx[torch.randint(idx.numel(), (self.batch,))]
-        t, env = pick // valid.shape[1], pick % valid.shape[1]
+        from ...body.wrappers.stp_pose import POSE_FLOATS, VALID
         device = encoder.vm.device
-        return raw[t.to(raw.device), env.to(raw.device)].to(device), frac
+        pose = encoder.stored_pose(raw[:t_max]).to(device)                         # (T, env, 4)
+        n_env = pose.shape[1] if pose.ndim == 3 else 1
+        flat = pose.reshape(-1, POSE_FLOATS)
+        # the arm's OWN predictor input: dead zone, valid mask and scale exactly as the predictor sees it
+        moving = (encoder.action(flat) != 0).any(dim=1) & (flat[:, VALID] == 1.0)
+        idx = moving.nonzero().flatten()
+        n_rows = flat.shape[0]
+        stats = {"valid_rows": float((flat[:, VALID] == 1.0).float().mean()) if n_rows else 0.0,
+                 "moving_rows": float(idx.numel()),
+                 "moving_rows_frac": float(idx.numel()) / n_rows if n_rows else 0.0}
+        if idx.numel() == 0:
+            return None, stats
+        n = idx.numel()
+        if n >= self.batch:
+            pick = idx[torch.randperm(n, device=idx.device)[: self.batch]]          # B distinct rows
+        else:
+            pick = idx[torch.randint(n, (self.batch,), device=idx.device)]          # too few: with replacement
+        t, env = pick // n_env, pick % n_env
+        return raw[t.to(raw.device), env.to(raw.device)].to(device), stats
 
     # ------------------------------------------------------------------ objective
     def score(self, encoder: nn.Module, observations: torch.Tensor):
@@ -177,13 +214,19 @@ class STPTerm(nn.Module):
         w = (encoder.vm * (wv > 0.999).to(g_cur.dtype)).detach()
         loss = charbonnier(xhat, g_cur, w)
         with torch.no_grad():
+            value = float(loss.detach())
             copy = float(charbonnier(g_prev, g_cur, w))
+            mse, copy_mse = float(masked_mse(xhat, g_cur, w)), float(masked_mse(g_prev, g_cur, w))
             G = encoder.predictor.G
             scalars = {
                 "B": float(g_cur.shape[0]),
-                "loss": float(loss.detach()),
+                "loss": value,
                 "copy_loss": copy,
-                "skill": 1.0 - float(loss.detach()) / copy if copy > 0 else NOT_MEASURED,
+                "gain": copy / value if value > 0 else NOT_MEASURED,
+                "mse": mse,
+                "copy_mse": copy_mse,
+                "gain_mse": copy_mse / mse if mse > 0 else NOT_MEASURED,
+                "skill": 1.0 - value / copy if copy > 0 else NOT_MEASURED,
                 "valid_frac": float(w.mean()),
                 "moving_frac": float((a != 0).any(dim=1).float().mean()),
                 "mask_bg": float(m[:, -1].mean()) if m is not None else NOT_MEASURED,
@@ -194,9 +237,11 @@ class STPTerm(nn.Module):
     def compute(self, encoder: nn.Module, observations: torch.Tensor) -> torch.Tensor:
         """Ignore the PPO minibatch; draw rows, take ONE aux step (none under NoWarp), return a DETACHED ZERO."""
         device = encoder.vm.device
-        obs, frac = self._draw(encoder)
+        obs, stats = self._draw(encoder)
         if obs is None:
-            self.last_scalars = {"valid_rows": frac}
+            # No moving row in the rollout: SKIP -- no optimizer step, and no zero is averaged into the losses.
+            self.n_skipped += 1
+            self.last_scalars = {**{k: NOT_MEASURED for k in self.LOSS_KEYS}, **stats, "skipped": 1.0}
             return torch.zeros((), device=device)
         with torch.autocast(device_type=device.type, enabled=False):
             if self.trains:
@@ -213,7 +258,8 @@ class STPTerm(nn.Module):
             else:
                 with torch.no_grad():
                     _, scalars = self.score(encoder, obs)
-        scalars["valid_rows"] = frac
+        scalars.update(stats)
+        scalars["skipped"] = 0.0
         scalars["lr"] = self.lr if self.trains else 0.0
         self.last_scalars = scalars
         return torch.zeros((), device=device)

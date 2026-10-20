@@ -37,7 +37,8 @@ from nett_skrl.body.wrappers.registry import _load_wrapper
 from nett_skrl.body.wrappers.stp_pose import (POSE_BYTES, STPPoseCommanded, STPPoseExecuted, bytes_to_pose,
                                               pose_to_row)
 from nett_skrl.brain.aux.ppo_aux import AUX_LOSSES
-from nett_skrl.brain.aux.stp_aux import STPTerm, charbonnier
+from nett_skrl.brain.aux.knobs import NOT_MEASURED
+from nett_skrl.brain.aux.stp_aux import STPTerm, charbonnier, masked_mse
 from nett_skrl.brain.encoders.stp_e import (DEADZONE, STPEEncoder, STPPredictor, lens_azel_taps, warp_affine)
 from nett_skrl.brain.registry import encoder_mapping
 from nett_skrl.body.observation import prepare_image_tensor
@@ -622,15 +623,18 @@ def test_bind_agent_refuses_unshared_encoder_and_inert_weight(monkeypatch):
 # ================================================================ the aux on a memory
 
 class _Memory:
-    """skrl's layout: flat (T, env, D) uint8 rows."""
+    """skrl's layout: flat (T, env, D) uint8 rows. ``moving`` (bool or a (T, env) mask): a 6 deg turn + 0.4 step,
+    else a still valid row (0.02 units / 0.4 deg: inside the dead zone, so a = 0)."""
 
     def __init__(self, valid, moving=True, seed=0):
         t_max, n_env = valid.shape
+        mov = torch.as_tensor(moving).expand(t_max, n_env) if not torch.is_tensor(moving) or moving.ndim == 0 \
+            else moving
         rows = []
         for t in range(t_max):
             for e in range(n_env):
-                pose = _pose([0.4, 0.0, 6.0 if moving else 0.0, float(valid[t, e])]) if valid[t, e] \
-                    else torch.zeros(1, 4)
+                motion = [0.4, 0.0, 6.0] if mov[t, e] else [0.02, -0.01, 0.4]
+                pose = _pose([*motion, 1.0]) if valid[t, e] else torch.zeros(1, 4)
                 k = seed + 2 * (t * n_env + e)
                 rows.append(_obs(pose, _frames(1, seed=k), _frames(1, seed=k + 1)).reshape(-1))
         self.tensors = {"observations": torch.stack(rows).view(t_max, n_env, -1)}
@@ -650,8 +654,8 @@ def test_aux_never_draws_a_reset_row_and_steps_only_the_predictor():
     term = _term(enc)
     term.attach_memory(_Memory(valid))
     for _ in range(20):
-        obs, frac = term._draw(enc)
-        assert frac == pytest.approx(2 / 12)
+        obs, stats = term._draw(enc)
+        assert stats == {"valid_rows": pytest.approx(2 / 12), "moving_rows": 2.0, "moving_rows_frac": 2 / 12}
         assert bool((enc.stored_pose(obs)[:, 3] == 1).all())
     cnn = _state(enc.policy_cnn)
     pred = _state(enc.predictor)
@@ -660,9 +664,13 @@ def test_aux_never_draws_a_reset_row_and_steps_only_the_predictor():
     assert term.n_steps == 1 and all(p.grad is None for p in enc.parameters())
     assert all(torch.equal(v, enc.policy_cnn.state_dict()[k]) for k, v in cnn.items())
     assert any(not torch.equal(v, enc.predictor.state_dict()[k]) for k, v in pred.items())
-    for key in ("B", "loss", "copy_loss", "skill", "valid_frac", "moving_frac", "mask_bg", "g_turn",
-                "valid_rows", "lr"):
+    for key in ("B", "loss", "copy_loss", "gain", "mse", "copy_mse", "gain_mse", "skill", "valid_frac",
+                "moving_frac", "mask_bg", "g_turn", "valid_rows", "moving_rows", "moving_rows_frac", "skipped", "lr"):
         assert key in term.last_scalars, key
+    sc = term.last_scalars
+    assert sc["skipped"] == 0.0 and sc["moving_frac"] == 1.0 and sc["moving_rows"] == 2.0
+    assert sc["gain"] == pytest.approx(sc["copy_loss"] / sc["loss"])
+    assert sc["gain_mse"] == pytest.approx(sc["copy_mse"] / sc["mse"])
 
 
 def test_aux_with_no_valid_row_takes_no_step_and_a_partial_ring_reads_only_written_rows():
@@ -671,19 +679,21 @@ def test_aux_with_no_valid_row_takes_no_step_and_a_partial_ring_reads_only_writt
     term.attach_memory(_Memory(torch.zeros(4, 2, dtype=torch.bool)))
     w0 = enc.predictor.G.detach().clone()
     out = term.compute(enc, None)
-    assert float(out) == 0.0 and term.n_steps == 0 and term.last_scalars == {"valid_rows": 0.0}
+    assert float(out) == 0.0 and term.n_steps == 0 and term.n_skipped == 1
+    assert term.last_scalars == {**{k: NOT_MEASURED for k in STPTerm.LOSS_KEYS}, "valid_rows": 0.0,
+                                 "moving_rows": 0.0, "moving_rows_frac": 0.0, "skipped": 1.0}
     assert torch.equal(enc.predictor.G, w0)
     valid = torch.zeros(6, 2, dtype=torch.bool)
     valid[:, :] = True
     mem = _Memory(valid)
     mem.tensors["observations"][3:] = 0                                     # unwritten rows: valid 0 anyway ...
     mem.tensors["observations"][3:, :, 3 * (H + 1) * W:3 * (H + 1) * W + 16] = torch.tensor(
-        np.frombuffer(np.array([0, 0, 0, 1], np.float32).tobytes(), np.uint8))  # ... except this valid junk
+        np.frombuffer(np.array([0, 0, 6, 1], np.float32).tobytes(), np.uint8))  # ... except this moving junk
     mem.filled, mem.memory_index = False, 3
     term.attach_memory(mem)
     for _ in range(10):
-        obs, frac = term._draw(enc)
-        assert frac == 1.0
+        obs, stats = term._draw(enc)
+        assert stats["valid_rows"] == 1.0 and stats["moving_rows"] == 6.0
         hits = [(t, e) for t in range(6) for e in range(2) if any(torch.equal(o, mem.tensors["observations"][t, e])
                                                                   for o in obs)]
         assert hits and all(t < 3 for t, _ in hits)
@@ -739,6 +749,215 @@ def test_prediction_loss_decreases_over_cpu_steps():
     assert all(math.isfinite(v) for v in losses)
     assert last < 0.8 * first, (first, last)
     assert term.n_steps == 40
+
+
+# ================================================================ follow-up: moving-row sampling, budget, telemetry
+
+def test_aux_draws_only_moving_rows_distinct_when_enough_and_with_replacement_when_not():
+    enc = _enc()
+    term = _term(enc)                                                        # B = 4 (fixture)
+    valid = torch.ones(8, 2, dtype=torch.bool)
+    moving = torch.zeros(8, 2, dtype=torch.bool)
+    moving[0, 0] = moving[3, 1] = moving[5, 0] = moving[6, 1] = moving[7, 0] = True     # 5 >= B
+    mem = _Memory(valid, moving=moving)
+    term.attach_memory(mem)
+    rows = mem.tensors["observations"]
+
+    def where(o):
+        return next((t, e) for t in range(8) for e in range(2) if torch.equal(o, rows[t, e]))
+
+    for _ in range(15):
+        obs, stats = term._draw(enc)
+        assert stats["moving_rows"] == 5.0 and stats["valid_rows"] == 1.0
+        hits = [where(o) for o in obs]
+        assert all(bool(moving[t, e]) for t, e in hits) and len(set(hits)) == 4      # distinct
+        assert bool((enc.action(enc.stored_pose(obs)) != 0).any(dim=1).all())
+    moving2 = torch.zeros(8, 2, dtype=torch.bool)
+    moving2[2, 1] = True                                                     # 1 < B: with replacement
+    mem2 = _Memory(valid, moving=moving2)
+    term.attach_memory(mem2)
+    obs, stats = term._draw(enc)
+    assert obs.shape[0] == 4 and stats["moving_rows"] == 1.0
+    assert all(torch.equal(o, mem2.tensors["observations"][2, 1]) for o in obs)
+
+
+def test_aux_skips_a_rollout_of_still_rows_entirely():
+    enc = _enc()
+    term = _term(enc)
+    term.attach_memory(_Memory(torch.ones(4, 2, dtype=torch.bool), moving=False))
+    before = _state(enc)
+    seen = []
+    term.optimizer.register_step_pre_hook(lambda *_: seen.append(1))
+    for _ in range(3):
+        assert float(term.compute(enc, None)) == 0.0
+    assert seen == [] and term.n_steps == 0 and term.n_skipped == 3
+    assert term.last_scalars["skipped"] == 1.0 and term.last_scalars["loss"] == NOT_MEASURED
+    assert term.last_scalars["valid_rows"] == 1.0 and term.last_scalars["moving_rows"] == 0.0
+    assert all(torch.equal(v, enc.state_dict()[k]) for k, v in before.items())
+
+
+def test_masked_mse_is_the_masked_mean_square():
+    p, t = torch.zeros(1, 3, 2, 2), torch.full((1, 3, 2, 2), 2.0)
+    w = torch.tensor([[[[1.0, 1.0], [0.0, 0.0]]]])
+    assert float(masked_mse(p, t, w)) == 4.0 and float(masked_mse(p, t, torch.zeros_like(w))) == 0.0
+
+
+class _PinnedNett(_FakeNett):
+    """The agent commands a full step forward but the body never moves (pinned at the screen wall)."""
+
+    def step(self, action):
+        self._effective_actions = torch.as_tensor(action, dtype=torch.float32)
+        term = torch.zeros(self.n, 1, dtype=torch.bool)
+        self.t += 1
+        return self._frame(), torch.zeros(self.n), term, torch.zeros_like(term), {}
+
+
+def _rollout_rows(wrapper_cls, env, steps=4, action=(0.0, 0.95)):
+    """Frames through [pose wrapper, framestack, channels_first], stored flat as skrl does: (T, env, D)."""
+    chain = ChannelsFirst(FrameStack(wrapper_cls(env), n_stack=2))
+    chain.reset()
+    rows = []
+    for _ in range(steps):
+        obs, *_ = chain.step(torch.tensor([list(action)] * env.n))
+        rows.append(torch.as_tensor(np.asarray(obs["policy"])).reshape(env.n, -1))
+    return torch.stack(rows)
+
+
+def test_each_arm_samples_on_its_own_motion_input():
+    """Pinned frames: STP-E (executed) has no moving row and skips; STP-E-Cmd (commanded) keeps them."""
+    for cls, expect in ((STPPoseExecuted, 0.0), (STPPoseCommanded, 8.0)):
+        rows = _rollout_rows(cls, _PinnedNett(n=2, h=H, w=W))
+        enc = _enc()
+        term = _term(enc)
+        mem = _Memory(torch.ones(1, 1, dtype=torch.bool))
+        mem.tensors["observations"] = rows
+        term.attach_memory(mem)
+        term.compute(enc, None)
+        assert term.last_scalars["moving_rows"] == expect, cls.__name__
+        assert term.n_steps == (1 if expect else 0) and term.n_skipped == (0 if expect else 1)
+
+
+def test_nowarp_predictor_is_present_but_held_by_no_optimizer(monkeypatch, capsys):
+    agent = _agent(monkeypatch, warp="identity")
+    enc, term = agent.policy.encoder, agent._aux
+    pred = {id(p) for p in enc.predictor_parameters()}
+    n_unused = _n(enc.predictor_parameters())
+    assert n_unused == STP_COUNTS[(448, 280, 150.0)]["predictor"] == 201_085
+    held = [o for o in (agent.optimizer, term.optimizer, *agent.checkpoint_modules.values())
+            if isinstance(o, torch.optim.Optimizer)]
+    assert held and term.optimizer is None
+    for opt in held:
+        assert not pred & {id(p) for g in opt.param_groups for p in g["params"]}
+    before = _state(enc.predictor)
+    _rollout(agent)
+    assert all(torch.equal(v, enc.predictor.state_dict()[k]) for k, v in before.items())
+    with capsys.disabled():
+        print(f"\nSTP-E-NoWarp predictor: {n_unused:,} parameters present, unused, in no optimizer")
+
+
+#: The P setup (Unity-recipe++ parsing, FINDINGS §4dh.44h.160 + DECISIONS §128/§129): 64 envs x 400 steps,
+#: 64 minibatches, 20 learning epochs, updates = floor(500,000 / rollout).
+P_ROLLOUT, P_MINIBATCHES, P_EPOCHS = 64 * 400, 64, 20
+
+
+def test_aux_takes_one_step_per_ppo_minibatch_and_meets_the_offline_budget_at_the_p_setup(monkeypatch):
+    agent = _agent(monkeypatch, epochs=3, mini_batches=2)
+    _rollout(agent)
+    assert agent._aux.n_steps == 3 * 2 and agent._aux.n_skipped == 0                # epochs x minibatches
+    updates = 500_000 // P_ROLLOUT
+    per_update = P_EPOCHS * P_MINIBATCHES
+    assert (updates, per_update, updates * per_update) == (19, 1_280, 24_320)
+    assert updates * per_update >= 3_000
+    assert 19 * 10 * P_MINIBATCHES >= 3_000                                   # even at the fleet's 10 epochs
+
+
+def test_per_update_telemetry_reaches_the_tracked_aux_scalars(monkeypatch):
+    agent = _agent(monkeypatch, epochs=1, mini_batches=2)
+    _rollout(agent)
+    tracked = agent.tracking_data
+    for key in ("loss", "copy_loss", "gain", "mse", "copy_mse", "gain_mse", "moving_rows", "moving_rows_frac",
+                "valid_rows", "skipped"):
+        assert f"Loss / Aux stp {key}" in tracked, key
+    gain = tracked["Loss / Aux stp gain"][-1]
+    assert math.isfinite(gain) and gain > 0
+    assert tracked["Loss / Aux stp skipped"][-1] == 0.0
+    assert tracked["Loss / Aux stp moving_rows"][-1] == 15.0                  # rows 1..15 move; row 0 is a reset
+
+
+# ================================================================ follow-up: column order and dead-zone units
+
+def test_turn_warm_start_sits_on_the_dyaw_column_in_every_arm(campaign):
+    expect = -(10.0 / 1.5) * (2.0 / 100) * torch.linspace(1.0, 0.25, 4)
+    for label in STP_LABELS:
+        enc = _label_encoder(campaign, label, 448, 280, 150.0)
+        G = enc.predictor.G.detach()
+        assert G.shape == (3, 4, 2, 3)
+        assert torch.equal(G[2, :, 0, 2], expect), label                    # the turn generator: x-shift
+        rest = G[2].clone()
+        rest[:, 0, 2] = 0
+        assert torch.equal(rest, torch.zeros_like(rest)), label              # nothing else on the turn column
+        assert float(G[:2].abs().max()) < 0.06, label                        # fwd / lat: N(0, 0.01) only
+        # the pose row's dyaw (slot 2) drives that generator; fwd (0) and lat (1) do not
+        a = enc.action(_pose([0.0, 0.0, 10.5, 1.0]))
+        assert torch.equal(a, torch.tensor([[0.0, 0.0, 1.0]]))
+        A = enc.predictor.affines(a)
+        assert torch.allclose(A[0, :, 0, 2], expect, atol=1e-6)              # a pure x-shift of the warm gain
+
+
+def _kinematic_env(n=1):
+    motor_mod = pytest.importorskip("nett_isaac.motor_system")
+    env = _FakeNett(n=n)
+    env.motor = motor_mod.MotorSystem(n, motor_mod.MotorCfg(locomotion="kinematic", body_move_speed_limit=1.5),
+                                      (-100.0, 100.0, -100.0, 100.0))
+
+    def step(action):
+        act = torch.as_tensor(action, dtype=torch.float32)
+        env._effective_actions = act
+        env.motor.apply(act)                                                 # repo B: columns [turn, move]
+        env.t += 1
+        term = torch.zeros(n, 1, dtype=torch.bool)
+        return env._frame(), torch.zeros(n), term, torch.zeros_like(term), {}
+
+    env.step = step
+    return env
+
+
+@pytest.mark.parametrize("action,row", [((0.5, 0.0), [0.0, 0.0, 10.0]), ((0.0, 0.5), [0.75, 0.0, 0.0]),
+                                        ((-0.25, 0.0), [0.0, 0.0, -5.0]), ((0.0, -1.0), [-1.5, 0.0, 0.0])])
+def test_env_action_turn_move_reaches_the_dyaw_and_fwd_slots_in_both_wrappers(action, row):
+    """repo B MotorSystem.apply reads [turn, move]; both rows put turn on dyaw (2) and move on fwd (0)."""
+    for cls in (STPPoseExecuted, STPPoseCommanded):
+        wrap = cls(_kinematic_env())
+        wrap.reset()
+        obs, *_ = wrap.step(torch.tensor([list(action)]))
+        got = bytes_to_pose(obs["policy"][:, 0, :16, 0])[0].tolist()
+        assert got == pytest.approx([*row, 1.0], abs=1e-5), cls.__name__
+
+
+def test_command_unit_dead_zone_at_the_default_wheeled_limits():
+    """Default wheeled limits: move 1.5 units/step (nett_env_cfg wheeled override), turn 20 deg/step (MotorCfg;
+    the presenter MEASURED 19.96 x command). The physical dead zone 0.03 units / 0.5 deg is then 0.02 move and
+    0.025 turn in command units (0.5 / 19.96 = 0.02505 at the measured gain)."""
+    motor_mod = pytest.importorskip("nett_isaac.motor_system")
+    cfg_src = Path(motor_mod.__file__).with_name("nett_env_cfg.py").read_text()
+    wheeled = cfg_src.split("def _apply_wheeled_overrides", 1)[1].split("\n    def ", 1)[0]
+    assert "self.motor.body_move_speed_limit = 1.5\n" in wheeled
+    assert motor_mod.MotorCfg().body_turn_speed_limit == 20.0 and motor_mod.MotorCfg().locomotion == "wheeled"
+    move_lim, turn_lim = 1.5, 20.0
+    assert DEADZONE[0] / move_lim == pytest.approx(0.02) and DEADZONE[2] / turn_lim == pytest.approx(0.025)
+    assert DEADZONE[2] / 19.96 == pytest.approx(0.02505, abs=1e-5)
+    enc = _enc()
+    env = _FakeNett(n=1)
+    env.motor.cfg.body_move_speed_limit, env.motor.cfg.body_turn_speed_limit = move_lim, turn_lim
+    wrap = STPPoseCommanded(env)
+    wrap.reset()
+    env.script = [([0.0], [0.0], [0.0], [False])] * 8
+    cases = [((0.025, 0.0), True), ((0.0, 0.02), True), ((-0.0249, 0.0199), True),
+             ((0.0252, 0.0), False), ((0.0, 0.0202), False), ((-0.0252, 0.0), False)]
+    for (turn, move), still in cases:
+        obs, *_ = wrap.step(torch.tensor([[turn, move]]))
+        a = enc.action(bytes_to_pose(obs["policy"][:, 0, :16, 0]))
+        assert bool((a == 0).all()) is still, (turn, move, a)
 
 
 # ================================================================ knobs and refusals
