@@ -263,6 +263,12 @@ class STPEEncoder(HWCFeatureExtractor):
         method = os.environ.get("NETT_FISHEYE_METHOD", "equisolid").strip().lower() or "equisolid"
         if method != "equisolid":
             raise ValueError(f"STPEEncoder's az/el remap is the equisolid lens; NETT_FISHEYE_METHOD={method!r}.")
+        # ⛔ The pose row on the newest frame is the t-1 -> t change; a shuffled stack's older slot is NOT t-1
+        # (framestack.py NETT_FRAMESTACK_SHUFFLE), so the predictor would be told the wrong motion.
+        shuffle = os.environ.get("NETT_FRAMESTACK_SHUFFLE", "").strip().lower()
+        if shuffle:
+            raise ValueError(f"STPEEncoder pairs the stack's older frame with the newest frame's pose change; "
+                             f"NETT_FRAMESTACK_SHUFFLE={shuffle!r} replaces that frame. Unset it for STP-E arms.")
         if type(num_warps) is not int or num_warps < 1:
             raise ValueError(f"STPEEncoder num_warps must be a positive int; got {num_warps!r}.")
         if type(features_dim) is not int or features_dim < 1:

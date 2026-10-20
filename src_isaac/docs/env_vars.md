@@ -137,7 +137,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_FOVEA_SIGMA` | `""` | `nett_skrl/body/wrappers/fovea.py:76` |
 | `NETT_FRAMESTACK` | `"1"` | `examples/train_binding_8brain_targets.py:204` |
 | `NETT_FRAMESTACK_N` | `"2"` | `nett_skrl/body/wrappers/framestack.py:48`<br>`examples/campaign_train.py:192` |
-| `NETT_FRAMESTACK_SHUFFLE` | `""` | `nett_skrl/body/wrappers/framestack.py:81`<br>`examples/campaign_train.py:1975` |
+| `NETT_FRAMESTACK_SHUFFLE` | `""` | `nett_skrl/body/wrappers/framestack.py:81`<br>`nett_skrl/brain/encoders/stp_e.py:268`<br>`examples/campaign_train.py:1975` |
 | `NETT_FRAME_FORMAT` | `"bc7"` | `examples/campaign_run.py:181`<br>`scripts/prepare_test_env.py:112` |
 | `NETT_GPUS` | `"0,1,2,3,4,5,6,7"` | `examples/campaign_retest_launch.py:51`<br>`examples/campaign_run.py:209` |
 | `NETT_GPU_BUFFER_BUDGET_GB` | `"4.0"` | `examples/campaign_train.py:2133` |

@@ -796,6 +796,13 @@ def test_encoder_refuses_wrong_lens_channels_and_room(monkeypatch):
         STPEEncoder(gym.spaces.Box(0, 255, (3, H + 1, W), np.uint8), features_dim=8, fov_deg=FOV)
     with pytest.raises(ValueError, match="pose row"):
         STPEEncoder(gym.spaces.Box(0, 255, (6, H + 1, 12), np.uint8), features_dim=8, fov_deg=FOV)
+    for shuffle in ("past", "env"):
+        monkeypatch.setenv("NETT_FRAMESTACK_SHUFFLE", shuffle)
+        with pytest.raises(ValueError, match="NETT_FRAMESTACK_SHUFFLE"):
+            _enc()
+    monkeypatch.setenv("NETT_FRAMESTACK_SHUFFLE", "")
+    _enc()                                                                  # empty = off, as framestack reads it
+    monkeypatch.delenv("NETT_FRAMESTACK_SHUFFLE")
     monkeypatch.setenv("NETT_FISHEYE_METHOD", "equidistant")
     with pytest.raises(ValueError, match="equisolid"):
         _enc()
