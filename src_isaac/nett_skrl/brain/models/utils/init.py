@@ -30,6 +30,75 @@ def conv3d_ortho_init_enabled() -> bool:
     return v == "1"
 
 
+INIT_SCHEMES = ("kaiming", "orthogonal")
+
+#: Encoders whose hidden nonlinearity is ReLU, by class name along the MRO (so the *Pretrained subclasses
+#: inherit their base's entry). Workspace DECISIONS §179 add. 1 (owner, 2026-10-21: "For any encoder that uses
+#: ReLU, change their default to Kaiming init"). tests/test_init_scheme.py audits it against what each registered
+#: encoder's forward actually calls, and refuses an encoder_mapping entry that is in neither this set, the
+#: test's non-ReLU set, nor OWNS_INIT. XSPEncoder's one sigmoid is its figure gate; its hidden layers are ReLU.
+#: NOT here: CompactViT / UnityViT / CompactViViT (GELU), ViTSlotRecon (GELU ViT + ReLU slot MLP, mixed), and the
+#: encoders that own their init (XSP2, MatchedEncoder, JEPAEncoder, STPEEncoder).
+RELU_ENCODERS = frozenset({
+    "NatureCNN", "Compact3DCNN", "CompactCNN", "SmallCNN", "Resnet10CNN", "Resnet18CNN",
+    "SimCLRCLTT", "GuessWhatMoves", "XSPEncoder",
+})
+
+
+def init_scheme() -> str:
+    """NETT_INIT_SCHEME: 'kaiming' (default) | 'orthogonal'. Decides the fleet init of a RELU encoder only.
+
+    ⚠ DEFAULT 'kaiming' since workspace DECISIONS §179 (owner, 2026-10-21: "Kaiming init should be the
+    default moving forward. Don't let that affect the compatibility of the current runs." / "For any encoder
+    that uses ReLU, change their default to Kaiming init"). Under 'kaiming' a ReLU encoder (RELU_ENCODERS)
+    gets kaiming_init; every other encoder, and the MLP trunk, keep orthogonal_init as before. 'orthogonal'
+    rebuilds every model byte-identically to the pre-§179 rule (tests/test_init_scheme.py), so a row that
+    extends a pre-§179 series of a ReLU encoder declares it. Any other value -- including '' -- refuses.
+    """
+    v = os.environ.get("NETT_INIT_SCHEME", "kaiming").strip()
+    if v not in INIT_SCHEMES:
+        raise ValueError(f"NETT_INIT_SCHEME={v!r}: expected one of {INIT_SCHEMES} (default 'kaiming')")
+    return v
+
+
+def encoder_uses_relu(encoder) -> bool:
+    return any(cls.__name__ in RELU_ENCODERS for cls in type(encoder).__mro__)
+
+
+def kaiming_init(module: nn.Module) -> None:
+    """Kaiming He normal (fan_in, ReLU), zero bias, on the module set orthogonal_init's default rule touches:
+    Conv2d and Linear. Conv3d keeps PyTorch's default (DECISIONS §176)."""
+    if isinstance(module, (nn.Conv2d, nn.Linear)):
+        nn.init.kaiming_normal_(module.weight, mode="fan_in", nonlinearity="relu")
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+
+
+def init_encoder(encoder: nn.Module, gain: float) -> None:
+    """The fleet's encoder init (builder.py shared encoder, backbone.py per-model encoder).
+
+    Kaiming for a ReLU encoder under the default scheme; otherwise exactly the pre-§179 call
+    ``encoder.apply(lambda m: orthogonal_init(m, gain))``. NETT_CONV3D_ORTHO_INIT=1 has a meaning only
+    under the orthogonal rule, so it refuses on a ReLU encoder under 'kaiming'.
+    """
+    scheme = init_scheme()
+    relu = encoder_uses_relu(encoder)
+    if scheme == "kaiming" and relu:
+        if conv3d_ortho_init_enabled():
+            raise ValueError(f"NETT_CONV3D_ORTHO_INIT=1 needs NETT_INIT_SCHEME=orthogonal for the ReLU encoder "
+                             f"{type(encoder).__name__}; under the default 'kaiming' its Conv3d keeps PyTorch's "
+                             f"default (DECISIONS §176, §179).")
+        encoder.apply(kaiming_init)
+        used = "kaiming"
+    else:
+        encoder.apply(lambda module: orthogonal_init(module, gain))
+        used = "orthogonal"
+    # stdout, not a logger: the spawn child's logger is not bridged to the driver log, and this line is
+    # how a close-time check proves which init reached the arm.
+    print(f"[NETT init] encoder {type(encoder).__name__} {used} (NETT_INIT_SCHEME={scheme}, "
+          f"relu={'yes' if relu else 'no'})", flush=True)
+
+
 def encoder_owns_init(encoder) -> bool:
     """True for an encoder that declares ``OWNS_INIT = True``: the builder and the backbone then
     skip the fleet's orthogonal_init for it and keep the init its constructor chose.

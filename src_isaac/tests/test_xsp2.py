@@ -687,14 +687,20 @@ def test_builder_skips_orthogonal_init_for_xsp2_only(monkeypatch):
             assert _states_equal(_state(m.encoder), _state(_enc(seed=0))) or not shared
             lin = [x for x in m.trunk.modules() if isinstance(x, nn.Linear)]
             assert lin and all(_is_orthogonal(x.weight) for x in lin)
-        torch.manual_seed(0)
-        other = build_models_for_algorithm(spec, encoder_cls=encoder_mapping["nature_cnn"],
-                                           encoder_kwargs={"features_dim": 64},
-                                           observation_space=_space(channels=3), action_space=act,
-                                           device=torch.device("cpu"), cfg=cfg)
-        for m in other.values():
-            convs = [x for x in m.encoder.modules() if isinstance(x, nn.Conv2d)]
-            assert convs and all(_is_orthogonal(x.weight) for x in convs)
+        # nature_cnn still gets the fleet's encoder init: orthogonal under NETT_INIT_SCHEME=orthogonal, Kaiming He
+        # under the default (a ReLU encoder, DECISIONS §179) -- zero bias and not orthogonal.
+        for scheme in ("orthogonal", "kaiming"):
+            monkeypatch.setenv("NETT_INIT_SCHEME", scheme)
+            torch.manual_seed(0)
+            other = build_models_for_algorithm(spec, encoder_cls=encoder_mapping["nature_cnn"],
+                                               encoder_kwargs={"features_dim": 64},
+                                               observation_space=_space(channels=3), action_space=act,
+                                               device=torch.device("cpu"), cfg=cfg)
+            for m in other.values():
+                convs = [x for x in m.encoder.modules() if isinstance(x, nn.Conv2d)]
+                assert convs and all(_is_orthogonal(x.weight) == (scheme == "orthogonal") for x in convs), scheme
+                assert all(torch.equal(x.bias, torch.zeros_like(x.bias)) for x in convs)
+        monkeypatch.delenv("NETT_INIT_SCHEME")
 
 
 # ================================================================ 7. synthetic learning
@@ -814,15 +820,22 @@ ADDITIVE = ("nett_skrl/brain/aux/ppo_aux.py", "nett_skrl/brain/registry.py",
             "nett_skrl/brain/encoders/__init__.py", "examples/campaign_train.py")
 #: The only existing lines XSP2 edits: the init-ownership guard (and its import) in the two places
 #: the fleet's orthogonal init is applied to an encoder.
+#: Since workspace DECISIONS §179 (Kaiming He for ReLU encoders, test_init_scheme.py) the encoder's apply line at
+#: both sites is ``init_encoder(...)`` -- the third removed / added line of each entry, and the import that names it.
+#: XSP2's own edit is still the encoder_owns_init guard alone.
 EDITED = {
     "nett_skrl/brain/models/builder.py": (
-        ["from .utils.init import orthogonal_init", "if cfg.orthogonal_init:"],
-        ["from .utils.init import encoder_owns_init, orthogonal_init",
-         "if cfg.orthogonal_init and not encoder_owns_init(shared_enc):"]),
+        ["from .utils.init import orthogonal_init", "if cfg.orthogonal_init:",
+         "shared_enc.apply(lambda m: orthogonal_init(m, cfg.hidden_gain))"],
+        ["from .utils.init import encoder_owns_init, init_encoder",
+         "if cfg.orthogonal_init and not encoder_owns_init(shared_enc):",
+         "init_encoder(shared_enc, cfg.hidden_gain)"]),
     "nett_skrl/brain/models/utils/backbone.py": (
-        ["from .init import orthogonal_init", "if cfg.orthogonal_init:"],
-        ["from .init import encoder_owns_init, orthogonal_init",
-         "if cfg.orthogonal_init and not encoder_owns_init(self.encoder):"]),
+        ["from .init import orthogonal_init", "if cfg.orthogonal_init:",
+         "self.encoder.apply(lambda module: orthogonal_init(module, cfg.hidden_gain))"],
+        ["from .init import encoder_owns_init, init_encoder, orthogonal_init",
+         "if cfg.orthogonal_init and not encoder_owns_init(self.encoder):",
+         "init_encoder(self.encoder, cfg.hidden_gain)"]),
 }
 UNCHANGED = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py")
 # The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py): cfg-only 3DCNN labels and an

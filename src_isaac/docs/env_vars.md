@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-293 variables.
+294 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -158,6 +158,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_GWM_SPECTRAL_TAU` | `"0.1"` | `nett_skrl/body/wrappers/gwm_spectral.py:235` |
 | `NETT_HIDDEN_SIZES` | `""` | `examples/campaign_train.py:2038` |
 | `NETT_IMPRINT` | `_EXP_MAP[EXP][2]`, *(caller-supplied: `default_imprint`)* | `examples/campaign_train.py:1998`<br>`examples/train_binding_8brain_targets.py:145` |
+| `NETT_INIT_SCHEME` | `"kaiming"` | `nett_skrl/brain/models/utils/init.py:58` |
 | `NETT_ISAAC_LAB` | *(required / no literal default)* | `examples/campaign_retest_launch.py:38` |
 | `NETT_JOBS_PER_GPU` | `"1"`, `"2"` | `examples/campaign_retest_launch.py:52`<br>`examples/campaign_run.py:210` |
 | `NETT_KIT_THREADS` | `8` | `nett_skrl/runtime/cpu_budget.py:108` |
