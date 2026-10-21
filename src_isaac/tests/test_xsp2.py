@@ -636,7 +636,7 @@ def _check_xsp2_init(enc, pred):
         assert not _is_orthogonal(mod.weight), mod
 
 
-def test_init_kaiming_trunk_default_streams_not_orthogonal():
+def test_init_kaiming_trunk_default_streams_not_orthogonal(monkeypatch):
     from nett_skrl.brain.models.utils.init import orthogonal_init
     enc = _enc(seed=0)
     for kind, env in (("warp", None), ("conv", "conv")):
@@ -647,7 +647,9 @@ def test_init_kaiming_trunk_default_streams_not_orthogonal():
             _check_xsp2_init(enc, XSP2Term(enc).predictor)
         finally:
             os.environ.pop("NETT_XSP2_PREDICTOR", None)
-    # positive control: the SAME modules under the fleet's orthogonal_init ARE orthogonal
+    # positive control: the SAME modules under the fleet's orthogonal_init ARE orthogonal. dorsal.conv3d is a
+    # Conv3d, which the fleet init covers only at NETT_CONV3D_ORTHO_INIT=1 (default '0' since DECISIONS §176).
+    monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "1")
     probe = _enc(seed=0)
     probe.apply(lambda m: orthogonal_init(m, math.sqrt(2)))
     for mod in [*(m for m in probe.trunk if isinstance(m, nn.Conv2d)), *_default_init_modules(probe, WarpRefiner(3, 32).apply(
@@ -856,6 +858,17 @@ DP111_FILES = ("nett_skrl/brain/aux/cltt_ref_aux.py", "nett_skrl/brain/models/ut
                "nett_skrl/brain/encoders/nature_cnn.py")   # + §113's pre-Ampere bf16 warning (additive)
 DP111_REMOVED = {"nett_skrl/brain/aux/ppo_aux.py": ("aux_loss = self._aux_weight * self._aux.compute(",
                                                      "self._aux_encoder, sampled_observations", ")", "if (")}
+# Workspace DECISIONS §176 (test_conv3d_ortho_init.py): NETT_CONV3D_ORTHO_INIT's default flips '1' -> '0'. The
+# only existing init.py lines it edits are the knob's docstring, its default and its refusal text.
+INIT176_REMOVED = (
+    '"""NETT_CONV3D_ORTHO_INIT: \'1\' (default) = orthogonal Conv3d; \'0\' = PyTorch\'s default init.',
+    "⚠ DEFAULT-ON since workspace DECISIONS §63 (owner, 2026-10-03; opt-in at fb555b2, §61). An arm",
+    "with a Conv3d policy encoder that leaves the key unset now gets the orthogonal init. '0'",
+    "rebuilds every model byte-identically to the old (Conv2d, Linear)-only rule, so an arm that",
+    "must keep the pre-§63 init sets it explicitly. Any other value -- including an empty string --",
+    'v = os.environ.get("NETT_CONV3D_ORTHO_INIT", "1").strip()',
+    'raise ValueError(f"NETT_CONV3D_ORTHO_INIT={v!r}: expected \'1\' (default) or \'0\'")',
+)
 # Workspace DECISIONS §114 (test_decision_loop.py): the agent-side decision loop wraps the env in the one place
 # train/test/record get it (brain._wrapped_env); that test pins brain.py's diff to exactly that hook.
 DP114_FILES = ("nett_skrl/brain/brain.py",)
@@ -961,7 +974,11 @@ def test_init_guard_is_the_only_edit(path):
 
 def test_init_helper_is_additive_and_xsp_files_untouched():
     removed, added = _diff_lines("nett_skrl/brain/models/utils/init.py")
-    assert added and not removed
+    assert added
+    for text in INIT176_REMOVED:
+        assert text in removed, f"init.py: the admitted §176 removal {text!r} is not in the diff -- stale exemption"
+        removed.remove(text)
+    assert not removed, "init.py: removed or edited existing lines:\n" + "\n".join(removed)
     assert _git("diff", _base(), "--", *UNCHANGED) == ""
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
