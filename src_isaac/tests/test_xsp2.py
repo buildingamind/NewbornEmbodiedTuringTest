@@ -688,8 +688,8 @@ def test_builder_skips_orthogonal_init_for_xsp2_only(monkeypatch):
             lin = [x for x in m.trunk.modules() if isinstance(x, nn.Linear)]
             assert lin and all(_is_orthogonal(x.weight) for x in lin)
         # nature_cnn still gets the fleet's encoder init: orthogonal under NETT_INIT_SCHEME=orthogonal, Kaiming He
-        # under the default (a ReLU encoder, DECISIONS §179) -- zero bias and not orthogonal.
-        for scheme in ("orthogonal", "kaiming"):
+        # under the default 'family' (a ReLU encoder, DECISIONS §179) -- zero bias and not orthogonal.
+        for scheme in ("orthogonal", "family"):
             monkeypatch.setenv("NETT_INIT_SCHEME", scheme)
             torch.manual_seed(0)
             other = build_models_for_algorithm(spec, encoder_cls=encoder_mapping["nature_cnn"],

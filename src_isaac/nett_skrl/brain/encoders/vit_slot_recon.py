@@ -34,8 +34,10 @@ frame through a 30x narrower code -- the pressure that makes slots bind to parts
 would drop below the paper's validated setting for no stated reason.
 
 DECLARED: the trunk's CLS token is kept (it attends with the patches, as in every CompactViT) and not read; the
-fleet's orthogonal init applies to this encoder as to every ViT label (no OWNS_INIT), so the trunk starts as
-ViT-CLTT-Ref's does; NETT_AMP is refused (the aux steps its own optimizer outside any GradScaler, and a bf16
+fleet's init applies to this encoder (no OWNS_INIT) layer by layer (INIT_FAMILIES, workspace DECISIONS §179
+add. 3): the CompactViT trunk and Slot Attention's q / k / v take the transformer rule (trunc_normal .02), so the
+trunk starts as ViT-CLTT-Ref's does; the ReLU slot MLPs take Kaiming; the GRUCell keeps PyTorch's default. Under
+NETT_INIT_SCHEME=orthogonal the whole encoder is orthogonal, as before §179; NETT_AMP is refused (the aux steps its own optimizer outside any GradScaler, and a bf16
 setting would never reach ``_trunk``, which this encoder calls directly).
 """
 
@@ -57,6 +59,15 @@ class ViTSlotRecon(HWCFeatureExtractor):
     """CompactViT trunk + 3-slot Slot Attention on the newest frame; detached slots are the policy features."""
 
     N_FRAMES = 2
+    #: models/utils/init.layer_families: per-layer fleet init under NETT_INIT_SCHEME=family (DECISIONS §179 add. 3).
+    INIT_FAMILIES = {
+        "vit": "transformer",
+        "slot_in": "relu",
+        "slot_attention.to_q": "transformer",
+        "slot_attention.to_k": "transformer",
+        "slot_attention.to_v": "transformer",
+        "slot_attention.mlp": "relu",
+    }
 
     def __init__(
         self,
