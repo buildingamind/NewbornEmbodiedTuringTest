@@ -1,8 +1,9 @@
-"""NETT_CONV3D_ORTHO_INIT: orthogonal init for Conv3d layers, DEFAULT-ON (workspace DECISIONS §63).
+"""NETT_CONV3D_ORTHO_INIT: orthogonal init for Conv3d layers, DEFAULT-OFF (workspace DECISIONS §176;
+default-on from §63 until then).
 
 orthogonal_init matched only (Conv2d, Linear) until fb555b2, so Conv3d stems kept PyTorch's default
-init. '0' must rebuild every model byte-identically to that old rule; '1' -- and unset, the
-default -- must give the Conv3d stems the same orthogonal/zero-bias treatment as every other layer.
+init. '0' -- and unset, the default -- must rebuild every model byte-identically to that old rule;
+'1' must give the Conv3d stems the same orthogonal/zero-bias treatment as every other layer.
 """
 
 from __future__ import annotations
@@ -37,9 +38,9 @@ def _conv3d(enc):
     return layers
 
 
-def test_default_is_on_and_0_turns_it_off(monkeypatch):
+def test_default_is_off_and_1_turns_it_on(monkeypatch):
     monkeypatch.delenv("NETT_CONV3D_ORTHO_INIT", raising=False)
-    assert conv3d_ortho_init_enabled() is True
+    assert conv3d_ortho_init_enabled() is False
     monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "1")
     assert conv3d_ortho_init_enabled() is True
     monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "0")
@@ -75,8 +76,12 @@ def test_0_is_byte_identical_to_the_old_rule(monkeypatch, cls):
 
 
 @pytest.mark.parametrize("cls", [Compact3DCNN, GuessWhatMoves])
-def test_0_leaves_conv3d_at_pytorch_default(monkeypatch, cls, capsys):
-    monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "0")
+@pytest.mark.parametrize("value", [None, "0"])
+def test_0_leaves_conv3d_at_pytorch_default(monkeypatch, cls, value, capsys):
+    if value is None:
+        monkeypatch.delenv("NETT_CONV3D_ORTHO_INIT", raising=False)
+    else:
+        monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", value)
     for m in _conv3d(_build(cls)):
         bound = 1.0 / math.sqrt(m.weight[0].numel())
         assert float(m.weight.abs().max()) <= bound + 1e-6
@@ -86,12 +91,8 @@ def test_0_leaves_conv3d_at_pytorch_default(monkeypatch, cls, capsys):
 
 
 @pytest.mark.parametrize("cls", [Compact3DCNN, GuessWhatMoves])
-@pytest.mark.parametrize("value", [None, "1"])
-def test_on_makes_conv3d_orthogonal_with_zero_bias(monkeypatch, cls, value, capsys):
-    if value is None:
-        monkeypatch.delenv("NETT_CONV3D_ORTHO_INIT", raising=False)
-    else:
-        monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", value)
+def test_on_makes_conv3d_orthogonal_with_zero_bias(monkeypatch, cls, capsys):
+    monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "1")
     layers = _conv3d(_build(cls))
     for m in layers:
         w = m.weight.detach().flatten(1)          # (out, fan_in)
@@ -116,17 +117,17 @@ def test_on_changes_only_conv3d_parameters_in_distribution(monkeypatch, cls):
 
 
 @pytest.mark.parametrize("cls", [Compact3DCNN, GuessWhatMoves])
-def test_unset_is_byte_identical_to_1(monkeypatch, cls):
-    """The default IS '1': same seed, same state_dict, tensor for tensor."""
+def test_unset_is_byte_identical_to_0(monkeypatch, cls):
+    """The default IS '0' (DECISIONS §176): same seed, same state_dict, tensor for tensor."""
     monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "1")
     on = _build(cls).state_dict()
     monkeypatch.delenv("NETT_CONV3D_ORTHO_INIT", raising=False)
     unset = _build(cls).state_dict()
     monkeypatch.setenv("NETT_CONV3D_ORTHO_INIT", "0")
     off = _build(cls).state_dict()
-    assert unset.keys() == on.keys()
-    for k in on:
-        assert torch.equal(unset[k], on[k]), k
+    assert unset.keys() == off.keys()
+    for k in off:
+        assert torch.equal(unset[k], off[k]), k
     # ... and differs from '0' in every Conv3d tensor. Not ONLY there: orthogonal_ draws from the
     # torch RNG, so the layers initialised after a Conv3d get different (same-rule) draws.
     conv3d = {f"{n}.{p}" for n, m in _build(cls).named_modules() if isinstance(m, nn.Conv3d)

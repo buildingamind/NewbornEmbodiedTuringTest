@@ -89,7 +89,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_CAMPAIGN_DIR` | `str(Path.home() / "nett_campaign")` | `examples/campaign_run.py:37` |
 | `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:2263`<br>`examples/campaign_train.py:2264` |
 | `NETT_CLTT_REF_DEDUP` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:106` |
-| `NETT_CONV3D_ORTHO_INIT` | `"1"` | `nett_skrl/brain/models/utils/init.py:26` |
+| `NETT_CONV3D_ORTHO_INIT` | `"0"` | `nett_skrl/brain/models/utils/init.py:27` |
 | `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:215`<br>`nett_skrl/body/wrappers/dvs_polarity.py:238`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
 | `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2334` |
