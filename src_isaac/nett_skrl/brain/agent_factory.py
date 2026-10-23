@@ -119,6 +119,28 @@ def value_std_enabled() -> bool:
     return v == "on"
 
 
+def _check_early_term_gamma(cfg) -> None:
+    """NETT_EARLY_TERM_BONUS=stay (repo B nett_isaac/early_term.py) computes its stay-value bonus with
+    NETT_EARLY_TERM_GAMMA because the env cannot see this cfg. Refuse the run unless that value IS this agent's
+    discount factor. Inert (one environ read) when the bonus is unset."""
+    if not os.environ.get("NETT_EARLY_TERM_BONUS", "").strip():
+        return
+    raw = os.environ.get("NETT_EARLY_TERM_GAMMA", "").strip()
+    gamma = getattr(cfg, "discount_factor", None)
+    if gamma is None:
+        raise ValueError("NETT_EARLY_TERM_BONUS is set but the algorithm cfg has no discount_factor to check "
+                         "NETT_EARLY_TERM_GAMMA against.")
+    try:
+        env_gamma = float(raw)
+    except ValueError:
+        raise ValueError(f"NETT_EARLY_TERM_BONUS is set and NETT_EARLY_TERM_GAMMA={raw!r} is not a number.") from None
+    if abs(env_gamma - float(gamma)) > 1e-12:
+        raise ValueError(f"NETT_EARLY_TERM_GAMMA={raw} but the PPO discount_factor is {gamma}: the early-termination "
+                         f"stay bonus would be computed with the wrong discount. Set them equal.")
+    print(f"[NETT early-term] NETT_EARLY_TERM_GAMMA={env_gamma:g} == PPO discount_factor {float(gamma):g} (checked)",
+          flush=True)
+
+
 def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     """Build one skrl agent per brain, each owning a contiguous env scope."""
     obs_space, act_space = env.observation_space, env.action_space
@@ -179,6 +201,7 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
                 config=config,
                 brain_id=brain_id + 1,
             )
+        _check_early_term_gamma(cfg)
 
         # Rollout buffer placement: FOLLOWS THE COMPUTE DEVICE (changed 2026-07-21).
         # See resolve_memory_device() for the rule and its rationale.
