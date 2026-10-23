@@ -8,6 +8,7 @@ agents over contiguous env scopes.
 
 from __future__ import annotations
 
+import os
 import random
 import hashlib
 import logging
@@ -75,7 +76,20 @@ class TaskConfig:
         # offset-b and multi-brain brain-b bit-identical (env AND weights); mixing the
         # offset into the base seed here would break that (and, since single-brain has one
         # local brain, would otherwise leave all offsets on the same weight seed).
-        digest = hashlib.sha256(self.condition.encode("utf-8")).digest()
+        #
+        # NETT_SEED_BY_BRAIN=1 (owner rule 2026-10-23: "Seeding should always be a result of
+        # brain number or test episode"): the base seed is a FIXED CONSTANT instead of the
+        # condition hash, so the condition name no longer reaches any RNG. Every seed is then
+        # a function of the global brain id (weight init: base + global brain id) and, for
+        # env draws, of the episode index (nett_isaac.episode_seed keys base + phase + global
+        # brain id + brain-local episode + channel). fork-2 and ship-2 at the same offset
+        # therefore start from bit-identical weights and see the same per-episode env draws.
+        # The constant is the SAME formula applied to the string "nett":
+        #   (int(sha256(b"nett")[:8], big) * 7919) mod (2**31 - 1) = 2014423175.
+        # Unset / any other value: unchanged (condition-derived), bit-identical to before.
+        # Read per construction (not at import) so mode subprocesses and tests see it.
+        seed_key = "nett" if os.environ.get("NETT_SEED_BY_BRAIN") == "1" else self.condition
+        digest = hashlib.sha256(seed_key.encode("utf-8")).digest()
         object.__setattr__(
             self,
             "seed",
@@ -132,6 +146,64 @@ class Task:
 
     def set_dry_run(self, dry_run: bool = True, timeout: float | None = None) -> None:
         self.config = replace(self.config, dry_run=dry_run, dry_run_timeout=timeout)
+
+
+def seed_by_brain() -> bool:
+    """``NETT_SEED_BY_BRAIN=1``: seeds come from the brain number / episode, never the condition."""
+    return os.environ.get("NETT_SEED_BY_BRAIN") == "1"
+
+
+def stream_seed(config) -> int:
+    """Seed for the PROCESS-GLOBAL RNG streams (set_seeds, skrl key -> first-reset reseed).
+
+    Flag off: ``config.seed`` exactly as before (condition-derived).
+    Flag on, ONE brain in the process (every presenter / lion run): ``config.seed + global
+    brain id`` = constant + ``brain_id_offset``, so PPO minibatch shuffling, action noise and
+    every other global draw are a function of the brain number only. Flag on, several brains:
+    one process-global stream cannot be per-brain, so it stays at ``config.seed`` (the
+    constant) and a one-line note says so. ``config.seed`` itself is NOT changed: it is the
+    env's ``episode_rng`` base (nett_isaac.episode_seed), which already keys by global brain
+    id + episode, and whose TEST stream must stay shared by all brains.
+    """
+    base = int(config.seed)
+    if not seed_by_brain():
+        return base
+    num_brains = int(getattr(config, "num_brains", 1) or 1)
+    offset = int(getattr(config, "brain_id_offset", 0) or 0)
+    if num_brains == 1:
+        return base + offset
+    global _MULTI_BRAIN_NOTE_DONE
+    if not _MULTI_BRAIN_NOTE_DONE:  # once per process: stream_seed is read at set_seeds AND env load
+        _MULTI_BRAIN_NOTE_DONE = True
+        print(f"[NETT seed] NETT_SEED_BY_BRAIN=1 with num_brains={num_brains}: the process-global "
+              f"RNG stream is shared by all brains, kept at base {base} (per-brain weight init and "
+              f"env episode draws are still keyed by global brain id)", flush=True)
+    return base
+
+
+_MULTI_BRAIN_NOTE_DONE = False
+
+
+def reseed_streams(seed: int) -> None:
+    """Reseed random / numpy / torch (+cuda) only -- no determinism or skrl side effects."""
+    seed = int(seed)
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def weight_init_base(config) -> int:
+    """Base of the per-brain weight-init seed (agent_factory: ``base + global brain id``).
+
+    Flag off: ``torch.initial_seed()`` exactly as before. Flag on: ``config.seed`` -- the value
+    ``torch.initial_seed()`` holds there today (``NETTEnv.seed(cfg.seed = config.seed)`` is the
+    last reseed before build_agents), read directly because the flag also reseeds the global
+    streams to :func:`stream_seed` after env construction.
+    """
+    if seed_by_brain() and config is not None and getattr(config, "seed", None) is not None:
+        return int(config.seed)
+    return torch.initial_seed()
 
 
 def set_seeds(seed: int) -> None:

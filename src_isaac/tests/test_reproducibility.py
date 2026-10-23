@@ -346,6 +346,7 @@ def test_validate_tasklist_seeds_before_load():
     """The smoke-validation path must seed before building the env (Critic W2)."""
     tasklist_py = _SRC_ISAAC / "nett_skrl" / "runtime" / "tasklist.py"
     src = _read(tasklist_py)
-    seed_idx = src.index("set_seeds(config.seed)")
+    # NETT_SEED_BY_BRAIN patch: the call is set_seeds(stream_seed(config)) (== config.seed when off).
+    seed_idx = src.index("set_seeds(stream_seed(config))")
     load_idx = src.index("task.agent.env.load(")
     assert seed_idx < load_idx, "set_seeds must precede env.load in validate_tasklist"

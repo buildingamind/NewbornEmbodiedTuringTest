@@ -7,7 +7,7 @@ from pathlib import Path
 from .device import visible_device_scope
 from .lifecycle import register_reaper, unregister_reaper
 from .reap import TaskReaper
-from .task import Task, set_seeds
+from .task import Task, set_seeds, stream_seed
 
 
 def build_tasks(
@@ -74,7 +74,7 @@ def validate_tasklist(tasks: list[Task], close_env: bool = True) -> None:
         config = task.config
         # Match the real run path (task_runner): seed before building the env so
         # the smoke-validation load is deterministic too (Critic W2).
-        set_seeds(config.seed)
+        set_seeds(stream_seed(config))  # == config.seed unless NETT_SEED_BY_BRAIN=1
         run_config = config.for_mode("train")
         log_path = config.path / "logs"
         log_path.mkdir(exist_ok=True, parents=True)

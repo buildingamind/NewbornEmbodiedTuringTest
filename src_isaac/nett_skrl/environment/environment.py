@@ -24,7 +24,7 @@ from typing import Optional
 from ..runtime.cpu_budget import cell_cpu_threads, kit_thread_args
 from ..runtime.texture_defaults import kit_texture_args
 from ..runtime.device import torch_device_index, torch_device_str
-from ..runtime.task import TaskConfig, recording_phase_map
+from ..runtime.task import TaskConfig, recording_phase_map, reseed_streams, seed_by_brain, stream_seed
 from .design import get_experiment_design, validate_conditions
 from .physx_strategy import (
     probe_free_vram_bytes,
@@ -354,7 +354,14 @@ class Environment:
             cfg_kwargs["motor"] = MotorCfg(locomotion=self.locomotion)
         cfg = NETTEnvCfg(**cfg_kwargs)
         self._configure_cfg(cfg, config, seed)
-        return NETTEnv(cfg)
+        env = NETTEnv(cfg)
+        if seed_by_brain():
+            # NETTEnv.__init__ reseeded every global stream to cfg.seed (the constant, which must
+            # stay the episode_rng base). Re-key them to the brain-number stream seed for
+            # everything between here and the first reset (body wrappers, e.g. the framestack
+            # shuffle rng). Weight init does not read this (task.weight_init_base).
+            reseed_streams(stream_seed(config))
+        return env
 
     def _configure_cfg(self, cfg, config: TaskConfig, seed: Optional[int] = None) -> None:
         """Apply NETT-skrl settings to a fresh ``NETTEnvCfg`` and refresh derived fields."""

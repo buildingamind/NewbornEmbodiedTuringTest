@@ -146,7 +146,9 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
     # torch.manual_seed). Model weight init below is re-seeded per brain from this,
     # so it is reproducible regardless of how much global torch RNG the Isaac env
     # build happened to consume between set_seeds and here.
-    base_seed = torch.initial_seed()
+    # NETT_SEED_BY_BRAIN=1: read config.seed directly (same value; see task.weight_init_base).
+    from ..runtime.task import weight_init_base
+    base_seed = weight_init_base(config)
     # GLOBAL brain id = brain_id_offset + local id. The task seed is now condition-only
     # (runtime/task.py), so keying weight init by the global id makes single-brain
     # offset-b initialise identically to brain b of a multi-brain run.

@@ -36,13 +36,13 @@ from .reap import (
     is_vram_oom_exit,
     join_with_reap,
 )
-from .task import Task, TaskConfig, recording_phase_map, set_seeds
+from .task import Task, TaskConfig, recording_phase_map, set_seeds, stream_seed
 
 
 def run_task(task: Task) -> None:
     """Run one (condition × N brains) task: train/test/record in fresh Isaac workers."""
     config = task.config
-    set_seeds(config.seed)
+    set_seeds(stream_seed(config))  # == config.seed unless NETT_SEED_BY_BRAIN=1
     if config.dry_run:
         config.logger.info(
             "Spawning dry-run subprocess for condition %s", config.condition
@@ -376,7 +376,7 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
 
     config = task.config
     agent = task.agent
-    set_seeds(config.seed)
+    set_seeds(stream_seed(config))  # == config.seed unless NETT_SEED_BY_BRAIN=1
     if not config.dry_run:
         (config.path / "logs").mkdir(exist_ok=True, parents=True)
 
