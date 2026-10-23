@@ -1120,6 +1120,10 @@ MIRROR187_FILES = ("nett_skrl/brain/models/gaussian_actor.py", "nett_skrl/brain/
 #: actor's tril_offdiag) a fixed zero buffer (test_fixed_action_std.py). gaussian_actor.py is admitted above, checkpoints.py
 #: by CHECKPOINT_FILES.
 SIGMA187_FILES = ("nett_skrl/brain/models/multivariate_gaussian_actor.py", "nett_skrl/brain/models/utils/action_std.py")
+#: workspace DECISIONS §187 add. 10/11 (owner: "Seeding should always be a result of brain number or test episode"; same code on
+#: both teams): the presenter's NETT_SEED_BY_BRAIN patch (runtime/task.py stream_seed / weight_init_base / reseed_streams, set_seeds
+#: call site in tasklist.py). task_runner.py, environment.py and agent_factory.py are admitted above.
+SEED187_FILES = ("nett_skrl/runtime/task.py", "nett_skrl/runtime/tasklist.py")
 
 #: owner 2026-10-20 (workspace DECISIONS §173): spatial-pooled joint ViViT at 1x4 / 2x8 (test_vivit_spatial_rect.py);
 #: compact_vivit.py is already admitted by S162_FILES, campaign_train.py by SHARED.
@@ -1176,7 +1180,7 @@ def test_no_other_brain_file_changed():
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
-                                              + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES}
+                                              + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
