@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Optional
 
 from ..runtime.cpu_budget import cell_cpu_threads, kit_thread_args
-from ..runtime.texture_defaults import kit_texture_args
+from ..runtime.texture_defaults import kit_texture_args, texture_cache_refusal
 from ..runtime.device import torch_device_index, torch_device_str
 from ..runtime.task import TaskConfig, recording_phase_map, reseed_streams, seed_by_brain, stream_seed
 from .design import get_experiment_design, validate_conditions
@@ -301,26 +301,33 @@ class Environment:
             # Size Kit's carb.tasking pool to THIS cell's CPU budget; left at
             # Isaac's default every cell would claim 32 threads no matter how
             # many cells share the host. See runtime/cpu_budget.py.
+            kit_args = kit_thread_args(
+                cell_cpu_threads(),
+                # Texture-residency defaults (loader threads + on-disk texture
+                # cache): +2.8% throughput vs an unmodified control, flicker-free,
+                # stimulus unchanged. NOT a memory win -- see
+                # runtime/texture_defaults.py for the measurements, the retracted
+                # memory claim, and the NETT_TEXTURE_DEFAULTS=0 escape hatch.
+                #
+                # NETT_EXTRA_KIT_ARGS is appended AFTER them, so it wins on any
+                # flag it repeats. Used to pin experiment-specific values, e.g.
+                # "--/rtx-transient/resourcemanager/maxMipCount=8" (removes the
+                # monitor-texture flicker AND the frame-0 startup blank while
+                # leaving streaming enabled).
+                existing=kit_texture_args(os.environ.get("NETT_EXTRA_KIT_ARGS", "")),
+            )
+            # ⛔ No disk-cached Kit on the node-wide default texture cache (DECISIONS §187
+            # add. 16, owner fix (b)): see runtime/texture_defaults.texture_cache_refusal.
+            import sys
+            refusal = texture_cache_refusal(sys.argv[1:], kit_args)
+            if refusal:
+                raise SystemExit(refusal)
             with _kit_safe_argv():
                 self._sim_app = AppLauncher(
                     headless=self.headless,
                     enable_cameras=True,
                     device=_applauncher_device(config),
-                    kit_args=kit_thread_args(
-                        cell_cpu_threads(),
-                        # Texture-residency defaults (loader threads + on-disk texture
-                        # cache): +2.8% throughput vs an unmodified control, flicker-free,
-                        # stimulus unchanged. NOT a memory win -- see
-                        # runtime/texture_defaults.py for the measurements, the retracted
-                        # memory claim, and the NETT_TEXTURE_DEFAULTS=0 escape hatch.
-                        #
-                        # NETT_EXTRA_KIT_ARGS is appended AFTER them, so it wins on any
-                        # flag it repeats. Used to pin experiment-specific values, e.g.
-                        # "--/rtx-transient/resourcemanager/maxMipCount=8" (removes the
-                        # monitor-texture flicker AND the frame-0 startup blank while
-                        # leaving streaming enabled).
-                        existing=kit_texture_args(os.environ.get("NETT_EXTRA_KIT_ARGS", "")),
-                    ),
+                    kit_args=kit_args,
                 ).app
 
         # DO NOT arm crash_guard here. It is tempting: NETTEnv(cfg) below builds the

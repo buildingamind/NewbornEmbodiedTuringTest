@@ -12,7 +12,7 @@ import copy
 import json
 import os
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 import pytest
 import yaml
@@ -344,6 +344,108 @@ def pytest_collection_modifyitems(config, items) -> None:
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+# The node's §158 shared texture-cache root (the same table as workspace tools/launch_arm.sh and
+# tools/retest_arm.sh); $TEXCACHE_158_ROOT overrides it.
+_TC158_ROOTS = (
+    "/data/zlaborde/researcher2_offload/texcache/shared158",  # insect
+    "/data/zlaborde/lion_texcache/shared158",                 # lion
+    "/home/zlaborde/nett/texcache/shared158",                 # chicken
+)
+
+
+def _e2e_texcache_view(root: Path) -> Path:
+    """A §158 view of ``root``/master for this e2e session: verify the master against its manifest
+    (sha256), then hard-link its frozen files (a COPY of the Kit-owned _cache.json), exactly as
+    `texcache_shared.py view` does; a sidecar <view>.json names this pid so `texcache_shared.py gc`
+    releases a view a killed session leaves behind. Nothing is promoted from an e2e view."""
+    import fcntl
+    import hashlib
+    import shutil
+    import time
+    from concurrent.futures import ThreadPoolExecutor
+
+    master = root / "master"
+    want = {}
+    for line in (root / "master.manifest").read_text().splitlines():
+        if line and not line.startswith("#"):
+            rel, size, sha = line.split("\t")
+            want[rel] = (int(size), sha)
+
+    def _sha(rel):
+        h = hashlib.sha256()
+        with open(master / rel, "rb") as f:
+            for blk in iter(lambda: f.read(1 << 20), b""):
+                h.update(blk)
+        return rel, os.path.getsize(master / rel), h.hexdigest()
+
+    view = root / "views" / f"e2e_{os.uname().nodename}_{os.getpid()}_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}"
+    with open(root / "master.lock", "a") as lk:
+        fcntl.flock(lk.fileno(), fcntl.LOCK_SH)
+        try:
+            with ThreadPoolExecutor(16) as ex:
+                bad = [r for r, size, h in ex.map(_sha, sorted(want), chunksize=32) if (size, h) != want[r]]
+            if bad:
+                pytest.exit(f"e2e: §158 master {master} fails its manifest ({len(bad)} file(s), e.g. {bad[0]}); "
+                            "fix the master (texcache_shared.py verify) before running e2e", returncode=3)
+            stage = Path(str(view) + ".staging")
+            for rel in sorted(want):
+                dst = stage / rel
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                if rel == "_cache.json":
+                    shutil.copyfile(master / rel, dst)
+                    os.chmod(dst, 0o644)
+                else:
+                    os.link(master / rel, dst)
+            os.rename(stage, view)
+            Path(str(view) + ".json").write_text(json.dumps(
+                {"view": str(view), "master": str(master), "pid": os.getpid(), "master_files": len(want),
+                 "created": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), "e2e": True}, indent=1))
+        finally:
+            fcntl.flock(lk.fileno(), fcntl.LOCK_UN)
+    return view
+
+
+@pytest.fixture(scope="session", autouse=True)
+def e2e_texture_cache() -> Iterator[Path | None]:
+    """Every e2e Kit reads the node's ONE frozen shared texture cache through a §158 view.
+
+    Environment.load refuses a disk-cached Kit boot on anything but a view of a node's shared master
+    (runtime/texture_defaults.texture_cache_refusal; owner, workspace DECISIONS §158 "a shared cache and
+    not a by-run cache", §187 add. 16). Before that guard a hand-run or pre-push e2e booted on Kit's
+    node-wide default cache, the unmanaged directory insect's corrupt entries came from (FINDINGS
+    §4dh.44h.211 add. 27). A caller-named localTextureCachePath is left to the guard to judge. With no
+    master on this node the tree is not run at all (exit, not skip: a gate must not pass vacuously).
+    Set here, the variable reaches every spawned child that boots Kit.
+    """
+    import shutil
+
+    from nett_skrl.runtime.texture_defaults import _PATH_FLAG, _last_value
+
+    have = os.environ.get("NETT_EXTRA_KIT_ARGS", "")
+    if _last_value(have.split(), _PATH_FLAG):
+        yield None
+        return
+    roots = [os.environ["TEXCACHE_158_ROOT"]] if os.environ.get("TEXCACHE_158_ROOT") else list(_TC158_ROOTS)
+    root = next((Path(r) for r in roots if (Path(r) / "master.manifest").is_file()), None)
+    if root is None:
+        pytest.exit(f"e2e: no §158 shared texture-cache master on this node (looked in {roots}); "
+                    "set TEXCACHE_158_ROOT or NETT_EXTRA_KIT_ARGS with a view", returncode=3)
+    view = _e2e_texcache_view(root)
+    os.environ["NETT_EXTRA_KIT_ARGS"] = " ".join(x for x in (have, f"{_PATH_FLAG}{view}") if x)
+    try:
+        yield view
+    finally:
+        if have:
+            os.environ["NETT_EXTRA_KIT_ARGS"] = have
+        else:
+            os.environ.pop("NETT_EXTRA_KIT_ARGS", None)
+        if view.parent.name == "views" and (view.parent.parent / "master.manifest").is_file():
+            for dp, _dns, _fns in os.walk(view):
+                os.chmod(dp, 0o755)
+            shutil.rmtree(view, ignore_errors=True)
+            Path(str(view) + ".json").unlink(missing_ok=True)
 
 
 @pytest.fixture

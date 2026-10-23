@@ -126,7 +126,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_EXPERT_FLOW_PATCH` | `"8"` | `nett_skrl/brain/aux/expert_flow.py:48` |
 | `NETT_EXPERT_FLOW_RADIUS` | `"12"` | `nett_skrl/brain/aux/expert_flow.py:46` |
 | `NETT_EXPERT_FLOW_STRIDE` | `"2"` | `nett_skrl/brain/aux/expert_flow.py:47` |
-| `NETT_EXTRA_KIT_ARGS` | `""` | `nett_skrl/environment/environment.py:322` |
+| `NETT_EXTRA_KIT_ARGS` | `""` | `nett_skrl/environment/environment.py:317` |
 | `NETT_EYE_ASPECT_FREE` | `False` | `examples/campaign_train.py:1904` |
 | `NETT_EYE_H` | *(required / no literal default)* | `examples/count_params.py:68` |
 | `NETT_EYE_RES` | `""` | `examples/campaign_train.py:1890` |
@@ -135,7 +135,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_FIRST_FULL_STACK` | `""` | `nett_skrl/brain/env_wrappers.py:322` |
 | `NETT_FISHEYE_METHOD` | `"equisolid"` | `nett_skrl/brain/encoders/stp_e.py:263` |
 | `NETT_FIXED_ACTION_STD` | `""` | `nett_skrl/brain/models/utils/action_std.py:45` |
-| `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:394` |
+| `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:401` |
 | `NETT_FOVEA_COLOR_RADIUS` | `""` | `nett_skrl/body/wrappers/fovea.py:74` |
 | `NETT_FOVEA_SHARP_RADIUS` | `""` | `nett_skrl/body/wrappers/fovea.py:75` |
 | `NETT_FOVEA_SIGMA` | `""` | `nett_skrl/body/wrappers/fovea.py:76` |
@@ -248,7 +248,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:136` |
 | `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:135` |
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
-| `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:451` |
+| `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:458` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
 | `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:418` |
 | `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:407` |
@@ -279,7 +279,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEST_CHECKPOINT` | `""` | `nett_skrl/recording/checkpoints.py:45` |
 | `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:611` |
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2409` |
-| `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:414`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
+| `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:421`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
 | `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:275` |
 | `NETT_TRAIN_DECISION_PERIOD` | `""` | `examples/campaign_train.py:1827`<br>`examples/campaign_train.py:1849`<br>`examples/campaign_train.py:2394`<br>`nett_skrl/brain/aux/xsp2_aux.py:342` |

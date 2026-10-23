@@ -101,3 +101,71 @@ def kit_texture_args(existing: str = "") -> str:
     if existing:
         parts.append(existing)
     return " ".join(parts)
+
+
+# ---- texture-cache location guard (workspace DECISIONS §187 add. 15 + add. 16, owner fix (b)) ----
+# ⛔ The owner's design is ONE FROZEN SHARED cache per node, never a per-row cache (DECISIONS §158: "It was
+# supposed to be a shared cache and not a by-run cache"; §187 add. 16). Workspace tools/texcache_shared.py
+# implements it: <root>/shared158/master (0444 files, sha256 master.manifest, verified at every launch) and,
+# per run, <root>/shared158/views/<name> -- hard links to the master's own inodes, so every run reads the
+# same frozen bytes; a texture the master lacks is written into the view and reaches the master only by a
+# validated promote. A disk-cached Kit with any OTHER localTextureCachePath is refused here:
+#   - none / Kit's node-wide default `${XDG_CACHE_HOME:-~/.cache}/ov/texturecache`: one writable directory,
+#     no manifest, concurrent non-atomic writes -- where insect's corrupt entries lived (a 0-byte pair 10-13,
+#     a TRUNCATED .0 Kit kept reading; FINDINGS §4dh.44h.211 add. 27);
+#   - any other directory: a per-row cache, which the owner does not want.
+# No opt-out: boot through tools/launch_arm.sh / tools/retest_arm.sh (they create the view), or pass
+# enableTextureCaching=false.
+_CACHE_FLAG = f"--{_R}/enableTextureCaching="
+_PATH_FLAG = f"--{_R}/localTextureCachePath="
+
+
+def _last_value(args: list[str], flag: str) -> str | None:
+    """Kit takes the LAST occurrence of a flag, so the last one is the effective value."""
+    value = None
+    for a in args:
+        if a.startswith(flag):
+            value = a[len(flag):]
+    return value
+
+
+def default_texture_cache_dir() -> str:
+    """Kit's node-wide default texture cache (where a boot without localTextureCachePath writes)."""
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "ov", "texturecache")
+
+
+def is_shared_view(path: str) -> bool:
+    """True for an existing <root>/views/<name> directory beside <root>/master.manifest (a §158 view)."""
+    view = os.path.realpath(os.path.expanduser(path).rstrip("/") or "/")
+    parent = os.path.dirname(view)
+    return (os.path.isdir(view) and os.path.basename(parent) == "views"
+            and os.path.isfile(os.path.join(os.path.dirname(parent), "master.manifest")))
+
+
+def texture_cache_refusal(argv: list[str], kit_args: str) -> str | None:
+    """Why this Kit boot must be refused, or None. ``argv`` + ``kit_args`` is the effective Kit
+    command line (AppLauncher appends kit_args to sys.argv). Disk caching counts as ON only when
+    the last enableTextureCaching is true -- TEXTURE_DEFAULT_ARGS sets it, NETT_TEXTURE_DEFAULTS=0
+    drops it, and an explicit false turns it off."""
+    args = list(argv) + (kit_args or "").split()
+    if (_last_value(args, _CACHE_FLAG) or "").strip().lower() not in ("true", "1"):
+        return None
+    path = _last_value(args, _PATH_FLAG)
+    if path and is_shared_view(path):
+        return None
+    default = default_texture_cache_dir()
+    if not path:
+        why = f"no localTextureCachePath was given (Kit would use its node-wide default {default})"
+    else:
+        expanded = os.path.realpath(os.path.expanduser(path).rstrip("/") or "/")
+        legacy = {os.path.realpath(d) for d in (default, os.path.join(os.path.expanduser("~"), ".cache", "ov", "texturecache"))}
+        why = (f"localTextureCachePath={path} is Kit's node-wide default" if expanded in legacy else
+               f"localTextureCachePath={path} is not a view of a node's shared master (<root>/views/<name> "
+               "beside <root>/master.manifest), i.e. a per-row cache")
+    return (
+        f"REFUSED to boot Kit: texture disk caching is on and {why}. Every run must read the node's ONE "
+        "frozen shared cache through a §158 view (owner, workspace DECISIONS §158, §187 add. 16; FINDINGS "
+        "§4dh.44h.211 add. 27). Launch through tools/launch_arm.sh or tools/retest_arm.sh (they create the "
+        f"view), or pass {_CACHE_FLAG}false."
+    )

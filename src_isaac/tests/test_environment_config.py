@@ -25,6 +25,15 @@ def _design_sheet(tmp_path: Path) -> Path:
     return csv
 
 
+def _tc_args(tmp_path: Path) -> str:
+    """A (fake) §158 view of a shared master: Environment.load refuses a disk-cached boot on anything
+    else (texture_defaults.texture_cache_refusal, DECISIONS §187 add. 16)."""
+    root = tmp_path / "shared158"
+    (root / "views" / "test").mkdir(parents=True, exist_ok=True)
+    (root / "master.manifest").write_text("# kind=master\n")
+    return f"--/rtx-transient/resourcemanager/localTextureCachePath={root / 'views' / 'test'}"
+
+
 class _Nested:
     pass
 
@@ -244,6 +253,8 @@ def test_load_passes_inferred_asset_root_before_nett_cfg_post_init(tmp_path, mon
         types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
     )
 
+    monkeypatch.setenv("NETT_EXTRA_KIT_ARGS", _tc_args(tmp_path))
+
     env = Environment(design_sheet=design_sheet, media_root=media_root)
     task = _TaskConfig()
     task.path = tmp_path / "run"
@@ -395,7 +406,7 @@ def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
         types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
     )
     monkeypatch.delenv("NETT_KIT_THREADS", raising=False)
-    monkeypatch.delenv("NETT_EXTRA_KIT_ARGS", raising=False)
+    monkeypatch.setenv("NETT_EXTRA_KIT_ARGS", _tc_args(tmp_path))
 
     env = Environment(design_sheet=design_sheet, media_root=media_root)
     task = _TaskConfig()
@@ -406,7 +417,7 @@ def test_load_passes_kit_args_to_applauncher_with_default_thread_count(
     # kit_args = thread args composed onto the measured texture-residency defaults
     # (environment.py: kit_thread_args(N, existing=kit_texture_args(NETT_EXTRA_KIT_ARGS))).
     assert captured["kit_args"] == _kit_thread_args(
-        _DEFAULT_KIT_THREADS, existing=_kit_texture_args("")
+        _DEFAULT_KIT_THREADS, existing=_kit_texture_args(_tc_args(tmp_path))
     )
 
 
@@ -475,7 +486,7 @@ def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
         types.SimpleNamespace(NETTEnvCfg=FakeNETTEnvCfg),
     )
     monkeypatch.setenv("NETT_KIT_THREADS", "3")
-    monkeypatch.delenv("NETT_EXTRA_KIT_ARGS", raising=False)
+    monkeypatch.setenv("NETT_EXTRA_KIT_ARGS", _tc_args(tmp_path))
 
     env = Environment(design_sheet=design_sheet, media_root=media_root)
     task = _TaskConfig()
@@ -483,5 +494,5 @@ def test_load_honors_nett_kit_threads_env_override(tmp_path, monkeypatch):
 
     env.load(task)
 
-    assert captured["kit_args"] == _kit_thread_args(3, existing=_kit_texture_args(""))
+    assert captured["kit_args"] == _kit_thread_args(3, existing=_kit_texture_args(_tc_args(tmp_path)))
     assert "threadCount=3" in captured["kit_args"]
