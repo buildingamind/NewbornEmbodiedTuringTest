@@ -838,6 +838,26 @@ EDITED = {
          "init_encoder(self.encoder, cfg.hidden_gain)"]),
 }
 UNCHANGED = ("nett_skrl/brain/encoders/xsp.py", "nett_skrl/brain/aux/xsp_aux.py")
+# Workspace DECISIONS §187 (the presenter's §184 patch, test_mirror_equiv.py): NETT_MIRROR_EQUIV's builder guard is
+# ADDED beside the init guard, never in place of it. Each admitted line must still be in the diff (no stale exemption).
+MIRROR187_ADDED = {
+    "nett_skrl/brain/models/builder.py": [
+        "from .utils.features import MIRROR_ENV, mirror_ckpt_enabled, mirror_equiv_enabled",
+        "if mirror_equiv_enabled():", "_check_mirror_models(models)", "def _check_mirror_models(models) -> None:",
+        '"""NETT_MIRROR_EQUIV is implemented in GaussianActor (diagonal: M maps it to itself) and ValueCritic',
+        "only. A correlated actor (tril_offdiag would need its sign flipped under M), a deterministic actor",
+        'or a Q critic would run UNSYMMETRISED under a mirror label -- refuse instead."""',
+        "bad = {k: type(m).__name__ for k, m in models.items() if type(m) not in (GaussianActor, ValueCritic)}",
+        "if bad:", 'raise ValueError(f"{MIRROR_ENV}=1 supports GaussianActor + ValueCritic only; got {bad}")',
+        "for k, m in models.items():", "if isinstance(m, GaussianActor) and m.num_actions != 2:",
+        'raise ValueError(f"{MIRROR_ENV}=1 needs the 2-D [turn, move] action; {k} has {m.num_actions}")',
+        "# stdout, not a logger (the spawn child's logger is not bridged): the run log's proof the flag reached the models.",
+        'print(f"[NETT mirror] {MIRROR_ENV}=1: policy mean / value symmetrised over the width flip, "',
+        'f"turn (action 0) negated, models={sorted(models)} ckpt={int(mirror_ckpt_enabled())}", flush=True)',
+        "", ""],
+}
+MIRROR187_FILES = ("nett_skrl/brain/models/gaussian_actor.py", "nett_skrl/brain/models/value_critic.py",
+                   "nett_skrl/brain/aux/ema_teacher.py", "nett_skrl/brain/aux/slot_contrast_aux.py")
 # The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py): cfg-only 3DCNN labels and an
 # even-stem-kernel path in compact_3dcnn.py, held to the old counts and the plain odd-kernel Conv3d there.
 SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
@@ -982,6 +1002,9 @@ def test_shared_file_change_is_additive_only(path):
 @pytest.mark.parametrize("path", sorted(EDITED))
 def test_init_guard_is_the_only_edit(path):
     removed, added = _diff_lines(path)
+    for text in MIRROR187_ADDED.get(path, ()):
+        assert text in added, f"{path}: the admitted §187 mirror line {text!r} is not in the diff -- stale exemption"
+        added.remove(text)
     assert (removed, added) == tuple(EDITED[path]), (removed, added)
 
 
@@ -996,7 +1019,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
-                                          "nett_skrl/brain/models/utils/init.py")}
+                                          *MIRROR187_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

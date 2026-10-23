@@ -1111,6 +1111,12 @@ STP170_FILES = ("nett_skrl/body/wrappers/stp_pose.py", "nett_skrl/brain/encoders
                 "nett_skrl/brain/aux/stp_aux.py")
 STP170_LABELS = {"STP-E", "STP-E-NoWarp", "STP-E-Cmd", "CNN2F-630K"}
 
+#: workspace DECISIONS §187 (the presenter's §184 patch): NETT_MIRROR_EQUIV in the Gaussian actor and value critic, and
+#: the EMA / slot-contrast target copies that must not deepcopy the mirror cache slot (test_mirror_equiv.py). The
+#: builder and features.py edits are already admitted above.
+MIRROR187_FILES = ("nett_skrl/brain/models/gaussian_actor.py", "nett_skrl/brain/models/value_critic.py",
+                   "nett_skrl/brain/aux/ema_teacher.py", "nett_skrl/brain/aux/slot_contrast_aux.py")
+
 #: owner 2026-10-20 (workspace DECISIONS §173): spatial-pooled joint ViViT at 1x4 / 2x8 (test_vivit_spatial_rect.py);
 #: compact_vivit.py is already admitted by S162_FILES, campaign_train.py by SHARED.
 VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
@@ -1166,7 +1172,7 @@ def test_no_other_brain_file_changed():
     allowed = {f"src_isaac/{p}" for p in SHARED + NEW_FILES + XSP2_FILES + SMALL3D_FILES + ABORT_GATE_FILES
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
-                                              + STP170_FILES}
+                                              + STP170_FILES + MIRROR187_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
