@@ -8,7 +8,7 @@ from skrl.models.torch import GaussianMixin, Model
 
 from .model_cfg import ModelCfg
 from .utils.backbone import FeatureBackbone
-from .utils.features import features_forward
+from .utils.features import features_forward, features_forward_mirrored, mirror_equiv_enabled, mirror_symmetrize_mean
 from .utils.init import init_output
 
 
@@ -40,5 +40,10 @@ class GaussianActor(GaussianMixin, Model, FeatureBackbone):
         self.log_std = nn.Parameter(torch.full((self.num_actions,), float(cfg.initial_log_std)))
 
     def compute(self, inputs, role=""):
+        if mirror_equiv_enabled():
+            # NETT_MIRROR_EQUIV: mu_sym(o) = 0.5 (mu(o) + M mu(F o)); log_std unchanged (utils/features.py).
+            h, h_m = features_forward_mirrored(self, inputs)
+            mean = mirror_symmetrize_mean(self.mean_layer(h), self.mean_layer(h_m))
+            return mean, {"log_std": self.log_std.expand_as(mean)}
         mean = self.mean_layer(features_forward(self, inputs))
         return mean, {"log_std": self.log_std.expand_as(mean)}

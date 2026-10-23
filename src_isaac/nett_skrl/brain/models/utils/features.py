@@ -109,6 +109,9 @@ def clear_feature_cache(*modules) -> None:
     for m in modules:
         if m is not None and getattr(m, _CACHE_ATTR, None) is not None:
             setattr(m, _CACHE_ATTR, None)
+        # NETT_MIRROR_EQUIV's mirrored-pass entry (never set when the flag is off).
+        if m is not None and getattr(m, "_nett_shared_feature_cache_mirror", None) is not None:
+            setattr(m, "_nett_shared_feature_cache_mirror", None)
 
 
 def features_forward(model, inputs):
@@ -179,3 +182,122 @@ def features_forward(model, inputs):
         # aux arm into a frozen-encoder arm -- the exact failure the note above forbids.
         feats = feats.detach()
     return model.trunk(feats)
+
+
+# ── MIRROR-EQUIVARIANT POLICY (NETT_MIRROR_EQUIV; presenter team, 2026-10-22). ─────────────────────
+# Failing parsing seeds fail through a constant LEFT/RIGHT side bias of the deterministic policy.
+# With NETT_MIRROR_EQUIV=1 the Gaussian MEAN and the VALUE are made exactly mirror-equivariant /
+# invariant by symmetrising over the left-right image flip F (the width axis) and the action
+# mirror M (negate turn = actions[..., 0]; move = actions[..., 1] is mirror-invariant):
+#     mu_sym(o) = 0.5 * (mu(o) + M mu(F o)),     V_sym(o) = 0.5 * (V(o) + V(F o))
+# Exact for ANY network because F and M are involutions; nothing is asked of the encoder.
+# log_std is state-independent and untouched. Unset / "0" = the original code path, statement for
+# statement (features_forward above is not modified). No parameters are added: checkpoints load strict.
+MIRROR_ENV = "NETT_MIRROR_EQUIV"
+#: Opt-in activation recompute (torch.utils.checkpoint, non-reentrant) for the encoder passes of the
+#: mirrored forward. Gradient-identical; trades ~1/3 more encoder compute in the PPO update for
+#: storing only the uint8 inputs instead of the conv activations (the mirror doubles those).
+MIRROR_CKPT_ENV = "NETT_MIRROR_CKPT"
+_MIRROR_CACHE_ATTR = "_nett_shared_feature_cache_mirror"
+
+
+def _strict_flag(name: str) -> bool:
+    raw = os.environ.get(name, "").strip().lower()
+    if raw in ("", "0", "false", "no", "off"):
+        return False
+    if raw in ("1", "true", "yes", "on"):
+        return True
+    raise ValueError(f"{name}={raw!r} is not a boolean; refusing to guess.")
+
+
+def mirror_equiv_enabled() -> bool:
+    """True when NETT_MIRROR_EQUIV is set on. Read per call, like NETT_DECOUPLE_ENCODER."""
+    return _strict_flag(MIRROR_ENV)
+
+
+def mirror_ckpt_enabled() -> bool:
+    return _strict_flag(MIRROR_CKPT_ENV)
+
+
+def mirror_obs(x: torch.Tensor, observation_space) -> torch.Tensor:
+    """Left-right mirror of a batch of image observations (flip of the WIDTH axis).
+
+    Flat (B, prod(shape)) input is viewed as (B, *observation_space.shape) -- the layout
+    prepare_image_tensor uses -- and returned 4-D in that layout (the encoders accept 4-D).
+    Both CHW (W last) and HWC (W second to last) are handled; the layout is read with
+    body.observation.image_layout, the rule every encoder uses.
+    """
+    from ....body.observation import image_layout
+
+    if x.ndim == 2:
+        shape = tuple(int(s) for s in getattr(observation_space, "shape", ()))
+        if len(shape) != 3:
+            raise ValueError(f"{MIRROR_ENV}: flat observations need a 3-D image space, got {shape!r}")
+        n = shape[0] * shape[1] * shape[2]
+        if x.shape[1] != n:
+            raise ValueError(f"{MIRROR_ENV}: flat observation width {x.shape[1]} != prod{shape} = {n}")
+        img = x.view(x.shape[0], *shape)
+    elif x.ndim == 4:
+        img = x
+        shape = tuple(int(s) for s in x.shape[1:])
+    else:
+        raise ValueError(f"{MIRROR_ENV}: expected a (B, D) or (B, C, H, W)/(B, H, W, C) batch, got {tuple(x.shape)}")
+    axis = -1 if image_layout(shape) == "chw" else -2
+    return img.flip(axis)
+
+
+def _encode_one(enc, x):
+    if _rl_forward_no_grad(enc):
+        with torch.no_grad():
+            return enc(x)
+    if mirror_ckpt_enabled() and torch.is_grad_enabled():
+        from torch.utils.checkpoint import checkpoint
+        return checkpoint(enc, x, use_reentrant=False)
+    return enc(x)
+
+
+def features_forward_mirrored(model, inputs):
+    """``features_forward`` for o AND its mirror F o: returns (trunk(enc(o)), trunk(enc(F o))).
+
+    Two SEQUENTIAL same-shape encoder calls, not one 2B batch: same kernels per sample in both
+    passes (so the symmetrisation is bit-exact where the backend is deterministic) and only B
+    float inputs alive at a time. Cache / no-grad / decouple handling as in features_forward.
+    """
+    x = inputs.get("observations")
+    if x is None:
+        x = inputs.get("states")
+    if x is None:
+        raise KeyError("skrl model inputs must include 'observations' or 'states'.")
+    target_device = next(model.encoder.parameters()).device
+    if x.device != target_device:
+        x = x.to(target_device, non_blocking=True)
+    enc = model.encoder
+    space = getattr(enc, "observation_space", None) or model.observation_space
+    _hit = getattr(enc, _CACHE_ATTR, None) if _cache_enabled() else None
+    _hitm = getattr(enc, _MIRROR_CACHE_ATTR, None) if _cache_enabled() else None
+    if _hit is not None and _hit[0] is x and _hitm is not None and _hitm[0] is x:
+        feats, feats_m = _hit[1], _hitm[1]
+    else:
+        feats = _encode_one(enc, x)
+        feats_m = _encode_one(enc, mirror_obs(x, space))
+        if _cache_enabled():
+            setattr(enc, _CACHE_ATTR, (x, feats))
+            setattr(enc, _MIRROR_CACHE_ATTR, (x, feats_m))
+    if _decouple_encoder():
+        feats = feats.detach()
+        feats_m = feats_m.detach()
+    return model.trunk(feats), model.trunk(feats_m)
+
+
+def mirror_symmetrize_mean(mean: torch.Tensor, mean_m: torch.Tensor) -> torch.Tensor:
+    """0.5 * (mu(o) + M mu(F o)) with M = diag(-1, +1): turn (index 0) antisymmetric, move symmetric.
+
+    Written as differences/sums (not a sign multiply) so the turn component is exactly
+    antisymmetric in IEEE arithmetic: fl(a - b) == -fl(b - a), and is exactly 0 when a == b.
+    """
+    if mean.shape[-1] != 2:
+        raise ValueError(f"{MIRROR_ENV}: the mirror M is defined for the 2-D [turn, move] action only; "
+                         f"got {mean.shape[-1]} action dims (an enabled neck DOF needs its own sign).")
+    turn = 0.5 * (mean[..., :1] - mean_m[..., :1])
+    move = 0.5 * (mean[..., 1:] + mean_m[..., 1:])
+    return torch.cat([turn, move], dim=-1)

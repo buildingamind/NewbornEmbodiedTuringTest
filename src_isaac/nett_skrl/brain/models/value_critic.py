@@ -8,7 +8,7 @@ from skrl.models.torch import DeterministicMixin, Model
 
 from .model_cfg import ModelCfg
 from .utils.backbone import FeatureBackbone
-from .utils.features import features_forward
+from .utils.features import features_forward, features_forward_mirrored, mirror_equiv_enabled
 from .utils.init import init_output
 
 
@@ -30,6 +30,14 @@ class ValueCritic(DeterministicMixin, Model, FeatureBackbone):
         init_output(self.value_head, cfg, gain=1.0)
 
     def compute(self, inputs, role=""):
+        if mirror_equiv_enabled():
+            # NETT_MIRROR_EQUIV: V_sym(o) = 0.5 (V(o) + V(F o)), averaged AFTER the optional tanh bound.
+            h, h_m = features_forward_mirrored(self, inputs)
+            v, v_m = self.value_head(h), self.value_head(h_m)
+            if self.value_bound is not None:
+                v = torch.tanh(v) * float(self.value_bound)
+                v_m = torch.tanh(v_m) * float(self.value_bound)
+            return 0.5 * (v + v_m), {}
         value = self.value_head(features_forward(self, inputs))
         if self.value_bound is not None:
             value = torch.tanh(value) * float(self.value_bound)

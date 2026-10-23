@@ -13,6 +13,7 @@ from .model_cfg import ModelCfg
 from .multivariate_gaussian_actor import MultivariateGaussianActor
 from .q_critic import QCritic
 from .value_critic import ValueCritic
+from .utils.features import MIRROR_ENV, mirror_ckpt_enabled, mirror_equiv_enabled
 from .utils.init import encoder_owns_init, init_encoder
 
 
@@ -79,9 +80,26 @@ def build_models_for_algorithm(
     models: dict[str, nn.Module] = {}
     for key in spec.model_keys:
         models[key] = actor() if "policy" in key else critic()
+    if mirror_equiv_enabled():
+        _check_mirror_models(models)
     _announce_nas_encoder(shared_enc if shared_enc is not None else next(
         (m.encoder for m in models.values() if hasattr(m, "encoder")), None))
     return models
+
+
+def _check_mirror_models(models) -> None:
+    """NETT_MIRROR_EQUIV is implemented in GaussianActor (diagonal: M maps it to itself) and ValueCritic
+    only. A correlated actor (tril_offdiag would need its sign flipped under M), a deterministic actor
+    or a Q critic would run UNSYMMETRISED under a mirror label -- refuse instead."""
+    bad = {k: type(m).__name__ for k, m in models.items() if type(m) not in (GaussianActor, ValueCritic)}
+    if bad:
+        raise ValueError(f"{MIRROR_ENV}=1 supports GaussianActor + ValueCritic only; got {bad}")
+    for k, m in models.items():
+        if isinstance(m, GaussianActor) and m.num_actions != 2:
+            raise ValueError(f"{MIRROR_ENV}=1 needs the 2-D [turn, move] action; {k} has {m.num_actions}")
+    # stdout, not a logger (the spawn child's logger is not bridged): the run log's proof the flag reached the models.
+    print(f"[NETT mirror] {MIRROR_ENV}=1: policy mean / value symmetrised over the width flip, "
+          f"turn (action 0) negated, models={sorted(models)} ckpt={int(mirror_ckpt_enabled())}", flush=True)
 
 
 def _announce_nas_encoder(encoder) -> None:
