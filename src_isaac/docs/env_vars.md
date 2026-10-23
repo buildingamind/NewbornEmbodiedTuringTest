@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-296 variables.
+297 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -130,6 +130,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_EYE_RES` | `""` | `examples/campaign_train.py:1890` |
 | `NETT_EYE_W` | *(required / no literal default)* | `examples/count_params.py:68` |
 | `NETT_FEATURE_ATTN` | `""` | `examples/campaign_train.py:1949` |
+| `NETT_FIRST_FULL_STACK` | `""` | `nett_skrl/brain/env_wrappers.py:322` |
 | `NETT_FISHEYE_METHOD` | `"equisolid"` | `nett_skrl/brain/encoders/stp_e.py:263` |
 | `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:387` |
 | `NETT_FOVEA_COLOR_RADIUS` | `""` | `nett_skrl/body/wrappers/fovea.py:74` |
@@ -307,7 +308,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_XSP2_PREDICTOR` | `"warp"` | `nett_skrl/brain/aux/xsp2_aux.py:324` |
 | `NETT_XSP2_REFINE_HIDDEN` | `32` | `nett_skrl/brain/aux/xsp2_aux.py:329` |
 | `NETT_XSP2_SURPRISE` | `1.0` | `nett_skrl/brain/aux/xsp2_aux.py:337` |
-| `NETT_XSP2_WINDOWS` | `""`, `"slab"` | `nett_skrl/brain/env_wrappers.py:264`<br>`nett_skrl/brain/aux/xsp2_aux.py:338` |
+| `NETT_XSP2_WINDOWS` | `""`, `"slab"` | `nett_skrl/brain/env_wrappers.py:264`<br>`nett_skrl/brain/env_wrappers.py:429`<br>`nett_skrl/brain/aux/xsp2_aux.py:338` |
 | `NETT_XSP_ACTION` | `"none"` | `nett_skrl/brain/aux/xsp_aux.py:227` |
 | `NETT_XSP_BATCH` | `64` | `nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_XSP_COMBINE` | `"outer"` | `nett_skrl/brain/aux/xsp_aux.py:225` |

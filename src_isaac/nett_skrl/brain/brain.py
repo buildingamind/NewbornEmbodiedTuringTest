@@ -292,6 +292,10 @@ class Brain:
         # Workspace DECISIONS §114: NETT_DECISION_LOOP=P makes one agent step P env ticks, in train,
         # test and record alike (this is the one place all three get their env). Unset = unchanged.
         from .env_wrappers import DecisionLoopEnvWrapper, decision_loop_period
+        # Workspace DECISIONS §187 add. 1: on a multi-frame body chain the first action waits, after every reset,
+        # until the stack holds only real distinct frames (NETT_FIRST_FULL_STACK, default on). Single frame = unchanged.
+        from .env_wrappers import FirstFullStackEnvWrapper
+        wrapped = FirstFullStackEnvWrapper.wrap(wrapped, envs)
         return device, DecisionLoopEnvWrapper.wrap(wrapped, envs, decision_loop_period())
 
     def _build_agents(self, wrapped, device: torch.device, config: TaskConfig):

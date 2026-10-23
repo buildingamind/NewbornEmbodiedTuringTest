@@ -311,6 +311,170 @@ class DecisionLoopEnvWrapper:
         return observations, reward_sum, terminated_any, truncated_any, info
 
 
+#: Workspace DECISIONS §187 add. 1: hold the first action until the frame stack holds only real, distinct frames.
+FIRST_FULL_STACK_ENV = "NETT_FIRST_FULL_STACK"
+
+
+def first_full_stack_enabled() -> bool:
+    """NETT_FIRST_FULL_STACK: unset/empty or "1" = on (the default), "0" = off (the old episode start). Else refuses."""
+    import os
+
+    raw = os.environ.get(FIRST_FULL_STACK_ENV, "")
+    v = raw.strip()
+    if v in ("", "1"):
+        return True
+    if v == "0":
+        return False
+    raise ValueError(f"{FIRST_FULL_STACK_ENV}={raw!r}: expected 1 (default) or 0.")
+
+
+def first_full_stack_ticks(body_env) -> tuple[int, list[str]]:
+    """The zero-action ticks after a reset until every slot of the policy input is a real rendered frame of the episode.
+
+    Each temporal wrapper on the body chain needs ``d`` consecutive inputs to fill its output with distinct real
+    frames, and its first full output is ``d - 1`` ticks after the reset. Chained, the delays add:
+      * FrameStack  (``framestack``)    d = n_stack: the reset fills every slot with the reset frame;
+      * Video       (``video``)         d = frames: the same fill;
+      * DVSPolarity (``dvs_polarity``)  d = 1 + W, W = NETT_DVS_WINDOW or 1: no previous frame at a reset = a blank
+                                        event map, and a window needs W real per-tick maps;
+      * gymnasium FrameStackObservation  d = stack_size: the stack ``dvs`` and ``retina`` build under them (zero- or
+                                        reset-padded).
+    Every other wrapper maps one frame to one frame (a segmenter's previous frame trains the segmenter and never
+    reaches the policy input). Returns (ticks, one "name +k" part per temporal wrapper, outermost first).
+    """
+    import gymnasium as gym
+
+    from ..body.wrappers.dvs_polarity import DVSPolarity
+    from ..body.wrappers.framestack import FrameStack
+    from ..body.wrappers.video import Video
+
+    ticks, parts = 0, []
+    current, seen = body_env, set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        if hasattr(current, "_step_in_episode") and hasattr(current, "_decision_period"):
+            break
+        extra = None
+        if isinstance(current, FrameStack):
+            extra, name = int(current.n_stack) - 1, f"framestack n={current.n_stack}"
+        elif isinstance(current, Video):
+            extra, name = int(current.frames) - 1, f"video frames={current.frames}"
+        elif isinstance(current, DVSPolarity):
+            w = 1 if current.window is None else int(current.window)
+            extra, name = w, f"dvs_polarity window={w}"
+        elif isinstance(current, gym.wrappers.FrameStackObservation):
+            extra, name = int(current.stack_size) - 1, f"frame_stack_observation n={current.stack_size}"
+        if extra is not None and extra > 0:
+            ticks += extra
+            parts.append(f"{name} +{extra}")
+        current = getattr(current, "_env", None) or getattr(current, "env", None)
+    return ticks, parts
+
+
+def first_full_stack_banner(ticks: int, parts: list[str], enabled: bool) -> str:
+    chain = ", ".join(parts) if parts else "single-frame chain"
+    if not enabled:
+        return (f"[NETT first full stack] OFF ({FIRST_FULL_STACK_ENV}=0): the first action is taken on the reset "
+                f"observation (a full stack would need {ticks} hold tick(s): {chain}) (workspace DECISIONS §187 add. 1)")
+    if ticks == 0:
+        return (f"[NETT first full stack] hold 0 ticks ({chain}): the first action is taken on the reset observation, "
+                f"unchanged (workspace DECISIONS §187 add. 1)")
+    return (f"[NETT first full stack] hold {ticks} zero-action tick(s) after every reset ({chain}); not queried, not "
+            f"stored, not counted as decisions (workspace DECISIONS §187 add. 1)")
+
+
+class FirstFullStackEnvWrapper:
+    """After every reset, step the env ``ticks`` times with a zero action before the agent sees an observation.
+
+    OWNER, workspace DECISIONS §187: "DVS agents should provide their first action after receiving their first
+    non-blank observation (the result of two env steps without the agent moving)." §187 add. 1: "Only for models
+    that request multiple frames (DVS, 3DCNN, ViViT, etc). The idea is to hold off until the framestack contains all
+    unique frames."
+
+    It wraps the skrl adapter (IsaacEnvWrapper) UNDER DecisionLoopEnvWrapper, so train, test and record all get it
+    and every held tick is one env tick. ``ticks`` comes from ``first_full_stack_ticks`` (the body chain), never a
+    constant. The held ticks are invisible above this wrapper: skrl never queries the policy on them and records no
+    transition for them, the trainer's step counts are agent steps only, and the env (repo B ``set_preroll_ticks``,
+    nett_isaac/preroll.py) does not count them -- step_in_episode holds at 0, no reward, no test-log row -- so every
+    episode keeps its full NETT_STEPS decisions after the hold. ``reset`` returns the observation after the hold; a
+    ``step`` that ends the episodes returns that tick's reward, dones and info with the observation after the next
+    episode's hold. The record phase never holds (repo B), so this drains nothing there.
+
+    Fail-loud guards: the env must offer ``set_preroll_ticks`` (an older repo B pin refuses); the pending hold must be
+    the same on every env (NETT episodes end together); no held tick may end an episode or carry a reward.
+    """
+
+    def __init__(self, env, raw, ticks: int) -> None:
+        self._env = env
+        self._raw = raw
+        self.ticks = int(ticks)
+
+    @classmethod
+    def wrap(cls, wrapped, body_env):
+        """``wrapped`` = the skrl adapter, ``body_env`` = the body-wrapped env under it. 0 ticks or the knob off =
+        ``wrapped`` itself."""
+        import os
+
+        enabled = first_full_stack_enabled()
+        ticks, parts = first_full_stack_ticks(body_env)
+        print(first_full_stack_banner(ticks, parts, enabled), flush=True)
+        if not enabled or ticks == 0:
+            return wrapped
+        from ..body.wrappers.acuity import find_acuity
+
+        if find_acuity(body_env):
+            raise ValueError(
+                f"{FIRST_FULL_STACK_ENV}: an acuity curriculum counts its own step() calls, so its schedule would "
+                f"count the {ticks} held tick(s) per episode. Refusing; set {FIRST_FULL_STACK_ENV}=0 for this arm.")
+        if os.environ.get("NETT_XSP2_WINDOWS", "").strip().lower() == "hold":
+            raise ValueError(
+                f"{FIRST_FULL_STACK_ENV} with NETT_XSP2_WINDOWS=hold: the hold-window sink reads the env's "
+                f"step_before after each step, and the held ticks overwrite it at every episode start. Refusing.")
+        raw = _unwrap_nett(body_env)
+        for name in ("set_preroll_ticks", "_preroll_left"):
+            if not hasattr(raw, name):
+                raise RuntimeError(
+                    f"{FIRST_FULL_STACK_ENV}: the unwrapped env {type(raw).__name__} has no {name}; the hold needs "
+                    f"repo B's uncounted pre-roll ticks (nett_isaac/preroll.py, DECISIONS §187 add. 1). Use a repo B "
+                    f"tree that has it, or set {FIRST_FULL_STACK_ENV}=0.")
+        raw.set_preroll_ticks(ticks)
+        return cls(wrapped, raw, ticks)
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+    def reset(self, *args, **kwargs):
+        observations, info = self._env.reset(*args, **kwargs)
+        return self._hold(observations), info
+
+    def step(self, actions):
+        observations, reward, terminated, truncated, info = self._env.step(actions)
+        if bool((torch.as_tensor(terminated).bool() | torch.as_tensor(truncated).bool()).any()):
+            observations = self._hold(observations)
+        return observations, reward, terminated, truncated, info
+
+    def _hold(self, observations):
+        left = self._raw._preroll_left.reshape(-1)
+        n = int(left.max())
+        if n == 0:
+            return observations
+        if bool((left != n).any()):
+            bad = int((left != n).nonzero()[0])
+            raise RuntimeError(
+                f"FirstFullStackEnvWrapper: env {bad} has {int(left[bad])} hold tick(s) pending, another has {n}; the "
+                f"hold steps every env, so the episodes must start together.")
+        zeros = torch.zeros((int(self._env.num_envs), int(self._env.action_space.shape[0])), device=self._env.device)
+        for tick in range(n):
+            observations, reward, terminated, truncated, _ = self._env.step(zeros)
+            if bool((torch.as_tensor(terminated).bool() | torch.as_tensor(truncated).bool()).any()):
+                raise RuntimeError(f"FirstFullStackEnvWrapper: held tick {tick + 1} of {n} ended an episode.")
+            if bool((torch.as_tensor(reward) != 0).any()):
+                raise RuntimeError(f"FirstFullStackEnvWrapper: held tick {tick + 1} of {n} carried a reward.")
+        if int(self._raw._preroll_left.max()) != 0:
+            raise RuntimeError("FirstFullStackEnvWrapper: hold ticks still pending after the hold.")
+        return observations
+
+
 def _unwrap_nett(env):
     """The NETTEnv under any chain of gym / skrl wrappers (the trainer's _unwrap_env walk)."""
     current, seen = env, set()

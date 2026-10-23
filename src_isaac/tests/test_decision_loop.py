@@ -188,8 +188,11 @@ def test_brain_hook_is_the_only_brain_py_edit():
     added = [ln[1:].strip() for ln in diff if ln.startswith("+") and not ln.startswith("+++")]
     assert removed == ["return device, IsaacEnvWrapper(envs, device=device)"]
     code = [ln for ln in added if not ln.startswith("#")]
+    # DECISIONS §187 add. 1 adds the first-full-stack hook between the adapter and the loop (test_first_full_stack.py).
     assert code == ["wrapped = IsaacEnvWrapper(envs, device=device)",
                     "from .env_wrappers import DecisionLoopEnvWrapper, decision_loop_period",
+                    "from .env_wrappers import FirstFullStackEnvWrapper",
+                    "wrapped = FirstFullStackEnvWrapper.wrap(wrapped, envs)",
                     "return device, DecisionLoopEnvWrapper.wrap(wrapped, envs, decision_loop_period())"]
 
 
