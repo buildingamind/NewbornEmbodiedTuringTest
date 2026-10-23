@@ -33,7 +33,7 @@ import copy
 import torch
 import torch.nn as nn
 
-from ..models.utils.features import _CACHE_ATTR
+from ..models.utils.features import FEATURE_CACHE_ATTRS
 from .knobs import _env_unit_interval
 
 
@@ -51,17 +51,21 @@ class EMATeacher:
     def __init__(self, encoder: nn.Module, decay: float = 0.996) -> None:
         self.decay = _env_unit_interval(self.DECAY_ENV, decay)
         self.updates = 0
-        prev = getattr(encoder, _CACHE_ATTR, None)
-        if prev is not None:
-            setattr(encoder, _CACHE_ATTR, None)
+        # Both cache slots (FEATURE_CACHE_ATTRS): NETT_MIRROR_EQUIV's mirrored pass keeps its own.
+        prev = {a: getattr(encoder, a, None) for a in FEATURE_CACHE_ATTRS}
+        for a, v in prev.items():
+            if v is not None:
+                setattr(encoder, a, None)
         try:
             target = copy.deepcopy(encoder).eval()
         finally:
-            if prev is not None:
-                setattr(encoder, _CACHE_ATTR, prev)
+            for a, v in prev.items():
+                if v is not None:
+                    setattr(encoder, a, v)
         for p in target.parameters():
             p.requires_grad_(False)
-        setattr(target, _CACHE_ATTR, None)
+        for a in FEATURE_CACHE_ATTRS:
+            setattr(target, a, None)
         self._target: list[nn.Module] = [target]
 
     @property

@@ -81,7 +81,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from ..models.utils.features import _CACHE_ATTR
+from ..models.utils.features import FEATURE_CACHE_ATTRS
 from .cltt_ref_aux import episode_window_batch, draw_episode_window
 
 
@@ -503,17 +503,22 @@ class SlotContrastAuxLoss(nn.Module):
             # design, and changing when it is built changes which weights it starts from — a
             # behaviour change, where this guard is not. Restores `prev` in a `finally` so an
             # exception inside deepcopy cannot leave the live encoder without its cache.
-            prev = getattr(encoder, _CACHE_ATTR, None)
-            if prev is not None:
-                setattr(encoder, _CACHE_ATTR, None)
+            # Both cache slots (FEATURE_CACHE_ATTRS): NETT_MIRROR_EQUIV's mirrored pass keeps its own
+            # non-leaf (x, feats) pair, and guarding only the first slot dies here exactly as above.
+            prev = {a: getattr(encoder, a, None) for a in FEATURE_CACHE_ATTRS}
+            for a, v in prev.items():
+                if v is not None:
+                    setattr(encoder, a, None)
             try:
                 tgt = copy.deepcopy(encoder).eval()
             finally:
-                if prev is not None:
-                    setattr(encoder, _CACHE_ATTR, prev)
+                for a, v in prev.items():
+                    if v is not None:
+                        setattr(encoder, a, v)
             for p in tgt.parameters():
                 p.requires_grad_(False)
-            setattr(tgt, _CACHE_ATTR, None)
+            for a in FEATURE_CACHE_ATTRS:
+                setattr(tgt, a, None)
             self._target.append(tgt)
             return
         tgt = self._target[0]

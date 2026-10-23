@@ -199,10 +199,14 @@ MIRROR_ENV = "NETT_MIRROR_EQUIV"
 #: storing only the uint8 inputs instead of the conv activations (the mirror doubles those).
 MIRROR_CKPT_ENV = "NETT_MIRROR_CKPT"
 _MIRROR_CACHE_ATTR = "_nett_shared_feature_cache_mirror"
+#: Every encoder attribute that can hold a cached (x, feats) pair with a live graph. A deepcopy of an encoder
+#: (EMA / slot targets) must neutralise ALL of them: under NETT_MIRROR_EQUIV the mirrored pass's slot holds a
+#: non-leaf tensor too, and Tensor.__deepcopy__ refuses one (workspace DECISIONS §187).
+FEATURE_CACHE_ATTRS = (_CACHE_ATTR, _MIRROR_CACHE_ATTR)
 
 
-def _strict_flag(name: str) -> bool:
-    raw = os.environ.get(name, "").strip().lower()
+def _strict_flag(name: str, raw: str) -> bool:
+    raw = raw.strip().lower()
     if raw in ("", "0", "false", "no", "off"):
         return False
     if raw in ("1", "true", "yes", "on"):
@@ -210,13 +214,16 @@ def _strict_flag(name: str) -> bool:
     raise ValueError(f"{name}={raw!r} is not a boolean; refusing to guess.")
 
 
+# ⚠ Each knob is read with a VISIBLE `os.environ.get(CONST, ...)` at its call site, not inside the helper:
+# scripts/gen_env_index.py resolves `NAME = "NETT_..."` constants only where they are passed to the read
+# itself, and a read hidden behind a parameter left both knobs out of docs/env_vars.md (DECISIONS §187).
 def mirror_equiv_enabled() -> bool:
     """True when NETT_MIRROR_EQUIV is set on. Read per call, like NETT_DECOUPLE_ENCODER."""
-    return _strict_flag(MIRROR_ENV)
+    return _strict_flag(MIRROR_ENV, os.environ.get(MIRROR_ENV, ""))
 
 
 def mirror_ckpt_enabled() -> bool:
-    return _strict_flag(MIRROR_CKPT_ENV)
+    return _strict_flag(MIRROR_CKPT_ENV, os.environ.get(MIRROR_CKPT_ENV, ""))
 
 
 def mirror_obs(x: torch.Tensor, observation_space) -> torch.Tensor:

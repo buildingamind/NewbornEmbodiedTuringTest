@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-294 variables.
+296 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -179,13 +179,15 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:2335` |
 | `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:216`<br>`examples/campaign_train.py:2163` |
 | `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:2276`<br>`examples/campaign_train.py:2457`<br>`examples/train_binding_8brain_targets.py:155` |
-| `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:98`<br>`examples/campaign_train.py:1977` |
+| `NETT_MIRROR_CKPT` | `""` | `nett_skrl/brain/models/utils/features.py:226` |
+| `NETT_MIRROR_EQUIV` | `""` | `nett_skrl/brain/models/utils/features.py:222` |
+| `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:116`<br>`examples/campaign_train.py:1977` |
 | `NETT_MOTOK_MODE` | `"faithful"` | `nett_skrl/brain/aux/motok_aux.py:323` |
 | `NETT_MOTOK_QUERIES` | `"2"` | `nett_skrl/brain/aux/motok_aux.py:321` |
 | `NETT_MOTOK_UPSAMPLE` | `"0"` | `nett_skrl/brain/aux/motok_aux.py:322` |
 | `NETT_MOTOK_VQ_COEF` | `"0.1"` | `nett_skrl/brain/aux/motok_aux.py:320` |
 | `NETT_NAME` | `f"{ENC}_s{SEED_OFFSET}_{datetime.now():%Y%m%d_%H%M%S}"` | `examples/train_replicate_single.py:41` |
-| `NETT_NAS_CFG` | *(required / no literal default)* | `nett_skrl/brain/models/builder.py:95`<br>`examples/campaign_train.py:1623`<br>`examples/campaign_train.py:1989` |
+| `NETT_NAS_CFG` | *(required / no literal default)* | `nett_skrl/brain/models/builder.py:113`<br>`examples/campaign_train.py:1623`<br>`examples/campaign_train.py:1989` |
 | `NETT_ONLY_EXPERIMENTS` | `""` | `examples/campaign_run.py:75` |
 | `NETT_ONLY_MODELS` | `""` | `examples/campaign_run.py:74` |
 | `NETT_OPTUNA_DIR` | `"/home/zlaborde/code/isaac/optuna_tune"` | `examples/optuna_tune.py:49` |
