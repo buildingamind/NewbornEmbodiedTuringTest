@@ -858,6 +858,10 @@ MIRROR187_ADDED = {
 }
 MIRROR187_FILES = ("nett_skrl/brain/models/gaussian_actor.py", "nett_skrl/brain/models/value_critic.py",
                    "nett_skrl/brain/aux/ema_teacher.py", "nett_skrl/brain/aux/slot_contrast_aux.py")
+#: workspace DECISIONS §187 add. 9 (owner: action noise fixed at 1): NETT_FIXED_ACTION_STD makes log_std (and the correlated
+#: actor's tril_offdiag) a fixed zero buffer (test_fixed_action_std.py). gaussian_actor.py is admitted above, checkpoints.py
+#: by CHECKPOINT_FILES.
+SIGMA187_FILES = ("nett_skrl/brain/models/multivariate_gaussian_actor.py", "nett_skrl/brain/models/utils/action_std.py")
 # The small-3DCNN ladder (DECISIONS §89, test_3dcnn_small_ladder.py): cfg-only 3DCNN labels and an
 # even-stem-kernel path in compact_3dcnn.py, held to the old counts and the plain odd-kernel Conv3d there.
 SMALL3D_FILES = ("nett_skrl/brain/encoders/compact_3dcnn.py",)
@@ -1019,7 +1023,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
-                                          *MIRROR187_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *MIRROR187_FILES, *SIGMA187_FILES, "nett_skrl/brain/models/utils/init.py")}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

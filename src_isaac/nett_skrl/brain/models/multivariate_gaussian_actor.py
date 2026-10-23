@@ -39,6 +39,7 @@ from .model_cfg import ModelCfg
 from .utils.backbone import FeatureBackbone
 from .utils.features import features_forward
 from .utils.init import init_output
+from .utils.action_std import fixed_action_std_enabled, install_fixed_zero_buffer, install_log_std
 
 
 class MultivariateGaussianActor(MultivariateGaussianMixin, Model, FeatureBackbone):
@@ -59,13 +60,18 @@ class MultivariateGaussianActor(MultivariateGaussianMixin, Model, FeatureBackbon
         self.mean_layer = nn.Linear(last, self.num_actions)
         init_output(self.mean_layer, cfg)
         # Diagonal log-std (identical to GaussianActor) ...
-        self.log_std = nn.Parameter(torch.full((self.num_actions,), float(cfg.initial_log_std)))
+        # NETT_FIXED_ACTION_STD=1: a fixed zero buffer instead (std exactly 1; utils/action_std.py).
+        install_log_std(self, self.num_actions, cfg.initial_log_std)
         # ... plus learnable strictly-lower-triangular Cholesky terms (init 0 =>
         # starts as a pure diagonal Gaussian). Empty when num_actions == 1.
         rows, cols = torch.tril_indices(self.num_actions, self.num_actions, offset=-1)
         self.register_buffer("_tril_rows", rows, persistent=False)
         self.register_buffer("_tril_cols", cols, persistent=False)
-        self.tril_offdiag = nn.Parameter(torch.zeros(int(rows.numel())))
+        if fixed_action_std_enabled():
+            # NETT_FIXED_ACTION_STD=1: identity covariance -- the correlation terms are fixed at 0 too.
+            install_fixed_zero_buffer(self, "tril_offdiag", int(rows.numel()))
+        else:
+            self.tril_offdiag = nn.Parameter(torch.zeros(int(rows.numel())))
 
     def compute(self, inputs, role=""):
         mean = self.mean_layer(features_forward(self, inputs))

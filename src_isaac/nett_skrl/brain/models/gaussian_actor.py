@@ -10,6 +10,7 @@ from .model_cfg import ModelCfg
 from .utils.backbone import FeatureBackbone
 from .utils.features import features_forward, features_forward_mirrored, mirror_equiv_enabled, mirror_symmetrize_mean
 from .utils.init import init_output
+from .utils.action_std import install_log_std
 
 
 class GaussianActor(GaussianMixin, Model, FeatureBackbone):
@@ -37,7 +38,8 @@ class GaussianActor(GaussianMixin, Model, FeatureBackbone):
         last = self._build_backbone(encoder_cls, encoder_kwargs, observation_space, cfg, shared_encoder=shared_encoder)
         self.mean_layer = nn.Linear(last, self.num_actions)
         init_output(self.mean_layer, cfg)
-        self.log_std = nn.Parameter(torch.full((self.num_actions,), float(cfg.initial_log_std)))
+        # NETT_FIXED_ACTION_STD=1: a fixed zero buffer instead (std exactly 1; utils/action_std.py).
+        install_log_std(self, self.num_actions, cfg.initial_log_std)
 
     def compute(self, inputs, role=""):
         if mirror_equiv_enabled():

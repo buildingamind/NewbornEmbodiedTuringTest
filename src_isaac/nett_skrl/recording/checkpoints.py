@@ -116,6 +116,11 @@ def load_latest_checkpoints(agents: list, config, *, context: str = "test") -> N
             logger.info("%s: brain_%d loaded %s", context, i + 1, chosen.name)
         except Exception as exc:
             logger.exception("%s: failed to load %s for brain_%d", context, chosen, i + 1)
+            from nett_skrl.brain.models.utils.action_std import FixedActionStdCheckpointError
+            if isinstance(exc, FixedActionStdCheckpointError):
+                # NETT_FIXED_ACTION_STD=1 refused this checkpoint's log_std: raise in EVERY context. A train resume
+                # (CONTINUE_FROM) would otherwise carry on from fresh weights at rc 0 (DECISIONS §187 add. 9).
+                raise
             if refuse:
                 problems.append(f"brain_{i + 1}: load of {chosen} failed ({exc!r})")
     if problems:

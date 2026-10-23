@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-297 variables.
+298 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -132,6 +132,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_FEATURE_ATTN` | `""` | `examples/campaign_train.py:1949` |
 | `NETT_FIRST_FULL_STACK` | `""` | `nett_skrl/brain/env_wrappers.py:322` |
 | `NETT_FISHEYE_METHOD` | `"equisolid"` | `nett_skrl/brain/encoders/stp_e.py:263` |
+| `NETT_FIXED_ACTION_STD` | `""` | `nett_skrl/brain/models/utils/action_std.py:45` |
 | `NETT_FORCE_RECOMPUTE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:387` |
 | `NETT_FOVEA_COLOR_RADIUS` | `""` | `nett_skrl/body/wrappers/fovea.py:74` |
 | `NETT_FOVEA_SHARP_RADIUS` | `""` | `nett_skrl/body/wrappers/fovea.py:75` |
