@@ -1131,6 +1131,8 @@ TEXGUARD187_FILES = ("nett_skrl/runtime/texture_defaults.py",)
 #: owner 2026-10-20 (workspace DECISIONS §173): spatial-pooled joint ViViT at 1x4 / 2x8 (test_vivit_spatial_rect.py);
 #: compact_vivit.py is already admitted by S162_FILES, campaign_train.py by SHARED.
 VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
+# bind16 (workspace PROGRAM_BIND16, owner 2026-10-27): the conv-stem ViT-P8 label used by the presenter's frozen-encoder runs.
+BIND16_LABELS = {"ViT-P8CONV-682K"}
 #: owner 2026-10-27 (policy/value head default linear -> [64, 64]): the ONLY admitted campaign_train.py removals are the
 #: old linear-default NETT_HIDDEN_SIZES comment + parse (now unset/"" = [64, 64], "[]" = linear). Each must be in the diff.
 OWNER1027_REMOVED = {"examples/campaign_train.py": (
@@ -1207,7 +1209,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.

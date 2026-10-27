@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 from contextlib import contextmanager
 
 import torch
@@ -95,13 +96,28 @@ def relaxed_determinism():
         torch.use_deterministic_algorithms(was_enabled, warn_only=was_warn_only)
 
 
+def shared_encoder_dup() -> bool:
+    """NETT_SHARED_ENCODER_DUP=1 keeps the shared encoder DUPLICATED in the optimizer (skrl's raw parameter chain:
+    stepped twice per update, counted twice by grad-clip), as the pre-dedupe ("dup") arms trained. Unset / 0 = the
+    deduplicated default, unchanged. Workspace PROGRAM_BIND16 (presenter, owner 2026-10-25): every bind16 arm ran with it."""
+    v = os.environ.get("NETT_SHARED_ENCODER_DUP", "").strip().lower()
+    if v in ("", "0", "false", "no", "off"):
+        return False
+    if v in ("1", "true", "yes", "on"):
+        return True
+    raise ValueError(f"NETT_SHARED_ENCODER_DUP={v!r}: expected 1/0")
+
+
 def unique_parameters(parameters):
     """Yield each distinct parameter tensor once, in first-seen order.
 
     ``itertools.chain(policy.parameters(), value.parameters())`` repeats every
     tensor the two models SHARE. ``nn.Module.parameters()`` de-duplicates within
     one module, never across two, so a shared encoder appears twice.
+    NETT_SHARED_ENCODER_DUP=1 returns the raw chain instead (repeats included).
     """
+    if shared_encoder_dup():
+        return list(parameters)
     seen, out = set(), []
     for p in parameters:
         if id(p) not in seen:
@@ -187,6 +203,15 @@ class NETTSharedEncoderMixin:
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if shared_encoder_dup():
+            # NETT_SHARED_ENCODER_DUP=1: keep skrl's raw chain -- the shared encoder is registered twice and stepped
+            # twice per update (the pre-dedupe "dup" wiring the bind16 arms trained with).
+            logging.getLogger("nett.brain.skrl_patches").warning(
+                "[NETT dup] NETT_SHARED_ENCODER_DUP=1: shared encoder kept DUPLICATED in the optimizer (stepped twice "
+                "per update; grad-clip norm counts it twice)")
+            print("[NETT dup] NETT_SHARED_ENCODER_DUP=1: shared encoder duplicated in the optimizer", flush=True)
+            self._nett_deduped_parameters = 0
+            return
         self._nett_deduped_parameters = self._dedupe_optimizer_parameters()
 
     def _dedupe_optimizer_parameters(self) -> int:

@@ -1485,6 +1485,12 @@ del _lbl, _p14
 #             pooling, whose CUDA backward compact_vit.py rejects as nondeterministic.
 
 
+
+# ViT-P8CONV-682K (workspace PROGRAM_BIND16 VITCONV / F12, presenter, owner 2026-10-26): CompactViT with patch 8,
+# embed 140 and the CONV stem (stem="conv", already in compact_vit), no aux; encoder 681,612 params at 128x80.
+# The offline-CLTT-pretrained frozen version of this encoder gave binders in 15/27 fresh-head seeds (F12).
+MODELS["ViT-P8CONV-682K"] = dict(encoder="compact_vit", framestack=False, cfg={**VIT_CFG, "patch_size": 8, "embed_dim": 140, "stem": "conv"})
+
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
 

@@ -90,6 +90,30 @@ def _aux_loss_settings() -> tuple[str, float]:
     return kind, weight
 
 
+def load_frozen_encoders(models: dict, path: str, sha256: str = "") -> dict[str, int]:
+    """NETT_FROZEN_ENC_FROM: load each model's ``encoder.*`` weights from a trained brain's checkpoint
+    (policy <- ckpt["policy"], value <- ckpt["value"]), STRICTLY, then freeze them. Heads keep their fresh
+    init, so a new seed trains only a new readout on a fixed, known encoder. ``sha256`` (NETT_FROZEN_ENC_SHA256,
+    optional) is checked against the file first. Returns {role: tensors loaded}. Workspace PROGRAM_BIND16
+    FROZEN-ENC (presenter, owner 2026-10-27)."""
+    import hashlib
+    if sha256:
+        got = hashlib.sha256(open(path, "rb").read()).hexdigest()
+        if got != sha256:
+            raise RuntimeError(f"NETT_FROZEN_ENC_FROM {path}: sha256 {got} != NETT_FROZEN_ENC_SHA256 {sha256}")
+    ck = torch.load(path, map_location="cpu", weights_only=False)
+    loaded = {}
+    for role, model in models.items():
+        if not hasattr(model, "encoder"):
+            continue
+        sd = {k[len("encoder."):]: v for k, v in ck[role].items() if k.startswith("encoder.")}
+        model.encoder.load_state_dict(sd, strict=True)
+        freeze(model.encoder)
+        loaded[role] = len(sd)
+        print(f"[NETT frozen-enc] {role}: {len(sd)} encoder tensors from {path}, frozen", flush=True)
+    return loaded
+
+
 def freeze(module: nn.Module) -> None:
     for p in module.parameters():
         p.requires_grad = False
@@ -251,6 +275,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             for model in models.values():
                 if hasattr(model, "encoder"):
                     freeze(model.encoder)
+        # NETT_FROZEN_ENC_FROM=<checkpoint>: encoder.* loaded strictly from a trained brain and frozen (unset = unchanged).
+        _frz = os.environ.get("NETT_FROZEN_ENC_FROM", "").strip()
+        if _frz:
+            load_frozen_encoders(models, _frz, os.environ.get("NETT_FROZEN_ENC_SHA256", "").strip())
 
         # Optional auxiliary self-supervised loss (opt-in via env vars). Only
         # wired for PPO; when disabled, the stock algorithm class is used and
