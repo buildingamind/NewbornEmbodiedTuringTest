@@ -1131,11 +1131,23 @@ TEXGUARD187_FILES = ("nett_skrl/runtime/texture_defaults.py",)
 #: owner 2026-10-20 (workspace DECISIONS §173): spatial-pooled joint ViViT at 1x4 / 2x8 (test_vivit_spatial_rect.py);
 #: compact_vivit.py is already admitted by S162_FILES, campaign_train.py by SHARED.
 VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
+#: owner 2026-10-27 (policy/value head default linear -> [64, 64]): the ONLY admitted campaign_train.py removals are the
+#: old linear-default NETT_HIDDEN_SIZES comment + parse (now unset/"" = [64, 64], "[]" = linear). Each must be in the diff.
+OWNER1027_REMOVED = {"examples/campaign_train.py": (
+    '# NETT_HIDDEN_SIZES: comma-separated policy-head MLP; "" = LINEAR, which is the campaign',
+    '# default and identical across encoders (why the 9-model sweep chose it).',
+    "# ⚠ [64,64] was defaulted 2026-07-30 and REVERTED the same day: the Unity archive's head",
+    '# effect (linear 0.516 -> 0.724, n=10) did NOT transfer -- matched Isaac arms gave 0.804',
+    '# vs 0.742, Welch p = 0.51. n=8 (sd~0.19) could not have resolved it either way; ~152',
+    '# agents/arm would be needed. See NEXT_STEPS.md §G5 before running a head ladder.',
+    '_hs = os.environ.get("NETT_HIDDEN_SIZES", "")',
+    'hidden_sizes = [int(x) for x in _hs.split(",") if x.strip()] if _hs.strip() else []',
+)}
 
 def _drop_admitted(path, removed):
     """removed lines (diff '-' lines) minus each line §103 is admitted to remove, one occurrence each."""
     left = list(removed)
-    for rule, admitted in (("§103", UINT8_REMOVED), ("§111", DP111_REMOVED)):
+    for rule, admitted in (("§103", UINT8_REMOVED), ("§111", DP111_REMOVED), ("owner 2026-10-27", OWNER1027_REMOVED)):
         for text in admitted.get(path, ()):
             hit = [ln for ln in left if ln[1:].strip() == text]
             assert hit, f"{path}: the admitted {rule} removal {text!r} is not in the diff -- the exemption is stale"

@@ -75,32 +75,61 @@ def test_entropy_is_overridable_but_defaults_to_the_validated_value():
         "entropy must both DRIVE the PPO config and be RECORDED in campaign_timing.json")
 
 
-def test_campaign_train_defaults_to_a_linear_policy_head():
-    """Reverted 2026-07-30 after the matched control: [64,64] vs linear was p=0.51.
+def test_campaign_train_defaults_to_a_64_64_policy_head():
+    """owner 2026-10-27: policy/value head default [64,64] (was LINEAR, "").
 
-    The linear head keeps the policy head IDENTICAL across encoders, which is the whole
-    reason the 9-model sweep chose it, and no Isaac measurement argues for the alternative.
+    Workspace PROGRAM_BIND16 HEADRL: on frozen offline-CLTT encoders the linear head gave 0 / 6 binders under RL
+    and [64, 64] 6 / 6. Linear stays one env value away ("[]"); unset or "" is now [64, 64], except beside
+    NETT_FEATURE_ATTN, whose attention head stands alone as before. (Reverted once on 2026-07-30 at Welch p=0.51,
+    n=8/arm -- SIDE_LOCK_INVESTIGATION Phase 5, NEXT_STEPS.md §G5.)
     """
     src = _train_source()
-    assert 'os.environ.get("NETT_HIDDEN_SIZES", "")' in src, (
-        "the campaign driver's policy head defaults to LINEAR; the Unity-archive head "
-        "effect did not transfer (Welch p=0.51, n=8/arm) -- SIDE_LOCK_INVESTIGATION Phase 5")
+    assert 'os.environ.get("NETT_HIDDEN_SIZES", "").strip()' in src
+    assert 'hidden_sizes = [] if os.environ.get("NETT_FEATURE_ATTN", "").strip() else [64, 64]' in src, (
+        "the campaign driver's policy head defaults to [64, 64] (owner 2026-10-27); the old linear default is \"[]\"")
+    assert 'if _hs.strip() else []' not in src, "the pre-10-27 linear-default parse is back"
 
 
-def test_the_hidden_sizes_parse_covers_linear_and_multi_layer():
-    """Evaluates the driver's own parse line, so neither branch can rot.
+def _hidden_sizes_parse():
+    """The driver's own `_hs = ...` read and the `if not _hs:` block after it, as source."""
+    for node in ast.walk(ast.parse(_train_source())):
+        body = getattr(node, "body", None)
+        if not isinstance(body, list):
+            continue
+        for i, stmt in enumerate(body[:-1]):
+            if isinstance(stmt, ast.Assign) and ast.unparse(stmt.targets[0]) == "_hs":
+                nxt = body[i + 1]
+                assert isinstance(nxt, ast.If) and ast.unparse(nxt.test) == "not _hs", ast.unparse(nxt)
+                assigned = {ast.unparse(n.targets[0]) for n in ast.walk(nxt) if isinstance(n, ast.Assign)}
+                assert "hidden_sizes" in assigned, assigned
+                return ast.unparse(stmt) + "\n" + ast.unparse(nxt)
+    raise AssertionError("no `_hs = ...` read in campaign_train.py")
 
-    `HIDDEN=""` is how a linear arm is requested and `HIDDEN=64,64` how a head arm is;
-    both are live in `campaign/launch_arm.sh`, which matches arms by construction.
+
+def test_the_hidden_sizes_parse_covers_linear_and_multi_layer(monkeypatch):
+    """Evaluates the driver's own parse (the env read and its `if` block), so no branch can rot.
+
+    owner 2026-10-27: head default [64,64]. Was: "" = linear (the default), "64,64" =
+    a head arm. Now unset / "" = [64, 64], "[]" = linear, "64,64" and "[64,64]" both parse, and NETT_FEATURE_ATTN
+    with NETT_HIDDEN_SIZES unset keeps the attention head alone (no trunk). An explicit size beside
+    NETT_FEATURE_ATTN parses as given here and is refused later by feature_attn_from_env.
     """
-    parse = next(
-        ast.unparse(node) for node in ast.walk(ast.parse(_train_source()))
-        if isinstance(node, ast.Assign) and ast.unparse(node.targets[0]) == "hidden_sizes"
-    )
-    for env_value, expected in (("", []), ("64,64", [64, 64]), ("64, 64, 64", [64, 64, 64])):
-        scope = {"_hs": env_value}
-        exec(parse, {}, scope)  # noqa: S102 - the driver's own line, read from disk
-        assert scope["hidden_sizes"] == expected, env_value
+    import os
+
+    parse = _hidden_sizes_parse()
+    cases = ((None, None, [64, 64]), ("", None, [64, 64]), ("  ", None, [64, 64]), ("[]", None, []),
+             ("64,64", None, [64, 64]), ("[64,64]", None, [64, 64]), ("[64, 64]", None, [64, 64]),
+             ("64, 64, 64", None, [64, 64, 64]), ("128", None, [128]),
+             (None, "1", []), ("", "1", []), ("64,64", "1", [64, 64]))
+    for hidden, attn, expected in cases:
+        for name, value in (("NETT_HIDDEN_SIZES", hidden), ("NETT_FEATURE_ATTN", attn)):
+            if value is None:
+                monkeypatch.delenv(name, raising=False)
+            else:
+                monkeypatch.setenv(name, value)
+        scope = {}
+        exec(parse, {"os": os}, scope)  # noqa: S102 - the driver's own lines, read from disk
+        assert scope["hidden_sizes"] == expected, (hidden, attn)
 
 
 def test_locomotion_is_opt_in_and_the_default_body_is_unchanged():

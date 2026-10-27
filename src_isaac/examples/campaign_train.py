@@ -2029,14 +2029,19 @@ def main() -> int:
     # it never sets -- the name says one thing and the data is another. (That exact class
     # of bug ran Object1 into a directory named `object2` on 2026-07-31.)
     #
-    # NETT_HIDDEN_SIZES: comma-separated policy-head MLP; "" = LINEAR, which is the campaign
-    # default and identical across encoders (why the 9-model sweep chose it).
-    # ⚠ [64,64] was defaulted 2026-07-30 and REVERTED the same day: the Unity archive's head
-    # effect (linear 0.516 -> 0.724, n=10) did NOT transfer -- matched Isaac arms gave 0.804
-    # vs 0.742, Welch p = 0.51. n=8 (sd~0.19) could not have resolved it either way; ~152
-    # agents/arm would be needed. See NEXT_STEPS.md §G5 before running a head ladder.
-    _hs = os.environ.get("NETT_HIDDEN_SIZES", "")
-    hidden_sizes = [int(x) for x in _hs.split(",") if x.strip()] if _hs.strip() else []
+    # NETT_HIDDEN_SIZES: comma-separated policy-head MLP trunk (value trunk too), e.g. "64,64" or "[64,64]".
+    # ⭐ DEFAULT [64, 64] (owner 2026-10-27, workspace PROGRAM_BIND16 HEADRL): unset or "" = [64, 64];
+    # "[]" = LINEAR (the previous campaign default). On frozen offline-CLTT encoders the linear head
+    # gave 0 / 6 binders under RL and any hidden layer 15 / 18 ([64, 64] 6 / 6, Fisher p = .002).
+    # History: [64,64] was defaulted 2026-07-30 and reverted the same day (Unity head effect did not
+    # transfer at n=8, Welch p = 0.51; NEXT_STEPS.md §G5). NETT_FEATURE_ATTN set with NETT_HIDDEN_SIZES
+    # unset keeps the attention head alone (no trunk), as before.
+    _hs = os.environ.get("NETT_HIDDEN_SIZES", "").strip()
+    if not _hs:
+        hidden_sizes = [] if os.environ.get("NETT_FEATURE_ATTN", "").strip() else [64, 64]
+    else:
+        _inner = _hs[1:-1] if (_hs.startswith("[") and _hs.endswith("]")) else _hs
+        hidden_sizes = [int(x) for x in _inner.split(",") if x.strip()]
     # A label that carries its own head (MATCHED_HEAD, DECISIONS §92) owns the trunk outright: a
     # NETT_HIDDEN_SIZES or NETT_FEATURE_ATTN beside it would be read by nothing, so it refuses.
     head = spec.get("head")
