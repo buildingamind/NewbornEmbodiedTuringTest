@@ -237,3 +237,21 @@ class NatureCNN(HWCFeatureExtractor):
                 out = self.linear(self.cnn(x))
             return out.float()
         return self.linear(self.cnn(x))
+
+    def forward_trunk_detached(self, observations: torch.Tensor) -> torch.Tensor:
+        """forward() with the conv trunk (convs, pool, flatten) under no_grad and ``self.linear`` with grad.
+
+        The RL path's form under NETT_DECOUPLE_TRUNK=1 (models/utils/features.py): same values as forward(), but
+        the reward gradient reaches only the readout, so an aux that reads the conv map shapes the trunk alone.
+        """
+        x = self._prepare_frames(observations)
+        amp = _amp_dtype()
+        if amp is not None and x.is_cuda:
+            with torch.autocast("cuda", dtype=amp):
+                with torch.no_grad():
+                    z = self.cnn(x)
+                out = self.linear(z)
+            return out.float()
+        with torch.no_grad():
+            z = self.cnn(x)
+        return self.linear(z)

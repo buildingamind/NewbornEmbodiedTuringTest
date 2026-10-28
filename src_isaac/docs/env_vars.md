@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-308 variables.
+309 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -92,6 +92,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_CONV3D_ORTHO_INIT` | `"0"` | `nett_skrl/brain/models/utils/init.py:27` |
 | `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:215`<br>`nett_skrl/body/wrappers/dvs_polarity.py:238`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
+| `NETT_DECOUPLE_TRUNK` | `""` | `nett_skrl/brain/models/utils/features.py:45` |
 | `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2372` |
 | `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:2040`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
 | `NETT_DEVICE_LOST_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/crash_guard.py:272`<br>`nett_skrl/runtime/crash_guard.py:317` |
@@ -103,7 +104,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DIAG_ENT_START` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:270` |
 | `NETT_DIAG_LR_ANNEAL` | `""` | `nett_skrl/brain/ppo_metrics.py:276` |
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2508`<br>`examples/campaign_train.py:2549` |
-| `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
+| `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:120` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
 | `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:133` |
 | `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:285` |
@@ -185,8 +186,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:2373` |
 | `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:216`<br>`examples/campaign_train.py:2201` |
 | `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:2314`<br>`examples/campaign_train.py:2495`<br>`examples/train_binding_8brain_targets.py:155` |
-| `NETT_MIRROR_CKPT` | `""` | `nett_skrl/brain/models/utils/features.py:226` |
-| `NETT_MIRROR_EQUIV` | `""` | `nett_skrl/brain/models/utils/features.py:222` |
+| `NETT_MIRROR_CKPT` | `""` | `nett_skrl/brain/models/utils/features.py:253` |
+| `NETT_MIRROR_EQUIV` | `""` | `nett_skrl/brain/models/utils/features.py:249` |
 | `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:116`<br>`examples/campaign_train.py:2010` |
 | `NETT_MOTOK_MODE` | `"faithful"` | `nett_skrl/brain/aux/motok_aux.py:323` |
 | `NETT_MOTOK_QUERIES` | `"2"` | `nett_skrl/brain/aux/motok_aux.py:321` |
@@ -220,7 +221,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
 | `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*")` | `examples/campaign_retest_launch.py:50` |
 | `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:2058` |
-| `NETT_RL_ENCODER_NO_GRAD` | `""` | `nett_skrl/brain/models/utils/features.py:47` |
+| `NETT_RL_ENCODER_NO_GRAD` | `""` | `nett_skrl/brain/models/utils/features.py:72` |
 | `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:85`<br>`examples/campaign_train.py:2116`<br>`examples/campaign_train.py:2269` |
 | `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:2245` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |

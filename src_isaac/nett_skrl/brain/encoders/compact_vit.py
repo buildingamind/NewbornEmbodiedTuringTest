@@ -572,6 +572,24 @@ class CompactViT(HWCFeatureExtractor):
             return out.float()
         return self._readout(self._trunk(prepared))
 
+    def forward_trunk_detached(self, observations: torch.Tensor) -> torch.Tensor:
+        """forward() with ``_trunk`` (patch embed, blocks, final norm) under no_grad and ``_readout`` with grad.
+
+        The RL path's form under NETT_DECOUPLE_TRUNK=1 (models/utils/features.py): same values as forward(), but
+        the reward gradient reaches only the readout (CLS -> head), so an aux that reads the tokens shapes the trunk.
+        """
+        prepared = self._prepare_image(observations)
+        amp = _amp_autocast(prepared)
+        if amp is not None:
+            with amp:
+                with torch.no_grad():
+                    z = self._trunk(prepared)
+                out = self._readout(z)
+            return out.float()
+        with torch.no_grad():
+            z = self._trunk(prepared)
+        return self._readout(z)
+
     def _readout(self, x: torch.Tensor) -> torch.Tensor:
         """(B, 1+N, D) post-norm tokens -> (B, features_dim): the pre-fp16 forward's readout lines."""
         B = x.shape[0]

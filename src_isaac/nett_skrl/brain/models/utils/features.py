@@ -30,6 +30,31 @@ def _decouple_encoder() -> bool:
 
 _CACHE_ATTR = "_nett_shared_feature_cache"
 
+#: ⭐ NETT_DECOUPLE_TRUNK (owner, 2026-10-28, BASELINE detached SC257 / Mask75): detach the RL path at
+#: the AUX'S READ POINT instead of at the encoder output. SC257 and the masked-reconstruction aux read
+#: the backbone BEFORE its readout (NatureCNN.linear; CompactViT's CLS -> head), so with
+#: NETT_DECOUPLE_ENCODER=1 nothing would ever train that readout. With this knob the RL forward runs
+#: the trunk under no_grad and the readout with grad: the aux alone shapes the trunk, PPO trains the
+#: readout + the policy / value heads. The aux path is untouched (it calls the encoder directly).
+#: Needs an encoder with `forward_trunk_detached` (NatureCNN, CompactViT); refused with
+#: NETT_DECOUPLE_ENCODER, which already detaches the whole encoder.
+DECOUPLE_TRUNK_ENV = "NETT_DECOUPLE_TRUNK"
+
+
+def _decouple_trunk() -> bool:
+    on = os.environ.get(DECOUPLE_TRUNK_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
+    if on and _decouple_encoder():
+        raise ValueError("NETT_DECOUPLE_TRUNK=1 and NETT_DECOUPLE_ENCODER=1 are contradictory; set one")
+    return on
+
+
+def _trunk_detached_forward(enc, x):
+    fn = getattr(enc, "forward_trunk_detached", None)
+    if fn is None:
+        raise TypeError(f"NETT_DECOUPLE_TRUNK=1 needs an encoder with forward_trunk_detached; "
+                        f"{type(enc).__name__} has none")
+    return fn(x)
+
 #: ⭐ FIX 2b OF DECISIONS §111 (owner, 2026-10-14, "Proceed with 1 + 2 + 2b"). Set on an encoder by
 #: AuxLossPPO ONLY when its aux never reads the RL forward's graph (`independent_of_ppo_graph`,
 #: the CLTT-Ref family). With NETT_DECOUPLE_ENCODER=1 the RL path's encoder output is detached
@@ -162,7 +187,9 @@ def features_forward(model, inputs):
     if _hit is not None and _hit[0] is x:
         feats = _hit[1]
     else:
-        if _rl_forward_no_grad(enc):
+        if _decouple_trunk():
+            feats = _trunk_detached_forward(enc, x)
+        elif _rl_forward_no_grad(enc):
             with torch.no_grad():
                 feats = enc(x)
         else:
@@ -254,6 +281,11 @@ def mirror_obs(x: torch.Tensor, observation_space) -> torch.Tensor:
 
 
 def _encode_one(enc, x):
+    if _decouple_trunk():
+        if mirror_ckpt_enabled() and torch.is_grad_enabled():
+            from torch.utils.checkpoint import checkpoint
+            return checkpoint(_trunk_detached_forward, enc, x, use_reentrant=False)
+        return _trunk_detached_forward(enc, x)
     if _rl_forward_no_grad(enc):
         with torch.no_grad():
             return enc(x)
