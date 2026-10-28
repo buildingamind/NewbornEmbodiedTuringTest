@@ -53,7 +53,7 @@ VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
 BIND16_LABELS = {"ViT-P8CONV-682K"}
 # BASELINE series (owner 2026-10-28): the two backbones, their DVS / CLTT-Ref / MAE variations and the ViViT-P8 video twin.
 BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS", "CNN-D512P+CLTT-Ref", "ViT-P8-666K+CLTT-Ref",
-                   "ViT-P8-666K+MAE", "ViViT-P8-T2"}
+                   "ViT-P8-666K+MAE", "ViViT-P8-T2", "CNN-D512P+MASK75", "CNN-D512P+SC257", "ViT-P8-666K+SC257"}
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1107,7 +1107,7 @@ def test_existing_models_and_registries_are_unchanged(campaign):
         return {ln.split('"')[1] for ln in body.splitlines() if ln.strip().startswith('"')}
 
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
-                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp"}),
+                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
                                  {"stp_pose_exec", "stp_pose_cmd"})):
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)

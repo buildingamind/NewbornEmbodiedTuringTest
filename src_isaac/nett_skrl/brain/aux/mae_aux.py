@@ -4,7 +4,7 @@ Owner request (workspace DECISIONS §71 and its follow-up): "MAE ... for ViT-CLT
 MAE applied to 3DCNN-CLTT-Ref. It would be interesting to see what partial masking of a stacked
 observation space would do. ... VideoMAE and VideoMAE-CLTT-Ref."
 
-ONE TERM, THREE ENCODER FAMILIES, CHOSEN BY THE ENCODER'S TYPE (anything else REFUSES):
+ONE TERM, FOUR ENCODER FAMILIES, CHOSEN BY THE ENCODER'S TYPE (anything else REFUSES):
 
   CompactViT   -> TOKEN MAE (He et al. 2022). A random ``NETT_AUX_MAE_RATIO`` (default .75) of
                   the patch tokens is dropped; the SAME trunk encodes only the visible ones (+CLS,
@@ -23,6 +23,20 @@ ONE TERM, THREE ENCODER FAMILIES, CHOSEN BY THE ENCODER'S TYPE (anything else RE
                   patches in every frame, as the contrast. The decoder reads the encoder's
                   unpooled map (`Compact3DCNN.encode_spatial`, stride 4) and pixel-shuffles back
                   to every frame; the loss is per frame, on masked (frame, patch) cells only.
+  NatureCNN    -> MASKED-INPUT reconstruction, the 3DCNN design on ONE image (BASELINE series, owner
+                  2026-10-28: "Masking (75%)" for CNN-D512P, SimMIM-style). ``NETT_AUX_MAE_PATCH``
+                  defaults to 8 here (80x128 -> 10x16 = 160 patches); the default ratio .75 of them
+                  is replaced by the learned per-channel value, the full image goes through the
+                  conv stack, and the decoder reads NatureCNN's UNPOOLED final conv map
+                  (`encode_spatial_prepared`; forward() is untouched). That map is 6x12 at 80x128,
+                  NOT an integer downsampling of the eye, so the 3DCNN pixel-shuffle decoder cannot
+                  be used: the map is resampled to the 10x16 patch grid by FIXED bilinear weights
+                  (two constant matrices applied by matmul -- F.interpolate's CUDA backward is on
+                  PyTorch's nondeterministic list), then 3x3 conv -> ReLU -> 1x1 conv regresses each
+                  patch's C*p*p pixels (SimMIM's per-patch linear prediction). The C input channels
+                  are one image: ``NETT_AUX_MAE_TUBE=0`` and ``input_frames`` refuse here.
+                  The mask path never reaches ``NatureCNN.linear`` (the 512-d projection): only the
+                  conv stack is shaped by this term, as in SimMIM.
   CompactViViT -> VIDEOMAE (Tong et al. 2022). ViViT's joint mode has one token per (frame, patch);
                   ``NETT_AUX_MAE_TUBE`` defaults to 1 (VideoMAE's tube masking: the same patches
                   in every frame) at ratio default .90; the visible tokens alone go through the
@@ -48,6 +62,7 @@ DEVIATIONS, DECLARED:
   trunk so the decoder does not out-size the encoder it trains.
 - Patches: the ViT/ViViT modes use the encoder's own 16-px patch; the 3DCNN mode's
   ``NETT_AUX_MAE_PATCH`` (16) must divide the eye (80x128 -> 5x8 = 40 cells per frame).
+  The NatureCNN mode's ``NETT_AUX_MAE_PATCH`` defaults to 8 (10x16 = 160 cells) and must divide it too.
 - The CNN mode's mask value is LEARNED (one per input channel, in ``head``), not zero: zero is a
   real colour in this scene (black), so a zeroed patch is indistinguishable from dark content;
   SimMIM likewise uses a learned mask token. Initialized at 0.5.
@@ -64,11 +79,15 @@ import torch.nn.functional as F
 from ..encoders.compact_3dcnn import Compact3DCNN
 from ..encoders.compact_vit import CompactViT, _TransformerBlock
 from ..encoders.compact_vivit import CompactViViT
+from ..encoders.nature_cnn import NatureCNN
 from .knobs import _env_flag_strict, _env_positive_int, _env_unit_interval
 
-MODES = {CompactViT: "vit", Compact3DCNN: "cnn3d", CompactViViT: "vivit"}
-_DEFAULT_RATIO = {"vit": 0.75, "cnn3d": 0.75, "vivit": 0.90}
-_DEFAULT_TUBE = {"vit": True, "cnn3d": False, "vivit": True}
+MODES = {CompactViT: "vit", Compact3DCNN: "cnn3d", CompactViViT: "vivit", NatureCNN: "cnn2d"}
+_DEFAULT_RATIO = {"vit": 0.75, "cnn3d": 0.75, "vivit": 0.90, "cnn2d": 0.75}
+#: cnn2d: one image, so a patch mask covers every input channel (inert as a choice; TUBE=0 refuses).
+_DEFAULT_TUBE = {"vit": True, "cnn3d": False, "vivit": True, "cnn2d": True}
+#: NETT_AUX_MAE_PATCH default per masked-input mode (the ViT / ViViT modes use the encoder's own patch).
+_DEFAULT_PATCH = {"cnn3d": 16, "cnn2d": 8}
 
 
 def patchify(img: torch.Tensor, p: int) -> torch.Tensor:
@@ -175,6 +194,42 @@ class _ConvDecoder(nn.Module):
         return self.net(fmap)
 
 
+def bilinear_matrix(dst: int, src: int) -> torch.Tensor:
+    """(dst, src) weights of 1-D bilinear resampling, F.interpolate(align_corners=False) semantics.
+
+    Row i holds the weights source positions get at output i, so ``R @ v`` resamples v; two of
+    these (rows, columns) resample a map with matmuls only, whose CUDA backward is deterministic.
+    """
+    pos = ((torch.arange(dst, dtype=torch.float64) + 0.5) * (src / dst) - 0.5).clamp(0, src - 1)
+    lo = pos.floor().long()
+    hi = (lo + 1).clamp(max=src - 1)
+    frac = pos - lo.to(torch.float64)
+    m = torch.zeros(dst, src, dtype=torch.float64)
+    m[torch.arange(dst), lo] += 1.0 - frac
+    m[torch.arange(dst), hi] += frac
+    return m.float()
+
+
+class _ResampleDecoder(nn.Module):
+    """NatureCNN masked-input decoder: unpooled map (B, C_map, fh, fw) -> fixed bilinear resample to
+    the (n_h, n_w) patch grid -> 3x3 conv -> ReLU -> 1x1 conv to C*p*p -> (B, n_h*n_w, C*p*p),
+    row-major over the patch grid (`patchify`'s order). The resample weights are constant buffers
+    (not trained, not checkpointed); they move with the head's ``.to(device)``."""
+
+    def __init__(self, in_ch: int, src_hw: tuple, dst_hw: tuple, out_dim: int, dim: int):
+        super().__init__()
+        self.register_buffer("ry", bilinear_matrix(dst_hw[0], src_hw[0]), persistent=False)
+        self.register_buffer("rx", bilinear_matrix(dst_hw[1], src_hw[1]), persistent=False)
+        self.net = nn.Sequential(
+            nn.Conv2d(in_ch, dim, kernel_size=3, padding=1), nn.ReLU(),
+            nn.Conv2d(dim, out_dim, kernel_size=1),
+        )
+
+    def forward(self, fmap: torch.Tensor) -> torch.Tensor:
+        x = torch.einsum("yh,bchw,xw->bcyx", self.ry.to(fmap.dtype), fmap, self.rx.to(fmap.dtype))
+        return self.net(x).flatten(2).transpose(1, 2)
+
+
 class MAETerm(nn.Module):
     """Masked autoencoding on the policy encoder; usable alone or inside WithCLTTRef."""
 
@@ -186,8 +241,8 @@ class MAETerm(nn.Module):
         device = next(encoder.parameters()).device
         if mode is None:
             raise TypeError(
-                f"MAETerm supports CompactViT (token MAE), Compact3DCNN (masked input) and "
-                f"CompactViViT (VideoMAE); got {type(encoder).__name__}. Refusing to substitute "
+                f"MAETerm supports CompactViT (token MAE), Compact3DCNN and NatureCNN (masked input) "
+                f"and CompactViViT (VideoMAE); got {type(encoder).__name__}. Refusing to substitute "
                 f"another masking scheme under the same name.")
         self.mode = mode
         self.ratio = _env_unit_interval("NETT_AUX_MAE_RATIO", _DEFAULT_RATIO[mode])
@@ -229,11 +284,35 @@ class MAETerm(nn.Module):
             self.head = nn.ModuleDict({"dec": _TokenDecoder(
                 encoder.embed_dim, self.n_pos, encoder.base_channels * self.patch ** 2,
                 dec_dim, dec_depth, dec_heads)})
+        elif mode == "cnn2d":
+            if not self.tube:
+                raise ValueError(
+                    "NETT_AUX_MAE_TUBE=0 on NatureCNN: the masked-input path treats the C input "
+                    "channels as ONE image, so per-frame masks are not implemented here.")
+            if encoder.input_frames is not None:
+                raise ValueError(
+                    f"MAETerm: NatureCNN input_frames={encoder.input_frames} selects channels inside "
+                    f"the encoder, which would desynchronize the mask from the encoded image.")
+            self.patch = _env_positive_int("NETT_AUX_MAE_PATCH", _DEFAULT_PATCH["cnn2d"])
+            c, h, w = _chw(encoder)
+            if h % self.patch or w % self.patch:
+                raise ValueError(f"NETT_AUX_MAE_PATCH={self.patch} does not divide the {h}x{w} eye.")
+            with torch.no_grad():
+                fmap = encoder.encode_spatial_prepared(torch.zeros(1, c, h, w, device=device))
+            self.num_frames = 1
+            self.n_spatial = None
+            self.n_h, self.n_w = h // self.patch, w // self.patch
+            self.n_pos = self.n_h * self.n_w
+            self.head = nn.ModuleDict({
+                "dec": _ResampleDecoder(fmap.shape[1], tuple(fmap.shape[-2:]), (self.n_h, self.n_w),
+                                        c * self.patch ** 2, dec_dim),
+                "mask_value": _MaskValue(c),
+            })
         else:
             if encoder.duplicate_frame:
                 raise ValueError("MAETerm: 3DCNN duplicate_frame sees ONE frame twice; masking "
                                  "'each frame independently' would be meaningless there.")
-            self.patch = _env_positive_int("NETT_AUX_MAE_PATCH", 16)
+            self.patch = _env_positive_int("NETT_AUX_MAE_PATCH", _DEFAULT_PATCH["cnn3d"])
             self.num_frames = int(encoder.num_frames)
             c = int(encoder.base_channels)
             _, h, w = _chw(encoder)
@@ -260,7 +339,7 @@ class MAETerm(nn.Module):
     # ---------------------------------------------------------------- masks
     def draw_masks(self, b: int, device) -> torch.Tensor:
         """vit: (B, N). vivit: (B, T*N) over the joint frame-major sequence. cnn3d: (B, T, N).
-        True = masked. Tube masking repeats one spatial mask over every frame."""
+        cnn2d: (B, 1, N). True = masked. Tube masking repeats one spatial mask over every frame."""
         if self.mode == "vit":
             return random_mask(b, self.n_pos, self.ratio, device)
         t = self.num_frames
@@ -273,7 +352,7 @@ class MAETerm(nn.Module):
         return m.reshape(b, t * n) if self.mode == "vivit" else m
 
     def mask_input(self, prepared: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """cnn3d: replace masked (frame, patch) cells by the learned per-channel value."""
+        """cnn3d / cnn2d: replace masked (frame, patch) cells by the learned per-channel value."""
         fr = frames_tmajor(prepared, self.num_frames)            # (B, T, C, H, W)
         b, t, c, h, w = fr.shape
         pix = mask.view(b, t, self.n_h, 1, self.n_w, 1).expand(
@@ -300,6 +379,11 @@ class MAETerm(nn.Module):
             else:
                 fr = frames_tmajor(prepared, self.num_frames)
                 target = torch.cat([patchify(fr[:, i], self.patch) for i in range(self.num_frames)], 1)
+        elif self.mode == "cnn2d":
+            fmap = encoder.encode_spatial_prepared(self.mask_input(prepared, mask))
+            pred = self.head["dec"](fmap)                          # (B, N, C*p*p)
+            target = patchify(prepared, self.patch)
+            mask = mask.reshape(b, -1)                             # (B, N)
         else:
             fmap = encoder.encode_spatial_prepared(self.mask_input(prepared, mask))
             recon = self.head["dec"](fmap)                         # (B, T*C, H, W)

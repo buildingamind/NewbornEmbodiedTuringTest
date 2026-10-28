@@ -111,6 +111,14 @@ def _build_slot_contrast(encoder):
     return SlotContrastAuxLoss(encoder)
 
 
+def _build_slot_contrast_257(encoder):
+    """BASELINE series (owner 2026-10-28, "Slot Contrast (the 257 version)"): slot_contrast's temporal slot-slot
+    contrast with the s257 slot module -- K=5 learnable queries (BO-QSA) and the foreground-weighted RGB
+    reconstruction in place of the EMA feature target; joint with the encoder (slot_contrast_257_aux.py)."""
+    from .slot_contrast_257_aux import SlotContrast257AuxLoss
+    return SlotContrast257AuxLoss(encoder)
+
+
 def _wave17(term_cls, name):
     """Wave-17 row: the incumbent `cltt_ref` term PLUS one new term, so the row differs from its
     concurrent control (row 00, `cltt_ref` alone) by exactly ONE term. WithCLTTRef owns the shared
@@ -232,6 +240,8 @@ AUX_LOSSES = {
     "eoo_dual": _build_eoo_dual,
     "gwm_dual": _build_gwm_dual,
     "slot_contrast": _build_slot_contrast,
+    # ── BASELINE series (owner 2026-10-28): slot_contrast with the s257 slot module (slot_contrast_257_aux.py).
+    "slot_contrast_257": _build_slot_contrast_257,
     # ── WAVE 17. Each is `cltt_ref` + ONE new token-level term (brain/aux/with_cltt_ref.py),
     # so every row differs from the concurrent ViT-CLTT-Ref control by a single term.
     "cltt_patch": _build_cltt_patch,

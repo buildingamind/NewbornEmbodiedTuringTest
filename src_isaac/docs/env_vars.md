@@ -16,21 +16,21 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-304 variables.
+307 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
-| `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:290`<br>`examples/campaign_train.py:2501`<br>`examples/campaign_train.py:2541` |
-| `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:303`<br>`examples/campaign_train.py:2502`<br>`examples/campaign_train.py:2542` |
+| `NETT_ADAM_EPS` | `""`, `"skrl-default"` | `nett_skrl/brain/ppo_metrics.py:290`<br>`examples/campaign_train.py:2507`<br>`examples/campaign_train.py:2547` |
+| `NETT_ADV_NORM` | `"rollout"` | `nett_skrl/brain/ppo_metrics.py:303`<br>`examples/campaign_train.py:2508`<br>`examples/campaign_train.py:2548` |
 | `NETT_AMP` | `"bf16"` | `nett_skrl/brain/encoders/compact_vit.py:50`<br>`nett_skrl/brain/encoders/nature_cnn.py:77`<br>`examples/probe_frozen_features.py:57` |
 | `NETT_AUX_AFF_BATCH` | `32`, `64` | `nett_skrl/brain/aux/slot_recon_aux.py:112`<br>`nett_skrl/brain/aux/stp_aux.py:113`<br>`nett_skrl/brain/aux/token_term.py:222`<br>`nett_skrl/brain/aux/xsp2_aux.py:321`<br>`nett_skrl/brain/aux/xsp_aux.py:216` |
 | `NETT_AUX_AFF_CENTER` | `True` | `nett_skrl/brain/aux/patch_affinity_aux.py:114` |
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
-| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:480` |
-| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:381` |
-| `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+7 more)* |
+| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:490` |
+| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:391` |
+| `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+8 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:139`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
@@ -44,15 +44,15 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_EGO_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_EGO_TRANSIT_FRAC` | `0.5` | `nett_skrl/brain/aux/ego_residual_aux.py:123` |
 | `NETT_AUX_EMA_DECAY` | `0.996` | `nett_skrl/brain/aux/ema_teacher.py:52` |
-| `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:37`<br>`examples/campaign_train.py:2153`<br>`examples/campaign_train.py:2490` |
-| `NETT_AUX_MAE_BATCH` | `64` | `nett_skrl/brain/aux/mae_aux.py:203` |
-| `NETT_AUX_MAE_DEC_DEPTH` | `1` | `nett_skrl/brain/aux/mae_aux.py:205` |
-| `NETT_AUX_MAE_DEC_DIM` | `64` | `nett_skrl/brain/aux/mae_aux.py:204` |
-| `NETT_AUX_MAE_DEC_HEADS` | `4` | `nett_skrl/brain/aux/mae_aux.py:206` |
-| `NETT_AUX_MAE_NORM_PIX` | `True` | `nett_skrl/brain/aux/mae_aux.py:202` |
-| `NETT_AUX_MAE_PATCH` | `16` | `nett_skrl/brain/aux/mae_aux.py:236` |
-| `NETT_AUX_MAE_RATIO` | `_DEFAULT_RATIO[mode]` | `nett_skrl/brain/aux/mae_aux.py:193` |
-| `NETT_AUX_MAE_TUBE` | `_DEFAULT_TUBE[mode]` | `nett_skrl/brain/aux/mae_aux.py:196` |
+| `NETT_AUX_LOSS` | `"none"` | `nett_skrl/brain/agent_factory.py:37`<br>`examples/campaign_train.py:2159`<br>`examples/campaign_train.py:2496` |
+| `NETT_AUX_MAE_BATCH` | `64` | `nett_skrl/brain/aux/mae_aux.py:258` |
+| `NETT_AUX_MAE_DEC_DEPTH` | `1` | `nett_skrl/brain/aux/mae_aux.py:260` |
+| `NETT_AUX_MAE_DEC_DIM` | `64` | `nett_skrl/brain/aux/mae_aux.py:259` |
+| `NETT_AUX_MAE_DEC_HEADS` | `4` | `nett_skrl/brain/aux/mae_aux.py:261` |
+| `NETT_AUX_MAE_NORM_PIX` | `True` | `nett_skrl/brain/aux/mae_aux.py:257` |
+| `NETT_AUX_MAE_PATCH` | `_DEFAULT_PATCH["cnn2d"]`, `_DEFAULT_PATCH["cnn3d"]` | `nett_skrl/brain/aux/mae_aux.py:296`<br>`nett_skrl/brain/aux/mae_aux.py:315` |
+| `NETT_AUX_MAE_RATIO` | `_DEFAULT_RATIO[mode]` | `nett_skrl/brain/aux/mae_aux.py:248` |
+| `NETT_AUX_MAE_TUBE` | `_DEFAULT_TUBE[mode]` | `nett_skrl/brain/aux/mae_aux.py:251` |
 | `NETT_AUX_NF_BATCH` | `64` | `nett_skrl/brain/aux/nextframe_aux.py:141` |
 | `NETT_AUX_NF_DOWNSAMPLE` | `4` | `nett_skrl/brain/aux/nextframe_aux.py:144` |
 | `NETT_AUX_NF_HIDDEN` | `64` | `nett_skrl/brain/aux/nextframe_aux.py:145` |
@@ -77,23 +77,23 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:159` |
 | `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:161` |
 | `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:160` |
-| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:478`<br>`nett_skrl/brain/aux/ppo_aux.py:661` |
+| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:488`<br>`nett_skrl/brain/aux/ppo_aux.py:671` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |
-| `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:38`<br>`examples/campaign_train.py:2158`<br>`examples/campaign_train.py:2491` |
-| `NETT_AUX_WEIGHT_OVERRIDE` | *(required / no literal default)* | `examples/campaign_train.py:2158` |
-| `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:2037`<br>`examples/train_binding_8brain_targets.py:41` |
-| `NETT_BRAIN_OFFSET` | `"0"`, `'0'` | `examples/campaign_train.py:2038`<br>`examples/train_binding_8brain_targets.py:190`<br>`examples/train_binding_8brain_targets.py:208` |
-| `NETT_CAMERA_FOV` | `""` | `examples/campaign_train.py:1795` |
+| `NETT_AUX_WEIGHT` | `"0"`, `"0.0"` | `nett_skrl/brain/agent_factory.py:38`<br>`examples/campaign_train.py:2164`<br>`examples/campaign_train.py:2497` |
+| `NETT_AUX_WEIGHT_OVERRIDE` | *(required / no literal default)* | `examples/campaign_train.py:2164` |
+| `NETT_BRAINS` | `"7"`, `"8"` | `examples/campaign_train.py:2043`<br>`examples/train_binding_8brain_targets.py:41` |
+| `NETT_BRAIN_OFFSET` | `"0"`, `'0'` | `examples/campaign_train.py:2044`<br>`examples/train_binding_8brain_targets.py:190`<br>`examples/train_binding_8brain_targets.py:208` |
+| `NETT_CAMERA_FOV` | `""` | `examples/campaign_train.py:1801` |
 | `NETT_CAMPAIGN_DIR` | `str(Path.home() / "nett_campaign")` | `examples/campaign_run.py:37` |
-| `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:2295`<br>`examples/campaign_train.py:2296` |
+| `NETT_CHECKPOINT_FREQ` | *(required / no literal default)* | `examples/campaign_train.py:2301`<br>`examples/campaign_train.py:2302` |
 | `NETT_CLTT_REF_DEDUP` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:106` |
 | `NETT_CONV3D_ORTHO_INIT` | `"0"` | `nett_skrl/brain/models/utils/init.py:27` |
 | `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:215`<br>`nett_skrl/body/wrappers/dvs_polarity.py:238`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
-| `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2366` |
-| `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:2034`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
+| `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2372` |
+| `NETT_DEVICE` | `"0 (default)"`, `"0"` | `examples/campaign_retest.py:126`<br>`examples/campaign_train.py:2040`<br>`examples/capture_observations.py:358`<br>`examples/capture_observations.py:585`<br>`examples/train_binding_8brain.py:24`<br>`examples/train_binding_8brain_targets.py:35` |
 | `NETT_DEVICE_LOST_EXIT_BUDGET_S` | `60` | `nett_skrl/runtime/crash_guard.py:272`<br>`nett_skrl/runtime/crash_guard.py:317` |
 | `NETT_DEVICE_LOST_EXIT_CODE` | `"75"`, `75` | `nett_skrl/runtime/crash_guard.py:270`<br>`nett_skrl/runtime/crash_guard.py:376`<br>`nett_skrl/runtime/reap.py:692` |
 | `NETT_DEVICE_LOST_FLUSH_S` | `20` | `nett_skrl/runtime/crash_guard.py:271`<br>`nett_skrl/runtime/crash_guard.py:378` |
@@ -102,7 +102,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DIAG_DUMP` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:81` |
 | `NETT_DIAG_ENT_START` | *(required / no literal default)* | `nett_skrl/brain/ppo_metrics.py:270` |
 | `NETT_DIAG_LR_ANNEAL` | `""` | `nett_skrl/brain/ppo_metrics.py:276` |
-| `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2502`<br>`examples/campaign_train.py:2543` |
+| `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2508`<br>`examples/campaign_train.py:2549` |
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:95` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
 | `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:133` |
@@ -115,23 +115,23 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:152` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
-| `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:2093` |
+| `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:2099` |
 | `NETT_ENVS` | `"16"` | `examples/train_replicate_single.py:35` |
 | `NETT_EOO_MASK` | `"0.01"` | `nett_skrl/brain/aux/eoo_aux.py:164` |
 | `NETT_EOO_PHOTO` | `"1.0"` | `nett_skrl/brain/aux/eoo_aux.py:162` |
 | `NETT_EOO_SMOOTH` | `"0.1"` | `nett_skrl/brain/aux/eoo_aux.py:163` |
 | `NETT_EVAL_STOCHASTIC` | `"1"` | `nett_skrl/brain/trainer.py:57` |
-| `NETT_EXPERIMENT` | `"binding"` | `examples/campaign_train.py:2008`<br>`examples/train_binding_8brain_targets.py:134` |
+| `NETT_EXPERIMENT` | `"binding"` | `examples/campaign_train.py:2014`<br>`examples/train_binding_8brain_targets.py:134` |
 | `NETT_EXPERT_FLOW` | `""` | `nett_skrl/body/wrappers/gwm_spectral.py:229`<br>`nett_skrl/brain/aux/dual_stream.py:181` |
 | `NETT_EXPERT_FLOW_PATCH` | `"8"` | `nett_skrl/brain/aux/expert_flow.py:48` |
 | `NETT_EXPERT_FLOW_RADIUS` | `"12"` | `nett_skrl/brain/aux/expert_flow.py:46` |
 | `NETT_EXPERT_FLOW_STRIDE` | `"2"` | `nett_skrl/brain/aux/expert_flow.py:47` |
 | `NETT_EXTRA_KIT_ARGS` | `""` | `nett_skrl/environment/environment.py:317` |
-| `NETT_EYE_ASPECT_FREE` | `False` | `examples/campaign_train.py:1931` |
+| `NETT_EYE_ASPECT_FREE` | `False` | `examples/campaign_train.py:1937` |
 | `NETT_EYE_H` | *(required / no literal default)* | `examples/count_params.py:68` |
-| `NETT_EYE_RES` | `""` | `examples/campaign_train.py:1917` |
+| `NETT_EYE_RES` | `""` | `examples/campaign_train.py:1923` |
 | `NETT_EYE_W` | *(required / no literal default)* | `examples/count_params.py:68` |
-| `NETT_FEATURE_ATTN` | `""` | `examples/campaign_train.py:1976`<br>`examples/campaign_train.py:2068` |
+| `NETT_FEATURE_ATTN` | `""` | `examples/campaign_train.py:1982`<br>`examples/campaign_train.py:2074` |
 | `NETT_FIRST_FULL_STACK` | `""` | `nett_skrl/brain/env_wrappers.py:322` |
 | `NETT_FISHEYE_METHOD` | `"equisolid"` | `nett_skrl/brain/encoders/stp_e.py:263` |
 | `NETT_FIXED_ACTION_STD` | `""` | `nett_skrl/brain/models/utils/action_std.py:45` |
@@ -141,15 +141,15 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_FOVEA_SIGMA` | `""` | `nett_skrl/body/wrappers/fovea.py:76` |
 | `NETT_FRAMESTACK` | `"1"` | `examples/train_binding_8brain_targets.py:204` |
 | `NETT_FRAMESTACK_N` | `"2"` | `nett_skrl/body/wrappers/framestack.py:48`<br>`examples/campaign_train.py:192` |
-| `NETT_FRAMESTACK_SHUFFLE` | `""` | `nett_skrl/body/wrappers/framestack.py:81`<br>`nett_skrl/brain/encoders/stp_e.py:268`<br>`examples/campaign_train.py:2022` |
+| `NETT_FRAMESTACK_SHUFFLE` | `""` | `nett_skrl/body/wrappers/framestack.py:81`<br>`nett_skrl/brain/encoders/stp_e.py:268`<br>`examples/campaign_train.py:2028` |
 | `NETT_FRAME_FORMAT` | `"bc7"` | `examples/campaign_run.py:181`<br>`scripts/prepare_test_env.py:112` |
 | `NETT_FROZEN_ENC_FROM` | `""` | `nett_skrl/brain/agent_factory.py:279` |
 | `NETT_FROZEN_ENC_SHA256` | `""` | `nett_skrl/brain/agent_factory.py:281` |
 | `NETT_GPUS` | `"0,1,2,3,4,5,6,7"` | `examples/campaign_retest_launch.py:51`<br>`examples/campaign_run.py:209` |
-| `NETT_GPU_BUFFER_BUDGET_GB` | `"4.0"` | `examples/campaign_train.py:2185` |
+| `NETT_GPU_BUFFER_BUDGET_GB` | `"4.0"` | `examples/campaign_train.py:2191` |
 | `NETT_GWM_BAL` | `"0.1"` | `nett_skrl/brain/aux/gwm_aux.py:95` |
 | `NETT_GWM_COH` | `"1.0"` | `nett_skrl/brain/aux/gwm_aux.py:93` |
-| `NETT_GWM_FLOW` | `"expert"` | `nett_skrl/body/wrappers/gwm_spectral.py:216`<br>`examples/campaign_train.py:1717`<br>`examples/campaign_train.py:1722` |
+| `NETT_GWM_FLOW` | `"expert"` | `nett_skrl/body/wrappers/gwm_spectral.py:216`<br>`examples/campaign_train.py:1723`<br>`examples/campaign_train.py:1728` |
 | `NETT_GWM_PHOTO` | `"1.0"` | `nett_skrl/brain/aux/gwm_aux.py:92` |
 | `NETT_GWM_RAFT_BATCH` | `"32"` | `nett_skrl/body/wrappers/gwm_spectral.py:240` |
 | `NETT_GWM_RAFT_CHUNK` | `"256"` | `nett_skrl/body/wrappers/gwm_spectral.py:243` |
@@ -162,43 +162,43 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_GWM_SLOTS` | `2` | `nett_skrl/brain/aux/gwm_aux.py:87` |
 | `NETT_GWM_SMOOTH` | `"0.1"` | `nett_skrl/brain/aux/gwm_aux.py:94` |
 | `NETT_GWM_SPECTRAL_TAU` | `"0.1"` | `nett_skrl/body/wrappers/gwm_spectral.py:235` |
-| `NETT_HIDDEN_SIZES` | `""` | `examples/campaign_train.py:2066` |
-| `NETT_IMPRINT` | `_EXP_MAP[EXP][2]`, *(caller-supplied: `default_imprint`)* | `examples/campaign_train.py:2025`<br>`examples/train_binding_8brain_targets.py:145` |
+| `NETT_HIDDEN_SIZES` | `""` | `examples/campaign_train.py:2072` |
+| `NETT_IMPRINT` | `_EXP_MAP[EXP][2]`, *(caller-supplied: `default_imprint`)* | `examples/campaign_train.py:2031`<br>`examples/train_binding_8brain_targets.py:145` |
 | `NETT_INIT_SCHEME` | `"family"` | `nett_skrl/brain/models/utils/init.py:80` |
 | `NETT_ISAAC_LAB` | *(required / no literal default)* | `examples/campaign_retest_launch.py:38` |
 | `NETT_JOBS_PER_GPU` | `"1"`, `"2"` | `examples/campaign_retest_launch.py:52`<br>`examples/campaign_run.py:210` |
 | `NETT_KIT_THREADS` | `8` | `nett_skrl/runtime/cpu_budget.py:108` |
-| `NETT_KL_THRESHOLD` | `"0.5"` | `examples/campaign_train.py:2099` |
-| `NETT_LEARNING_EPOCHS` | `""` | `examples/campaign_train.py:1957` |
-| `NETT_LEARNING_RATE` | `"3e-4"` | `examples/campaign_train.py:2312` |
+| `NETT_KL_THRESHOLD` | `"0.5"` | `examples/campaign_train.py:2105` |
+| `NETT_LEARNING_EPOCHS` | `""` | `examples/campaign_train.py:1963` |
+| `NETT_LEARNING_RATE` | `"3e-4"` | `examples/campaign_train.py:2318` |
 | `NETT_LIFECYCLE_DISABLE` | `"0"` | `nett_skrl/runtime/lifecycle.py:82` |
 | `NETT_LIFECYCLE_POLL` | `"0.25"` | `nett_skrl/runtime/lifecycle.py:80` |
 | `NETT_LIFECYCLE_TERM_GRACE` | `"25"` | `nett_skrl/runtime/lifecycle.py:78` |
-| `NETT_LOCOMOTION` | *(required / no literal default)* | `examples/campaign_train.py:2403`<br>`examples/campaign_train.py:2404` |
+| `NETT_LOCOMOTION` | *(required / no literal default)* | `examples/campaign_train.py:2409`<br>`examples/campaign_train.py:2410` |
 | `NETT_LR` | `"3e-4"` | `examples/train_binding_8brain_targets.py:156` |
 | `NETT_LR_WARMUP` | *(required / no literal default)* | `examples/train_binding_8brain_targets.py:119`<br>`examples/train_binding_8brain_targets.py:125` |
 | `NETT_LUMNORM_MEAN` | `"0.45"` | `nett_skrl/body/wrappers/lumnorm.py:69` |
 | `NETT_LUMNORM_STD` | `"0.25"` | `nett_skrl/body/wrappers/lumnorm.py:70` |
 | `NETT_MATCHED_AMP` | `"bf16"` | `nett_skrl/brain/amp.py:53`<br>`nett_skrl/brain/encoders/matched.py:148` |
-| `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:2045`<br>`examples/train_binding_8brain_targets.py:38` |
-| `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1943` |
-| `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:2367` |
-| `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:216`<br>`examples/campaign_train.py:2195` |
-| `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:2308`<br>`examples/campaign_train.py:2489`<br>`examples/train_binding_8brain_targets.py:155` |
+| `NETT_MAX_ENVS` | `"112"`, `"32"` | `examples/campaign_train.py:2051`<br>`examples/train_binding_8brain_targets.py:38` |
+| `NETT_MAX_LOG_STD` | `""` | `examples/campaign_train.py:1949` |
+| `NETT_MEDIA_ROOT` | *(caller-supplied: `media`)* | `examples/campaign_run.py:198`<br>`examples/campaign_train.py:2373` |
+| `NETT_MEMORY_DEVICE` | *(required / no literal default)* | `nett_skrl/brain/hybrid_memory.py:216`<br>`examples/campaign_train.py:2201` |
+| `NETT_MINIBATCHES` | `"16"` | `examples/campaign_train.py:2314`<br>`examples/campaign_train.py:2495`<br>`examples/train_binding_8brain_targets.py:155` |
 | `NETT_MIRROR_CKPT` | `""` | `nett_skrl/brain/models/utils/features.py:226` |
 | `NETT_MIRROR_EQUIV` | `""` | `nett_skrl/brain/models/utils/features.py:222` |
-| `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:116`<br>`examples/campaign_train.py:2004` |
+| `NETT_MODEL` | `""` | `nett_skrl/brain/models/builder.py:116`<br>`examples/campaign_train.py:2010` |
 | `NETT_MOTOK_MODE` | `"faithful"` | `nett_skrl/brain/aux/motok_aux.py:323` |
 | `NETT_MOTOK_QUERIES` | `"2"` | `nett_skrl/brain/aux/motok_aux.py:321` |
 | `NETT_MOTOK_UPSAMPLE` | `"0"` | `nett_skrl/brain/aux/motok_aux.py:322` |
 | `NETT_MOTOK_VQ_COEF` | `"0.1"` | `nett_skrl/brain/aux/motok_aux.py:320` |
 | `NETT_NAME` | `f"{ENC}_s{SEED_OFFSET}_{datetime.now():%Y%m%d_%H%M%S}"` | `examples/train_replicate_single.py:41` |
-| `NETT_NAS_CFG` | *(required / no literal default)* | `nett_skrl/brain/models/builder.py:113`<br>`examples/campaign_train.py:1650`<br>`examples/campaign_train.py:2016` |
+| `NETT_NAS_CFG` | *(required / no literal default)* | `nett_skrl/brain/models/builder.py:113`<br>`examples/campaign_train.py:1656`<br>`examples/campaign_train.py:2022` |
 | `NETT_ONLY_EXPERIMENTS` | `""` | `examples/campaign_run.py:75` |
 | `NETT_ONLY_MODELS` | `""` | `examples/campaign_run.py:74` |
 | `NETT_OPTUNA_DIR` | `"/home/zlaborde/code/isaac/optuna_tune"` | `examples/optuna_tune.py:49` |
 | `NETT_OUTPUT` | `"~/nett_replicate_out"` | `examples/train_replicate_single.py:40` |
-| `NETT_OUT_ROOT` | `"~/nett_campaign"` | `examples/campaign_retest_launch.py:44`<br>`examples/campaign_train.py:2225` |
+| `NETT_OUT_ROOT` | `"~/nett_campaign"` | `examples/campaign_retest_launch.py:44`<br>`examples/campaign_train.py:2231` |
 | `NETT_PDEATHSIG_DRIVER` | `False` | `nett_skrl/nett.py:204` |
 | `NETT_PHYSX_BASE_MIB` | `512.0` | `nett_skrl/environment/physx_strategy.py:69` |
 | `NETT_PHYSX_MIN_CPU_THREADS` | `8` | `nett_skrl/environment/physx_strategy.py:78` |
@@ -206,7 +206,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_PHYSX_VRAM_SAFETY` | `1.5` | `nett_skrl/environment/physx_strategy.py:75` |
 | `NETT_PROBE_DEVICE` | `'0'` | `examples/probe_encoder_binding.py:145`<br>`examples/probe_frozen_features.py:365`<br>`examples/probe_policy_readout.py:140` |
 | `NETT_PYTHON` | *(required / no literal default)* | `examples/campaign_retest_launch.py:37`<br>`examples/campaign_run.py:36` |
-| `NETT_RANDOM_FIRST_FRAME` | `False` | `examples/campaign_train.py:2356`<br>`examples/campaign_train.py:2414` |
+| `NETT_RANDOM_FIRST_FRAME` | `False` | `examples/campaign_train.py:2362`<br>`examples/campaign_train.py:2420` |
 | `NETT_REAP_CRASH_GRACE` | `"120"` | `nett_skrl/runtime/reap.py:103` |
 | `NETT_REAP_DISABLE` | `"0"` | `nett_skrl/runtime/reap.py:113` |
 | `NETT_REAP_LINEAGE_POLL` | `"5"` | `nett_skrl/runtime/reap.py:111` |
@@ -214,14 +214,14 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_REAP_TERM_GRACE` | `"10"` | `nett_skrl/runtime/reap.py:105` |
 | `NETT_REAP_TIMEOUT` | `"0"` | `nett_skrl/runtime/reap.py:107` |
 | `NETT_REAP_TOKEN` | *(required / no literal default)* | `nett_skrl/runtime/reap.py:311` |
-| `NETT_RES` | `"128"`, `"256"` | `examples/campaign_run.py:180`<br>`examples/campaign_train.py:2047`<br>`examples/sweep_params.py:12`<br>`examples/train_binding_8brain_targets.py:40` |
+| `NETT_RES` | `"128"`, `"256"` | `examples/campaign_run.py:180`<br>`examples/campaign_train.py:2053`<br>`examples/sweep_params.py:12`<br>`examples/train_binding_8brain_targets.py:40` |
 | `NETT_RETEST_DIR` | `str(ROOT / "_retest")` | `examples/campaign_retest_launch.py:45` |
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
 | `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*")` | `examples/campaign_retest_launch.py:50` |
-| `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:2052` |
+| `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:2058` |
 | `NETT_RL_ENCODER_NO_GRAD` | `""` | `nett_skrl/brain/models/utils/features.py:47` |
-| `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:85`<br>`examples/campaign_train.py:2110`<br>`examples/campaign_train.py:2263` |
-| `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:2239` |
+| `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:85`<br>`examples/campaign_train.py:2116`<br>`examples/campaign_train.py:2269` |
+| `NETT_RUN_NAME` | `""` | `examples/campaign_train.py:2245` |
 | `NETT_RUN_ROOT` | `str(Path.home())` | `examples/probe_frozen_features.py:89` |
 | `NETT_SEED_BY_BRAIN` | *(required / no literal default)* | `nett_skrl/runtime/task.py:91`<br>`nett_skrl/runtime/task.py:153` |
 | `NETT_SEED_OFFSET` | `"0"`, `"1"` | `examples/train_nature_cnn_replicate_seed.py:20`<br>`examples/train_replicate_single.py:34` |
@@ -229,7 +229,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SEG_BACKBONE_LR` | `"1e-5"` | `nett_skrl/body/wrappers/gwm_seg.py:102` |
 | `NETT_SEG_BATCH` | `"8"` | `nett_skrl/body/wrappers/segmentation.py:55` |
 | `NETT_SEG_BUFFER` | `"256"` | `nett_skrl/body/wrappers/segmentation.py:57` |
-| `NETT_SEG_CADENCE` | `"online"` | `nett_skrl/body/wrappers/segmentation.py:74`<br>`examples/campaign_train.py:2042` |
+| `NETT_SEG_CADENCE` | `"online"` | `nett_skrl/body/wrappers/segmentation.py:74`<br>`examples/campaign_train.py:2048` |
 | `NETT_SEG_DEVICE` | *(required / no literal default)* | `nett_skrl/body/wrappers/segmentation.py:111` |
 | `NETT_SEG_FG_SLOT` | `"auto"` | `nett_skrl/body/wrappers/segmentation.py:97` |
 | `NETT_SEG_FLOW_REG` | `"1e-4"` | `nett_skrl/body/wrappers/gwm_seg.py:103`<br>`nett_skrl/body/wrappers/gwm_spectral.py:215`<br>`nett_skrl/body/wrappers/motion_seg.py:121` |
@@ -238,7 +238,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SEG_MODEL` | `"motok"` | `nett_skrl/body/wrappers/motok_seg.py:134` |
 | `NETT_SEG_MOTION_WEIGHT` | `1.0` | `nett_skrl/body/wrappers/motion_seg.py:283`<br>`nett_skrl/body/wrappers/sa_seg.py:100` |
 | `NETT_SEG_QUANTIZE` | `"round"` | `nett_skrl/body/wrappers/segmentation.py:76` |
-| `NETT_SEG_QUERIES` | `"2"`, `"4"` | `nett_skrl/body/wrappers/gwm_seg.py:99`<br>`nett_skrl/body/wrappers/gwm_spectral.py:204`<br>`nett_skrl/body/wrappers/motok_seg.py:142`<br>`examples/campaign_train.py:2142` |
+| `NETT_SEG_QUERIES` | `"2"`, `"4"` | `nett_skrl/body/wrappers/gwm_seg.py:99`<br>`nett_skrl/body/wrappers/gwm_spectral.py:204`<br>`nett_skrl/body/wrappers/motok_seg.py:142`<br>`examples/campaign_train.py:2148` |
 | `NETT_SEG_ROLLOUT_FRAMES` | `os.environ.get("NETT_ROLLOUTS", "8000")` | `nett_skrl/body/wrappers/segmentation.py:84` |
 | `NETT_SEG_ROLLOUT_ORDER` | `"time"` | `nett_skrl/body/wrappers/segmentation.py:77` |
 | `NETT_SEG_SA_SLOTS` | `4` | `nett_skrl/body/wrappers/sa_seg.py:98` |
@@ -253,14 +253,17 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:458` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
-| `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:418` |
-| `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_aux.py:407` |
+| `NETT_SLOTC_DIAG` | `False` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:222`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:418` |
+| `NETT_SLOTC_DIM` | `64` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:214`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:407` |
 | `NETT_SLOTC_EMA` | `0.996` | `nett_skrl/brain/aux/slot_contrast_aux.py:411` |
+| `NETT_SLOTC_FG_THRESH` | `30` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:220` |
+| `NETT_SLOTC_FG_WEIGHT` | `10.0` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:219` |
+| `NETT_SLOTC_ITERS` | `3` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:215` |
 | `NETT_SLOTC_NO_DETACH` | `False` | `nett_skrl/brain/aux/slot_contrast_aux.py:417` |
-| `NETT_SLOTC_SLOTS` | `6` | `nett_skrl/brain/aux/slot_contrast_aux.py:406` |
-| `NETT_SLOTC_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_contrast_aux.py:408` |
-| `NETT_SLOTC_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_contrast_aux.py:410` |
-| `NETT_SLOTC_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_contrast_aux.py:409` |
+| `NETT_SLOTC_SLOTS` | `5`, `6` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:213`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:406` |
+| `NETT_SLOTC_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:216`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:408` |
+| `NETT_SLOTC_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:218`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:410` |
+| `NETT_SLOTC_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_contrast_257_aux.py:217`<br>`nett_skrl/brain/aux/slot_contrast_aux.py:409` |
 | `NETT_SLOTRECON_BATCH` | `64` | `nett_skrl/brain/aux/slot_recon_aux.py:112` |
 | `NETT_SLOTRECON_LR_SCALE` | `1.0` | `nett_skrl/brain/aux/slot_recon_aux.py:115` |
 | `NETT_STAGGER_SECS` | `"12"` | `examples/campaign_retest_launch.py:53`<br>`examples/campaign_run.py:211` |
@@ -270,27 +273,27 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_STALL_POLL_S` | `15` | `nett_skrl/runtime/stall_guard.py:305` |
 | `NETT_STALL_STARTUP_GRACE_S` | `300` | `nett_skrl/runtime/stall_guard.py:187`<br>`nett_skrl/runtime/stall_guard.py:284` |
 | `NETT_STALL_TIMEOUT_S` | `600` | `nett_skrl/runtime/stall_guard.py:186`<br>`nett_skrl/runtime/stall_guard.py:283` |
-| `NETT_STEPS` | `"500"`, `'500'` | `examples/campaign_train.py:2342`<br>`examples/campaign_train.py:2442` |
+| `NETT_STEPS` | `"500"`, `'500'` | `examples/campaign_train.py:2348`<br>`examples/campaign_train.py:2448` |
 | `NETT_STP_BATCH` | `32` | `nett_skrl/brain/aux/stp_aux.py:113` |
 | `NETT_STP_LR` | `2e-3` | `nett_skrl/brain/aux/stp_aux.py:112` |
 | `NETT_STRICT_DETERMINISM` | `"0"` | `nett_skrl/runtime/task.py:259` |
 | `NETT_TAG` | `""` | `examples/train_binding_8brain_targets.py:129` |
-| `NETT_TASK_MEMORY` | `"1"` | `examples/campaign_train.py:2444`<br>`examples/train_binding_8brain_targets.py:216`<br>`examples/train_replicate_single.py:121`<br>`examples/train_replicate_single.py:122` |
+| `NETT_TASK_MEMORY` | `"1"` | `examples/campaign_train.py:2450`<br>`examples/train_binding_8brain_targets.py:216`<br>`examples/train_replicate_single.py:121`<br>`examples/train_replicate_single.py:122` |
 | `NETT_TEARDOWN_BUDGET_S` | `300` | `nett_skrl/runtime/stall_guard.py:250` |
 | `NETT_TEARDOWN_EXIT_CODE` | `"78"`, `78` | `nett_skrl/runtime/reap.py:759`<br>`nett_skrl/runtime/stall_guard.py:214` |
 | `NETT_TEARDOWN_KERNEL_GRACE_S` | `60` | `nett_skrl/runtime/stall_guard.py:252` |
 | `NETT_TEST_CHECKPOINT` | `""` | `nett_skrl/recording/checkpoints.py:45` |
 | `NETT_TEST_ENVS` | *(required / no literal default)* | `nett_skrl/nett.py:542`<br>`nett_skrl/runtime/task_runner.py:611` |
-| `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2441` |
+| `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2447` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:421`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
 | `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:275` |
-| `NETT_TRAIN_DECISION_PERIOD` | `""` | `examples/campaign_train.py:1854`<br>`examples/campaign_train.py:1876`<br>`examples/campaign_train.py:2426`<br>`nett_skrl/brain/aux/xsp2_aux.py:342` |
-| `NETT_TRAIN_EPS` | `"2000"` | `examples/campaign_train.py:2044`<br>`examples/train_binding_8brain_targets.py:42` |
-| `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:2392` |
+| `NETT_TRAIN_DECISION_PERIOD` | `""` | `examples/campaign_train.py:1860`<br>`examples/campaign_train.py:1882`<br>`examples/campaign_train.py:2432`<br>`nett_skrl/brain/aux/xsp2_aux.py:342` |
+| `NETT_TRAIN_EPS` | `"2000"` | `examples/campaign_train.py:2050`<br>`examples/train_binding_8brain_targets.py:42` |
+| `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:2398` |
 | `NETT_UINT8_BUFFER` | `"1"` | `nett_skrl/brain/hybrid_memory.py:32` |
 | `NETT_UNIFIED_WANDB` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:83`<br>`nett_skrl/recording/wandb.py:296` |
-| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:140`<br>`examples/campaign_train.py:2501`<br>`examples/campaign_train.py:2540` |
+| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:140`<br>`examples/campaign_train.py:2507`<br>`examples/campaign_train.py:2546` |
 | `NETT_VICREG_COV` | `"10"` | `nett_skrl/brain/aux/vicreg_aux.py:101`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:102` |
 | `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
 | `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |
@@ -306,7 +309,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_VIVIT_TEMPORAL` | `"joint"` | `examples/train_binding_8brain_targets.py:60` |
 | `NETT_VRAM_OOM_EXIT_CODE` | `"76"`, `76` | `nett_skrl/runtime/crash_guard.py:210`<br>`nett_skrl/runtime/reap.py:718` |
 | `NETT_WANDB_GROUP` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:91` |
-| `NETT_WANDB_MODE` | `"offline"`, `"online"` | `examples/campaign_retest.py:71`<br>`examples/campaign_retest_launch.py:82`<br>`examples/campaign_train.py:2339`<br>`examples/train_binding_8brain_targets.py:174` |
+| `NETT_WANDB_MODE` | `"offline"`, `"online"` | `examples/campaign_retest.py:71`<br>`examples/campaign_retest_launch.py:82`<br>`examples/campaign_train.py:2345`<br>`examples/train_binding_8brain_targets.py:174` |
 | `NETT_WHEEL_TURNMOVE` | `"1"` | `nett_skrl/body/wrappers/stp_pose.py:199` |
 | `NETT_WORKSPACE` | `""` | `examples/gate_a_resume.py:81` |
 | `NETT_XSP2_BATCH` | `64` | `nett_skrl/brain/aux/xsp2_aux.py:321` |

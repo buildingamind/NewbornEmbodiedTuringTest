@@ -235,7 +235,9 @@ def test_ratio_knob_is_realised(campaign, monkeypatch):
 
 def test_refusals(campaign, monkeypatch):
     with pytest.raises(TypeError, match="supports CompactViT"):
-        MAETerm(_build(campaign.MODELS["CNN"], channels=3))
+        # NatureCNN ("CNN") is supported since the BASELINE series (masked input, test_baseline_aux.py); an
+        # encoder outside the four families still refuses.
+        MAETerm(_build(campaign.MODELS["SimCLR-CLTT-Schneider"], channels=3))
     monkeypatch.setenv("NETT_AUX_MAE_TUBE", "0")
     with pytest.raises(ValueError, match="per-frame masking is not expressible"):
         MAETerm(_build(campaign.MODELS["ViT-CLTT-Ref"]))

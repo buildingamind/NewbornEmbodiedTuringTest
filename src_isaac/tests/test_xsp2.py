@@ -977,7 +977,10 @@ VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
 BIND16_LABELS = {"ViT-P8CONV-682K"}
 # BASELINE series (owner 2026-10-28): the two backbones, their DVS / CLTT-Ref / MAE variations and the ViViT-P8 video twin.
 BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS", "CNN-D512P+CLTT-Ref", "ViT-P8-666K+CLTT-Ref",
-                   "ViT-P8-666K+MAE", "ViViT-P8-T2"}
+                   "ViT-P8-666K+MAE", "ViViT-P8-T2", "CNN-D512P+MASK75", "CNN-D512P+SC257", "ViT-P8-666K+SC257"}
+#: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
+#: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
+BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
 #: owner 2026-10-27 (policy/value head default linear -> [64, 64]): the ONLY admitted campaign_train.py removals are the
 #: old linear-default NETT_HIDDEN_SIZES comment + parse (now unset/"" = [64, 64], "[]" = linear). Each must be in the diff.
 OWNER1027_REMOVED = {"examples/campaign_train.py": (
@@ -1047,7 +1050,8 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     changed = set(_git("diff", _base(), "--name-only", "--", "nett_skrl", "examples").split())
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
-                                          *MIRROR187_FILES, *SIGMA187_FILES, *SEED187_FILES, *TEXGUARD187_FILES, "nett_skrl/brain/models/utils/init.py")}
+                                          *MIRROR187_FILES, *SIGMA187_FILES, *SEED187_FILES, *TEXGUARD187_FILES, "nett_skrl/brain/models/utils/init.py",
+                                          *BASELINE_FILES)}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1074,5 +1078,5 @@ def test_registries_only_gained_the_xsp2_entries():
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
         assert old and new - old == ({"xsp2", "matched", "jepa", "vit_slot_recon", "stp_e"} if "registry" in rel
-                                  else {"xsp2", "ijepa", "vjepa", "slot_recon", "stp"}) and old <= new, rel
+                                  else {"xsp2", "ijepa", "vjepa", "slot_recon", "stp", "slot_contrast_257"}) and old <= new, rel
         assert new <= set(live), rel

@@ -1510,6 +1510,12 @@ MODELS["ViT-P8-666K+DVS"] = {**MODELS["ViT-P8-666K"], "pre": ("dvs_polarity",)}
 MODELS["CNN-D512P+CLTT-Ref"] = {**MODELS["CNN-D512P"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K+CLTT-Ref"] = {**MODELS["ViT-P8-666K"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K+MAE"] = {**MODELS["ViT-P8-666K"], "aux": "mae", "aux_weight": 1.0}
+# G1b (owner-confirmed 2026-10-28): "Masking (75%)" on D512P = the mae aux's NatureCNN masked-input (SimMIM-style) path
+# (8x8 patches, ratio default .75); "Slot Contrast (the 257 version)" = slot_contrast_257 (K=5 learnable queries, BO-QSA,
+# fg-weighted RGB reconstruction x11; brain/aux/slot_contrast_257_aux.py), joint with the encoder.
+MODELS["CNN-D512P+MASK75"] = {**MODELS["CNN-D512P"], "aux": "mae", "aux_weight": 1.0}
+MODELS["CNN-D512P+SC257"] = {**MODELS["CNN-D512P"], "aux": "slot_contrast_257", "aux_weight": 1.0}
+MODELS["ViT-P8-666K+SC257"] = {**MODELS["ViT-P8-666K"], "aux": "slot_contrast_257", "aux_weight": 1.0}
 MODELS["ViViT-P8-T2"] = dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "patch_size": 8, "embed_dim": 148, "num_heads": 4, "temporal_mode": "early"}, framestack=True)
 
 def _nas_int(lo: int, hi: int):
