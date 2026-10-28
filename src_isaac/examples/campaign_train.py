@@ -1491,6 +1491,27 @@ del _lbl, _p14
 # The offline-CLTT-pretrained frozen version of this encoder gave binders in 15/27 fresh-head seeds (F12).
 MODELS["ViT-P8CONV-682K"] = dict(encoder="compact_vit", framestack=False, cfg={**VIT_CFG, "patch_size": 8, "embed_dim": 140, "stem": "conv"})
 
+# ══ BASELINE series (owner 2026-10-28; workspace notes/chicken/presenter_i800_i805/baseline/PLAN_BASELINE.md) ══════
+# Two backbones at ~600-700K, 512 features, in the bind16 env (128x80 eye, 300 deg); counts at 128x80, encoder only:
+#   D512P  NatureCNN, features 512, conv 64, spatially POOLED (666,272; 3 ch) -- CNN-UnityRecipe's trunk at 512 features
+#          with the pooled readout, so the count stays at the 128-feature flatten's size.
+#   ViT-P8 CompactViT patch 8, LINEAR stem, embed 148, depth 3, 4 heads, CLS (659,704; 3 ch).
+# Variations: +DVS (dvs_polarity; rows set NETT_DVS_COLOR=1 for DVS6: 6 ch -> D512P 672,416, ViT-P8 688,120),
+# +CLTT-Ref (cltt_ref aux from the replay buffer, 1 frame; "detached" = the row's NETT_DECOUPLE_ENCODER=1),
+# +MAE (ViT token MAE; rows set NETT_AUX_MAE_RATIO=0.75), and the video twins 3DCNN (exists, 695,981) and ViViT-P8-T2
+# (CompactViViT patch 8, embed 148, 4 heads as the ViT-P8, EARLY fusion = both frames in one token per location,
+# CLS; 688,120).
+BASELINE_D512P_CFG = {"trainable": True, "features_dim": 512, "conv_dim": 64, "spatial_pool": True}
+BASELINE_VITP8_CFG = {**VIT_CFG, "patch_size": 8, "embed_dim": 148}
+MODELS["CNN-D512P"] = dict(encoder="nature_cnn", cfg=dict(BASELINE_D512P_CFG), framestack=False)
+MODELS["ViT-P8-666K"] = dict(encoder="compact_vit", cfg=dict(BASELINE_VITP8_CFG), framestack=False)
+MODELS["CNN-D512P+DVS"] = {**MODELS["CNN-D512P"], "pre": ("dvs_polarity",)}
+MODELS["ViT-P8-666K+DVS"] = {**MODELS["ViT-P8-666K"], "pre": ("dvs_polarity",)}
+MODELS["CNN-D512P+CLTT-Ref"] = {**MODELS["CNN-D512P"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["ViT-P8-666K+CLTT-Ref"] = {**MODELS["ViT-P8-666K"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["ViT-P8-666K+MAE"] = {**MODELS["ViT-P8-666K"], "aux": "mae", "aux_weight": 1.0}
+MODELS["ViViT-P8-T2"] = dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "patch_size": 8, "embed_dim": 148, "num_heads": 4, "temporal_mode": "early"}, framestack=True)
+
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
 

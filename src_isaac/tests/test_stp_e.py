@@ -51,6 +51,9 @@ NEW_LABELS = {*STP_LABELS, "CNN2F-630K"}
 VIVSP173_LABELS = {"ViViT-SP1x4", "ViViT-SP2x8"}
 # bind16 (workspace PROGRAM_BIND16, owner 2026-10-27): the conv-stem ViT-P8 label used by the presenter's frozen-encoder runs.
 BIND16_LABELS = {"ViT-P8CONV-682K"}
+# BASELINE series (owner 2026-10-28): the two backbones, their DVS / CLTT-Ref / MAE variations and the ViViT-P8 video twin.
+BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS", "CNN-D512P+CLTT-Ref", "ViT-P8-666K+CLTT-Ref",
+                   "ViT-P8-666K+MAE", "ViViT-P8-T2"}
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1087,7 +1090,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
