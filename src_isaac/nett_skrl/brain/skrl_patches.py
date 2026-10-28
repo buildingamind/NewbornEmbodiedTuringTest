@@ -18,6 +18,12 @@ import torch
 from .models.utils.features import shared_feature_cache
 
 
+def determinism_relaxed() -> bool:
+    """NETT_RELAX_DETERMINISM=1 (runtime/task.py set_seeds): deterministic algorithms are OFF for the
+    whole run, so the PPO-update scopes below must not switch them back on."""
+    return os.environ.get("NETT_RELAX_DETERMINISM", "0") == "1"
+
+
 @contextmanager
 def strict_determinism():
     """Run the PPO learning path under STRICT deterministic algorithms.
@@ -43,6 +49,9 @@ def strict_determinism():
     # production (task.py always enables it first, so the restored state is identical), but it
     # poisoned later CUDA tests in the same process (cuBLAS refuses without
     # CUBLAS_WORKSPACE_CONFIG; tests/test_vit_fp16.py's CUDA forward, insect 2026-10-16).
+    if determinism_relaxed():   # opt-in speed mode: the update runs with whatever kernels are fastest
+        yield
+        return
     was_enabled = torch.are_deterministic_algorithms_enabled()
     was_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     torch.use_deterministic_algorithms(True, warn_only=False)
@@ -87,6 +96,9 @@ def relaxed_determinism():
     # always enables it) but poisons any standalone probe, and makes the NEXT case in a probe
     # loop fail with the PREVIOUS case's state. Reported by seat:lion, who lost a gwm result to
     # exactly that leak and read it as a gwm defect. Mirroring the shape would inherit the bug.
+    if determinism_relaxed():   # already off for the whole run; do not turn warn-only back on
+        yield
+        return
     was_enabled = torch.are_deterministic_algorithms_enabled()
     was_warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
     torch.use_deterministic_algorithms(True, warn_only=True)

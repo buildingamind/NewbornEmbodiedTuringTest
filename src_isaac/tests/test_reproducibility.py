@@ -350,3 +350,49 @@ def test_validate_tasklist_seeds_before_load():
     seed_idx = src.index("set_seeds(stream_seed(config))")
     load_idx = src.index("task.agent.env.load(")
     assert seed_idx < load_idx, "set_seeds must precede env.load in validate_tasklist"
+
+
+# === NETT_RELAX_DETERMINISM: opt-in speed mode (owner 2026-10-28, BASELINE #1) ======
+# cuDNN autotune + deterministic algorithms OFF for the whole run, including the PPO update.
+
+
+def test_relax_determinism_turns_everything_off_and_scopes_stay_off(monkeypatch):
+    from nett_skrl.brain.skrl_patches import relaxed_determinism, strict_determinism
+
+    monkeypatch.setenv("NETT_RELAX_DETERMINISM", "1")
+    try:
+        set_seeds(321)
+        assert torch.are_deterministic_algorithms_enabled() is False
+        assert torch.backends.cudnn.benchmark is True and torch.backends.cudnn.deterministic is False
+        with strict_determinism():
+            assert torch.are_deterministic_algorithms_enabled() is False
+        with relaxed_determinism():
+            assert torch.are_deterministic_algorithms_enabled() is False
+        assert torch.are_deterministic_algorithms_enabled() is False
+    finally:
+        monkeypatch.delenv("NETT_RELAX_DETERMINISM", raising=False)
+        set_seeds(321)
+    assert torch.are_deterministic_algorithms_enabled() is True
+    assert torch.is_deterministic_algorithms_warn_only_enabled() is True
+    assert torch.backends.cudnn.benchmark is False and torch.backends.cudnn.deterministic is True
+
+
+def test_relax_determinism_is_off_by_default(monkeypatch):
+    monkeypatch.delenv("NETT_RELAX_DETERMINISM", raising=False)
+    from nett_skrl.brain.skrl_patches import strict_determinism
+
+    set_seeds(321)
+    with strict_determinism():
+        assert torch.is_deterministic_algorithms_warn_only_enabled() is False
+
+
+def test_relax_and_strict_determinism_are_refused_together(monkeypatch):
+    monkeypatch.setenv("NETT_RELAX_DETERMINISM", "1")
+    monkeypatch.setenv("NETT_STRICT_DETERMINISM", "1")
+    try:
+        with pytest.raises(ValueError, match="contradictory"):
+            set_seeds(321)
+    finally:
+        monkeypatch.delenv("NETT_RELAX_DETERMINISM", raising=False)
+        monkeypatch.delenv("NETT_STRICT_DETERMINISM", raising=False)
+        set_seeds(321)

@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-307 variables.
+308 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -214,6 +214,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_REAP_TERM_GRACE` | `"10"` | `nett_skrl/runtime/reap.py:105` |
 | `NETT_REAP_TIMEOUT` | `"0"` | `nett_skrl/runtime/reap.py:107` |
 | `NETT_REAP_TOKEN` | *(required / no literal default)* | `nett_skrl/runtime/reap.py:311` |
+| `NETT_RELAX_DETERMINISM` | `"0"` | `nett_skrl/brain/skrl_patches.py:24`<br>`nett_skrl/runtime/task.py:266` |
 | `NETT_RES` | `"128"`, `"256"` | `examples/campaign_run.py:180`<br>`examples/campaign_train.py:2053`<br>`examples/sweep_params.py:12`<br>`examples/train_binding_8brain_targets.py:40` |
 | `NETT_RETEST_DIR` | `str(ROOT / "_retest")` | `examples/campaign_retest_launch.py:45` |
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
@@ -249,7 +250,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_SEG_WD` | `"1e-4"` | `nett_skrl/body/wrappers/segmentation.py:54` |
 | `NETT_SHAPE_GATE_MIN_PX` | `"10"` | `nett_skrl/body/wrappers/oracle_shape.py:136` |
 | `NETT_SHAPE_GATE_SIGMA` | `"0.15"` | `nett_skrl/body/wrappers/oracle_shape.py:135` |
-| `NETT_SHARED_ENCODER_DUP` | `""` | `nett_skrl/brain/skrl_patches.py:103` |
+| `NETT_SHARED_ENCODER_DUP` | `""` | `nett_skrl/brain/skrl_patches.py:115` |
 | `NETT_SIMCLR_NO_COLOUR_JITTER` | `False` | `nett_skrl/brain/aux/simclr_aux.py:146` |
 | `NETT_SIM_DEVICE` | *(required / no literal default)* | `nett_skrl/environment/environment.py:458` |
 | `NETT_SKIP_VALIDATION` | *(required / no literal default)* | `nett_skrl/nett.py:417` |
@@ -287,7 +288,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TEST_EPS` | `"20"`, `str(config.get("episodes", {}).get("test", 20))` | `examples/campaign_retest.py:68`<br>`examples/campaign_train.py:2447` |
 | `NETT_TEST_GROUP_BY_ROW` | *(required / no literal default)* | `nett_skrl/environment/environment.py:421`<br>`examples/capture_observations.py:557`<br>`examples/capture_observations.py:561`<br>`examples/capture_observations.py:563` |
 | `NETT_TEXTURE_DEFAULTS` | `"1"` | `nett_skrl/runtime/texture_defaults.py:98` |
-| `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:275` |
+| `NETT_TF32` | `"1"` | `nett_skrl/runtime/task.py:293` |
 | `NETT_TRAIN_DECISION_PERIOD` | `""` | `examples/campaign_train.py:1860`<br>`examples/campaign_train.py:1882`<br>`examples/campaign_train.py:2432`<br>`nett_skrl/brain/aux/xsp2_aux.py:342` |
 | `NETT_TRAIN_EPS` | `"2000"` | `examples/campaign_train.py:2050`<br>`examples/train_binding_8brain_targets.py:42` |
 | `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:2398` |

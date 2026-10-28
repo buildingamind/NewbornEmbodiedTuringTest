@@ -257,7 +257,25 @@ def set_seeds(seed: int) -> None:
     # weight divergence; it is off by default because it aborts long runs on ops
     # that have no deterministic implementation at all.
     strict = os.environ.get("NETT_STRICT_DETERMINISM", "0") == "1"
-    torch.use_deterministic_algorithms(True, warn_only=not strict)
+    # NETT_RELAX_DETERMINISM=1 (opt-in, owner 2026-10-28 for the BASELINE series): trade run-to-run
+    # bitwise reproducibility for speed. cuDNN autotunes (benchmark=True, deterministic=False) and
+    # torch's deterministic-algorithms mode is OFF, here AND inside the PPO update (skrl_patches'
+    # strict_determinism / relaxed_determinism become no-ops). Seeding is unchanged, so runs are
+    # still seed-distinct; they are no longer bit-replayable. Refused together with the strict
+    # diagnostic, which would otherwise be silently disarmed.
+    relax = os.environ.get("NETT_RELAX_DETERMINISM", "0") == "1"
+    if relax and strict:
+        raise ValueError("NETT_RELAX_DETERMINISM=1 and NETT_STRICT_DETERMINISM=1 are contradictory; set one")
+    if not relax:
+        torch.use_deterministic_algorithms(True, warn_only=not strict)
+    else:
+        torch.backends.cudnn.benchmark = True
+        torch.backends.cudnn.deterministic = False
+        torch.use_deterministic_algorithms(False)
+        logging.getLogger("nett.runtime").warning(
+            "NETT_RELAX_DETERMINISM=1: cuDNN autotune on, deterministic algorithms OFF "
+            "(seeded, not bit-replayable)"
+        )
     if strict:
         logging.getLogger("nett.runtime").warning(
             "NETT_STRICT_DETERMINISM=1: nondeterministic torch ops will RAISE "
