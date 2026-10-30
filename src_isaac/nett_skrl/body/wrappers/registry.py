@@ -61,6 +61,10 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # Foveated eye: crisp centre with a small colour spot, slightly blurred BT.601 grey (x3) surround
     # (owner 2026-10-15, workspace DECISIONS §117). Sizes from NETT_FOVEA_* (required). ⚠ `pre`, innermost.
     "fovea": ("nett_skrl.body.wrappers.fovea", "Fovea"),
+    # Soft-mask foveated retina (owner 2026-10-30, the default foveated retina): a radius-3 colour disk at the
+    # image centre whose MASK is Gaussian-blurred (sigma 1), BT.601 grey (x3) elsewhere, no image blur. Knobs
+    # NETT_FOVEAM_* (defaults = that recipe). ⚠ `pre`, innermost.
+    "fovea_mask": ("nett_skrl.body.wrappers.fovea_mask", "FoveaMask"),
     # STP-E (workspace DECISIONS §170): one extra image row per frame carrying the step's pose change as
     # float32 bytes, for brain/encoders/stp_e.py to strip and decode. "exec" = the EXECUTED change (motor pose
     # after physics), "cmd" = the COMMANDED [turn, move]. One entry per source so the model name says which ran

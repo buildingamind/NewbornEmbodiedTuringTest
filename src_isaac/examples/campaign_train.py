@@ -1518,6 +1518,19 @@ MODELS["CNN-D512P+SC257"] = {**MODELS["CNN-D512P"], "aux": "slot_contrast_257", 
 MODELS["ViT-P8-666K+SC257"] = {**MODELS["ViT-P8-666K"], "aux": "slot_contrast_257", "aux_weight": 1.0}
 MODELS["ViViT-P8-T2"] = dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "patch_size": 8, "embed_dim": 148, "num_heads": 4, "temporal_mode": "early"}, framestack=True)
 
+# ══ BASELINE + FOVEA (owner 2026-10-30, presenter chat) ═══════════════════════════════════════════════════════════════
+# "a 3 pixel radius foveated retina on the current series' CNN, ViT, 3DCNN, and ViViT early fusion ... I would like this
+# to be the default foveated retina setup". Each label is its BASELINE series twin verbatim plus the soft-mask fovea
+# (body/wrappers/fovea_mask.py: radius 3, mask blur sigma 1, BT.601 grey surround) as the innermost `pre`, so the video
+# encoders stack foveated frames. Written out per label: tools/launch_arm.sh checks for the literal entry.
+MODELS["CNN-D512P+Fovea"] = {**MODELS["CNN-D512P"], "pre": ("fovea_mask",)}
+MODELS["ViT-P8-666K+Fovea"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_mask",)}
+MODELS["3DCNN+Fovea"] = {**MODELS["3DCNN"], "pre": ("fovea_mask",)}
+MODELS["ViViT-P8-T2+Fovea"] = {**MODELS["ViViT-P8-T2"], "pre": ("fovea_mask",)}
+for _twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
+    assert "pre" not in MODELS[_twin], _twin
+del _twin
+
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
 # NatureCNN conv 75 flatten, ViT = VIT_CFG patch 16, 3DCNN, ViViT patch 16), each + ONE variation, auxes ATTACHED

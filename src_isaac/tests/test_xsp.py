@@ -1140,6 +1140,9 @@ BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS
 # (test_slide3_wave_labels.py); mae_aux.py (early-fusion mode) and compact_vivit.py (its visible-token path) are admitted above.
 S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DCNN+MASK75", "ViViT-T2+MASK75",
               "CNN+SC257", "ViT+SC257"}
+#: owner 2026-10-30 (presenter): the BASELINE series twins + the soft-mask fovea (body/wrappers/fovea_mask.py)
+FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea"}
+FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
 #: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
 #: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
 BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
@@ -1208,7 +1211,7 @@ def test_no_other_brain_file_changed():
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
                                               + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES + TEXGUARD187_FILES
-                                              + BASELINE_FILES}
+                                              + BASELINE_FILES + FOVEA1030_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1220,7 +1223,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.
