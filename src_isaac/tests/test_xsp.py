@@ -1136,6 +1136,10 @@ BIND16_LABELS = {"ViT-P8CONV-682K"}
 # BASELINE series (owner 2026-10-28): the two backbones, their DVS / CLTT-Ref / MAE variations and the ViViT-P8 video twin.
 BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS", "CNN-D512P+CLTT-Ref", "ViT-P8-666K+CLTT-Ref",
                    "ViT-P8-666K+MAE", "ViViT-P8-T2", "CNN-D512P+MASK75", "CNN-D512P+SC257", "ViT-P8-666K+SC257"}
+# Slide-3 n=7 wave (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219): the slide backbones + one variation each
+# (test_slide3_wave_labels.py); mae_aux.py (early-fusion mode) and compact_vivit.py (its visible-token path) are admitted above.
+S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DCNN+MASK75", "ViViT-T2+MASK75",
+              "CNN+SC257", "ViT+SC257"}
 #: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
 #: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
 BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
@@ -1216,7 +1220,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.

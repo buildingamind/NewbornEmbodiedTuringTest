@@ -1518,6 +1518,27 @@ MODELS["CNN-D512P+SC257"] = {**MODELS["CNN-D512P"], "aux": "slot_contrast_257", 
 MODELS["ViT-P8-666K+SC257"] = {**MODELS["ViT-P8-666K"], "aux": "slot_contrast_257", "aux_weight": 1.0}
 MODELS["ViViT-P8-T2"] = dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "patch_size": 8, "embed_dim": 148, "num_heads": 4, "temporal_mode": "early"}, framestack=True)
 
+# ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
+# "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
+# NatureCNN conv 75 flatten, ViT = VIT_CFG patch 16, 3DCNN, ViViT patch 16), each + ONE variation, auxes ATTACHED
+# (joint with the encoder; no NETT_DECOUPLE_*), as the owner chose. Every label is its base verbatim plus that one field:
+#   ViViT-T2          ViViT-CLTT-Ref-T2 without the aux (early fusion: both frames' 16x16 patches in one token).
+#                     ViViT early fusion - CLTT-Ref is the existing "ViViT-CLTT-Ref-T2".
+#   CNN+DVS / ViT+DVS + dvs_polarity; rows set NETT_DVS_COLOR=1 (DVS6: 6 ch) and their threshold / blur.
+#   *+MASK75          + the mae aux: NatureCNN / 3DCNN masked input, ViT token MAE, ViViT-T2 early-fusion token MAE
+#                     (mae_aux.py mode vivit_early); rows set NETT_AUX_MAE_RATIO=0.75.
+#   *+SC257           + slot_contrast_257 (single RGB frame; refuses DVS / stacks).
+# Counts at 128x80 are pinned in tests/test_slide3_wave_labels.py.
+MODELS["ViViT-T2"] = dict(encoder="compact_vivit", cfg={**VIVIT_CFG, "temporal_mode": "early"}, framestack=True)
+MODELS["CNN+DVS"] = {**MODELS["CNN"], "pre": ("dvs_polarity",)}
+MODELS["ViT+DVS"] = {**MODELS["ViT"], "pre": ("dvs_polarity",)}
+MODELS["CNN+MASK75"] = {**MODELS["CNN"], "aux": "mae", "aux_weight": 1.0}
+MODELS["ViT+MASK75"] = {**MODELS["ViT"], "aux": "mae", "aux_weight": 1.0}
+MODELS["3DCNN+MASK75"] = {**MODELS["3DCNN"], "aux": "mae", "aux_weight": 1.0}
+MODELS["ViViT-T2+MASK75"] = {**MODELS["ViViT-T2"], "aux": "mae", "aux_weight": 1.0}
+MODELS["CNN+SC257"] = {**MODELS["CNN"], "aux": "slot_contrast_257", "aux_weight": 1.0}
+MODELS["ViT+SC257"] = {**MODELS["ViT"], "aux": "slot_contrast_257", "aux_weight": 1.0}
+
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
 

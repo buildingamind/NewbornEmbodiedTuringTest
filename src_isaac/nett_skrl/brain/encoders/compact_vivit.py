@@ -428,6 +428,33 @@ class CompactViViT(HWCFeatureExtractor):
             seq = block(seq)
         return self.norm(seq)
 
+    def encode_visible_early_prepared(self, prepared: torch.Tensor, keep: torch.Tensor) -> torch.Tensor:
+        """Early-fusion MAE path (owner 2026-10-30, "ViViT early fusion (MASK 75%)"; `brain/aux/mae_aux.py`
+        mode ``vivit_early``): post-norm tokens of the visible SPATIAL positions only, CLS first -> (B, 1+N_vis, D).
+
+        ``keep`` is (B, N_vis) indices into the n_spatial early tokens (row-major over the patch grid). Each early
+        token is one location in BOTH frames (`forward`'s ``torch.cat(patches, dim=-1)``, T-major), so dropping it
+        hides that location in every frame: tube masking by construction, as on a stacked CompactViT. Tokens are
+        gathered AFTER the spatial position embedding, so each keeps its own position.
+
+        ⛔ A MIRROR OF `forward`'s early branch (cls pool), not a refactor of it: `forward` is untouched. Pinned by
+        tests/test_slide3_wave_labels.py (keep = every position reproduces `forward` exactly).
+        """
+        if self.temporal_mode != "early" or not self.use_cls:
+            raise ValueError(
+                f"CompactViViT.encode_visible_early_prepared needs temporal_mode='early' and pool='cls'; "
+                f"got temporal_mode={self.temporal_mode!r}, pool={self.pool!r}.")
+        B = prepared.shape[0]
+        frames = self._frames(prepared)
+        tok = torch.cat([_patchify(frames[:, t], self.patch_size) for t in range(self.num_frames)], dim=-1)
+        tok = self.patch_embed(tok) + self.spatial_pos_embed
+        tok = torch.gather(tok, 1, keep.unsqueeze(-1).expand(-1, -1, self.embed_dim))
+        cls = (self.cls_token + self.cls_pos_embed).expand(B, -1, -1)
+        seq = torch.cat([cls, tok], dim=1)
+        for block in self.blocks:
+            seq = block(seq)
+        return self.norm(seq)
+
     def _encode_single(self, tok: torch.Tensor) -> torch.Tensor:
         """Run the shared stack over (B, n_spatial, D) tokens -> (B, D) pooled."""
         B = tok.shape[0]

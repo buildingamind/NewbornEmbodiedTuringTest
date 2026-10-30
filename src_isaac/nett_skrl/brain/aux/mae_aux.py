@@ -43,6 +43,16 @@ ONE TERM, FOUR ENCODER FAMILIES, CHOSEN BY THE ENCODER'S TYPE (anything else REF
                   trunk (`CompactViViT.encode_visible_prepared`), the decoder reconstructs every
                   masked (frame, patch) token's pixels.
 
+  CompactViViT temporal_mode='early' -> EARLY-FUSION TOKEN MAE (owner 2026-10-30: "ViViT early fusion
+                  (MASK 75%)"; mode ``vivit_early``). An early token is ONE location in BOTH frames (the
+                  two frames' patches concatenated, T-major, under one Linear), so this is the ViT mode on
+                  that token: a random ``NETT_AUX_MAE_RATIO`` (default .75) of the n_spatial tokens is
+                  dropped -- tube masking by construction, ``NETT_AUX_MAE_TUBE=0`` refuses -- the trunk
+                  encodes the visible ones (+CLS, `CompactViViT.encode_visible_early_prepared`) and the
+                  decoder regresses each masked token's T*C*P*P pixels (both frames' patches, T-major);
+                  norm_pix normalizes over that whole two-frame patch, as the ViT mode does for its
+                  stacked patch.
+
 LOSS: per-patch normalized pixel MSE on masked patches (He et al.'s norm_pix_loss, default on;
 ``NETT_AUX_MAE_NORM_PIX=0`` regresses raw [0, 1] pixels). Each patch target is normalized over
 its own pixels -- for the CNN and ViViT modes that is one frame's patch, for the ViT mode the
@@ -88,6 +98,9 @@ _DEFAULT_RATIO = {"vit": 0.75, "cnn3d": 0.75, "vivit": 0.90, "cnn2d": 0.75}
 _DEFAULT_TUBE = {"vit": True, "cnn3d": False, "vivit": True, "cnn2d": True}
 #: NETT_AUX_MAE_PATCH default per masked-input mode (the ViT / ViViT modes use the encoder's own patch).
 _DEFAULT_PATCH = {"cnn3d": 16, "cnn2d": 8}
+#: ViViT early fusion (owner 2026-10-30) is the ViT token mode on a two-frame token: ratio .75, tube by construction.
+_DEFAULT_RATIO["vivit_early"] = 0.75
+_DEFAULT_TUBE["vivit_early"] = True
 
 
 def patchify(img: torch.Tensor, p: int) -> torch.Tensor:
@@ -244,11 +257,17 @@ class MAETerm(nn.Module):
                 f"MAETerm supports CompactViT (token MAE), Compact3DCNN and NatureCNN (masked input) "
                 f"and CompactViViT (VideoMAE); got {type(encoder).__name__}. Refusing to substitute "
                 f"another masking scheme under the same name.")
+        if mode == "vivit" and encoder.temporal_mode == "early":
+            mode = self.mode = "vivit_early"
         self.mode = mode
         self.ratio = _env_unit_interval("NETT_AUX_MAE_RATIO", _DEFAULT_RATIO[mode])
         if not 0.0 < self.ratio < 1.0:
             raise ValueError(f"NETT_AUX_MAE_RATIO={self.ratio} must be strictly between 0 and 1.")
         self.tube = _env_flag_strict("NETT_AUX_MAE_TUBE", _DEFAULT_TUBE[mode])
+        if mode == "vivit_early" and not self.tube:
+            raise ValueError(
+                "NETT_AUX_MAE_TUBE=0 on an early-fusion CompactViViT: one token covers a location in BOTH "
+                "frames, so per-frame masking is not expressible on this trunk.")
         if mode == "vit" and not self.tube:
             raise ValueError(
                 "NETT_AUX_MAE_TUBE=0 on CompactViT: one token covers a location in EVERY stacked "
@@ -273,6 +292,16 @@ class MAETerm(nn.Module):
             self.num_frames = None
             self.head = nn.ModuleDict({"dec": _TokenDecoder(
                 encoder.pos_embed.shape[-1], self.n_pos, chans * self.patch ** 2,
+                dec_dim, dec_depth, dec_heads)})
+        elif mode == "vivit_early":
+            if not encoder.use_cls:
+                raise ValueError("MAETerm: early-fusion MAE needs CompactViViT pool='cls'.")
+            self.patch = int(encoder.patch_size)
+            self.num_frames = int(encoder.num_frames)
+            self.n_spatial = int(encoder.n_spatial)
+            self.n_pos = self.n_spatial
+            self.head = nn.ModuleDict({"dec": _TokenDecoder(
+                encoder.embed_dim, self.n_pos, self.num_frames * encoder.base_channels * self.patch ** 2,
                 dec_dim, dec_depth, dec_heads)})
         elif mode == "vivit":
             if encoder.temporal_mode != "joint" or not encoder.use_cls:
@@ -342,6 +371,8 @@ class MAETerm(nn.Module):
         cnn2d: (B, 1, N). True = masked. Tube masking repeats one spatial mask over every frame."""
         if self.mode == "vit":
             return random_mask(b, self.n_pos, self.ratio, device)
+        if self.mode == "vivit_early":
+            return random_mask(b, self.n_pos, self.ratio, device)              # (B, n_spatial)
         t = self.num_frames
         n = self.n_spatial if self.mode == "vivit" else self.n_pos
         if self.tube:
@@ -370,6 +401,8 @@ class MAETerm(nn.Module):
                 prepared = prepared[idx]
         b, device = prepared.shape[0], prepared.device
         mask = self.draw_masks(b, device)
+        if self.mode == "vivit_early":
+            return self._compute_vivit_early(encoder, prepared, mask)
         if self.mode in ("vit", "vivit"):
             keep, ids_restore = split_mask(mask)
             enc = encoder.encode_visible_prepared(prepared, keep)
@@ -394,6 +427,22 @@ class MAETerm(nn.Module):
         loss = masked_patch_mse(pred, target, mask, self.norm_pix)
         self.last_scalars = {
             "B": float(b),
+            "mask_frac": float(mask.float().mean()),
+            "ratio": float(self.ratio),
+            "tube": float(self.tube),
+        }
+        return loss
+
+    def _compute_vivit_early(self, encoder: nn.Module, prepared: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Early-fusion token MAE: target per token = both frames' patches, T-major (the early patch embed's input)."""
+        keep, ids_restore = split_mask(mask)
+        enc = encoder.encode_visible_early_prepared(prepared, keep)
+        pred = self.head["dec"](enc, ids_restore)                     # (B, n_spatial, T*C*P*P)
+        fr = frames_tmajor(prepared, self.num_frames)
+        target = torch.cat([patchify(fr[:, i], self.patch) for i in range(self.num_frames)], -1)
+        loss = masked_patch_mse(pred, target, mask, self.norm_pix)
+        self.last_scalars = {
+            "B": float(prepared.shape[0]),
             "mask_frac": float(mask.float().mean()),
             "ratio": float(self.ratio),
             "tube": float(self.tube),
