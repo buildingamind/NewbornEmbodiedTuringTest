@@ -259,6 +259,15 @@ class BrainTrainer:
             if raw_env is not None and torch.cuda.is_available()
             else None
         )
+        # NETT_TEST_REP_OFFSET (repo B rep_offset.py): a continued test re-seeds the noise once, so it does not
+        # replay the stream the agent-build seed gave the earlier test. None (the default) leaves the stream alone.
+        _noise_seed_fn = getattr(raw_env, "test_noise_seed", None) if raw_env is not None else None
+        _noise_seed = _noise_seed_fn() if callable(_noise_seed_fn) else None
+        if _noise_seed is not None:
+            torch.manual_seed(int(_noise_seed))
+            # the evidence a close check needs: repo B's banner only says this tree WILL re-seed
+            print(f"[NETT eval] NETT_TEST_REP_OFFSET: test noise re-seeded {int(_noise_seed)} before the first action",
+                  flush=True)
         with torch.no_grad():
             for t in steps:
                 # Boundary from the step counter, not from the env: reading
