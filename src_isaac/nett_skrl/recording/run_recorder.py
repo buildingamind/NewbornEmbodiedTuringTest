@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from .checkpoints import INITIAL_CHECKPOINT_NAME, initial_checkpoint_enabled
 from .export import RecordingCfg, export_recordings
 from .tensorboard import log_recording_videos_to_tensorboard, log_wrapper_egocentric_to_tensorboard
 from .wandb import log_eval_bar_to_wandb, log_recording_videos_to_wandb, log_test_metrics_to_wandb
@@ -34,6 +35,8 @@ class RunRecorder:
     def before_train(self, cfg: TrainCfg, *, dry_run: bool = False) -> None:
         if cfg.hparams_dir and not dry_run:
             self._write_hparams(cfg)
+        if not dry_run and initial_checkpoint_enabled():
+            self.save_initial_checkpoints()
 
     def after_train(
         self,
@@ -95,6 +98,25 @@ class RunRecorder:
             ckpt_dir = Path(exp_dir) / "checkpoints"
             ckpt_dir.mkdir(parents=True, exist_ok=True)
             agent.save(str(ckpt_dir / "final_agent.pt"))
+
+    def save_initial_checkpoints(self) -> None:
+        """Write ``{experiment_dir}/checkpoints/agent_0.pt`` per agent (``NETT_CHECKPOINT_INITIAL=1``).
+
+        Runs after any train resume has loaded (brain.py loads before the trainer is built), so
+        on a continuation agent_0.pt is the weights this run STARTS from. Same format as
+        final_agent.pt (skrl ``agent.save``: the checkpoint_modules state dicts).
+        """
+        n = 0
+        for agent in self.agents:
+            exp_dir = getattr(agent, "experiment_dir", None)
+            if not exp_dir:
+                continue
+            ckpt_dir = Path(exp_dir) / "checkpoints"
+            ckpt_dir.mkdir(parents=True, exist_ok=True)
+            agent.save(str(ckpt_dir / INITIAL_CHECKPOINT_NAME))
+            n += 1
+        print(f"[NETT checkpoints] initial {INITIAL_CHECKPOINT_NAME} written for {n}/{len(self.agents)} brain(s) "
+              f"before training", flush=True)
 
     def _export_and_log_recordings(self, record_cfg: RecordingCfg) -> None:
         export_recordings(record_cfg)

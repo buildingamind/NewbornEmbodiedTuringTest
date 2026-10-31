@@ -19,10 +19,14 @@ def pick_checkpoint(ckpt_dir: Path) -> Path | None:
     if final.exists():
         return final
 
+    # agent_0.pt (NETT_CHECKPOINT_INITIAL) is the UNTRAINED policy: never a fallback. A train that
+    # died before its first periodic save would otherwise be resumed -- or tested -- from fresh
+    # weights with every completion signal passing. It is loaded only when NETT_TEST_CHECKPOINT
+    # names it.
     numbered = [
         (int(path.stem.removeprefix("agent_")), path)
         for path in ckpt_dir.glob("agent_*.pt")
-        if path.stem.removeprefix("agent_").isdigit()
+        if path.stem.removeprefix("agent_").isdigit() and int(path.stem.removeprefix("agent_")) > 0
     ]
     if numbered:
         return max(numbered, key=lambda item: item[0])[1]
@@ -48,6 +52,26 @@ def resolve_test_checkpoint() -> str | None:
     if not _TEST_CHECKPOINT_NAME.fullmatch(v):
         raise ValueError(f"NETT_TEST_CHECKPOINT={v!r}: want final_agent.pt, best_agent.pt or agent_<timestep>.pt")
     return v
+
+
+INITIAL_CHECKPOINT_NAME = "agent_0.pt"
+
+
+def initial_checkpoint_enabled() -> bool:
+    """``NETT_CHECKPOINT_INITIAL=1``: write ``agent_0.pt`` per brain before training starts.
+
+    Owner 2026-10-30: "I would like all of these runs to save 4 checkpoints: 0%, 25%, 50%, 75%".
+    NETT_CHECKPOINT_FREQ covers 25/50/75 (skrl's in-loop save), but skrl never writes timestep 0
+    (agents/torch/base.py post_interaction: ``timestep += 1; if timestep > 1 and ...``), so the 0%
+    policy needs this. Unset / "0" = off (today's behaviour); anything but "0"/"1" raises. Saving
+    is torch.save of the state dicts only: no RNG draw, no change to the trajectory.
+    """
+    v = os.environ.get("NETT_CHECKPOINT_INITIAL", "").strip()
+    if v in ("", "0"):
+        return False
+    if v == "1":
+        return True
+    raise ValueError(f"NETT_CHECKPOINT_INITIAL={v!r}: want 0 or 1")
 
 
 class MissingCheckpointError(RuntimeError):

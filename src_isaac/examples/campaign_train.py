@@ -57,6 +57,9 @@ mistake; body wrappers come from the arm's MODELS entry, never from the environm
   NETT_MINIBATCHES minibatches per update (default 16 -> batch 500 = 1 episode)
   NETT_CHECKPOINT_FREQ  timesteps between agent_{step}.pt snapshots (default: unset =
                    NO periodic checkpointing; a crash loses the whole run)
+  NETT_CHECKPOINT_INITIAL  1 = also write agent_0.pt (the untrained policy) per brain before
+                   training (default unset/0 = off). skrl never saves timestep 0; this is the
+                   0% of "0%, 25%, 50%, 75%" (owner 2026-10-30). Never a resume/test fallback.
   NETT_STEPS       steps_per_episode (default 500)
   NETT_LOCOMOTION  wheeled | kinematic (default unset = not passed, Environment's "wheeled").
                    kinematic = Unity rA10's body: position set per step, 3.0/20deg, start (0,-15).

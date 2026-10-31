@@ -1143,6 +1143,9 @@ S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DC
 #: owner 2026-10-30 (presenter): the BASELINE series twins + the soft-mask fovea (body/wrappers/fovea_mask.py)
 FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea"}
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
+#: owner 2026-10-30 ("save 4 checkpoints: 0%, 25%, 50%, 75%"): NETT_CHECKPOINT_INITIAL writes agent_0.pt in
+#: RunRecorder.before_train (opt-in; unset is bit-identical, test_initial_checkpoint.py). checkpoints.py is admitted above.
+INITCKPT1030_FILES = ("nett_skrl/recording/run_recorder.py",)
 #: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
 #: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
 BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
@@ -1211,7 +1214,7 @@ def test_no_other_brain_file_changed():
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
                                               + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES + TEXGUARD187_FILES
-                                              + BASELINE_FILES + FOVEA1030_FILES}
+                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
