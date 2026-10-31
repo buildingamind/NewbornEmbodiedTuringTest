@@ -133,7 +133,7 @@ def test_the_four_baseline_fovea_labels():
     here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     sys.path.insert(0, os.path.join(here, "examples"))
     ct = importlib.import_module("campaign_train")
-    for twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
+    for twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2", "CNN", "ViT", "ViViT-T2"):
         lab = ct.MODELS[f"{twin}+Fovea"]
         assert {k: v for k, v in lab.items() if k != "pre"} == ct.MODELS[twin]
         assert tuple(lab["pre"]) == ("fovea_mask",)

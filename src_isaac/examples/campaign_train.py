@@ -1554,6 +1554,12 @@ MODELS["3DCNN+MASK75"] = {**MODELS["3DCNN"], "aux": "mae", "aux_weight": 1.0}
 MODELS["ViViT-T2+MASK75"] = {**MODELS["ViViT-T2"], "aux": "mae", "aux_weight": 1.0}
 MODELS["CNN+SC257"] = {**MODELS["CNN"], "aux": "slot_contrast_257", "aux_weight": 1.0}
 MODELS["ViT+SC257"] = {**MODELS["ViT"], "aux": "slot_contrast_257", "aux_weight": 1.0}
+# owner 2026-10-31 (presenter chat): the fovea series must use "the same settings as the entire S3 series" -- the slide-3
+# models CNN, ViT, 3DCNN, ViViT-T2 (early fusion), each + the soft-mask fovea (fovea_mask, innermost `pre`). 3DCNN+Fovea
+# (above) already is MODELS["3DCNN"] + fovea_mask, the same label the slide-3 wave uses.
+MODELS["CNN+Fovea"] = {**MODELS["CNN"], "pre": ("fovea_mask",)}
+MODELS["ViT+Fovea"] = {**MODELS["ViT"], "pre": ("fovea_mask",)}
+MODELS["ViViT-T2+Fovea"] = {**MODELS["ViViT-T2"], "pre": ("fovea_mask",)}
 
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")

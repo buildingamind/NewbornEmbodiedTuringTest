@@ -59,7 +59,8 @@ BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS
 S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DCNN+MASK75", "ViViT-T2+MASK75",
               "CNN+SC257", "ViT+SC257"}
 #: owner 2026-10-30 (presenter): the BASELINE series twins + the soft-mask fovea (body/wrappers/fovea_mask.py)
-FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea"}
+FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea",
+                    "CNN+Fovea", "ViT+Fovea", "ViViT-T2+Fovea"}   # + owner 2026-10-31 S3 twins
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280

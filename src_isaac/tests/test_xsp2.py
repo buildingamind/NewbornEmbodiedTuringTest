@@ -983,7 +983,8 @@ BASELINE_LABELS = {"CNN-D512P", "ViT-P8-666K", "CNN-D512P+DVS", "ViT-P8-666K+DVS
 S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DCNN+MASK75", "ViViT-T2+MASK75",
               "CNN+SC257", "ViT+SC257"}
 #: owner 2026-10-30 (presenter): the BASELINE series twins + the soft-mask fovea (body/wrappers/fovea_mask.py)
-FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea"}
+FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea",
+                    "CNN+Fovea", "ViT+Fovea", "ViViT-T2+Fovea"}   # + owner 2026-10-31 S3 twins
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
 #: owner 2026-10-30 ("save 4 checkpoints: 0%, 25%, 50%, 75%"): NETT_CHECKPOINT_INITIAL writes agent_0.pt in
 #: RunRecorder.before_train (opt-in; unset is bit-identical, test_initial_checkpoint.py). checkpoints.py is admitted above.
