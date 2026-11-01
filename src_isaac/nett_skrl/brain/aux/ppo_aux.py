@@ -219,6 +219,19 @@ def _build_vjepa(encoder):
     return build_vjepa(encoder)
 
 
+def _build_embdiv_unif(encoder):
+    """ViT+UNIF (owner 2026-11-01): Wang & Isola's uniformity loss, t = 2, on the L2-normalised encoder output
+    of a PPO-minibatch subsample (brain/aux/embdiv_aux.py). No head; CompactViT only."""
+    from .embdiv_aux import build
+    return build("embdiv_unif")(encoder)
+
+
+def _build_embdiv_cos2(encoder):
+    """ViT+COS2 (owner 2026-11-01): mean squared pairwise cosine of the encoder output (brain/aux/embdiv_aux.py)."""
+    from .embdiv_aux import build
+    return build("embdiv_cos2")(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -265,6 +278,9 @@ AUX_LOSSES = {
     # ── JEPA (owner 2026-10-15). EMA-teacher latent prediction under multiblock masks.
     "ijepa": _build_ijepa,
     "vjepa": _build_vjepa,
+    # ── EMBDIV (owner 2026-11-01). Push the encoder output apart: uniformity / mean cos^2 (embdiv_aux.py).
+    "embdiv_unif": _build_embdiv_unif,
+    "embdiv_cos2": _build_embdiv_cos2,
 }
 
 
@@ -804,6 +820,14 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
             if _c > 0:
                 self.track_data("Loss / Aux inv ratio", _t / _c)
         track_transit_mask(self, window_turn_last, cumulative_window_turn, window_turns_seen)
+        # ⭐ PER-UPDATE HOOK (embdiv, owner 2026-11-01: collapse diagnostics DURING training). An aux that defines
+        # `after_update` gets it once here, after the update's minibatches, with the PPO loss components as tracked
+        # above. Additive: no other term defines it, so their updates are unchanged.
+        _after = getattr(self._aux, "after_update", None)
+        if callable(_after):
+            _after(self, timestep=timestep, timesteps=timesteps,
+                   ppo={"policy_loss": cumulative_policy_loss / n, "value_loss": cumulative_value_loss / n,
+                        "entropy_loss": cumulative_entropy_loss / n})
         if self.cfg.entropy_loss_scale:
             self.track_data("Loss / Entropy loss", cumulative_entropy_loss / n)
         self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())

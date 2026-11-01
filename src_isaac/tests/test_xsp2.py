@@ -986,6 +986,10 @@ S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DC
 FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea",
                     "CNN+Fovea", "ViT+Fovea", "ViViT-T2+Fovea"}   # + owner 2026-10-31 S3 twins
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
+#: owner 2026-11-01 (presenter): ViT + an embedding-spread aux on the encoder output (test_embdiv_aux.py); ppo_aux.py
+#: gains the "embdiv_unif" / "embdiv_cos2" entries and the additive per-update `after_update` hook.
+EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
+EMBDIV1101_FILES = ("nett_skrl/brain/aux/embdiv_aux.py",)
 #: owner 2026-10-30 ("save 4 checkpoints: 0%, 25%, 50%, 75%"): NETT_CHECKPOINT_INITIAL writes agent_0.pt in
 #: RunRecorder.before_train (opt-in; unset is bit-identical, test_initial_checkpoint.py). checkpoints.py is admitted above.
 INITCKPT1030_FILES = ("nett_skrl/recording/run_recorder.py",)
@@ -1062,7 +1066,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
                                           *MIRROR187_FILES, *SIGMA187_FILES, *SEED187_FILES, *TEXGUARD187_FILES, "nett_skrl/brain/models/utils/init.py",
-                                          *BASELINE_FILES, *FOVEA1030_FILES, *INITCKPT1030_FILES)}
+                                          *BASELINE_FILES, *FOVEA1030_FILES, *INITCKPT1030_FILES, *EMBDIV1101_FILES)}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1072,7 +1076,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS
@@ -1089,5 +1093,5 @@ def test_registries_only_gained_the_xsp2_entries():
         old = _literal_keys(_git("show", f"{_base()}:src_isaac/{rel}"), opener)
         new = _literal_keys((_SRC / rel).read_text(), opener)
         assert old and new - old == ({"xsp2", "matched", "jepa", "vit_slot_recon", "stp_e"} if "registry" in rel
-                                  else {"xsp2", "ijepa", "vjepa", "slot_recon", "stp", "slot_contrast_257"}) and old <= new, rel
+                                  else {"xsp2", "ijepa", "vjepa", "slot_recon", "stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2"}) and old <= new, rel
         assert new <= set(live), rel

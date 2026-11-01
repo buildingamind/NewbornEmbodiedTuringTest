@@ -1561,6 +1561,19 @@ MODELS["CNN+Fovea"] = {**MODELS["CNN"], "pre": ("fovea_mask",)}
 MODELS["ViT+Fovea"] = {**MODELS["ViT"], "pre": ("fovea_mask",)}
 MODELS["ViViT-T2+Fovea"] = {**MODELS["ViViT-T2"], "pre": ("fovea_mask",)}
 
+# ══ EMBDIV (owner 2026-11-01, presenter chat) ═════════════════════════════════════════════════════════════════════════
+# Two "push apart in embedding space" regularizers on the S3 "ViT" (VIT_CFG patch 16, one frame), on the ENCODER OUTPUT
+# the policy and value heads read (owner: "(b) encoder output"), no projector (brain/aux/embdiv_aux.py):
+#   ViT+UNIF  aux embdiv_unif  L = log mean_{i!=j} exp(-2 ||zh_i - zh_j||^2)   (Wang & Isola 2020, t = 2)
+#   ViT+COS2  aux embdiv_cos2  L = mean_{i!=j} cos(z_i, z_j)^2
+# The aux KEY carries the form, so the label names it. aux_weight (lambda) = 0.01 here; the owner's lambda = 0.05 arms
+# run the SAME label with NETT_AUX_WEIGHT_OVERRIDE=0.05 in the row env (the in-tree dose mechanism, main() below), and
+# need their own queue-row variant so the two doses do not share a cell. Batch: NETT_AUX_EMBDIV_BATCH (64) frames of
+# each PPO minibatch. Collapse diagnostics go to <experiment dir>/embdiv_diag.csv every NETT_AUX_EMBDIV_DIAG_EVERY
+# (1) updates. A NETT_AUX_EMBDIV_* knob on any other label refuses in main().
+MODELS["ViT+UNIF"] = {**MODELS["ViT"], "aux": "embdiv_unif", "aux_weight": 0.01}
+MODELS["ViT+COS2"] = {**MODELS["ViT"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
 
@@ -1813,6 +1826,16 @@ def refuse_stray_stp_knobs(model: str, spec: dict) -> None:
     stray = sorted(k for k in os.environ if k.startswith("NETT_STP_"))
     if stray:
         raise ValueError(f"{stray} set but arm {model!r} is not an STP-E arm (aux "
+                         f"{spec.get('aux')!r}); nothing would read them. Unset them.")
+
+
+def refuse_stray_embdiv_knobs(model: str, spec: dict) -> None:
+    """A NETT_AUX_EMBDIV_* knob on a label whose aux is not embdiv_unif / embdiv_cos2 is read by NOTHING (the xsp2 rule)."""
+    if spec.get("aux") in ("embdiv_unif", "embdiv_cos2"):
+        return
+    stray = sorted(k for k in os.environ if k.startswith("NETT_AUX_EMBDIV_"))
+    if stray:
+        raise ValueError(f"{stray} set but arm {model!r} is not an embdiv arm (aux "
                          f"{spec.get('aux')!r}); nothing would read them. Unset them.")
 
 
@@ -2196,6 +2219,7 @@ def main() -> int:
     refuse_stray_xsp2_knobs(model, spec)
     refuse_stray_slot_recon_knobs(model, spec)
     refuse_stray_stp_knobs(model, spec)
+    refuse_stray_embdiv_knobs(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

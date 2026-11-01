@@ -62,6 +62,10 @@ S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DC
 FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea",
                     "CNN+Fovea", "ViT+Fovea", "ViViT-T2+Fovea"}   # + owner 2026-10-31 S3 twins
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
+#: owner 2026-11-01 (presenter): ViT + an embedding-spread aux on the encoder output (test_embdiv_aux.py); ppo_aux.py
+#: gains the "embdiv_unif" / "embdiv_cos2" entries and the additive per-update `after_update` hook.
+EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
+EMBDIV1101_FILES = ("nett_skrl/brain/aux/embdiv_aux.py",)
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1098,7 +1102,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
@@ -1115,7 +1119,7 @@ def test_existing_models_and_registries_are_unchanged(campaign):
         return {ln.split('"')[1] for ln in body.splitlines() if ln.strip().startswith('"')}
 
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
-                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257"}),
+                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
                                  {"stp_pose_exec", "stp_pose_cmd", "fovea_mask"})):   # fovea_mask: owner 2026-10-30
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
