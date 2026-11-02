@@ -316,7 +316,8 @@ def _learning_signal(agent, ppo: dict | None, loss_weighted: float) -> dict:
         out["reward_per_step"] = float(rewards.float().mean())
     finished = getattr(agent, "_track_rewards", None)
     if finished:
-        out["episode_return_recent"] = float(sum(finished) / len(finished))
+        returns = [float(x) for f in finished for x in (f if isinstance(f, (list, tuple)) else [f])]
+        out["episode_return_recent"] = float(sum(returns) / len(returns))
     return out
 
 

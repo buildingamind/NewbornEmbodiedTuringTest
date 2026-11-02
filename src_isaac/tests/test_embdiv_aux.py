@@ -487,3 +487,14 @@ def test_the_batch_is_a_random_subsample_across_envs_and_timesteps(monkeypatch, 
         assert sorted(ids) != list(range(min(ids), min(ids) + 8)), f"contiguous ids {ids}"
     assert len({tuple(ids) for ids in seen}) == 4
     assert len(set().union(*map(set, seen))) >= 20
+
+
+@pytest.mark.parametrize("finished", [[[1.0], [3.0]], [1.0, 3.0]])
+def test_episode_return_recent_reads_skrl_track_rewards_shape(finished):
+    from types import SimpleNamespace
+    from collections import deque
+    from nett_skrl.brain.aux.embdiv_aux import _learning_signal
+
+    agent = SimpleNamespace(_track_rewards=deque(finished))
+    out = _learning_signal(agent, None, 0.0)
+    assert out["episode_return_recent"] == pytest.approx(2.0)
