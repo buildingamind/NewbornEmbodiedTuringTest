@@ -40,6 +40,11 @@ def _count(label, channels):
     ("ViT-P8-666K+SC257", 3, 659_704),
     ("ViViT-P8-T2", 6, 688_120),          # 2-frame stack, early fusion
     ("3DCNN", 6, 695_981),                # the existing video twin of D512P
+    # owner 2026-11-02, BASELINE wave 2 (binding)
+    ("ViViT-P8-T2+CLTT-Ref", 6, 688_120),
+    ("CNN-D512P+Fovea+CLTT-Ref", 3, 666_272),
+    ("ViT-P8-666K+Fovea+CLTT-Ref", 3, 659_704),
+    ("ViT-P8-666K-Mixer", 3, 656_099),    # learned 161x161 token mix per block replaces q/k; embed 156 matches the ViT (S3 method)
 ])
 def test_baseline_encoder_counts_at_128x80(label, channels, want):
     assert _count(label, channels) == want
@@ -63,3 +68,13 @@ def test_baseline_label_specs():
     assert v["encoder"] == "compact_vivit" and v["framestack"] is True
     assert v["cfg"]["patch_size"] == 8 and v["cfg"]["temporal_mode"] == "early" and v["cfg"]["pool"] == "cls"
     assert v["cfg"]["features_dim"] == 512
+
+
+def test_baseline_wave2_label_specs():
+    m = ct.MODELS
+    assert m["ViViT-P8-T2+CLTT-Ref"] == {**m["ViViT-P8-T2"], "aux": "cltt_ref", "aux_weight": 1.0}
+    for base in ("CNN-D512P", "ViT-P8-666K"):
+        assert m[f"{base}+Fovea+CLTT-Ref"] == {**m[base], "pre": ("fovea_mask",), "aux": "cltt_ref", "aux_weight": 1.0}
+    mix = m["ViT-P8-666K-Mixer"]
+    assert mix == {**m["ViT-P8-666K"], "cfg": {**m["ViT-P8-666K"]["cfg"], "attn_mode": "mixer", "embed_dim": 156}}
+    assert abs(_count("ViT-P8-666K-Mixer", 3) - _count("ViT-P8-666K", 3)) / _count("ViT-P8-666K", 3) < 0.02 and "attn_mode" not in m["ViT-P8-666K"]["cfg"]

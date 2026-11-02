@@ -1533,6 +1533,11 @@ MODELS["ViViT-P8-T2+Fovea"] = {**MODELS["ViViT-P8-T2"], "pre": ("fovea_mask",)}
 for _twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
     assert "pre" not in MODELS[_twin], _twin
 del _twin
+# owner 2026-11-02, BASELINE wave 2, binding: video / fovea CLTT-Ref twins (detached or attached is the launcher's NETT_DECOUPLE_ENCODER) and the ViT-P8 token-mixer ablation.
+MODELS["ViViT-P8-T2+CLTT-Ref"] = {**MODELS["ViViT-P8-T2"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["CNN-D512P+Fovea+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["ViT-P8-666K+Fovea+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["ViT-P8-666K-Mixer"] = {**MODELS["ViT-P8-666K"], "cfg": {**MODELS["ViT-P8-666K"]["cfg"], "attn_mode": "mixer", "embed_dim": 156}}   # S3 ViT-Mixer method: embed widened to match the ViT (656,099 vs 659,704, -0.55%)
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =

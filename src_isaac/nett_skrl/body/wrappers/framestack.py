@@ -64,7 +64,7 @@ class FrameStack(gym.Wrapper):
 
     @staticmethod
     def _resolve_shuffle() -> str | None:
-        """``NETT_FRAMESTACK_SHUFFLE``: unset/empty = off (byte-identical); ``past`` | ``env``.
+        """``NETT_FRAMESTACK_SHUFFLE``: unset/empty = off (byte-identical); ``past`` | ``env`` | ``same``.
 
         ⭐ PRESENTER ABLATION (owner-confirmed, workspace DECISIONS §63): does temporally
         COHERENT input matter during learning? The t-1 slot of the stack is replaced, in train
@@ -75,14 +75,16 @@ class FrameStack(gym.Wrapper):
                   unshuffled stack holds after the boundary scrub. Never crosses an episode.
           env  -- by ANOTHER env's CURRENT frame, a fresh uniform derangement each step (needs
                   >= 2 envs). A different scene: the stronger control.
+          same -- by the CURRENT frame itself (owner 2026-11-02, BASELINE wave 2 temporal ablation:
+                  "feed an identical image in twice"). The stack carries no time at all.
         Only the t-1 slot changes (with NETT_FRAMESTACK_N > 2 the older slots stay coherent).
         Any other value refuses.
         """
         raw = os.environ.get("NETT_FRAMESTACK_SHUFFLE", "").strip().lower()
         if raw == "":
             return None
-        if raw not in ("past", "env"):
-            raise ValueError(f"NETT_FRAMESTACK_SHUFFLE={raw!r}: expected 'past' or 'env' (or unset).")
+        if raw not in ("past", "env", "same"):
+            raise ValueError(f"NETT_FRAMESTACK_SHUFFLE={raw!r}: expected 'past', 'env' or 'same' (or unset).")
         return raw
 
     def __init__(self, env: gym.Env, n_stack: int | None = None) -> None:
@@ -94,7 +96,9 @@ class FrameStack(gym.Wrapper):
         self.observation_space = channel_stack_space(env.observation_space, self.n_stack)
 
         self.shuffle = self._resolve_shuffle()
-        if self.shuffle is not None:
+        if self.shuffle == "same":
+            print("[NETT framestack] shuffle=same (t-1 slot = the current frame)", flush=True)
+        elif self.shuffle is not None:
             # Host-RAM ring (the stack itself lives in numpy): K_MAX + 1 frames, uint8 at the
             # eye. 448x280x3 x 64 envs x 61 = 1.47 GB; 128x80 x 64 x 61 = 120 MB. No GPU memory.
             self._ring: deque = deque(maxlen=self.SHUFFLE_K_MAX + 1)
@@ -113,7 +117,7 @@ class FrameStack(gym.Wrapper):
         policy_obs = _policy_obs(obs)
         for _ in range(self.n_stack):
             self._frames.append(_obs_to_numpy(policy_obs))
-        if self.shuffle is not None:
+        if self.shuffle in ("past", "env"):
             self._ring.clear()
             self._ring.append(self._frames[-1])
             n = self._frames[-1].shape[0] if self._frames[-1].ndim == 4 else 1
@@ -135,7 +139,7 @@ class FrameStack(gym.Wrapper):
                     frame[env_id] = obs_np[env_id]
 
         self._frames.append(obs_np)
-        if self.shuffle is not None:
+        if self.shuffle in ("past", "env"):
             self._age += 1
             self._age[done] = 0                     # a size mismatch raises, never skips
             self._ring.append(obs_np)
@@ -148,7 +152,7 @@ class FrameStack(gym.Wrapper):
         if self.shuffle is None:
             return channel_stack_frames(list(self._frames))
         frames = list(self._frames)
-        frames[-2] = self._shuffled_prev(frames[-1])
+        frames[-2] = frames[-1].copy() if self.shuffle == "same" else self._shuffled_prev(frames[-1])
         return channel_stack_frames(frames)
 
     def _shuffled_prev(self, cur: np.ndarray) -> np.ndarray:

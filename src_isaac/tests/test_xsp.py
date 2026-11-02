@@ -1150,6 +1150,10 @@ EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
 EMBDIV1101_FILES = ("nett_skrl/brain/aux/embdiv_aux.py",)
 #: owner 2026-11-02 binding controls: CNN+GAP = CNN + an explicit NatureCNN pool_grid (tests/test_binding_controls.py)
 BINDCTL1102_LABELS = {"CNN+GAP"}
+#: owner 2026-11-02, BASELINE wave 2 (binding): video / fovea CLTT-Ref twins + the ViT-P8 token-mixer ablation
+#: (tests/test_baseline_labels.py); framestack.py gains NETT_FRAMESTACK_SHUFFLE=same (tests/test_framestack_shuffle.py).
+BL2_1102_LABELS = {"ViViT-P8-T2+CLTT-Ref", "CNN-D512P+Fovea+CLTT-Ref", "ViT-P8-666K+Fovea+CLTT-Ref", "ViT-P8-666K-Mixer"}
+BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-10-30 ("save 4 checkpoints: 0%, 25%, 50%, 75%"): NETT_CHECKPOINT_INITIAL writes agent_0.pt in
 #: RunRecorder.before_train (opt-in; unset is bit-identical, test_initial_checkpoint.py). checkpoints.py is admitted above.
 INITCKPT1030_FILES = ("nett_skrl/recording/run_recorder.py",)
@@ -1221,7 +1225,7 @@ def test_no_other_brain_file_changed():
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
                                               + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES + TEXGUARD187_FILES
-                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES}
+                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES + BL2_1102_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1233,7 +1237,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp", "exec"), old.__dict__)
     assert "XSP" not in old.MODELS
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP", "XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     # NAS schemas hold validator lambdas (never equal across two module objects): compare the rest.

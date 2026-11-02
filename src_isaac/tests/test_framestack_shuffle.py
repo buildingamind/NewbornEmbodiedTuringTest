@@ -3,6 +3,7 @@
 past -- the same env's frame k steps back, k ~ U{10..60} per env per step, clamped to the
         current episode (k <- min(k, age)); never crosses an episode boundary.
 env  -- another env's current frame, a fresh derangement each step.
+same -- the current frame itself (owner 2026-11-02, BASELINE wave 2 temporal ablation).
 unset -- byte-identical to the plain stack. Anything else refuses.
 """
 
@@ -157,6 +158,47 @@ def test_env_takes_another_envs_current_frame(monkeypatch, capsys):
     assert len(perms) == 9                                               # all derangements of 4
 
 
+def test_same_puts_the_current_frame_in_the_t_minus_1_slot(monkeypatch, capsys):
+    monkeypatch.setenv("NETT_FRAMESTACK_SHUFFLE", "same")
+    dones = {5: [1], 9: [0, 3]}
+    env = FrameStack(_CountingEnv(dones), n_stack=2)
+    assert "[NETT framestack] shuffle=same (t-1 slot = the current frame)" in capsys.readouterr().out
+    monkeypatch.delenv("NETT_FRAMESTACK_SHUFFLE")
+    plain = _run(FrameStack(_CountingEnv(dones), n_stack=2), 20)
+    for t, (obs, ref) in enumerate(zip(_run(env, 20), plain)):   # t = 0 is the reset
+        assert obs.dtype == ref.dtype and obs.shape == ref.shape
+        assert np.array_equal(_prev(obs), _cur(obs))                     # slot t-1 == slot t, every channel
+        assert np.array_equal(_cur(obs), _cur(ref))                      # the t slot is the plain stack's
+        assert np.array_equal(_cur(obs)[:, 0, 0, 0], np.full(N, t))
+        if t > 1:
+            assert not np.array_equal(_prev(obs), _prev(ref))            # the plain stack does carry time
+    # A second reset keeps it.
+    obs, _ = env.reset()
+    assert np.array_equal(_prev(obs), _cur(obs))
+
+
+def test_same_works_with_a_single_env(monkeypatch):
+    class _One(gym.Env):
+        observation_space = gym.spaces.Box(0, 255, (4, 4, 3), dtype=np.uint8)
+        action_space = gym.spaces.Box(-1.0, 1.0, (1,), dtype=np.float32)
+
+        def reset(self, *, seed=None, options=None):
+            self.t = 0
+            return np.full((4, 4, 3), self.t, dtype=np.uint8), {}
+
+        def step(self, action):
+            self.t += 1
+            return np.full((4, 4, 3), self.t, dtype=np.uint8), 0.0, False, False, {}
+
+    monkeypatch.setenv("NETT_FRAMESTACK_SHUFFLE", "same")
+    env = FrameStack(_One(), n_stack=2)
+    obs, _ = env.reset()
+    assert np.array_equal(_prev(obs), _cur(obs))
+    for t in range(1, 4):
+        obs, *_ = env.step(np.zeros((1,), dtype=np.float32))
+        assert np.array_equal(_prev(obs), _cur(obs)) and obs[0, 0, 0] == t
+
+
 def test_env_refuses_a_single_env(monkeypatch):
     class _One(gym.Env):
         observation_space = gym.spaces.Box(0, 255, (4, 4, 3), dtype=np.uint8)
@@ -181,7 +223,8 @@ def test_shuffle_follows_the_torch_seed(monkeypatch):
     assert np.array_equal(runs[0], runs[1]) and not np.array_equal(runs[0], runs[2])
 
 
-@pytest.mark.parametrize("model,refused", [("CNN", True), ("3DCNN-1F", True), ("3DCNN", False)])
+@pytest.mark.parametrize("model,refused", [("CNN", True), ("3DCNN-1F", True), ("3DCNN", False),
+                                           ("ViViT-P8-T2", False), ("ViViT-P8-T2+CLTT-Ref", False)])
 def test_campaign_refuses_shuffle_on_an_arm_without_a_stack(monkeypatch, model, refused):
     from pathlib import Path
 
