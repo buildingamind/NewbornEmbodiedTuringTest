@@ -106,6 +106,7 @@ class NatureCNN(HWCFeatureExtractor):
         input_frames: int | None = None,
         extra_convs: int = 0,
         extra_mlp: int = 0,
+        pool_grid: tuple[int, int] | list[int] | None = None,
         **_,
     ):
         super().__init__(observation_space, features_dim)
@@ -155,10 +156,28 @@ class NatureCNN(HWCFeatureExtractor):
             # (6, 12) map and 6 % 4 != 0, so it raised before a single step; 128x128
             # gives (12, 12) and builds, so every square probe returned a clean PASS.
             # The comparator every other arm is read against could not be built.
-            self.pool_grid = self.pool_grid_for_layers(
-                layers, channels, height, width)
+            #
+            # ``pool_grid`` (owner 2026-11-02, CNN+GAP binding control): an EXPLICIT (h, w) grid instead
+            # of the measured ~16-cell one, e.g. (1, 3) = global average over height and left / centre /
+            # right thirds of the width. It must divide the measured conv map; a ragged grid refuses
+            # here, at construction. None (default) keeps pool_grid_for -- every existing arm, bit for bit.
+            if pool_grid is None:
+                self.pool_grid = self.pool_grid_for_layers(layers, channels, height, width)
+            else:
+                if (not isinstance(pool_grid, (tuple, list)) or len(pool_grid) != 2
+                        or any(type(g) is not int or g < 1 for g in pool_grid)):
+                    raise ValueError(f"NatureCNN pool_grid must be two positive ints (h, w), got {pool_grid!r}")
+                with torch.no_grad():
+                    _, _, feat_h, feat_w = nn.Sequential(*layers)(torch.zeros(1, channels, height, width)).shape
+                gh, gw = pool_grid
+                if feat_h % gh or feat_w % gw:
+                    raise ValueError(f"NatureCNN pool_grid {tuple(pool_grid)} does not divide the conv map "
+                                     f"({feat_h}, {feat_w}) at input {height}x{width}")
+                self.pool_grid = (gh, gw)
             layers.append(DeterministicAvgPool2d(self.pool_grid))
         else:
+            if pool_grid is not None:
+                raise ValueError("NatureCNN pool_grid needs spatial_pool=True")
             # ⚠ EXPOSED EVEN WHEN THERE IS NO POOL. A missing attribute makes an
             # assertion return None, which reads as "no grid" and not as "this
             # encoder does not pool" -- and a caller using getattr(..., None)

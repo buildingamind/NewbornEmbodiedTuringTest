@@ -1560,6 +1560,13 @@ MODELS["ViT+SC257"] = {**MODELS["ViT"], "aux": "slot_contrast_257", "aux_weight"
 MODELS["CNN+Fovea"] = {**MODELS["CNN"], "pre": ("fovea_mask",)}
 MODELS["ViT+Fovea"] = {**MODELS["ViT"], "pre": ("fovea_mask",)}
 MODELS["ViViT-T2+Fovea"] = {**MODELS["ViViT-T2"], "pre": ("fovea_mask",)}
+# owner 2026-11-02 (binding controls, Object1 + Object2, n=7): the "Global-Context" control. CNN+GAP = the slide-3 CNN with its
+# final conv map (75 x 6 x 12 at 128x80) average-pooled to an explicit (1, 3) grid -- global over height, left / centre /
+# right thirds over width ("a 1x3 output instead of a single value") -- before the unchanged Linear(., 512) projection, so
+# the policy / value heads are identical to every arm. NOT parameter-matched: the flatten falls from 18 cells (1,350) to 3
+# (225), so the encoder is 198K against CNN's 774K (tests/test_binding_controls.py pins both).
+# The "Static-Mixer" control is the existing ViT-Mixer (VIT_MIXER_CFG: learned input-independent token mixing).
+MODELS["CNN+GAP"] = {**MODELS["CNN"], "cfg": {**MODELS["CNN"]["cfg"], "pool_grid": (1, 3)}}
 
 # ══ EMBDIV (owner 2026-11-01, presenter chat) ═════════════════════════════════════════════════════════════════════════
 # Two "push apart in embedding space" regularizers on the S3 "ViT" (VIT_CFG patch 16, one frame), on the ENCODER OUTPUT
