@@ -66,6 +66,8 @@ FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
 #: gains the "embdiv_unif" / "embdiv_cos2" entries and the additive per-update `after_update` hook.
 EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
 EMBDIV1101_FILES = ("nett_skrl/brain/aux/embdiv_aux.py",)
+#: owner 2026-11-02 binding controls: CNN+GAP = CNN + an explicit NatureCNN pool_grid (tests/test_binding_controls.py)
+BINDCTL1102_LABELS = {"CNN+GAP"}
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1102,7 +1104,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
