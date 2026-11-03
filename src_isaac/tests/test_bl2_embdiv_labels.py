@@ -62,6 +62,12 @@ def test_eight_labels_exist():
     assert len(LABELS) == 8 and all(lab in ct.MODELS for lab in LABELS)
 
 
+def test_each_label_is_a_quoted_literal_in_campaign_train():
+    # tools/mem_probe_condition.sh (every launcher --dry-run) refuses a label it cannot grep as "<label>" in the file
+    text = (_SRC / "examples" / "campaign_train.py").read_text()
+    assert all(f'MODELS["{lab}"] = ' in text for lab in LABELS)
+
+
 @pytest.mark.parametrize("label", LABELS)
 def test_spec_is_the_bl2_twin_plus_the_aux_alone(label):
     trunk, key, form = LABELS[label]

@@ -1588,10 +1588,15 @@ MODELS["ViT+COS2"] = {**MODELS["ViT"], "aux": "embdiv_cos2", "aux_weight": 0.01}
 # BASELINE wave 2 EMBDIV (owner 2026-11-03: "Both losses. Both λ. Both BL2 backbones on both Base and Video"): the same
 # two terms on the four BL2 trunks -- Base = CNN-D512P / ViT-P8-666K, Video = 3DCNN / ViViT-P8-T2 -- each spec its
 # BL2 twin's plus the aux, nothing else. Dose as above: aux_weight 0.01, NETT_AUX_WEIGHT_OVERRIDE in the row env.
-for _trunk in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
-    MODELS[f"{_trunk}+UNIF"] = {**MODELS[_trunk], "aux": "embdiv_unif", "aux_weight": 0.01}
-    MODELS[f"{_trunk}+COS2"] = {**MODELS[_trunk], "aux": "embdiv_cos2", "aux_weight": 0.01}
-del _trunk
+# Spelled out (not a loop): tools/mem_probe_condition.sh finds a label by its quoted literal in this file.
+MODELS["CNN-D512P+UNIF"] = {**MODELS["CNN-D512P"], "aux": "embdiv_unif", "aux_weight": 0.01}
+MODELS["CNN-D512P+COS2"] = {**MODELS["CNN-D512P"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+MODELS["ViT-P8-666K+UNIF"] = {**MODELS["ViT-P8-666K"], "aux": "embdiv_unif", "aux_weight": 0.01}
+MODELS["ViT-P8-666K+COS2"] = {**MODELS["ViT-P8-666K"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+MODELS["3DCNN+UNIF"] = {**MODELS["3DCNN"], "aux": "embdiv_unif", "aux_weight": 0.01}
+MODELS["3DCNN+COS2"] = {**MODELS["3DCNN"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+MODELS["ViViT-P8-T2+UNIF"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_unif", "aux_weight": 0.01}
+MODELS["ViViT-P8-T2+COS2"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_cos2", "aux_weight": 0.01}
 
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
