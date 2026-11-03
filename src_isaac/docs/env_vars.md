@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-316 variables.
+317 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -117,8 +117,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:122` |
 | `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:203` |
 | `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:204` |
-| `NETT_EARLY_TERM_BONUS` | `""` | `nett_skrl/brain/agent_factory.py:150` |
-| `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:152` |
+| `NETT_EARLY_TERM_BONUS` | `""` | `nett_skrl/brain/agent_factory.py:164` |
+| `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:166` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:2177` |
@@ -151,8 +151,9 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_FRAMESTACK_N` | `"2"` | `nett_skrl/body/wrappers/framestack.py:48`<br>`examples/campaign_train.py:195` |
 | `NETT_FRAMESTACK_SHUFFLE` | `""` | `nett_skrl/body/wrappers/framestack.py:83`<br>`nett_skrl/brain/encoders/stp_e.py:268`<br>`examples/campaign_train.py:2106` |
 | `NETT_FRAME_FORMAT` | `"bc7"` | `examples/campaign_run.py:181`<br>`scripts/prepare_test_env.py:112` |
-| `NETT_FROZEN_ENC_FROM` | `""` | `nett_skrl/brain/agent_factory.py:279` |
-| `NETT_FROZEN_ENC_SHA256` | `""` | `nett_skrl/brain/agent_factory.py:281` |
+| `NETT_FREEZE_ENCODER` | `""` | `nett_skrl/brain/agent_factory.py:293` |
+| `NETT_FROZEN_ENC_FROM` | `""` | `nett_skrl/brain/agent_factory.py:297`<br>`nett_skrl/brain/agent_factory.py:301` |
+| `NETT_FROZEN_ENC_SHA256` | `""` | `nett_skrl/brain/agent_factory.py:303` |
 | `NETT_GPUS` | `"0,1,2,3,4,5,6,7"` | `examples/campaign_retest_launch.py:51`<br>`examples/campaign_run.py:209` |
 | `NETT_GPU_BUFFER_BUDGET_GB` | `"4.0"` | `examples/campaign_train.py:2270` |
 | `NETT_GWM_BAL` | `"0.1"` | `nett_skrl/brain/aux/gwm_aux.py:95` |
@@ -302,7 +303,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_TRAIN_STEP_LOGGING` | `False` | `examples/campaign_train.py:2477` |
 | `NETT_UINT8_BUFFER` | `"1"` | `nett_skrl/brain/hybrid_memory.py:32` |
 | `NETT_UNIFIED_WANDB` | *(required / no literal default)* | `nett_skrl/brain/experiment.py:83`<br>`nett_skrl/recording/wandb.py:296` |
-| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:140`<br>`examples/campaign_train.py:2586`<br>`examples/campaign_train.py:2625` |
+| `NETT_VALUE_STD` | `"on"` | `nett_skrl/brain/agent_factory.py:154`<br>`examples/campaign_train.py:2586`<br>`examples/campaign_train.py:2625` |
 | `NETT_VICREG_COV` | `"10"` | `nett_skrl/brain/aux/vicreg_aux.py:101`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:102` |
 | `NETT_VICREG_INV` | `"3"` | `nett_skrl/brain/aux/vicreg_aux.py:99`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:100` |
 | `NETT_VICREG_VAR` | `"30"` | `nett_skrl/brain/aux/vicreg_aux.py:100`<br>`nett_skrl/brain/aux/vicreg_tt_aux.py:101` |

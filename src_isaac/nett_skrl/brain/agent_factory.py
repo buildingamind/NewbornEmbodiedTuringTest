@@ -119,6 +119,20 @@ def freeze(module: nn.Module) -> None:
         p.requires_grad = False
 
 
+def freeze_encoders_at_init(models: dict) -> dict[str, int]:
+    """NETT_FREEZE_ENCODER=1: freeze each model's freshly initialised ``encoder`` (random features), so only the
+    heads train. The weights are the label's own seeded init, untouched; ``freeze`` is the one NETT_FROZEN_ENC_FROM
+    uses. Returns {role: tensors frozen}. BL2 frozen-encoder arms (owner 2026-11-03)."""
+    frozen = {}
+    for role, model in models.items():
+        if not hasattr(model, "encoder"):
+            continue
+        freeze(model.encoder)
+        frozen[role] = len(list(model.encoder.parameters()))
+        print(f"[NETT frozen-enc] {role}: {frozen[role]} encoder tensors frozen at init", flush=True)
+    return frozen
+
+
 def encoder_cfg_for(brain) -> dict[str, Any]:
     kwargs = brain.encoder_cfg.as_kwargs()
     kwargs.pop("trainable", None)
@@ -275,6 +289,14 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
             for model in models.values():
                 if hasattr(model, "encoder"):
                     freeze(model.encoder)
+        # NETT_FREEZE_ENCODER=1: the freshly initialised encoder is frozen, only the heads train (unset / 0 = unchanged).
+        _fz0 = os.environ.get("NETT_FREEZE_ENCODER", "").strip()
+        if _fz0 not in ("", "0", "1"):
+            raise ValueError(f"NETT_FREEZE_ENCODER={_fz0!r}: expected unset, 0 or 1")
+        if _fz0 == "1":
+            if os.environ.get("NETT_FROZEN_ENC_FROM", "").strip():
+                raise ValueError("NETT_FREEZE_ENCODER=1 and NETT_FROZEN_ENC_FROM are exclusive (random vs loaded encoder)")
+            freeze_encoders_at_init(models)
         # NETT_FROZEN_ENC_FROM=<checkpoint>: encoder.* loaded strictly from a trained brain and frozen (unset = unchanged).
         _frz = os.environ.get("NETT_FROZEN_ENC_FROM", "").strip()
         if _frz:
