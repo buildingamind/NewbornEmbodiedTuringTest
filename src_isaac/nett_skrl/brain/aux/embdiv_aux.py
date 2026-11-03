@@ -22,8 +22,8 @@ for 0.05). Both losses are minimised by spreading the batch: L_unif at its unifo
 0 (an orthogonal batch, reachable only while B <= features_dim; at B = 64 << 512 it is).
 
 ONE TERM, THE FORM FIXED BY THE AUX KEY, so a run's label (and its ``Loss / Aux (<key>) loss`` tag) names the form:
-  ``embdiv_unif``  -> form "uniformity"     labels "ViT+UNIF"
-  ``embdiv_cos2``  -> form "cos2"           labels "ViT+COS2"
+  ``embdiv_unif``  -> form "uniformity"     labels "ViT+UNIF" (+ the BL2 "<trunk>+UNIF" labels below)
+  ``embdiv_cos2``  -> form "cos2"           labels "ViT+COS2" (+ the BL2 "<trunk>+COS2" labels below)
 ``NETT_AUX_EMBDIV_FORM`` (uniformity | cos2) may restate the form; it REFUSES any other value and any value that
 disagrees with the key. There is no env-only generic key: a required knob with no default would make the term
 unbuildable under the registry sweep (tests/test_slot_contrast_aux.py), and a label whose form lived only in a
@@ -36,8 +36,14 @@ batch). The images are prepared once (``_prepare_image``, no grad) and re-encode
 i.e. the encoder's normal ``forward`` (and so its NETT_AMP autocast; the output is float32). No augmentation:
 the pairs are distinct frames of the rollout, not views.
 
-ENCODERS: CompactViT only (``compact_vit``, the S3 "ViT"). Anything else REFUSES: the request is for the ViT,
-and a different trunk under the same aux key would be a different arm.
+ENCODERS: CompactViT (``compact_vit``: the S3 "ViT", BL2's ViT-P8-666K), and since owner 2026-11-03 (BASELINE wave 2,
+"Both losses. Both λ. Both BL2 backbones on both Base and Video") the other three BL2 trunks: NatureCNN
+(``nature_cnn``, CNN-D512P), Compact3DCNN (``compact_3dcnn``, 3DCNN) and CompactViViT (``compact_vivit``,
+ViViT-P8-T2). Each runs under its own "<trunk>+UNIF" / "<trunk>+COS2" label, so the label names the trunk. Every
+other encoder REFUSES (exact type, no subclass): a trunk with no label of its own would be an unnamed arm. The
+term reads the same features_dim vector the heads read on every admitted trunk (``encode_prepared``, the
+encoder's own forward on the (B, C*T, H, W) prepared stack); on the two framestack trunks z is the whole stack's
+embedding, as the policy sees it.
 
 NUMERICS. Computed in float32 whatever the autocast. Uniformity takes logsumexp over the off-diagonal entries
 (the diagonal is masked to -inf, never indexed out), so it cannot underflow at large t and is exactly 0 for a
@@ -110,7 +116,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..encoders.compact_3dcnn import Compact3DCNN
 from ..encoders.compact_vit import CompactViT
+from ..encoders.compact_vivit import CompactViViT
+from ..encoders.nature_cnn import NatureCNN
 from .knobs import NOT_MEASURED, _env_choice, _env_positive_float, _env_positive_int
 
 FORMS = ("uniformity", "cos2")
@@ -122,6 +131,8 @@ DIAG_EVERY_ENV = "NETT_AUX_EMBDIV_DIAG_EVERY"
 KEY_FORM = {"embdiv_unif": "uniformity", "embdiv_cos2": "cos2"}
 NORM_EPS = 1e-8
 DIAG_CSV = "embdiv_diag.csv"
+#: The encoders the term admits (exact type; module docstring ENCODERS).
+ENCODERS = (CompactViT, NatureCNN, Compact3DCNN, CompactViViT)
 DIAG_METRICS = ("std_raw", "std_norm", "cos_mean", "cos2_mean", "unif_t2", "erank", "loss_raw", "loss_weighted")
 #: The learning signal written beside the collapse metrics (module docstring).
 SIGNAL_METRICS = ("policy_loss", "value_loss", "entropy_loss", "ppo_total", "aux_share", "reward_per_step",
@@ -213,10 +224,10 @@ class EmbDivTerm(nn.Module):
 
     def __init__(self, encoder: nn.Module, key: str) -> None:
         super().__init__()
-        if type(encoder) is not CompactViT:
+        if type(encoder) not in ENCODERS:
             raise TypeError(
-                f"EmbDivTerm supports CompactViT (the S3 'ViT') only; got {type(encoder).__name__}. Refusing to "
-                f"run the embedding-spread term on another trunk under the same aux key.")
+                f"EmbDivTerm supports {', '.join(c.__name__ for c in ENCODERS)} only; got {type(encoder).__name__}. "
+                f"Refusing to run the embedding-spread term on a trunk with no label of its own.")
         self.key = key
         self.form = _key_form(key)
         if self.form == "uniformity":

@@ -208,13 +208,18 @@ def test_good_knob_values_are_realised(monkeypatch):
 
 
 def test_other_encoders_refuse():
-    for label in ("CNN", "3DCNN", "ViViT-T2"):
-        spec = ct.MODELS[label]
-        kwargs = EncoderCfg(**spec["cfg"]).as_kwargs()
-        kwargs.pop("trainable", None)
-        enc = encoder_mapping[spec["encoder"]](_space(6 if spec["framestack"] else 3), **kwargs)
+    """Only the admitted trunks (ed.ENCODERS: the S3 ViT + the four BL2 trunks, owner 2026-11-03) build the term; any
+    other encoder, and any SUBCLASS of an admitted one, refuses (exact type: a trunk with no label of its own)."""
+    assert {c.__name__ for c in ed.ENCODERS} == {"CompactViT", "NatureCNN", "Compact3DCNN", "CompactViViT"}
+    others = [encoder_mapping[k](_space()) for k in ("compact_cnn", "small")]
+
+    class _SubViT(type(_encoder())):
+        pass
+    sub = _SubViT.__new__(_SubViT)
+    for enc in others + [sub]:
+        assert type(enc) not in ed.ENCODERS
         for key in ed.KEY_FORM:
-            with pytest.raises(TypeError, match="CompactViT"):
+            with pytest.raises(TypeError, match="CompactViT, NatureCNN, Compact3DCNN, CompactViViT only"):
                 AUX_LOSSES[key](enc)
 
 
@@ -239,7 +244,8 @@ def test_labels_are_the_s3_vit_plus_the_aux_alone():
     for label, (key, _) in LABELS.items():
         assert m[label] == {**m["ViT"], "aux": key, "aux_weight": 0.01}, label
         assert key in AUX_LOSSES and ed.KEY_FORM[key] == LABELS[label][1]
-    assert {k for k, v in m.items() if str(v.get("aux", "")).startswith("embdiv")} == set(LABELS)
+    bl2 = {f"{t}+{f}" for t in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2") for f in ("UNIF", "COS2")}
+    assert {k for k, v in m.items() if str(v.get("aux", "")).startswith("embdiv")} == set(LABELS) | bl2   # test_bl2_embdiv_labels.py
     assert sum(p.numel() for p in _encoder("ViT+UNIF").parameters()) == 693_728   # the S3 ViT's count (slide-3 tests)
 
 
