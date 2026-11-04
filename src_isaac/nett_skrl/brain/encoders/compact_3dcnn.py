@@ -49,6 +49,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         stem_kernel_hw: int = 3,
         channels_per_frame: int | None = None,
         temporal_kernel_depth: int | None = None,
+        stem_layernorm: bool = False,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -142,6 +143,21 @@ class Compact3DCNN(HWCFeatureExtractor):
 
         self.linear = nn.Sequential(nn.Linear(n_flat, features_dim), nn.ReLU())
 
+        # ⭐ FIRST-LAYER LAYERNORM (owner 2026-11-04, BL2: "6 brains on 1st layer LayerNorm for 3DCNN + CLTT
+        # (attached)"; chosen definition "After the Conv3d stem, over C×H×W"). One per-sample nn.LayerNorm over the
+        # stem map's (stem_out, H', W'), elementwise affine, applied in `_temporal_stem` -- after the Conv3d, before
+        # cnn2d's first ReLU -- in train AND test, so `forward` and `encode_spatial` both see it. Off (every existing
+        # arm): no module is registered and no op runs, so those arms rebuild byte-identically. It is created LAST so
+        # the named_modules order of every pre-existing layer is unchanged (LayerNorm draws no random numbers and no
+        # init family touches it: it starts at weight 1, bias 0). The duplicate-frame ablation's stem path does not
+        # go through `_temporal_stem`, so the combination refuses rather than silently running without the norm.
+        self.stem_layernorm = bool(stem_layernorm)
+        if self.stem_layernorm:
+            if self.duplicate_frame:
+                raise ValueError(f"{type(self).__name__}: stem_layernorm with duplicate_frame=True is not "
+                                 "implemented (that path bypasses _temporal_stem); refusing.")
+            self.stem_ln = nn.LayerNorm((stem_out, (height - 1) // 2 + 1, (width - 1) // 2 + 1))
+
     def forward(self, observations: torch.Tensor) -> torch.Tensor:
         x = self._prepare_image(observations)  # (B, C*T, H, W)
         B, CT, H, W = x.shape
@@ -178,7 +194,8 @@ class Compact3DCNN(HWCFeatureExtractor):
         B, _, H, W = x.shape
         x = x.view(B, self.num_frames, self.base_channels, H, W)
         x = x.permute(0, 2, 1, 3, 4).contiguous()
-        return self._fold_time(self._stem_conv(x))
+        y = self._fold_time(self._stem_conv(x))
+        return self.stem_ln(y) if self.stem_layernorm else y
 
     def _fold_time(self, y: torch.Tensor) -> torch.Tensor:
         """Conv3d output (B, stem_dim, T_out, H', W') -> (B, T_out * stem_dim, H', W').

@@ -59,6 +59,19 @@ def _bind_acuity_for_validation(loaded, run_config, log_path) -> None:
                            offset=offset, seed=getattr(run_config, "seed", None))
 
 
+def _bind_brightness_for_validation(loaded, run_config, log_path) -> None:
+    """Bind a random-brightness wrapper (body/wrappers/brightness.py) as phase ``validate`` before the reset.
+
+    Same reason as _bind_acuity_for_validation: the wrapper refuses an unbound observation, and this smoke check
+    resets the env outside task_runner. ``validate`` is not ``train``, so the frame passes through untouched.
+    """
+    from ..body.wrappers.brightness import find_brightness
+
+    offset = int(getattr(run_config, "brain_id_offset", 0) or 0)
+    for wrapper in find_brightness(loaded):
+        wrapper.bind_phase("validate", log_dir=log_path, offset=offset, seed=getattr(run_config, "seed", None))
+
+
 def validate_tasklist(tasks: list[Task], close_env: bool = True) -> None:
     """Smoke-validate by loading each task's env once through its body.
 
@@ -87,6 +100,7 @@ def validate_tasklist(tasks: list[Task], close_env: bool = True) -> None:
         try:
             loaded = task.agent.body.wrap(loaded)
             _bind_acuity_for_validation(loaded, run_config, log_path)
+            _bind_brightness_for_validation(loaded, run_config, log_path)
             obs, _ = loaded.reset()
             if not hasattr(obs, "shape") and not isinstance(obs, dict):
                 raise TypeError(f"Unexpected obs type from wrapped env: {type(obs)}")

@@ -638,6 +638,11 @@ def main() -> int:
     print(f"[capture] staged {staged} checkpoints into {cfg.path} (source untouched)")
 
     loaded = agent.body.embed(agent.env, run_config)      # boots Kit
+    # A random-brightness arm refuses an unbound observation; this is a test-phase capture, so bind it as test
+    # (frames unaugmented), as task_runner._bind_brightness would.
+    from nett_skrl.body.wrappers.brightness import find_brightness
+    for _bw in find_brightness(loaded):
+        _bw.bind_phase("test", log_dir=cfg.path / "logs", offset=0, seed=None)
     capture = Capture(loaded, args.every, args.max_frames, window=args.window,
                       num_envs=run_config.num_envs)
     # ⚠ Read the count BACK OUT of the wrapper. Printing `run_config.num_envs` here is

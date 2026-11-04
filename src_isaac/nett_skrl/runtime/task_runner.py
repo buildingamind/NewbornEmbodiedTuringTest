@@ -402,6 +402,7 @@ def _run_single_mode_body(task: Task, mode: str, overrides: dict | None,
     loaded = agent.body.embed(agent.env, run_config)
     _bind_segmenters(loaded, mode, run_config, seg_state)
     _bind_acuity(loaded, mode, run_config, agent.brain)
+    _bind_brightness(loaded, mode, run_config)
     # Hand the env to _abort_worker: without this, a failure after embed() lost every
     # artifact, because _finalize_env_artifacts was on the success path only.
     state["loaded"] = loaded
@@ -528,6 +529,28 @@ def _bind_acuity(loaded, mode: str, run_config, brain) -> None:
     run_config.logger.info(
         "acuity %s: mode=%s start=%d total=%d (vectorised steps) log=%s",
         type(found[0]).__name__, mode, start, total, found[0]._log_path)
+
+
+def _bind_brightness(loaded, mode: str, run_config) -> None:
+    """Hand a random-brightness wrapper (body/wrappers/brightness.py) its phase: it augments in ``train`` only.
+
+    Seeded like _bind_acuity, [seed, brain offset], plus this process's global train start step so an ``eval_freq``
+    chunk does not replay the previous chunk's draws.
+    """
+    from ..body.wrappers.brightness import find_brightness
+
+    found = find_brightness(loaded)
+    if not found:
+        return
+    if len(found) != 1:
+        raise RuntimeError(f"expected at most one brightness wrapper on the env chain, found {len(found)}")
+    offset = int(getattr(run_config, "brain_id_offset", 0) or 0)
+    start = int(getattr(run_config, "train_start_step", None) or 0)
+    seed = getattr(run_config, "seed", None)
+    found[0].bind_phase(mode, log_dir=Path(run_config.path) / "logs", offset=offset,
+                        seed=None if seed is None else [int(seed), offset, start])
+    run_config.logger.info("brightness %s: mode=%s range=[%s, %s] log=%s", type(found[0]).__name__, mode,
+                           found[0].LOW, found[0].HIGH, found[0]._log_path)
 
 
 def _save_segmenters(loaded, seg_state, logger: logging.Logger) -> None:

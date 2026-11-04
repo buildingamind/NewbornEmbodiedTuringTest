@@ -75,6 +75,10 @@ BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-11-03, BASELINE wave 2 EMBDIV: the two embdiv terms on the four BL2 trunks (tests/test_bl2_embdiv_labels.py);
 #: embdiv_aux.py (EMBDIV1101_FILES) admits the three new trunks.
 BL2_1103_EMBDIV_LABELS = {f"{t}+{f}" for t in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2") for f in ("UNIF", "COS2")}
+#: owner 2026-11-04, BL2 binding: 3DCNN-CLTT-Ref + random brightness / + first-layer (stem) LayerNorm (tests/test_bl2_rb_ln1.py);
+#: capture_observations.py binds the brightness wrapper as test (it refuses an unbound observation).
+BL2_1104_RBLN1_LABELS = {"3DCNN-CLTT-Ref+RB", "3DCNN-CLTT-Ref+LN1"}
+BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1111,7 +1115,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
@@ -1130,7 +1134,7 @@ def test_existing_models_and_registries_are_unchanged(campaign):
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
                                 ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
-                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask"})):   # fovea_mask: owner 2026-10-30
+                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         after = keys((_SRC / rel).read_text(), opener)
         assert before and after - before == gained and before <= after, rel

@@ -55,6 +55,11 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     "acuity_vac": ("nett_skrl.body.wrappers.acuity", "AcuityVAC"),
     "acuity_norep": ("nett_skrl.body.wrappers.acuity", "AcuityNoReplay"),
     "acuity_rev": ("nett_skrl.body.wrappers.acuity", "AcuityReversed"),
+    # Random brightness (owner 2026-11-04, BL2): one factor ~ U[0.7, 1.3] per env per TRAINING episode on every pixel,
+    # clamped; test/record unaugmented. No env knob. ⚠ ORDER MATTERS: `pre`, innermost, before framestack, so both
+    # stacked frames carry the episode's factor. The runner binds the phase (task_runner._bind_brightness); unbound,
+    # the wrapper refuses to step.
+    "random_brightness": ("nett_skrl.body.wrappers.brightness", "RandomBrightness"),
     # Black-and-white eye: RGB -> one BT.601 luminance channel, every phase. Removes hue and
     # saturation, keeps brightness and texture (owner 2026-09-28). ⚠ ORDER MATTERS: `pre`, innermost.
     "grayscale": ("nett_skrl.body.wrappers.grayscale", "Grayscale"),

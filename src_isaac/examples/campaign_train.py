@@ -1597,6 +1597,18 @@ MODELS["3DCNN+UNIF"] = {**MODELS["3DCNN"], "aux": "embdiv_unif", "aux_weight": 0
 MODELS["3DCNN+COS2"] = {**MODELS["3DCNN"], "aux": "embdiv_cos2", "aux_weight": 0.01}
 MODELS["ViViT-P8-T2+UNIF"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_unif", "aux_weight": 0.01}
 MODELS["ViViT-P8-T2+COS2"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+# BL2 RANDOM BRIGHTNESS / FIRST-LAYER LAYERNORM (owner 2026-11-04: "For binding, I'd like to train 6 brains of object 1
+# on Random Brightness and 6 brains on 1st layer LayerNorm for 3DCNN + CLTT (attached)"). Each is BL2's attached
+# VideoCLTTA arm, 3DCNN-CLTT-Ref, with ONE change:
+#   +RB  = the `random_brightness` pre wrapper: one factor ~ U[0.7, 1.3] per env per TRAINING episode on every pixel,
+#          clamped, before framestack (both stacked frames share it); test unaugmented (body/wrappers/brightness.py).
+#   +LN1 = cfg stem_layernorm=True: a per-sample LayerNorm over the Conv3d stem map's C x H' x W', elementwise affine,
+#          before cnn2d's first ReLU, at train and test (brain/encoders/compact_3dcnn.py).
+# Spelled out (not a loop): tools/mem_probe_condition.sh finds a label by its quoted literal in this file.
+MODELS["3DCNN-CLTT-Ref+RB"] = {**MODELS["3DCNN-CLTT-Ref"], "pre": ("random_brightness",)}
+MODELS["3DCNN-CLTT-Ref+LN1"] = {**MODELS["3DCNN-CLTT-Ref"], "cfg": {**MODELS["3DCNN-CLTT-Ref"]["cfg"], "stem_layernorm": True}}
+assert "pre" not in MODELS["3DCNN-CLTT-Ref"] and "stem_layernorm" not in MODELS["3DCNN-CLTT-Ref"]["cfg"]
+assert MODELS["3DCNN-CLTT-Ref"]["cfg"] == MODELS_S162_3DCNN_REF
 
 def _nas_int(lo: int, hi: int):
     return ("int", lambda v: lo <= v <= hi, f"an integer in {lo}..{hi}")
