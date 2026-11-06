@@ -120,6 +120,28 @@ class DVSPolarity(gym.Wrapper):
                                 env, never tick parity: this wrapper also sees the pre-roll ticks) are multiplied by
                                 g, so 255 -> round(255 g). Needs NETT_DECISION_LOOP=P >= 2 (without a window every
                                 tick is a move tick) and refuses NETT_DVS_WINDOW.
+
+    The three egomotion knobs below (FINDINGS add. 351, the probe's picks for arms MC / GATE / GFS; the definitions are
+    the probe's own, ego/probe/evlib.py + ana.py) are default unset = unchanged, bit for bit. At most one is set, and
+    none combines with NETT_DVS_WINDOW or NETT_DVS_MOVE_GAIN. Reset / done handling is the plain wrapper's.
+
+        ``NETT_DVS_MOTION_COMP``  ``yaw``. Before differencing, the previous (blurred, per-plane) frame is warped into
+                                the current camera by the yaw change about the WORLD vertical between the two ticks:
+                                each current pixel's ray (300 deg equisolid lens, image u right = camera -Y, v down =
+                                camera -Z, the probe's measured convention) is rotated by R_prev^T Rz(dyaw) R_prev into
+                                the previous camera, reprojected, and the previous frame is sampled there bilinearly
+                                (``grid_sample``, border padding, align_corners off). A pixel outside the rim (r >= cx-1)
+                                or whose source falls outside the previous view emits no events. Pose = the unwrapped
+                                env's ``_cameras["center"].data.quat_w_world`` (wxyz, forward +X), read after every
+                                reset() and step(). The lens is the env's (``LensSpec.from_observation_cfg``); the probe
+                                ran only at equisolid 300 deg 128x80, so any other lens refuses.
+        ``NETT_DVS_GATE_K``     k > 0 (the arm: 0.5). A tick's events x max(0, 1 - k |clip(a, -1, 1)| / sqrt 2), with
+                                a = the action passed to step() (repo B stores it as ``_actions`` unchanged), rounded to
+                                uint8 as NETT_DVS_MOVE_GAIN does. Every tick is gated, so under a decision loop the hold
+                                ticks are scaled by the decision's action too (the probe measured move ticks only).
+        ``NETT_DVS_GLOBAL_SUB`` ``median:R``, integer R >= 1 (the arm: 4). Per plane, the signed difference d minus its
+                                (2R+1)x(2R+1) median (nearest = replicate padding, scipy ``median_filter`` mode
+                                "nearest"), then ON / OFF at +/- threshold.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -147,6 +169,10 @@ class DVSPolarity(gym.Wrapper):
             raise ValueError(f"NETT_DVS_COLOR=1 makes one frame 6 channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
         self.window, self.tau = self._window_knobs()
         self.move_gain = self._move_gain_knob(self.window)
+        self.motion_comp, self.gate_k, self.global_sub = self._ego_knobs(self.window, self.move_gain)
+        self._mc = None                         # _YawWarp for the env's lens (motion comp only; built at first reset)
+        self._mc_raw = None                     # the unwrapped env carrying _cameras (motion comp only)
+        self._pose = None                       # previous tick's camera rotation (N,3,3) float64 (motion comp only)
         self._raw = None                        # the unwrapped env carrying _last_decision_mask (move gain only)
         if self.window is not None:
             lam = 1.0 if self.tau is None else math.exp(-1.0 / self.tau)
@@ -287,6 +313,135 @@ class DVSPolarity(gym.Wrapper):
             events[m] = np.round(events[m].astype(np.float32) * self.move_gain).astype(np.uint8)
         return events
 
+    @staticmethod
+    def _ego_knobs(window, move_gain):
+        """``NETT_DVS_MOTION_COMP`` / ``NETT_DVS_GATE_K`` / ``NETT_DVS_GLOBAL_SUB`` -> (``"yaw"`` | None, k | None,
+        R | None). Refuses anything ambiguous, any two together, and either of NETT_DVS_WINDOW / NETT_DVS_MOVE_GAIN."""
+        raw_mc = os.environ.get("NETT_DVS_MOTION_COMP", "").strip()
+        raw_k = os.environ.get("NETT_DVS_GATE_K", "").strip()
+        raw_gs = os.environ.get("NETT_DVS_GLOBAL_SUB", "").strip()
+        mc = k = r = None
+        if raw_mc != "":
+            if raw_mc.lower() != "yaw":
+                raise ValueError(f"NETT_DVS_MOTION_COMP={raw_mc!r}: expected 'yaw' (leave it unset for none).")
+            mc = "yaw"
+        if raw_k != "":
+            try:
+                k = float(raw_k)
+            except ValueError as exc:
+                raise ValueError(f"NETT_DVS_GATE_K={raw_k!r}: expected a finite number > 0.") from exc
+            if not (math.isfinite(k) and k > 0):
+                raise ValueError(f"NETT_DVS_GATE_K={raw_k!r}: expected a finite number > 0 (leave it unset for none).")
+        if raw_gs != "":
+            kind, sep, rr = raw_gs.lower().partition(":")
+            if kind != "median" or sep != ":" or not (rr.isascii() and rr.isdigit()) or int(rr) < 1:
+                raise ValueError(f"NETT_DVS_GLOBAL_SUB={raw_gs!r}: expected 'median:R' with an integer R >= 1.")
+            r = int(rr)
+        named = [n for n, v in (("NETT_DVS_MOTION_COMP", mc), ("NETT_DVS_GATE_K", k), ("NETT_DVS_GLOBAL_SUB", r))
+                 if v is not None]
+        if len(named) > 1:
+            raise ValueError(f"{' and '.join(named)}: the egomotion knobs are one arm each (FINDINGS add. 351). "
+                             f"Set at most one.")
+        if named and window is not None:
+            raise ValueError(f"{named[0]} with NETT_DVS_WINDOW={window}: the probe defined it on one tick's events. "
+                             f"Refusing.")
+        if named and move_gain is not None:
+            raise ValueError(f"{named[0]} with NETT_DVS_MOVE_GAIN={move_gain:g}: two egomotion treatments on one arm. "
+                             f"Refusing.")
+        if mc is not None:
+            print("[NETT dvs motion comp] yaw: the previous frame is warped into the current camera by the world-"
+                  "vertical yaw change (300 deg equisolid, bilinear; out-of-view sources emit nothing) "
+                  "(FINDINGS add. 351)", flush=True)
+        if k is not None:
+            print(f"[NETT dvs gate] k={k:g}: every tick's events x max(0, 1 - {k:g} |clip(a,-1,1)|/sqrt 2) "
+                  f"(FINDINGS add. 351)", flush=True)
+        if r is not None:
+            print(f"[NETT dvs global sub] median:{r}: per-plane difference minus its {2 * r + 1}x{2 * r + 1} median "
+                  f"(replicate padding) before thresholding (FINDINGS add. 351)", flush=True)
+        return mc, k, r
+
+    def _apply_gate(self, events, action):
+        """A tick's events x max(0, 1 - k |clip(a, -1, 1)| / sqrt 2), per env. The gain is the probe's own NumPy
+        expression on the float32 action (ana.py, section (c)), so the dtype path is the probe's."""
+        a = action.detach().cpu().numpy() if isinstance(action, torch.Tensor) else np.asarray(action)
+        a = a.astype(np.float32)
+        n = int(events.shape[0]) if self._batched else 1
+        if a.ndim == 0 or (self._batched and (a.ndim != 2 or a.shape[0] != n)):
+            raise RuntimeError(f"NETT_DVS_GATE_K: action {tuple(a.shape)} does not give one action vector per env "
+                               f"for events {tuple(events.shape)} (batched={self._batched}).")
+        a = a.reshape(n, -1)
+        g = np.maximum(0.0, 1 - self.gate_k * (np.linalg.norm(np.clip(a, -1, 1), axis=-1) / np.sqrt(2)))
+        g = g.astype(np.float64)
+        if not self._batched:
+            g = g[0]
+        if isinstance(events, torch.Tensor):
+            gt = torch.as_tensor(g, dtype=torch.float64, device=events.device)
+            gt = gt.reshape((-1,) + (1,) * (events.ndim - 1)) if self._batched else gt
+            return (events.to(torch.float64) * gt).round().to(torch.uint8)
+        gn = g.reshape((-1,) + (1,) * (events.ndim - 1)) if self._batched else g
+        return np.round(events.astype(np.float64) * gn).astype(np.uint8)
+
+    def _find_unwrapped(self, attr: str, knob: str):
+        """Walk ``.env`` / ``._env`` down to the env that carries ``attr`` (as ``_move_mask`` does)."""
+        current, seen = self.env, set()
+        while current is not None and id(current) not in seen and not hasattr(current, attr):
+            seen.add(id(current))
+            current = getattr(current, "_env", None) or getattr(current, "env", None)
+        if current is None or not hasattr(current, attr):
+            raise RuntimeError(f"{knob}: no env under dvs_polarity carries {attr}.")
+        return current
+
+    def _mc_pose(self) -> np.ndarray:
+        """The centre camera's rotation (N,3,3) float64, body -> world, from the unwrapped env (the probe's hook read
+        ``_cameras["center"].data.quat_w_world``). Builds the warp for the env's lens on first use."""
+        if self._mc is None:
+            raw = self._find_unwrapped("_cameras", "NETT_DVS_MOTION_COMP")
+            if "center" not in raw._cameras:
+                raise RuntimeError(f"NETT_DVS_MOTION_COMP: the env has no 'center' camera ({sorted(raw._cameras)}); "
+                                   f"the probe warped the centre eye only.")
+            from nett_isaac.lens import LensSpec
+
+            lens = LensSpec.from_observation_cfg(raw.cfg.observation)
+            got = (lens.method, lens.fov_h_deg, lens.width, lens.height)
+            if got != _YawWarp.PROBE_LENS:
+                raise ValueError(f"NETT_DVS_MOTION_COMP: the env's lens is {got}; the add. 351 probe defined and "
+                                 f"checked the warp only at {_YawWarp.PROBE_LENS} (method, fov, width, height).")
+            self._mc_raw, self._mc = raw, _YawWarp(lens)
+        q = self._mc_raw._cameras["center"].data.quat_w_world
+        q = q.detach().cpu().numpy() if isinstance(q, torch.Tensor) else np.asarray(q)
+        return _quat_to_R(q.reshape(-1, 4).astype(np.float64))
+
+    def _warp_prev(self, y: torch.Tensor, pose: np.ndarray):
+        """The previous blurred frame resampled into the current camera, and the (same-shape) mask of pixels whose
+        source lies inside the previous view."""
+        n = int(pose.shape[0])
+        h, w = int(y.shape[-2]), int(y.shape[-1])
+        if (w, h) != (self._mc.W, self._mc.H) or y.numel() % (n * h * w):
+            raise RuntimeError(f"NETT_DVS_MOTION_COMP: frame {tuple(y.shape)} vs lens {self._mc.W}x{self._mc.H} and "
+                               f"{n} camera poses.")
+        grid, ok = self._mc.grid(self._pose, pose)
+        prev = self._prev.reshape(n, -1, h, w)
+        out = torch.nn.functional.grid_sample(prev, grid.to(prev.device), mode="bilinear", padding_mode="border",
+                                              align_corners=False)
+        ok = ok.to(prev.device)[:, None].expand(prev.shape)
+        return out.reshape(y.shape), ok.reshape(y.shape)
+
+    #: planes per median chunk: 48 x (9*9) x 128x80 float32 = 160 MB of unfolded windows
+    MEDIAN_CHUNK_PLANES = 48
+
+    def _median_sub(self, d: torch.Tensor) -> torch.Tensor:
+        """d minus its per-plane (2R+1)^2 median, replicate padding (= scipy median_filter mode 'nearest'). The window
+        count is odd, so the median is one of the window's values and the result equals scipy's exactly."""
+        r = self.global_sub
+        h, w = d.shape[-2:]
+        flat = d.reshape(-1, 1, h, w)
+        med = torch.empty_like(flat)
+        for s in range(0, flat.shape[0], self.MEDIAN_CHUNK_PLANES):
+            p = torch.nn.functional.pad(flat[s:s + self.MEDIAN_CHUNK_PLANES], (r, r, r, r), mode="replicate")
+            cols = torch.nn.functional.unfold(p, 2 * r + 1)             # (b, (2R+1)^2, H*W)
+            med[s:s + self.MEDIAN_CHUNK_PLANES] = cols.median(dim=1).values.reshape(-1, 1, h, w)
+        return (flat - med).reshape(d.shape)
+
     def _density(self, y: torch.Tensor, res: torch.Tensor) -> None:
         """Diagnostic only (never changes an output): at decision ticks, the window map's density beside the density of ONE
         difference over the same span (the frame just before the window -> this frame, same threshold) -- what a
@@ -386,8 +541,9 @@ class DVSPolarity(gym.Wrapper):
             )
         return x, chw
 
-    def _events(self, policy):
-        """Frame -> (ON, OFF) uint8 (or 3 such pairs under NETT_DVS_COLOR), and update the previous-frame buffer."""
+    def _events(self, policy, pose=None):
+        """Frame -> (ON, OFF) uint8 (or 3 such pairs under NETT_DVS_COLOR), and update the previous-frame buffer.
+        ``pose`` = this tick's camera rotation (N,3,3), motion comp only."""
         as_tensor = isinstance(policy, torch.Tensor)
         t = self._to_torch(policy)
         self._batched = t.ndim == 4
@@ -403,9 +559,16 @@ class DVSPolarity(gym.Wrapper):
         had_prev = not (self._prev is None or self._prev.shape != y.shape)
         if not had_prev:
             d = torch.zeros_like(y)
+        elif self.motion_comp is not None:
+            warped, ok = self._warp_prev(y, pose)
+            d = torch.where(ok, y - warped, torch.zeros_like(y))       # = the probe's events x ok (threshold > 0)
+        elif self.global_sub is not None:
+            d = self._median_sub(y - self._prev)
         else:
             d = y - self._prev
         self._prev = y
+        if self.motion_comp is not None:
+            self._pose = pose
         on = (d >= self.threshold).to(torch.uint8) * 255
         off = (d <= -self.threshold).to(torch.uint8) * 255
         if self.color:
@@ -431,14 +594,18 @@ class DVSPolarity(gym.Wrapper):
         self._hist = []
         self._phase_c = 0
         obs, info = self.env.reset(**kwargs)
-        return _replace_policy_obs(obs, self._events(_policy_obs(obs))), info
+        pose = self._mc_pose() if self.motion_comp is not None else None
+        return _replace_policy_obs(obs, self._events(_policy_obs(obs), pose)), info
 
     def step(self, action):
         obs, reward, terminated, truncated, info = self.env.step(action)
         policy = _policy_obs(obs)
-        events = self._events(policy)
+        pose = self._mc_pose() if self.motion_comp is not None else None
+        events = self._events(policy, pose)
         if self.move_gain is not None:
             events = self._apply_move_gain(events)
+        if self.gate_k is not None:
+            events = self._apply_gate(events, action)
         # ⚠ Per-env boundary: an episode that just reset has a previous frame from the OLD
         # episode, and the difference across that cut is a teleport, not motion. Zero those
         # envs' events and seed their buffer with the new first frame. Same hazard FrameStack
@@ -458,3 +625,71 @@ class DVSPolarity(gym.Wrapper):
                 if self.window is not None:
                     self._clear_hist(torch.as_tensor(idx, dtype=torch.long))
         return _replace_policy_obs(obs, events), reward, terminated, truncated, info
+
+
+# -- NETT_DVS_MOTION_COMP geometry: the add. 351 probe's own functions (ego/probe/evlib.py), NumPy float64 as there ------
+def _quat_to_R(q: np.ndarray) -> np.ndarray:
+    """(N,4) wxyz -> (N,3,3) rotation (body -> world)."""
+    q = q / np.linalg.norm(q, axis=-1, keepdims=True)
+    w, x, y, z = q[:, 0], q[:, 1], q[:, 2], q[:, 3]
+    return np.stack([
+        np.stack([1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)], -1),
+        np.stack([2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)], -1),
+        np.stack([2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)], -1)], -2)
+
+
+def _yaw_of(R: np.ndarray) -> np.ndarray:
+    """World yaw (about +Z) of the body +X axis."""
+    return np.arctan2(R[:, 1, 0], R[:, 0, 0])
+
+
+def _Rz(a: np.ndarray) -> np.ndarray:
+    c, s = np.cos(a), np.sin(a)
+    o, i = np.zeros_like(a), np.ones_like(a)
+    return np.stack([np.stack([c, -s, o], -1), np.stack([s, c, o], -1), np.stack([o, o, i], -1)], -2)
+
+
+class _YawWarp:
+    """Pixel <-> camera ray for the equisolid eye, Isaac 'world' camera convention (forward +X, left +Y, up +Z), image
+    u right = camera -Y and v down = camera -Z (SU = SV = -1: the probe fitted the u sign, residual 9.76 vs 23.57
+    flipped and 17.69 unwarped; a yaw cannot tell the v sign apart and the physical convention was kept)."""
+
+    #: (method, fov_h_deg, width, height) the probe ran and checked; anything else refuses
+    PROBE_LENS = ("equisolid", 300.0, 128, 80)
+    SU = SV = -1.0
+
+    def __init__(self, lens):
+        self.W, self.H = lens.width, lens.height
+        self.cx, self.cy = lens.cx, lens.cy
+        self.theta_max_h = lens.theta_max_h
+        v, u = np.meshgrid(np.arange(self.H) + 0.5, np.arange(self.W) + 0.5, indexing="ij")
+        du, dv = u - self.cx, v - self.cy
+        r = np.hypot(du, dv)
+        th = np.array([lens.theta_of_r(float(x)) for x in r.ravel()]).reshape(r.shape)
+        phi = np.arctan2(dv, du)
+        st = np.sin(th)
+        self.rays = np.stack([np.cos(th), self.SU * st * np.cos(phi), self.SV * st * np.sin(phi)], -1)  # (H,W,3)
+        self.valid = r < (self.cx - 1.0)        # inside the rim (rim mask margin)
+
+    def project(self, d: np.ndarray):
+        """(...,3) camera-frame rays -> (u, v) pixel coords and a validity mask (equisolid r = cx sin(t/2)/sin(tmax/2))."""
+        d = d / np.linalg.norm(d, axis=-1, keepdims=True)
+        th = np.arccos(np.clip(d[..., 0], -1, 1))
+        phi = np.arctan2(self.SV * d[..., 2], self.SU * d[..., 1])
+        r = self.cx * np.sin(th / 2.0) / math.sin(self.theta_max_h / 2.0)
+        u = self.cx + r * np.cos(phi)
+        v = self.cy + r * np.sin(phi)
+        ok = (r < self.cx - 1.0) & (u >= 0) & (u <= self.W) & (v >= 0) & (v <= self.H)
+        return u, v, ok
+
+    def grid(self, R_prev: np.ndarray, R_cur: np.ndarray):
+        """Yaw-only: the current camera = the previous one turned about the WORLD vertical by the yaw change. Returns the
+        ``grid_sample`` grid (N,H,W,2) float32 into the previous frame and the in-view mask (N,H,W) bool."""
+        dyaw = _yaw_of(R_cur) - _yaw_of(R_prev)
+        Mrel = np.einsum("nji,njk,nkl->nil", R_prev, _Rz(dyaw), R_prev)   # R_prev^T Rz(dyaw) R_prev
+        d = np.einsum("nij,hwj->nhwi", Mrel, self.rays)                    # current ray in the previous camera
+        u, v, ok = self.project(d)
+        ok &= self.valid[None]
+        gx = torch.as_tensor(u / self.W * 2 - 1, dtype=torch.float32)
+        gy = torch.as_tensor(v / self.H * 2 - 1, dtype=torch.float32)
+        return torch.stack((gx, gy), -1), torch.as_tensor(ok)

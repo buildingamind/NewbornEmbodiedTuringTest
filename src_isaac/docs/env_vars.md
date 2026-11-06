@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-319 variables.
+322 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -31,7 +31,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:531` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:414` |
 | `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+8 more)* |
-| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:145`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
+| `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:167`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
 | `NETT_AUX_CLTT_PATCH_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_CLTT_REF_DIAG` | `False` | `nett_skrl/brain/aux/cltt_patch_aux.py:98`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:892` |
@@ -95,7 +95,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_CHECKPOINT_INITIAL` | `""` | `nett_skrl/recording/checkpoints.py:69` |
 | `NETT_CLTT_REF_DEDUP` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:106` |
 | `NETT_CONV3D_ORTHO_INIT` | `"0"` | `nett_skrl/brain/models/utils/init.py:27` |
-| `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:223`<br>`nett_skrl/body/wrappers/dvs_polarity.py:252`<br>`nett_skrl/body/wrappers/dvs_polarity.py:296`<br>`nett_skrl/brain/env_wrappers.py:207` |
+| `NETT_DECISION_LOOP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:249`<br>`nett_skrl/body/wrappers/dvs_polarity.py:278`<br>`nett_skrl/body/wrappers/dvs_polarity.py:451`<br>`nett_skrl/brain/env_wrappers.py:207` |
 | `NETT_DECOUPLE_ENCODER` | `""` | `nett_skrl/brain/models/utils/features.py:26` |
 | `NETT_DECOUPLE_TRUNK` | `""` | `nett_skrl/brain/models/utils/features.py:45` |
 | `NETT_DESIGN_SHEET` | *(caller-supplied: `sheet`)* | `examples/campaign_run.py:197`<br>`examples/campaign_train.py:2479` |
@@ -111,13 +111,16 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DIAG_PEB` | `"off"` | `nett_skrl/brain/ppo_metrics.py:90`<br>`examples/campaign_train.py:2615`<br>`examples/campaign_train.py:2656` |
 | `NETT_DISABLE_FEATURE_CACHE` | `""` | `nett_skrl/brain/models/utils/features.py:120` |
 | `NETT_DRY_RUN_TIMEOUT` | *(required / no literal default)* | `nett_skrl/nett.py:88` |
-| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:139` |
-| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:343` |
-| `NETT_DVS_COLOR` | `""`, `False` | `nett_skrl/body/wrappers/dvs_polarity.py:141`<br>`nett_skrl/brain/aux/cltt_views.py:37` |
-| `NETT_DVS_MOVE_GAIN` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:243` |
-| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:128` |
-| `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:211` |
-| `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:212` |
+| `NETT_DVS_BLUR` | `True` | `nett_skrl/body/wrappers/dvs_polarity.py:161` |
+| `NETT_DVS_BLUR_KERNEL` | `"3"` | `nett_skrl/body/wrappers/dvs_polarity.py:498` |
+| `NETT_DVS_COLOR` | `""`, `False` | `nett_skrl/body/wrappers/dvs_polarity.py:163`<br>`nett_skrl/brain/aux/cltt_views.py:37` |
+| `NETT_DVS_GATE_K` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:321` |
+| `NETT_DVS_GLOBAL_SUB` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:322` |
+| `NETT_DVS_MOTION_COMP` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:320` |
+| `NETT_DVS_MOVE_GAIN` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:269` |
+| `NETT_DVS_THRESHOLD` | `30.0` | `nett_skrl/body/wrappers/dvs_polarity.py:150` |
+| `NETT_DVS_WINDOW` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:237` |
+| `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:238` |
 | `NETT_EARLY_TERM_BONUS` | `""` | `nett_skrl/brain/agent_factory.py:164` |
 | `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:166` |
 | `NETT_ENCAUX_LR_SCALE` | `""` | `nett_skrl/brain/agent_factory.py:353`<br>`nett_skrl/brain/aux/enc_lr.py:33` |
