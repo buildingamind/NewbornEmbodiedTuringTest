@@ -160,11 +160,48 @@ def test_frozen_encoder_refused(monkeypatch):
         _agent(monkeypatch)
 
 
-def test_duplicated_encoder_refused(monkeypatch):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+# ── NETT_SHARED_ENCODER_DUP=1 (the BL2 recipe): the encoder keeps both slots, now in the scaled group ─────────────
+
+def _step_count(agent, p):
+    st = agent.optimizer.state[p]["step"]
+    return float(st)
+
+
+def test_dup_keeps_both_slots_in_the_encoder_group(monkeypatch, capsys):
     monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
-    with pytest.raises(ValueError, match="duplicated encoder"):
-        _agent(monkeypatch)
+    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    agent = _agent(monkeypatch)
+    enc = _ids(encoder_parameters(agent))
+    g0, g1 = (_ids(g["params"]) for g in agent.optimizer.param_groups)
+    assert not set(g0) & set(enc)
+    assert g1[:len(_head_ids(agent))] == _head_ids(agent)
+    tail = g1[len(_head_ids(agent)):]
+    assert sorted(tail) == sorted(enc + enc)                          # every encoder tensor exactly twice
+    assert f"encoder {len(enc)} tensors in {2 * len(enc)} slots" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("scale", ["1", "2"])
+def test_dup_encoder_is_still_stepped_twice(monkeypatch, scale):
+    monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
+    monkeypatch.setenv("NETT_ENC_LR_SCALE", scale)
+    agent = _agent(monkeypatch)
+    _rollout_and_update(agent)
+    e = encoder_parameters(agent)[0]
+    h = agent.optimizer.param_groups[0]["params"][0]
+    assert _step_count(agent, e) == 2 * _step_count(agent, h) > 0
+
+
+def test_dup_scale_one_trains_identically_to_dup_unset(monkeypatch):
+    monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
+    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    a = _agent(monkeypatch, seed=7)
+    _rollout_and_update(a)
+    monkeypatch.setenv("NETT_ENC_LR_SCALE", "1")
+    b = _agent(monkeypatch, seed=7)
+    _rollout_and_update(b)
+    sa, sb = a.policy.state_dict(), b.policy.state_dict()
+    for k in sa:
+        assert torch.equal(sa[k], sb[k]), k
 
 
 def test_term_owning_its_optimizer_refused(monkeypatch):

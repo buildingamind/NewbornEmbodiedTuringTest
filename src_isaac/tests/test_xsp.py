@@ -1167,6 +1167,9 @@ INITCKPT1030_FILES = ("nett_skrl/recording/run_recorder.py",)
 #: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
 #: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
 BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
+#: researcher2 2026-11-06, LRP2 (notes/researcher2/lrp2): NETT_ENC_LR_SCALE puts the encoder in the aux head's param group at
+#: lr x scale (tests/test_enc_lr_scale.py); ppo_aux.py and agent_factory.py gain additive gated lines only.
+LRP2_1106_FILES = ("nett_skrl/brain/aux/enc_lr.py",)
 #: owner 2026-10-27 (policy/value head default linear -> [64, 64]): the ONLY admitted campaign_train.py removals are the
 #: old linear-default NETT_HIDDEN_SIZES comment + parse (now unset/"" = [64, 64], "[]" = linear). Each must be in the diff.
 OWNER1027_REMOVED = {"examples/campaign_train.py": (
@@ -1232,7 +1235,7 @@ def test_no_other_brain_file_changed():
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
                                               + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES + TEXGUARD187_FILES
-                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES + BL2_1102_FILES + BL2_1104_FILES}
+                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES + BL2_1102_FILES + BL2_1104_FILES + LRP2_1106_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 

@@ -7,7 +7,8 @@ step and the heads' step together. This knob separates them.
 * SET: the encoder's parameters (the unique set over ``policy.encoder`` and ``value.encoder``) leave the
   PPO param group(s) IN PLACE (xsp2_aux.exclude_from_optimizer, so ``checkpoint_modules["optimizer"]``
   keeps the same object). They join the aux head's group, which is set to ``base x scale``. The heads keep
-  ``base``. NETT_DIAG_LR_ANNEAL=linear anneals each group from its own base (ppo_metrics._lr_anneal_base).
+  ``base``. Under NETT_SHARED_ENCODER_DUP=1 each encoder tensor keeps both of its slots (stepped twice per update,
+  as the DUP recipe always was) in the new group. NETT_DIAG_LR_ANNEAL=linear anneals each group from its own base (ppo_metrics._lr_anneal_base).
   One banner line states both lrs.
 
 Refused, with the reason, rather than trained without the split:
@@ -15,7 +16,6 @@ Refused, with the reason, rather than trained without the split:
 * an agent that is not AuxLossPPO, or an AuxLossPPO with no active aux term (agent_factory / AuxLossPPO);
 * a term that owns its optimizer (xsp2 / slot_recon / stp): those already set their own LR scale;
 * a skrl learning_rate_scheduler (KLAdaptiveLR writes ONE lr into every group);
-* NETT_SHARED_ENCODER_DUP=1 (the duplicated-encoder wiring cannot be kept once the encoder has its own group);
 * an encoder with no trainable parameter in the optimizer (frozen: the scale would act on nothing);
 * a resumed optimizer (Adam state present at the first update): the saved groups carry the parent's lrs.
 """
@@ -72,21 +72,27 @@ def split_encoder_group(optimizer, enc_params, head_params, scale: float) -> dic
     if len(lrs) != 1:
         raise ValueError(f"{ENC_LR_SCALE_ENV}: the optimizer already holds groups at different lrs {sorted(lrs)}")
     base = lrs.pop()
-    in_ppo = {id(p) for g in groups[:-1] for p in g["params"]}
-    enc = [p for p in enc_params if id(p) in in_ppo]
+    # Each encoder tensor moves with its MULTIPLICITY: under NETT_SHARED_ENCODER_DUP=1 (the BL2 recipe) skrl's chain holds
+    # the shared encoder twice and Adam steps it twice per update; it stays twice in the new group, so DUP keeps its
+    # meaning and only the lr changes. Deduped (the default) it is once.
+    count = {}
+    for g in groups[:-1]:
+        for p in g["params"]:
+            count[id(p)] = count.get(id(p), 0) + 1
+    enc = [p for p in enc_params if id(p) in count]
     if not any(p.requires_grad for p in enc):
         raise ValueError(f"{ENC_LR_SCALE_ENV}: the encoder has no trainable parameter in the optimizer "
                          "(frozen encoder?); the scale would act on nothing")
+    moved = [p for p in enc for _ in range(count[id(p)])]
     removed = exclude_from_optimizer(optimizer, enc)
-    if removed != len(enc):
-        raise ValueError(f"{ENC_LR_SCALE_ENV}: removed {removed} encoder tensors, expected {len(enc)} "
-                         "(a duplicated encoder parameter in the optimizer)")
+    if removed != len(moved):
+        raise ValueError(f"{ENC_LR_SCALE_ENV}: removed {removed} encoder tensors, expected {len(moved)}")
     if any(not g["params"] for g in groups[:-1]):
         raise ValueError(f"{ENC_LR_SCALE_ENV}: a param group holds only encoder parameters; no head would keep the base lr")
-    groups[-1]["params"].extend(enc)
+    groups[-1]["params"].extend(moved)
     groups[-1]["lr"] = base * scale
     return {"base": base, "encoder_lr": base * scale, "encoder_tensors": len(enc), "head_tensors": len(head),
-            "frozen_tensors": sum(not p.requires_grad for p in enc)}
+            "frozen_tensors": sum(not p.requires_grad for p in enc), "encoder_slots": len(moved)}
 
 
 def refuse_resumed(optimizer) -> None:

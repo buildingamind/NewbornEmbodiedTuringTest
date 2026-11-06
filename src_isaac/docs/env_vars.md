@@ -28,7 +28,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
-| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:530` |
+| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:531` |
 | `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:414` |
 | `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+8 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:139`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
@@ -81,7 +81,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:159` |
 | `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:161` |
 | `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:160` |
-| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:528`<br>`nett_skrl/brain/aux/ppo_aux.py:714` |
+| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:529`<br>`nett_skrl/brain/aux/ppo_aux.py:715` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |

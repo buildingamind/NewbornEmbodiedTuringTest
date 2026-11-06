@@ -488,8 +488,9 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
             _split = split_encoder_group(self.optimizer, encoder_parameters(self),
                                          self._aux.head.parameters(), self._enc_lr_scale)
             print(f"[NETT lr] groups heads={_split['base']:.6g} encoder+aux={_split['encoder_lr']:.6g} "
-                  f"({ENC_LR_SCALE_ENV}={self._enc_lr_scale:g}; encoder {_split['encoder_tensors']} tensors "
-                  f"[{_split['frozen_tensors']} frozen], aux head {_split['head_tensors']})", flush=True)
+                  f"({ENC_LR_SCALE_ENV}={self._enc_lr_scale:g}; encoder {_split['encoder_tensors']} tensors in "
+                  f"{_split['encoder_slots']} slots [{_split['frozen_tensors']} frozen], aux head {_split['head_tensors']})",
+                  flush=True)
         # ⭐ A TERM THAT OWNS ITS OPTIMIZER (xsp2, owner DECISIONS §87). Its `head` above is empty,
         # so the param group just added holds nothing; bind_agent REMOVES the encoder's parameters
         # from this optimizer (in place), builds the term's own Adam (lr = this optimizer's lr x
