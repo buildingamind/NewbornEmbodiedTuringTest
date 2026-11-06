@@ -78,6 +78,7 @@ BL2_1103_EMBDIV_LABELS = {f"{t}+{f}" for t in ("CNN-D512P", "ViT-P8-666K", "3DCN
 #: owner 2026-11-04, BL2 binding: 3DCNN-CLTT-Ref + random brightness / + first-layer (stem) LayerNorm (tests/test_bl2_rb_ln1.py);
 #: capture_observations.py binds the brightness wrapper as test (it refuses an unbound observation).
 BL2_1104_RBLN1_LABELS = {"3DCNN-CLTT-Ref+RB", "3DCNN-CLTT-Ref+LN1"}
+EGO1106_LABELS = {"CNN-D512P+DVS2F"}   # FINDINGS add. 351/352 (owner 11-06 egomotion DVS pilot, head-bob arm)
 BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
@@ -1115,7 +1116,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
