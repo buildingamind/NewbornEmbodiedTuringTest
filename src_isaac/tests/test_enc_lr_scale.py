@@ -1,4 +1,4 @@
-"""NETT_ENC_LR_SCALE (nett_skrl/brain/aux/enc_lr.py): the encoder + aux head in ONE param group at lr x scale.
+"""NETT_ENCAUX_LR_SCALE (nett_skrl/brain/aux/enc_lr.py): the encoder + aux head in ONE param group at lr x scale.
 
 LRP2 (workspace notes/researcher2/lrp2): add. 327's "2x LR" doubled the encoder step and the heads' step together;
 this knob separates them. Production path throughout: Brain -> build_agents -> AuxLossPPO(cltt_ref), shared encoder.
@@ -38,7 +38,7 @@ def _all_model_ids(agent):
 # ── unset: the param groups are exactly today's ──────────────────────────────────────────────────
 
 def test_unset_groups_are_unchanged(monkeypatch):
-    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    monkeypatch.delenv("NETT_ENCAUX_LR_SCALE", raising=False)
     agent = _agent(monkeypatch)
     groups = agent.optimizer.param_groups
     assert len(groups) == 2
@@ -50,7 +50,7 @@ def test_unset_groups_are_unchanged(monkeypatch):
 
 @pytest.mark.parametrize("empty", ["", "  "])
 def test_empty_value_is_unset(monkeypatch, empty):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", empty)
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", empty)
     assert enc_lr.enc_lr_scale() is None
 
 
@@ -58,7 +58,7 @@ def test_empty_value_is_unset(monkeypatch, empty):
 
 @pytest.mark.parametrize("scale", [0.5, 2.0, 4.0])
 def test_set_partitions_exactly(monkeypatch, scale, capsys):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", str(scale))
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", str(scale))
     agent = _agent(monkeypatch)
     assert agent.policy.encoder is agent.value.encoder               # the shared encoder, counted once below
     enc = _ids(encoder_parameters(agent))
@@ -78,10 +78,10 @@ def test_set_partitions_exactly(monkeypatch, scale, capsys):
 
 def test_scale_one_trains_identically_to_unset(monkeypatch):
     """Scale 1 moves tensors between groups and changes nothing else: same Adam math per tensor, same clip set."""
-    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    monkeypatch.delenv("NETT_ENCAUX_LR_SCALE", raising=False)
     a = _agent(monkeypatch, seed=3)
     _rollout_and_update(a)
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "1")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "1")
     b = _agent(monkeypatch, seed=3)
     _rollout_and_update(b)
     sa, sb = a.policy.state_dict(), b.policy.state_dict()
@@ -94,11 +94,11 @@ def test_scale_one_trains_identically_to_unset(monkeypatch):
 
 def test_scale_moves_only_the_encoder_and_head_step(monkeypatch):
     """At scale 2 the heads' first step equals the unset run's; the encoder's does not."""
-    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    monkeypatch.delenv("NETT_ENCAUX_LR_SCALE", raising=False)
     a = _agent(monkeypatch, seed=5)
     p0 = {k: v.clone() for k, v in a.policy.state_dict().items()}
     _rollout_and_update(a)
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     b = _agent(monkeypatch, seed=5)
     assert all(torch.equal(p0[k], v) for k, v in b.policy.state_dict().items())
     _rollout_and_update(b)
@@ -111,7 +111,7 @@ def test_scale_moves_only_the_encoder_and_head_step(monkeypatch):
 
 
 def test_each_group_anneals_from_its_own_base_and_is_logged(monkeypatch):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "4")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "4")
     monkeypatch.setenv("NETT_DIAG_LR_ANNEAL", "linear")
     agent = _agent(monkeypatch)
     _rollout_and_update(agent)                                        # update(timestep=16, timesteps=100)
@@ -122,7 +122,7 @@ def test_each_group_anneals_from_its_own_base_and_is_logged(monkeypatch):
 
 
 def test_unset_logs_no_encoder_lr(monkeypatch):
-    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    monkeypatch.delenv("NETT_ENCAUX_LR_SCALE", raising=False)
     agent = _agent(monkeypatch)
     _rollout_and_update(agent)
     assert ENC_LR_KEY not in agent.tracking_data
@@ -132,20 +132,20 @@ def test_unset_logs_no_encoder_lr(monkeypatch):
 
 @pytest.mark.parametrize("bad", ["0", "-1", "nan", "inf", "x2"])
 def test_bad_values_refused(monkeypatch, bad):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", bad)
-    with pytest.raises(ValueError, match="NETT_ENC_LR_SCALE"):
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", bad)
+    with pytest.raises(ValueError, match="NETT_ENCAUX_LR_SCALE"):
         enc_lr.enc_lr_scale()
 
 
 def test_no_aux_agent_refused(monkeypatch):
     monkeypatch.delenv("NETT_AUX_LOSS", raising=False)
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     with pytest.raises(ValueError, match="applied only by AuxLossPPO"):
         _agent(monkeypatch, aux=None)
 
 
 def test_resumed_optimizer_refused(monkeypatch):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     agent = _agent(monkeypatch)
     p = agent.optimizer.param_groups[0]["params"][0]
     agent.optimizer.state[p] = {"step": torch.tensor(3.0)}            # what agent.load leaves behind
@@ -154,7 +154,7 @@ def test_resumed_optimizer_refused(monkeypatch):
 
 
 def test_frozen_encoder_refused(monkeypatch):
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     monkeypatch.setenv("NETT_FREEZE_ENCODER", "1")
     with pytest.raises(ValueError, match="no trainable parameter"):
         _agent(monkeypatch)
@@ -169,7 +169,7 @@ def _step_count(agent, p):
 
 def test_dup_keeps_both_slots_in_the_encoder_group(monkeypatch, capsys):
     monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     agent = _agent(monkeypatch)
     enc = _ids(encoder_parameters(agent))
     g0, g1 = (_ids(g["params"]) for g in agent.optimizer.param_groups)
@@ -183,7 +183,7 @@ def test_dup_keeps_both_slots_in_the_encoder_group(monkeypatch, capsys):
 @pytest.mark.parametrize("scale", ["1", "2"])
 def test_dup_encoder_is_still_stepped_twice(monkeypatch, scale):
     monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", scale)
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", scale)
     agent = _agent(monkeypatch)
     _rollout_and_update(agent)
     e = encoder_parameters(agent)[0]
@@ -193,10 +193,10 @@ def test_dup_encoder_is_still_stepped_twice(monkeypatch, scale):
 
 def test_dup_scale_one_trains_identically_to_dup_unset(monkeypatch):
     monkeypatch.setenv("NETT_SHARED_ENCODER_DUP", "1")
-    monkeypatch.delenv("NETT_ENC_LR_SCALE", raising=False)
+    monkeypatch.delenv("NETT_ENCAUX_LR_SCALE", raising=False)
     a = _agent(monkeypatch, seed=7)
     _rollout_and_update(a)
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "1")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "1")
     b = _agent(monkeypatch, seed=7)
     _rollout_and_update(b)
     sa, sb = a.policy.state_dict(), b.policy.state_dict()
@@ -212,6 +212,6 @@ def test_term_owning_its_optimizer_refused(monkeypatch):
         term.owns_optimizer = True
         return term
     monkeypatch.setitem(ppo_aux.AUX_LOSSES, "cltt_ref", owning)
-    monkeypatch.setenv("NETT_ENC_LR_SCALE", "2")
+    monkeypatch.setenv("NETT_ENCAUX_LR_SCALE", "2")
     with pytest.raises(ValueError, match="owns its optimizer"):
         _agent(monkeypatch)

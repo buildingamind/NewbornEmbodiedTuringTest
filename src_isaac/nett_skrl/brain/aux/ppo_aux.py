@@ -381,7 +381,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         super().__init__(*args, **kwargs)
 
         self._aux = None
-        # NETT_ENC_LR_SCALE (enc_lr.py): read once; every path below that leaves no aux term refuses it.
+        # NETT_ENCAUX_LR_SCALE (enc_lr.py): read once; every path below that leaves no aux term refuses it.
         self._enc_lr_scale = enc_lr_scale()
         self._enc_lr_checked = False
         if self._aux_kind == "none":
@@ -476,7 +476,7 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                 {"params": list(self._aux.head.parameters())}
             )
         if self._enc_lr_scale is not None:
-            # NETT_ENC_LR_SCALE: the encoder joins the head's group (just added) at lr x scale (enc_lr.py).
+            # NETT_ENCAUX_LR_SCALE: the encoder joins the head's group (just added) at lr x scale (enc_lr.py).
             if getattr(self._aux, "owns_optimizer", False):
                 raise ValueError(f"{ENC_LR_SCALE_ENV}: aux {self._aux_kind!r} owns its optimizer and sets its own "
                                  "LR scale; the two would conflict")

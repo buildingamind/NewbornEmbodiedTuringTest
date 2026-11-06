@@ -1009,7 +1009,7 @@ INITCKPT1030_FILES = ("nett_skrl/recording/run_recorder.py",)
 #: BASELINE G1b (owner 2026-10-28): the mae aux's NatureCNN masked-input path and the slot_contrast_257 aux (test_baseline_aux.py);
 #: ppo_aux.py gains the one "slot_contrast_257" entry (additive).
 BASELINE_FILES = ("nett_skrl/brain/aux/mae_aux.py", "nett_skrl/brain/aux/slot_contrast_257_aux.py")
-#: researcher2 2026-11-06, LRP2 (notes/researcher2/lrp2): NETT_ENC_LR_SCALE puts the encoder in the aux head's param group at
+#: researcher2 2026-11-06, LRP2 (notes/researcher2/lrp2): NETT_ENCAUX_LR_SCALE puts the encoder in the aux head's param group at
 #: lr x scale (tests/test_enc_lr_scale.py); ppo_aux.py and agent_factory.py gain additive gated lines only.
 LRP2_1106_FILES = ("nett_skrl/brain/aux/enc_lr.py",)
 #: owner 2026-10-27 (policy/value head default linear -> [64, 64]): the ONLY admitted campaign_train.py removals are the

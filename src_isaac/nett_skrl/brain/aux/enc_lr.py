@@ -1,4 +1,4 @@
-"""NETT_ENC_LR_SCALE: the encoder and the aux head step at ``lr x scale``, the policy/value heads at ``lr``.
+"""NETT_ENCAUX_LR_SCALE: the encoder and the aux head step at ``lr x scale``, the policy/value heads at ``lr``.
 
 LRP2 (workspace FINDINGS add. 327-329, notes/researcher2/lrp2): the add. 327 "2x LR" doubled the encoder
 step and the heads' step together. This knob separates them.
@@ -24,12 +24,12 @@ from __future__ import annotations
 import math
 import os
 
-ENC_LR_SCALE_ENV = "NETT_ENC_LR_SCALE"
+ENC_LR_SCALE_ENV = "NETT_ENCAUX_LR_SCALE"
 ENC_LR_KEY = "Learning / Encoder learning rate"
 
 
 def enc_lr_scale() -> float | None:
-    """The NETT_ENC_LR_SCALE value; None when unset or empty."""
+    """The NETT_ENCAUX_LR_SCALE value; None when unset or empty."""
     raw = os.environ.get(ENC_LR_SCALE_ENV, "").strip()
     if not raw:
         return None

@@ -349,10 +349,10 @@ def build_agents(brain, env, device: torch.device, *, config=None) -> list:
         if _unapplied:
             raise ValueError(f"{sorted(_unapplied)} are not applied by "
                              f"{getattr(agent_cls, '__name__', agent_cls)}.update")
-        # NETT_ENC_LR_SCALE splits the encoder into its own param group inside AuxLossPPO only (aux/enc_lr.py).
-        if os.environ.get("NETT_ENC_LR_SCALE", "").strip() and not (
+        # NETT_ENCAUX_LR_SCALE splits the encoder into its own param group inside AuxLossPPO only (aux/enc_lr.py).
+        if os.environ.get("NETT_ENCAUX_LR_SCALE", "").strip() and not (
                 isinstance(agent_cls, type) and issubclass(agent_cls, AuxLossPPO)):
-            raise ValueError(f"NETT_ENC_LR_SCALE is applied only by AuxLossPPO (an aux-loss arm), not by "
+            raise ValueError(f"NETT_ENCAUX_LR_SCALE is applied only by AuxLossPPO (an aux-loss arm), not by "
                              f"{getattr(agent_cls, '__name__', agent_cls)}")
         agent = agent_cls(
             models=models,

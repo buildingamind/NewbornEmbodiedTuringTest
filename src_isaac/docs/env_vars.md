@@ -119,8 +119,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_DVS_WINDOW_TAU` | `""` | `nett_skrl/body/wrappers/dvs_polarity.py:204` |
 | `NETT_EARLY_TERM_BONUS` | `""` | `nett_skrl/brain/agent_factory.py:164` |
 | `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:166` |
+| `NETT_ENCAUX_LR_SCALE` | `""` | `nett_skrl/brain/agent_factory.py:353`<br>`nett_skrl/brain/aux/enc_lr.py:33` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
-| `NETT_ENC_LR_SCALE` | `""` | `nett_skrl/brain/agent_factory.py:353`<br>`nett_skrl/brain/aux/enc_lr.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:2201` |
 | `NETT_ENVS` | `"16"` | `examples/train_replicate_single.py:35` |
