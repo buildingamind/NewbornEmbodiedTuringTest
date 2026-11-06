@@ -40,6 +40,8 @@ from ..models.utils.features import clear_feature_cache
 from ..models.utils.features import RL_NO_GRAD_ATTR
 from .knobs import NOT_MEASURED
 from .knobs import _env_flag_strict
+from .enc_lr import (ENC_LR_KEY, ENC_LR_SCALE_ENV, enc_lr_scale, encoder_parameters, refuse_resumed,
+                     split_encoder_group)
 from .simclr_aux import SimCLRAuxLoss
 
 
@@ -379,7 +381,12 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         super().__init__(*args, **kwargs)
 
         self._aux = None
+        # NETT_ENC_LR_SCALE (enc_lr.py): read once; every path below that leaves no aux term refuses it.
+        self._enc_lr_scale = enc_lr_scale()
+        self._enc_lr_checked = False
         if self._aux_kind == "none":
+            if self._enc_lr_scale is not None:
+                raise ValueError(f"{ENC_LR_SCALE_ENV} set with no aux term: the encoder+aux group would not exist")
             return
 
         # ⛔★★★★★ THIS SELECTION USED TO BE `if kind in ("simclr", "vicreg")` WITH NO
@@ -417,6 +424,8 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                 "This run is plain PPO; the aux objective contributes nothing.",
                 self._aux_kind,
             )
+            if self._enc_lr_scale is not None:
+                raise ValueError(f"{ENC_LR_SCALE_ENV} set with a zero-weight aux term")
             return
 
         # ⚠ A ONE-SAMPLE AUX BATCH IS A SILENT ZERO-GRADIENT PATH FOR THIS WHOLE
@@ -466,6 +475,21 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
             self.optimizer.add_param_group(
                 {"params": list(self._aux.head.parameters())}
             )
+        if self._enc_lr_scale is not None:
+            # NETT_ENC_LR_SCALE: the encoder joins the head's group (just added) at lr x scale (enc_lr.py).
+            if getattr(self._aux, "owns_optimizer", False):
+                raise ValueError(f"{ENC_LR_SCALE_ENV}: aux {self._aux_kind!r} owns its optimizer and sets its own "
+                                 "LR scale; the two would conflict")
+            if self.optimizer is None:
+                raise ValueError(f"{ENC_LR_SCALE_ENV}: the agent has no optimizer to split")
+            if getattr(self, "scheduler", None) is not None:
+                raise ValueError(f"{ENC_LR_SCALE_ENV} with a skrl learning_rate_scheduler: it writes one lr into "
+                                 "every group")
+            _split = split_encoder_group(self.optimizer, encoder_parameters(self),
+                                         self._aux.head.parameters(), self._enc_lr_scale)
+            print(f"[NETT lr] groups heads={_split['base']:.6g} encoder+aux={_split['encoder_lr']:.6g} "
+                  f"({ENC_LR_SCALE_ENV}={self._enc_lr_scale:g}; encoder {_split['encoder_tensors']} tensors "
+                  f"[{_split['frozen_tensors']} frozen], aux head {_split['head_tensors']})", flush=True)
         # ⭐ A TERM THAT OWNS ITS OPTIMIZER (xsp2, owner DECISIONS §87). Its `head` above is empty,
         # so the param group just added holds nothing; bind_agent REMOVES the encoder's parameters
         # from this optimizer (in place), builds the term's own Adam (lr = this optimizer's lr x
@@ -515,6 +539,9 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         # unchanged. The aux head's param group is scheduled with the rest of the optimizer.
         # NETT_ADV_NORM=minibatch is NOT applied here; agent_factory refuses it for this class.
         from ..ppo_metrics import apply_diag_schedules
+        if self._enc_lr_scale is not None and not self._enc_lr_checked:
+            refuse_resumed(self.optimizer)   # before the schedules: _lr_anneal_base would read loaded lrs
+            self._enc_lr_checked = True
         apply_diag_schedules(self, timestep=timestep, timesteps=timesteps)
         if self._aux is None:
             # Disabled path: identical to stock PPO (zero overhead, no risk).
@@ -833,6 +860,8 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
         self.track_data("Policy / Standard deviation", self.policy.distribution(role="policy").stddev.mean().item())
         if self.scheduler:
             self.track_data("Learning / Learning rate", self.scheduler.get_last_lr()[0])
+        if self._enc_lr_scale is not None:
+            self.track_data(ENC_LR_KEY, float(self.optimizer.param_groups[-1]["lr"]))
 
         # SB3/Unity-parity health metrics (KL divergence, clip fraction,
         # explained variance, entropy) — same as the stock MetricsPPO path.

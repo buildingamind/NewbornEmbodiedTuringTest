@@ -16,7 +16,7 @@ statically says *caller-supplied* rather than printing the identifier, which wou
 a value. Where a variable is read in more than one place the defaults can differ — every
 site is listed rather than collapsed, because a knob with two defaults is a real hazard.
 
-317 variables.
+318 variables.
 
 | variable | default(s) | read at |
 |---|---|---|
@@ -28,8 +28,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_AFF_CENTER_MOMENTUM` | `0.9` | `nett_skrl/brain/aux/patch_affinity_aux.py:115` |
 | `NETT_AUX_AFF_OFFSET` | `8` | `nett_skrl/brain/aux/token_term.py:223` |
 | `NETT_AUX_AFF_TEMP` | `0.1` | `nett_skrl/brain/aux/patch_affinity_aux.py:113` |
-| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:506` |
-| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:407` |
+| `NETT_AUX_AFTER_PPO_BACKWARD` | `True` | `nett_skrl/brain/aux/ppo_aux.py:530` |
+| `NETT_AUX_ALLOW_ZERO` | `""` | `nett_skrl/brain/agent_factory.py:58`<br>`nett_skrl/brain/aux/ppo_aux.py:414` |
 | `NETT_AUX_BATCH` | `"0"`, `"128"`, `"256"`, `32`, `48`, `96` | `nett_skrl/brain/agent_factory.py:73`<br>`nett_skrl/brain/aux/cltt_aux.py:74`<br>`nett_skrl/brain/aux/cltt_ref_aux.py:912`<br>`nett_skrl/brain/aux/cltt_schneider_aux.py:90`<br>`nett_skrl/brain/aux/dual_stream.py:224`<br>`nett_skrl/brain/aux/eoo_aux.py:161`<br>*(+8 more)* |
 | `NETT_AUX_CLTT_CHANNELS_PER_FRAME` | *(required / no literal default)* | `nett_skrl/body/wrappers/dvs_polarity.py:139`<br>`nett_skrl/brain/aux/cltt_views.py:31` |
 | `NETT_AUX_CLTT_MASK_POSITIVE_TWIN` | `True` | `nett_skrl/brain/aux/cltt_ref_aux.py:898` |
@@ -81,7 +81,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_AUX_SLOTFG_TEMP` | `0.1` | `nett_skrl/brain/aux/slot_fg_aux.py:159` |
 | `NETT_AUX_SLOTFG_W_REC` | `1.0` | `nett_skrl/brain/aux/slot_fg_aux.py:161` |
 | `NETT_AUX_SLOTFG_W_SS` | `0.5` | `nett_skrl/brain/aux/slot_fg_aux.py:160` |
-| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:504`<br>`nett_skrl/brain/aux/ppo_aux.py:687` |
+| `NETT_AUX_STRICT` | `""`, `False` | `nett_skrl/brain/aux/gwm_dual_aux.py:29`<br>`nett_skrl/brain/aux/ppo_aux.py:528`<br>`nett_skrl/brain/aux/ppo_aux.py:714` |
 | `NETT_AUX_TRANSIT_MASK` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:119` |
 | `NETT_AUX_VICREG_TT_DIAG` | `False` | `nett_skrl/brain/aux/vicreg_tt_aux.py:115` |
 | `NETT_AUX_VICREG_TT_OFFSETS` | `"8"` | `nett_skrl/brain/aux/vicreg_tt_aux.py:88` |
@@ -120,6 +120,7 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_EARLY_TERM_BONUS` | `""` | `nett_skrl/brain/agent_factory.py:164` |
 | `NETT_EARLY_TERM_GAMMA` | `""` | `nett_skrl/brain/agent_factory.py:166` |
 | `NETT_ENCODER` | `"compact_3dcnn"`, `"compact_vit"`, `"nature_cnn"` | `examples/train_binding_8brain.py:23`<br>`examples/train_binding_8brain_targets.py:34`<br>`examples/train_replicate_encoders.py:25`<br>`examples/train_replicate_single.py:33` |
+| `NETT_ENC_LR_SCALE` | `""` | `nett_skrl/brain/agent_factory.py:353`<br>`nett_skrl/brain/aux/enc_lr.py:33` |
 | `NETT_ENT` | `"0.01"` | `examples/train_binding_8brain_targets.py:160` |
 | `NETT_ENTROPY` | `"0.01"` | `examples/campaign_train.py:2201` |
 | `NETT_ENVS` | `"16"` | `examples/train_replicate_single.py:35` |
