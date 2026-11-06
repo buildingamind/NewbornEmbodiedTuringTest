@@ -1509,6 +1509,10 @@ BASELINE_VITP8_CFG = {**VIT_CFG, "patch_size": 8, "embed_dim": 148}
 MODELS["CNN-D512P"] = dict(encoder="nature_cnn", cfg=dict(BASELINE_D512P_CFG), framestack=False)
 MODELS["ViT-P8-666K"] = dict(encoder="compact_vit", cfg=dict(BASELINE_VITP8_CFG), framestack=False)
 MODELS["CNN-D512P+DVS"] = {**MODELS["CNN-D512P"], "pre": ("dvs_polarity",)}
+# FINDINGS add. 351 (owner 2026-11-06, egomotion DVS pilot head-bob; "all CNNs we are running should be the D512P variety"):
+# the D512P trunk on a 2-frame DVS stack, early fusion as CNN2F (dvs_polarity, then framestack: 2 x 6 = 12 channels under
+# NETT_DVS_COLOR=1). With NETT_DECISION_LOOP=2 + NETT_DECISION_PHASE=last the stack is [hold events, move events].
+MODELS["CNN-D512P+DVS2F"] = {**MODELS["CNN-D512P+DVS"], "framestack": True}
 MODELS["ViT-P8-666K+DVS"] = {**MODELS["ViT-P8-666K"], "pre": ("dvs_polarity",)}
 MODELS["CNN-D512P+CLTT-Ref"] = {**MODELS["CNN-D512P"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K+CLTT-Ref"] = {**MODELS["ViT-P8-666K"], "aux": "cltt_ref", "aux_weight": 1.0}

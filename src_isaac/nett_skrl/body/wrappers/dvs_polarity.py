@@ -114,6 +114,12 @@ class DVSPolarity(gym.Wrapper):
                                 sum across two decisions and refuses.
         ``NETT_DVS_WINDOW_TAU`` decay constant tau > 0 in ticks, lam = exp(-1/tau) (FINDINGS §4dh.44h.183). Unset =
                                 lam 1, a plain per-polarity event count (W events = 255). Needs NETT_DVS_WINDOW.
+        ``NETT_DVS_MOVE_GAIN``  g in [0, 1] (default unset = no change, bit for bit). FINDINGS add. 351 (owner
+                                2026-11-06, egomotion DVS pilot, head-bob arm): the events of a tick on which the env
+                                applied the agent's motion (repo B ``_last_decision_mask``, read from the unwrapped
+                                env, never tick parity: this wrapper also sees the pre-roll ticks) are multiplied by
+                                g, so 255 -> round(255 g). Needs NETT_DECISION_LOOP=P >= 2 (without a window every
+                                tick is a move tick) and refuses NETT_DVS_WINDOW.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -140,6 +146,8 @@ class DVSPolarity(gym.Wrapper):
         if self.color and cpf is not None and cpf.strip() != "6":
             raise ValueError(f"NETT_DVS_COLOR=1 makes one frame 6 channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
         self.window, self.tau = self._window_knobs()
+        self.move_gain = self._move_gain_knob(self.window)
+        self._raw = None                        # the unwrapped env carrying _last_decision_mask (move gain only)
         if self.window is not None:
             lam = 1.0 if self.tau is None else math.exp(-1.0 / self.tau)
             w = [lam ** k for k in range(self.window)]          # k = 0 is the NEWEST tick
@@ -228,6 +236,56 @@ class DVSPolarity(gym.Wrapper):
 
     #: decisions averaged for the one-time density line
     DENSITY_DECISIONS = 50
+
+    @staticmethod
+    def _move_gain_knob(window):
+        """``NETT_DVS_MOVE_GAIN`` -> g | None (unset). Refuses anything ambiguous."""
+        raw = os.environ.get("NETT_DVS_MOVE_GAIN", "").strip()
+        if raw == "":
+            return None
+        try:
+            g = float(raw)
+        except ValueError as exc:
+            raise ValueError(f"NETT_DVS_MOVE_GAIN={raw!r}: expected a number in [0, 1].") from exc
+        if not (0.0 <= g <= 1.0):
+            raise ValueError(f"NETT_DVS_MOVE_GAIN={raw!r}: expected a number in [0, 1].")
+        loop = os.environ.get("NETT_DECISION_LOOP", "").strip()
+        if not (loop.isdigit() and int(loop) >= 2):
+            raise ValueError(f"NETT_DVS_MOVE_GAIN={raw} needs NETT_DECISION_LOOP=P >= 2 (got {loop!r}): without a "
+                             f"window every tick is a move tick and the gain would scale every event.")
+        if window is not None:
+            raise ValueError(f"NETT_DVS_MOVE_GAIN with NETT_DVS_WINDOW={window}: a window sums ticks of both kinds. "
+                             f"Refusing.")
+        print(f"[NETT dvs move gain] g={g:g}: events of move ticks (the env's decision mask) x {g:g}, hold ticks "
+              f"unchanged (FINDINGS add. 351)", flush=True)
+        return g
+
+    def _move_mask(self):
+        """The env's decision mask for the tick just stepped (True = the agent's motion was applied)."""
+        if self._raw is None:
+            current, seen = self.env, set()
+            while current is not None and id(current) not in seen and not hasattr(current, "_last_decision_mask"):
+                seen.add(id(current))
+                current = getattr(current, "_env", None) or getattr(current, "env", None)
+            if current is None or not hasattr(current, "_last_decision_mask"):
+                raise RuntimeError("NETT_DVS_MOVE_GAIN: no env under dvs_polarity carries _last_decision_mask.")
+            self._raw = current
+        return torch.as_tensor(self._raw._last_decision_mask).reshape(-1).bool()
+
+    def _apply_move_gain(self, events):
+        mask = self._move_mask()
+        if not self._batched or int(mask.numel()) != int(events.shape[0]):
+            raise RuntimeError(f"NETT_DVS_MOVE_GAIN: decision mask has {int(mask.numel())} envs, events "
+                               f"{tuple(events.shape)} (batched={self._batched}).")
+        if not bool(mask.any()):
+            return events
+        if isinstance(events, torch.Tensor):
+            m = mask.to(events.device)
+            events[m] = (events[m].to(torch.float32) * self.move_gain).round().to(torch.uint8)
+        else:
+            m = mask.cpu().numpy()
+            events[m] = np.round(events[m].astype(np.float32) * self.move_gain).astype(np.uint8)
+        return events
 
     def _density(self, y: torch.Tensor, res: torch.Tensor) -> None:
         """Diagnostic only (never changes an output): at decision ticks, the window map's density beside the density of ONE
@@ -379,6 +437,8 @@ class DVSPolarity(gym.Wrapper):
         obs, reward, terminated, truncated, info = self.env.step(action)
         policy = _policy_obs(obs)
         events = self._events(policy)
+        if self.move_gain is not None:
+            events = self._apply_move_gain(events)
         # ⚠ Per-env boundary: an episode that just reset has a previous frame from the OLD
         # episode, and the difference across that cut is a teleport, not motion. Zero those
         # envs' events and seed their buffer with the new first frame. Same hazard FrameStack

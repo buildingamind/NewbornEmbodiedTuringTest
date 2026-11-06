@@ -31,6 +31,7 @@ def _count(label, channels):
     ("CNN-D512P", 3, 666_272),
     ("ViT-P8-666K", 3, 659_704),
     ("CNN-D512P+DVS", 6, 672_416),        # DVS6: NETT_DVS_COLOR=1 -> 6 event channels
+    ("CNN-D512P+DVS2F", 12, 684_704),     # add. 351 head-bob: 2-frame DVS6 stack, early fusion (first conv 12 ch)
     ("ViT-P8-666K+DVS", 6, 688_120),
     ("CNN-D512P+CLTT-Ref", 3, 666_272),
     ("ViT-P8-666K+CLTT-Ref", 3, 659_704),
@@ -68,6 +69,20 @@ def test_baseline_label_specs():
     assert v["encoder"] == "compact_vivit" and v["framestack"] is True
     assert v["cfg"]["patch_size"] == 8 and v["cfg"]["temporal_mode"] == "early" and v["cfg"]["pool"] == "cls"
     assert v["cfg"]["features_dim"] == 512
+
+
+def test_dvs2f_label_spec():
+    """FINDINGS add. 351: the D512P+DVS label with a 2-frame stack, nothing else."""
+    m = ct.MODELS
+    assert m["CNN-D512P+DVS2F"] == {**m["CNN-D512P+DVS"], "framestack": True}
+    assert m["CNN-D512P+DVS2F"]["encoder"] == "nature_cnn" and m["CNN-D512P+DVS2F"]["pre"] == ("dvs_polarity",)
+    # events first, then the stack: the policy sees two per-tick event maps, never events of a stacked frame
+    assert ct.segmentation_wrappers(m["CNN-D512P+DVS2F"]) == ["dvs_polarity", "framestack"]
+    import torch
+    spec = m["CNN-D512P+DVS2F"]
+    cfg = {k: v for k, v in spec["cfg"].items() if k != "trainable"}
+    enc = encoder_mapping[spec["encoder"]](gym.spaces.Box(0, 255, (12, H, W), np.uint8), **cfg)
+    assert enc(torch.zeros(2, 12, H, W)).shape == (2, 512)
 
 
 def test_baseline_wave2_label_specs():
