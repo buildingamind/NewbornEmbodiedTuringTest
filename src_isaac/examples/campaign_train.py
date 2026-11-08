@@ -1546,6 +1546,16 @@ for _twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
 del _twin
 # owner 2026-11-02, BASELINE wave 2, binding: video / fovea CLTT-Ref twins (detached or attached is the launcher's NETT_DECOUPLE_ENCODER) and the ViT-P8 token-mixer ablation.
 MODELS["ViViT-P8-T2+CLTT-Ref"] = {**MODELS["ViViT-P8-T2"], "aux": "cltt_ref", "aux_weight": 1.0}
+# owner 2026-11-08 (workspace FINDINGS add. 379 / 379b, DVS settings pilot; label approved): the ViT-P8 video twin with
+# attached CLTT-Ref on COLOUR DVS events = "ViViT-P8-T2+CLTT-Ref" + pre=["dvs_polarity"] + channels_per_frame 6, NOTHING
+# ELSE (asserted below), as the §162 "-DVS6" twins are built. ⛔ MODELS HAS NO ENV FIELD: rows set NETT_DVS_COLOR=1,
+# NETT_AUX_CLTT_CHANNELS_PER_FRAME=6, NETT_DVS_THRESHOLD and NETT_DVS_BLUR / NETT_DVS_BLUR_KERNEL themselves.
+# enc @ 128x80, 12 channels (CPU-built 2026-11-08): 744,952 vs 688,120 for the RGB twin (+8.3%, the 6-channel patch embed).
+MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"] = {**MODELS["ViViT-P8-T2+CLTT-Ref"], "cfg": {**MODELS["ViViT-P8-T2+CLTT-Ref"]["cfg"], "channels_per_frame": 6}, "pre": ["dvs_polarity"]}
+assert "pre" not in MODELS["ViViT-P8-T2+CLTT-Ref"] and MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"]["pre"] == ["dvs_polarity"]
+assert MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"]["cfg"] == {**MODELS["ViViT-P8-T2+CLTT-Ref"]["cfg"], "channels_per_frame": 6}
+assert {k: v for k, v in MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"].items() if k not in ("cfg", "pre")} == \
+    {k: v for k, v in MODELS["ViViT-P8-T2+CLTT-Ref"].items() if k != "cfg"}
 MODELS["CNN-D512P+Fovea+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K+Fovea+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K-Mixer"] = {**MODELS["ViT-P8-666K"], "cfg": {**MODELS["ViT-P8-666K"]["cfg"], "attn_mode": "mixer", "embed_dim": 156}}   # S3 ViT-Mixer method: embed widened to match the ViT (656,099 vs 659,704, -0.55%)
