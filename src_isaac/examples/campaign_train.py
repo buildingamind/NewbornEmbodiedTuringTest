@@ -1561,6 +1561,18 @@ MODELS["ViT-P8-666K+Fovea+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea+DVS"], "
 # pairs fire only inside the fovea (mask x RGB is 0 outside), the luma pair over the whole frame. Rows set
 # NETT_DVS_COLOR=1 and NETT_AUX_CLTT_CHANNELS_PER_FRAME=8 (dvs_polarity refuses any other stated value under colour).
 MODELS["ViT-P8-666K+Fovea4ch+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_4ch", "dvs_polarity"), "aux": "cltt_ref", "aux_weight": 1.0}
+# owner 2026-11-09 (presenter relay), BL2 full rows on binding, Object1 + Object2: the original 3-channel fovea (fovea_mask,
+# radius 3 / sigma 1) on three attached-CLTT-Ref arms. Each label is its BL2 twin verbatim plus fovea_mask as the only `pre`,
+# so the video encoders stack foveated frames and CLTT-Ref views them at the default 3 channels per frame (no knob).
+#   ViT-P8-666K-Mixer+Fovea+CLTT-Ref   the token-mixer ablation + fovea + attached CLTT-Ref (BL2 ViT-P8:MixerFoveaCLTTA)
+#   3DCNN-CLTT-Ref+Fovea               the 3-channel sibling of 3DCNN-CLTT-Ref+Fovea4ch (BL2 D512P:VideoCLTTAFovea)
+#   ViViT-P8-T2+CLTT-Ref+Fovea         (BL2 ViT-P8:VideoCLTTAFovea)
+for _twin in ("ViT-P8-666K-Mixer", "3DCNN-CLTT-Ref", "ViViT-P8-T2+CLTT-Ref"):
+    assert "pre" not in MODELS[_twin], _twin
+del _twin
+MODELS["ViT-P8-666K-Mixer+Fovea+CLTT-Ref"] = {**MODELS["ViT-P8-666K-Mixer"], "pre": ("fovea_mask",), "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["3DCNN-CLTT-Ref+Fovea"] = {**MODELS["3DCNN-CLTT-Ref"], "pre": ("fovea_mask",)}
+MODELS["ViViT-P8-T2+CLTT-Ref+Fovea"] = {**MODELS["ViViT-P8-T2+CLTT-Ref"], "pre": ("fovea_mask",)}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =

@@ -88,6 +88,9 @@ FOVDVS1109_LABELS = {"ViT-P8-666K+Fovea+DVS", "ViT-P8-666K+Fovea+DVS+CLTT-Ref"}
 F4CDVS1109_LABELS = {"ViT-P8-666K+Fovea4ch+DVS+CLTT-Ref"}   # owner 2026-11-09 "Option 1": fovea_4ch -> 8-channel colour DVS (tests/test_fovea4ch_dvs.py)
 BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 FOVEA4CH1109_LABELS = {"CNN-D512P+Fovea4ch", "3DCNN-CLTT-Ref+Fovea4ch"}   # FOVEA-4CH pilot (owner 2026-11-09)
+#: owner 2026-11-09, BL2 full rows on binding: the original 3-channel fovea on three attached-CLTT-Ref arms
+#: (tests/test_bl2_fovea_cltt_labels.py). Labels only.
+BL2FULL1109_LABELS = {"ViT-P8-666K-Mixer+Fovea+CLTT-Ref", "3DCNN-CLTT-Ref+Fovea", "ViViT-P8-T2+CLTT-Ref+Fovea"}
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
 FOV = 150.0
@@ -1124,7 +1127,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
