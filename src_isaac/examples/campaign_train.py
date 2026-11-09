@@ -1583,6 +1583,18 @@ del _twin
 MODELS["ViT-P8-666K-Mixer+Fovea+CLTT-Ref"] = {**MODELS["ViT-P8-666K-Mixer"], "pre": ("fovea_mask",), "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["3DCNN-CLTT-Ref+Fovea"] = {**MODELS["3DCNN-CLTT-Ref"], "pre": ("fovea_mask",)}
 MODELS["ViViT-P8-T2+CLTT-Ref+Fovea"] = {**MODELS["ViViT-P8-T2+CLTT-Ref"], "pre": ("fovea_mask",)}
+# owner 2026-11-09 (presenter relay), BL2 full rows. Parsing (i) "CNN/ViT + DVS + CLTTA without video first": the single-frame
+# colour-DVS twins with attached CLTT-Ref; rows set NETT_DVS_COLOR=1 and NETT_AUX_CLTT_CHANNELS_PER_FRAME=6 (cltt_views refuses
+# colour DVS without it). (Parsing (ii), with video, uses 3DCNN-CLTT-Ref-DVS6 and ViViT-P8-T2+CLTT-Ref-DVS6.) Binding
+# "CNN/ViT + DVS + Fovea (+ CLTTA)": the D512P side of ViT-P8-666K+Fovea+DVS(+CLTT-Ref), built the same way (fovea_mask then
+# dvs_polarity, so the events are computed on the foveated frame).
+for _twin in ("CNN-D512P", "ViT-P8-666K"):
+    assert "aux" not in MODELS[_twin + "+DVS"] and MODELS[_twin + "+DVS"]["pre"] == ("dvs_polarity",), _twin
+del _twin
+MODELS["CNN-D512P+DVS+CLTT-Ref"] = {**MODELS["CNN-D512P+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["ViT-P8-666K+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["CNN-D512P+Fovea+DVS"] = {**MODELS["CNN-D512P"], "pre": ("fovea_mask", "dvs_polarity")}
+MODELS["CNN-D512P+Fovea+DVS+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
