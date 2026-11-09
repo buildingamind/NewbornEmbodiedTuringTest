@@ -1534,6 +1534,13 @@ MODELS["CNN-D512P+Fovea"] = {**MODELS["CNN-D512P"], "pre": ("fovea_mask",)}
 MODELS["ViT-P8-666K+Fovea"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_mask",)}
 MODELS["3DCNN+Fovea"] = {**MODELS["3DCNN"], "pre": ("fovea_mask",)}
 MODELS["ViViT-P8-T2+Fovea"] = {**MODELS["ViViT-P8-T2"], "pre": ("fovea_mask",)}
+# FOVEA-4CH pilot (owner 2026-11-09, via the planning session; descriptive, n=3, Binding Object1): the same fovea window as
+# fovea_mask, but colour and grey in SEPARATE channels -- ch0-2 = mask x RGB (0 outside), ch3 = BT.601 grey of the whole
+# frame (body/wrappers/fovea_4ch.py). Each label is its twin verbatim plus fovea_4ch as the innermost `pre`; the first
+# conv grows to 4 input channels (8 for the 2-frame 3DCNN stack). ⛔ Rows of the CLTT label set
+# NETT_AUX_CLTT_CHANNELS_PER_FRAME=4 (an 8-channel stack at the default 3 fails loudly: 8 % 3 != 0).
+MODELS["CNN-D512P+Fovea4ch"] = {**MODELS["CNN-D512P"], "pre": ("fovea_4ch",)}
+MODELS["3DCNN-CLTT-Ref+Fovea4ch"] = {**MODELS["3DCNN-CLTT-Ref"], "pre": ("fovea_4ch",)}
 for _twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
     assert "pre" not in MODELS[_twin], _twin
 del _twin
