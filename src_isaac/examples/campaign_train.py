@@ -1903,8 +1903,12 @@ def refuse_stray_embdiv_knobs(model: str, spec: dict) -> None:
 def refuse_embdiv_weight_knob(model: str, spec: dict) -> None:
     """NETT_AUX_EMBDIV_WEIGHT is lambda inside the "+CLTT-Ref+UNIF" aux (cltt_unif_aux.py) and nothing else reads it: on any
     other label -- a plain "+UNIF" arm included, whose lambda is NETT_AUX_WEIGHT_OVERRIDE -- the arm would run at a weight
-    its row does not name. Refuse it (the xsp2 rule)."""
+    its row does not name. Refuse it (the xsp2 rule). On a "+CLTT-Ref+UNIF" label it is REQUIRED: unset would run at the
+    term's 0.01 default, a lambda no row names (the term's default exists only for the registry sweep)."""
     if spec.get("aux") == CLTT_UNIF_KEY:
+        if not os.environ.get("NETT_AUX_EMBDIV_WEIGHT", "").strip():
+            raise ValueError(f"NETT_AUX_EMBDIV_WEIGHT unset on {model!r}: a +CLTT-Ref+UNIF arm must name its uniformity "
+                             "weight lambda (the term's 0.01 default is for the registry sweep only). Set it.")
         return
     if os.environ.get("NETT_AUX_EMBDIV_WEIGHT") is not None:
         raise ValueError(f"NETT_AUX_EMBDIV_WEIGHT set but arm {model!r} is not a +CLTT-Ref+UNIF arm (aux {spec.get('aux')!r}); "

@@ -353,9 +353,17 @@ def test_lambda_knob_refuses_on_every_other_label_and_admits_the_composites(monk
     for label in LABELS:
         ct.refuse_embdiv_weight_knob(label, ct.MODELS[label])
         ct.refuse_stray_embdiv_knobs(label, ct.MODELS[label])                 # NETT_AUX_EMBDIV_* admitted
-    monkeypatch.delenv(cu.UNIF_WEIGHT_ENV)
-    for label in ct.MODELS:                                                   # unset: nothing refuses
-        ct.refuse_embdiv_weight_knob(label, ct.MODELS[label])
+    for value in (None, "", "  "):                                            # unset / empty: only the composites refuse
+        if value is None:
+            monkeypatch.delenv(cu.UNIF_WEIGHT_ENV)
+        else:
+            monkeypatch.setenv(cu.UNIF_WEIGHT_ENV, value)
+        for label in ct.MODELS:
+            if label in LABELS:
+                with pytest.raises(ValueError, match="NETT_AUX_EMBDIV_WEIGHT unset"):
+                    ct.refuse_embdiv_weight_knob(label, ct.MODELS[label])
+            elif value is None:
+                ct.refuse_embdiv_weight_knob(label, ct.MODELS[label])
 
 
 def test_other_embdiv_knobs_admitted_on_composites_and_still_refused_on_clltta(monkeypatch):
