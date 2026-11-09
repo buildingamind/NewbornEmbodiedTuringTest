@@ -43,6 +43,11 @@ channel for each color)") replaces the luma line with the same rule applied to R
 i.e. (R+, R-, G+, G-, B+, B-), six channels, the same threshold and blur per colour. Unset keeps the
 two luma channels bit for bit. The paragraph below describes the luma default.
 
+⚠ FOUR PLANES, ONLY ON fovea_4ch (owner 2026-11-09, "Option 1", relayed by the presenter). Directly on top of the
+``fovea_4ch`` wrapper (ch0-2 = mask x RGB, ch3 = whole-frame BT.601 luma) the same per-plane rule runs on all four
+planes: (R+, R-, G+, G-, B+, B-, L+, L-), EIGHT channels. Any other 4-channel input is still refused -- four channels
+anywhere else most likely means a stacking wrapper ran first -- so the 8-channel mode cannot be entered by accident.
+
 ⇒ COLOUR IS DISCARDED BY CONSTRUCTION, and that is a deliberate part of the hypothesis rather than
 a cost of it: the parsing task's backgrounds are cued by brightness and colour while its objects are
 matched for them, so an encoder that can only see motion cannot solve the task with the background
@@ -93,7 +98,8 @@ class DVSPolarity(gym.Wrapper):
         ``NETT_DVS_BLUR``       3x3 Gaussian pre-blur, on by default, as in ``dvs.py``. Off makes
                                 the wrapper a pure difference and much noisier.
         ``NETT_DVS_COLOR``      off by default (2 luma channels). On: 6 channels (R+, R-, G+, G-, B+, B-),
-                                the luma rule applied to each colour separately; needs a 3-channel frame.
+                                the luma rule applied to each colour separately; needs a 3-channel frame
+                                (or, directly on fovea_4ch, its 4 planes -> 8 channels; see above).
         ``NETT_DVS_BLUR_KERNEL``  side of the pre-blur's binomial kernel, odd and >= 3 (default unset = 3, the
                                 [1,2,1] kernel, bit for bit). Owner 2026-10-17 (workspace DECISIONS §134): "a single
                                 passed blur that is just a larger gaussian filter". Side 2N+1 is the binomial
@@ -161,12 +167,15 @@ class DVSPolarity(gym.Wrapper):
         self.blur = _env_flag("NETT_DVS_BLUR", True)
         self.blur_kernel = self._blur_kernel_side(self.blur)
         self.color = _env_flag("NETT_DVS_COLOR", False)
-        self.n_out = 6 if self.color else 2
+        # Colour planes: 3 (RGB), or 4 ONLY when the wrapped env is fovea_4ch (see the module note).
+        from .fovea_4ch import Fovea4ch
+        self.n_planes = 4 if self.color and isinstance(env, Fovea4ch) else 3
+        self.n_out = 2 * self.n_planes if self.color else 2
         # ⛔ A consumer that reads the per-frame channel count from its own knob would split a 6-channel
         # event frame as three 2-channel frames. Refuse the mismatch here rather than downstream.
         cpf = os.environ.get("NETT_AUX_CLTT_CHANNELS_PER_FRAME")
-        if self.color and cpf is not None and cpf.strip() != "6":
-            raise ValueError(f"NETT_DVS_COLOR=1 makes one frame 6 channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
+        if self.color and cpf is not None and cpf.strip() != str(self.n_out):
+            raise ValueError(f"NETT_DVS_COLOR=1 makes one frame {self.n_out} channels; NETT_AUX_CLTT_CHANNELS_PER_FRAME={cpf!r}")
         self.window, self.tau = self._window_knobs()
         self.move_gain = self._move_gain_knob(self.window)
         self.motion_comp, self.gate_k, self.global_sub = self._ego_knobs(self.window, self.move_gain)
@@ -534,9 +543,10 @@ class DVSPolarity(gym.Wrapper):
         x = t.to(torch.float32)
         if not chw:
             x = x.movedim(-1, -3)               # -> (..., C, H, W)
-        if x.shape[-3] != 3:
+        if x.shape[-3] != self.n_planes:
             raise ValueError(
-                f"NETT_DVS_COLOR=1 needs a 3-channel RGB frame; got {x.shape[-3]} channels. More than 3 "
+                f"NETT_DVS_COLOR=1 needs a {self.n_planes}-channel frame here; got {x.shape[-3]} channels "
+                "(3 = RGB; 4 only directly on fovea_4ch). More "
                 "means a stacking wrapper ran first -- order dvs_polarity BEFORE framestack."
             )
         return x, chw
@@ -572,7 +582,7 @@ class DVSPolarity(gym.Wrapper):
         on = (d >= self.threshold).to(torch.uint8) * 255
         off = (d <= -self.threshold).to(torch.uint8) * 255
         if self.color:
-            # (..., 3, H, W) x2 -> (..., 3, 2, H, W) -> (..., 6, H, W): R+, R-, G+, G-, B+, B-
+            # (..., P, H, W) x2 -> (..., P, 2, H, W) -> (..., 2P, H, W): R+, R-, G+, G-, B+, B- (then L+, L- at P = 4)
             out = torch.stack((on, off), dim=-3).flatten(-4, -3)
             if not chw:
                 out = out.movedim(-3, -1)

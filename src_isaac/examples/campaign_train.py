@@ -1556,6 +1556,11 @@ MODELS["ViT-P8-666K-Mixer"] = {**MODELS["ViT-P8-666K"], "cfg": {**MODELS["ViT-P8
 # colour DVS without it). Neither twin carries `pre`, checked above.
 MODELS["ViT-P8-666K+Fovea+DVS"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_mask", "dvs_polarity")}
 MODELS["ViT-P8-666K+Fovea+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
+# owner 2026-11-09 ("Option 1", presenter relay): the FOVEA-4CH eye feeding colour DVS on the attached-CLTT-Ref ViT-P8. dvs_polarity
+# on fovea_4ch runs its per-plane rule on all four planes -> (R+, R-, G+, G-, B+, B-, L+, L-), 8 channels per frame: the colour
+# pairs fire only inside the fovea (mask x RGB is 0 outside), the luma pair over the whole frame. Rows set
+# NETT_DVS_COLOR=1 and NETT_AUX_CLTT_CHANNELS_PER_FRAME=8 (dvs_polarity refuses any other stated value under colour).
+MODELS["ViT-P8-666K+Fovea4ch+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_4ch", "dvs_polarity"), "aux": "cltt_ref", "aux_weight": 1.0}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
