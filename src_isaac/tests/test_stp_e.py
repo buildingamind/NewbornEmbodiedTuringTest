@@ -79,6 +79,9 @@ BL2_1103_EMBDIV_LABELS = {f"{t}+{f}" for t in ("CNN-D512P", "ViT-P8-666K", "3DCN
 #: capture_observations.py binds the brightness wrapper as test (it refuses an unbound observation).
 BL2_1104_RBLN1_LABELS = {"3DCNN-CLTT-Ref+RB", "3DCNN-CLTT-Ref+LN1"}
 EGO1106_LABELS = {"CNN-D512P+DVS2F"}   # FINDINGS add. 351/352 (owner 11-06 egomotion DVS pilot, head-bob arm)
+#: owner 2026-11-09, BL2: the four attached CLTT-Ref arms + the EMBDIV uniformity term on one encoder, aux "cltt_ref+embdiv_unif"
+#: (tests/test_cltt_unif_aux.py); ppo_aux.py gains that one entry and the additive `check_agent` hook.
+CLTTUNIF1109_LABELS = {"ViT-P8-666K+CLTT-Ref+UNIF", "ViViT-P8-T2+CLTT-Ref+UNIF", "CNN-D512P+CLTT-Ref+UNIF", "3DCNN-CLTT-Ref+UNIF"}
 BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
@@ -1116,7 +1119,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
@@ -1133,7 +1136,7 @@ def test_existing_models_and_registries_are_unchanged(campaign):
         return {ln.split('"')[1] for ln in body.splitlines() if ln.strip().startswith('"')}
 
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
-                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2"}),
+                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2", "cltt_ref+embdiv_unif"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
                                  {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)

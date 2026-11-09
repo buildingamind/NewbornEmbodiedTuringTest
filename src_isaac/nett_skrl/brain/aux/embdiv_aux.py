@@ -241,6 +241,10 @@ class EmbDivTerm(nn.Module):
         if self.max_samples < 2:
             raise ValueError(f"{BATCH_ENV}={self.max_samples}: the loss averages over i != j pairs; use >= 2.")
         self.diag_every = _env_positive_int(DIAG_EVERY_ENV, 1)
+        #: The weight embdiv_diag.csv reports (``aux_weight`` column, ``loss_weighted`` = it x loss_raw). None (every
+        #: "+UNIF" / "+COS2" arm) = AuxLossPPO's ``_aux_weight``, as before; the "+CLTT-Ref+UNIF" composite
+        #: (cltt_unif_aux.py), whose AuxLossPPO weight is CLTT's 1.0, sets it to its lambda.
+        self.diag_weight: float | None = None
         #: AuxLossPPO adds ``head`` to PPO's optimizer and its grad clip: EMPTY, the term has no parameters.
         self.head = nn.Module()
         self.last_scalars: dict = {}
@@ -282,6 +286,8 @@ class EmbDivTerm(nn.Module):
         if u % self.diag_every:
             return None
         weight = float(getattr(agent, "_aux_weight", float("nan")))
+        if self.diag_weight is not None:
+            weight = float(self.diag_weight)
         if z is None or z.shape[0] < 2:
             # Every minibatch of this update hit the KL early stop before the aux ran: nothing was measured.
             row = {k: float(NOT_MEASURED) for k in DIAG_METRICS}

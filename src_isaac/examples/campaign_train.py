@@ -1601,6 +1601,25 @@ MODELS["3DCNN+UNIF"] = {**MODELS["3DCNN"], "aux": "embdiv_unif", "aux_weight": 0
 MODELS["3DCNN+COS2"] = {**MODELS["3DCNN"], "aux": "embdiv_cos2", "aux_weight": 0.01}
 MODELS["ViViT-P8-T2+UNIF"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_unif", "aux_weight": 0.01}
 MODELS["ViViT-P8-T2+COS2"] = {**MODELS["ViViT-P8-T2"], "aux": "embdiv_cos2", "aux_weight": 0.01}
+# BL2 CLTT-Ref + UNIF (owner 2026-11-09): each BL2 attached-CLTT-Ref arm (CLTTA) with the EMBDIV uniformity term ADDED on
+# the same encoder, aux "cltt_ref+embdiv_unif" (brain/aux/cltt_unif_aux.py): total = PPO + 1.0 x L_cltt_ref + lambda x
+# L_unif. aux_weight stays 1.0 (CLTT's; the term and main() refuse anything else, so NETT_AUX_WEIGHT_OVERRIDE is REFUSED on
+# these labels); lambda is the row's NETT_AUX_EMBDIV_WEIGHT (default 0.01), a knob refused on every other label. Each spec
+# is its CLTT-Ref parent's with the aux key alone changed. Spelled out (not a loop): tools/mem_probe_condition.sh finds a
+# label by its quoted literal in this file.
+CLTT_UNIF_KEY = "cltt_ref+embdiv_unif"
+MODELS["ViT-P8-666K+CLTT-Ref+UNIF"] = {**MODELS["ViT-P8-666K+CLTT-Ref"], "aux": "cltt_ref+embdiv_unif"}
+MODELS["ViViT-P8-T2+CLTT-Ref+UNIF"] = {**MODELS["ViViT-P8-T2+CLTT-Ref"], "aux": "cltt_ref+embdiv_unif"}
+MODELS["CNN-D512P+CLTT-Ref+UNIF"] = {**MODELS["CNN-D512P+CLTT-Ref"], "aux": "cltt_ref+embdiv_unif"}
+MODELS["3DCNN-CLTT-Ref+UNIF"] = {**MODELS["3DCNN-CLTT-Ref"], "aux": "cltt_ref+embdiv_unif"}
+CLTT_UNIF_PARENTS = {"ViT-P8-666K+CLTT-Ref+UNIF": "ViT-P8-666K+CLTT-Ref", "ViViT-P8-T2+CLTT-Ref+UNIF": "ViViT-P8-T2+CLTT-Ref",
+                     "CNN-D512P+CLTT-Ref+UNIF": "CNN-D512P+CLTT-Ref", "3DCNN-CLTT-Ref+UNIF": "3DCNN-CLTT-Ref"}
+for _lab, _parent in CLTT_UNIF_PARENTS.items():
+    assert MODELS[_parent]["aux"] == "cltt_ref" and MODELS[_parent]["aux_weight"] == 1.0, _parent
+    assert {k: v for k, v in MODELS[_lab].items() if k != "aux"} == {k: v for k, v in MODELS[_parent].items() if k != "aux"}, _lab
+    assert MODELS[_lab]["aux"] == CLTT_UNIF_KEY, _lab
+del _lab, _parent
+assert {k for k, v in MODELS.items() if v.get("aux") == CLTT_UNIF_KEY} == set(CLTT_UNIF_PARENTS)
 # BL2 RANDOM BRIGHTNESS / FIRST-LAYER LAYERNORM (owner 2026-11-04: "For binding, I'd like to train 6 brains of object 1
 # on Random Brightness and 6 brains on 1st layer LayerNorm for 3DCNN + CLTT (attached)"). Each is BL2's attached
 # VideoCLTTA arm, 3DCNN-CLTT-Ref, with ONE change:
@@ -1871,12 +1890,33 @@ def refuse_stray_stp_knobs(model: str, spec: dict) -> None:
 
 def refuse_stray_embdiv_knobs(model: str, spec: dict) -> None:
     """A NETT_AUX_EMBDIV_* knob on a label whose aux is not embdiv_unif / embdiv_cos2 is read by NOTHING (the xsp2 rule)."""
+    if spec.get("aux") == CLTT_UNIF_KEY:     # the "+CLTT-Ref+UNIF" labels' uniformity term reads them too
+        return
     if spec.get("aux") in ("embdiv_unif", "embdiv_cos2"):
         return
     stray = sorted(k for k in os.environ if k.startswith("NETT_AUX_EMBDIV_"))
     if stray:
         raise ValueError(f"{stray} set but arm {model!r} is not an embdiv arm (aux "
                          f"{spec.get('aux')!r}); nothing would read them. Unset them.")
+
+
+def refuse_embdiv_weight_knob(model: str, spec: dict) -> None:
+    """NETT_AUX_EMBDIV_WEIGHT is lambda inside the "+CLTT-Ref+UNIF" aux (cltt_unif_aux.py) and nothing else reads it: on any
+    other label -- a plain "+UNIF" arm included, whose lambda is NETT_AUX_WEIGHT_OVERRIDE -- the arm would run at a weight
+    its row does not name. Refuse it (the xsp2 rule)."""
+    if spec.get("aux") == CLTT_UNIF_KEY:
+        return
+    if os.environ.get("NETT_AUX_EMBDIV_WEIGHT") is not None:
+        raise ValueError(f"NETT_AUX_EMBDIV_WEIGHT set but arm {model!r} is not a +CLTT-Ref+UNIF arm (aux {spec.get('aux')!r}); "
+                         "nothing would read it (a +UNIF arm's lambda is NETT_AUX_WEIGHT_OVERRIDE). Unset it.")
+
+
+def refuse_cltt_unif_weight_override(model: str, spec: dict) -> None:
+    """On a "+CLTT-Ref+UNIF" label the aux weight is CLTT's and must stay 1.0: NETT_AUX_WEIGHT_OVERRIDE would silently rescale
+    CLTT (lambda is NETT_AUX_EMBDIV_WEIGHT). Refuse it. Empty = unset, as main() reads it (`or`)."""
+    if spec.get("aux") == CLTT_UNIF_KEY and os.environ.get("NETT_AUX_WEIGHT_OVERRIDE"):
+        raise ValueError(f"NETT_AUX_WEIGHT_OVERRIDE set on {model!r}: its aux weight is CLTT-Ref's 1.0 and must not move. "
+                         "Set the uniformity weight lambda with NETT_AUX_EMBDIV_WEIGHT instead.")
 
 
 def stp_encoder_cfg(spec: dict, fov_deg: float) -> dict:
@@ -2260,6 +2300,8 @@ def main() -> int:
     refuse_stray_slot_recon_knobs(model, spec)
     refuse_stray_stp_knobs(model, spec)
     refuse_stray_embdiv_knobs(model, spec)
+    refuse_embdiv_weight_knob(model, spec)
+    refuse_cltt_unif_weight_override(model, spec)
 
     aux_kind = spec.get("aux")
     if aux_kind:

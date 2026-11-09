@@ -234,6 +234,13 @@ def _build_embdiv_cos2(encoder):
     return build("embdiv_cos2")(encoder)
 
 
+def _build_cltt_ref_embdiv_unif(encoder):
+    """BL2 "<trunk>+CLTT-Ref+UNIF" (owner 2026-11-09): the attached cltt_ref term at weight 1.0 PLUS the embdiv
+    uniformity term at lambda = NETT_AUX_EMBDIV_WEIGHT (brain/aux/cltt_unif_aux.py); the aux weight must be 1.0."""
+    from .cltt_unif_aux import build
+    return build(encoder)
+
+
 #: The ONE place a loss becomes reachable. `NETT_AUX_LOSS` is matched against these
 #: keys; anything else raises in ``AuxLossPPO.__init__`` rather than disabling itself.
 #: Builders import lazily so an unrelated import error in one loss cannot take down
@@ -283,6 +290,8 @@ AUX_LOSSES = {
     # ── EMBDIV (owner 2026-11-01). Push the encoder output apart: uniformity / mean cos^2 (embdiv_aux.py).
     "embdiv_unif": _build_embdiv_unif,
     "embdiv_cos2": _build_embdiv_cos2,
+    # ── BL2 (owner 2026-11-09). cltt_ref + lambda x embdiv uniformity on one encoder (cltt_unif_aux.py).
+    "cltt_ref+embdiv_unif": _build_cltt_ref_embdiv_unif,
 }
 
 
@@ -453,6 +462,11 @@ class AuxLossPPO(NETTSharedEncoderMixin, NETTBootstrapMixin, PPO):
                 f"no .encoder to shape. Refusing to train with the objective absent."
             )
         self._aux = AUX_LOSSES[self._aux_kind](encoder)
+        # An aux that must see the agent before it trains (cltt_ref+embdiv_unif: its aux weight must be exactly 1.0)
+        # defines `check_agent`; it may refuse here. Additive: no other term defines it.
+        _check = getattr(self._aux, "check_agent", None)
+        if callable(_check):
+            _check(self)
         if self._aux_kind in ("eoo_dual", "gwm_dual"):
             # The host is already in the policy checkpoint. Persist its ventral
             # decoder and the separate video dorsal with PPO as well.
