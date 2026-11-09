@@ -82,6 +82,9 @@ EGO1106_LABELS = {"CNN-D512P+DVS2F"}   # FINDINGS add. 351/352 (owner 11-06 egom
 #: owner 2026-11-09, BL2: the four attached CLTT-Ref arms + the EMBDIV uniformity term on one encoder, aux "cltt_ref+embdiv_unif"
 #: (tests/test_cltt_unif_aux.py); ppo_aux.py gains that one entry and the additive `check_agent` hook.
 CLTTUNIF1109_LABELS = {"ViT-P8-666K+CLTT-Ref+UNIF", "ViViT-P8-T2+CLTT-Ref+UNIF", "CNN-D512P+CLTT-Ref+UNIF", "3DCNN-CLTT-Ref+UNIF"}
+#: owner 2026-11-09, BL2 binding pilot: ViT-P8 + the original fovea feeding colour DVS, without / with attached CLTT-Ref
+#: (tests/test_fovea_dvs_labels.py). Labels only.
+FOVDVS1109_LABELS = {"ViT-P8-666K+Fovea+DVS", "ViT-P8-666K+Fovea+DVS+CLTT-Ref"}
 BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 KNOBS = ("NETT_STP_LR", "NETT_STP_BATCH")
 H, W = 80, 128                      # small eye for the fast tests: FOV 150 -> the same 60 x 100 grid as 448x280
@@ -1119,7 +1122,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label

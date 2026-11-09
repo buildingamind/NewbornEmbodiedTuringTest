@@ -1007,6 +1007,9 @@ EGO1106_LABELS = {"CNN-D512P+DVS2F"}   # FINDINGS add. 351/352 (owner 11-06 egom
 #: (tests/test_cltt_unif_aux.py); ppo_aux.py gains that one entry and the additive `check_agent` hook, embdiv_aux.py its diag_weight.
 CLTTUNIF1109_LABELS = {"ViT-P8-666K+CLTT-Ref+UNIF", "ViViT-P8-T2+CLTT-Ref+UNIF", "CNN-D512P+CLTT-Ref+UNIF", "3DCNN-CLTT-Ref+UNIF"}
 CLTTUNIF1109_FILES = ("nett_skrl/brain/aux/cltt_unif_aux.py",)
+#: owner 2026-11-09, BL2 binding pilot: ViT-P8 + the original fovea feeding colour DVS, without / with attached CLTT-Ref
+#: (tests/test_fovea_dvs_labels.py). Labels only; no file changes.
+FOVDVS1109_LABELS = {"ViT-P8-666K+Fovea+DVS", "ViT-P8-666K+Fovea+DVS+CLTT-Ref"}
 BL2_1104_FILES = ("examples/capture_observations.py", "nett_skrl/body/wrappers/brightness.py")
 #: owner 2026-10-30 ("save 4 checkpoints: 0%, 25%, 50%, 75%"): NETT_CHECKPOINT_INITIAL writes agent_0.pt in
 #: RunRecorder.before_train (opt-in; unset is bit-identical, test_initial_checkpoint.py). checkpoints.py is admitted above.
@@ -1097,7 +1100,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

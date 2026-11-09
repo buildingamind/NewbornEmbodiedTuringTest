@@ -1542,6 +1542,13 @@ MODELS["ViViT-P8-T2+CLTT-Ref"] = {**MODELS["ViViT-P8-T2"], "aux": "cltt_ref", "a
 MODELS["CNN-D512P+Fovea+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K+Fovea+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["ViT-P8-666K-Mixer"] = {**MODELS["ViT-P8-666K"], "cfg": {**MODELS["ViT-P8-666K"]["cfg"], "attn_mode": "mixer", "embed_dim": 156}}   # S3 ViT-Mixer method: embed widened to match the ViT (656,099 vs 659,704, -0.55%)
+# owner 2026-11-09, BL2 binding pilot (presenter relay): the original fovea (fovea_mask, radius 3 / sigma 1) feeding colour DVS
+# on the ViT-P8 twin, without and with attached CLTT-Ref. `pre` is innermost first (body.py), so the events are computed on
+# the FOVEATED frame: grey surround, so outside the disk R+/G+/B+ (and R-/G-/B-) fire together on luminance change only.
+# One frame is 6 channels (NETT_DVS_COLOR=1); the CLTT-Ref arm needs NETT_AUX_CLTT_CHANNELS_PER_FRAME=6 (cltt_views.py refuses
+# colour DVS without it). Neither twin carries `pre`, checked above.
+MODELS["ViT-P8-666K+Fovea+DVS"] = {**MODELS["ViT-P8-666K"], "pre": ("fovea_mask", "dvs_polarity")}
+MODELS["ViT-P8-666K+Fovea+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K+Fovea+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
