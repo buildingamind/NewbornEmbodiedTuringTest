@@ -1144,6 +1144,8 @@ S3W_LABELS = {"ViViT-T2", "CNN+DVS", "ViT+DVS", "CNN+MASK75", "ViT+MASK75", "3DC
 FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViViT-P8-T2+Fovea",
                     "CNN+Fovea", "ViT+Fovea", "ViViT-T2+Fovea"}   # + owner 2026-10-31 S3 twins
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
+#: owner 2026-11-09 (presenter): FOVEA-4CH pilot wrapper (body/wrappers/fovea_4ch.py)
+FOVEA4CH1109_FILES = ("nett_skrl/body/wrappers/fovea_4ch.py",)
 #: owner 2026-11-01 (presenter): ViT + an embedding-spread aux on the encoder output (test_embdiv_aux.py); ppo_aux.py
 #: gains the "embdiv_unif" / "embdiv_cos2" entries and the additive per-update `after_update` hook.
 EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
@@ -1244,7 +1246,7 @@ def test_no_other_brain_file_changed():
                + MATCHED_FILES + UINT8_FILES + DP108_FILES + DP110_FILES + DP111_FILES + DP114_FILES + UPP117_FILES + JEPA_FILES + FP16_FILES
                                               + DETERMINISM_FILES + CHECKPOINT_FILES + DVS6_FILES + DVS134_FILES + XCONV135_FILES + S162_FILES
                                               + STP170_FILES + MIRROR187_FILES + SIGMA187_FILES + SEED187_FILES + TEXGUARD187_FILES
-                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES + BL2_1102_FILES + BL2_1104_FILES + LRP2_1106_FILES + CLTTUNIF1109_FILES}
+                                              + BASELINE_FILES + FOVEA1030_FILES + INITCKPT1030_FILES + EMBDIV1101_FILES + BL2_1102_FILES + BL2_1104_FILES + LRP2_1106_FILES + CLTTUNIF1109_FILES + FOVEA4CH1109_FILES}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
