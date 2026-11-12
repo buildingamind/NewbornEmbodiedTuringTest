@@ -148,6 +148,28 @@ class DVSPolarity(gym.Wrapper):
         ``NETT_DVS_GLOBAL_SUB`` ``median:R``, integer R >= 1 (the arm: 4). Per plane, the signed difference d minus its
                                 (2R+1)x(2R+1) median (nearest = replicate padding, scipy ``median_filter`` mode
                                 "nearest"), then ON / OFF at +/- threshold.
+
+    The transient knob below (FINDINGS add. 420, owner 2026-11-12) is default unset = unchanged, bit for bit:
+
+        ``NETT_DVS_TRANSIENT``  ``1`` (= ``mag``) or ``bin``. Owner: "a variation of DVS where it takes in 3 frames (no
+                                actions taken between them), calculates the DVS between the first two and the DVS
+                                between the last two, then takes the positive difference values between the first two
+                                and the negative difference values between the last two and passes through 3 channels
+                                that are the intersection between those positive and negative difference values" --
+                                "changes in vision that appear and then disappear one frame later"; both polarities,
+                                6 channels. Per colour plane, on the last three (blurred) frames f1, f2, f3:
+                                    up   = min(f2 - f1, f2 - f3)    brighter in f2 than on both sides
+                                    down = min(f1 - f2, f3 - f2)    darker in f2 than on both sides
+                                each kept only where it is >= threshold (min >= thr  <=>  both single-tick DVS events
+                                fire: the intersection of the pair-1 ON and the pair-2 OFF event, or the reverse), else
+                                0. ``mag``: the value, rounded to uint8 (0-255 intensity units); ``bin``: 255. Layout
+                                as NETT_DVS_COLOR: (R+, R-, G+, G-, B+, B-) with + = up, - = down. Needs NETT_DVS_COLOR=1
+                                (RGB, not fovea_4ch) and NETT_DECISION_LOOP=P >= 3: the loop returns the decision's LAST
+                                tick, and its last three ticks are action-free only when P >= 3 (the env applies the
+                                action on tick 0 and holds the body on the others, so at P = 3 the frames are tick 0
+                                (after the move), 1 and 2). An env emits 0 until it has three frames of its own
+                                episode (a reset or a done restarts its count). Refuses NETT_DVS_WINDOW and every
+                                egomotion knob.
     """
 
     def __init__(self, env, threshold: float | None = None):
@@ -179,6 +201,11 @@ class DVSPolarity(gym.Wrapper):
         self.window, self.tau = self._window_knobs()
         self.move_gain = self._move_gain_knob(self.window)
         self.motion_comp, self.gate_k, self.global_sub = self._ego_knobs(self.window, self.move_gain)
+        self.transient = self._transient_knob(self.color, self.n_planes, self.window, self.move_gain,
+                                              self.motion_comp, self.gate_k, self.global_sub)
+        self._tbuf: list = []                   # transient: the last <= 3 blurred colour frames, NEWEST LAST
+        self._tcount = None                     # transient: per-env frames of the current episode (long, (N,) | (1,))
+        self._tdens: list = []                  # transient: (non-zero, single-tick DVS non-zero) per decision tick
         self._mc = None                         # _YawWarp for the env's lens (motion comp only; built at first reset)
         self._mc_raw = None                     # the unwrapped env carrying _cameras (motion comp only)
         self._pose = None                       # previous tick's camera rotation (N,3,3) float64 (motion comp only)
@@ -321,6 +348,91 @@ class DVSPolarity(gym.Wrapper):
             m = mask.cpu().numpy()
             events[m] = np.round(events[m].astype(np.float32) * self.move_gain).astype(np.uint8)
         return events
+
+    @staticmethod
+    def _transient_knob(color, n_planes, window, move_gain, motion_comp, gate_k, global_sub):
+        """``NETT_DVS_TRANSIENT`` -> ``"mag"`` | ``"bin"`` | None (unset). Refuses anything ambiguous (FINDINGS add. 420)."""
+        raw = os.environ.get("NETT_DVS_TRANSIENT", "").strip()
+        if raw == "":
+            return None
+        mode = {"1": "mag", "mag": "mag", "bin": "bin"}.get(raw.lower())
+        if mode is None:
+            raise ValueError(f"NETT_DVS_TRANSIENT={raw!r}: expected 1 (= mag) or bin (leave it unset for none).")
+        if not color or n_planes != 3:
+            raise ValueError(f"NETT_DVS_TRANSIENT={raw} needs NETT_DVS_COLOR=1 on an RGB frame (6 channels: up / down "
+                             f"per colour); got NETT_DVS_COLOR={'on' if color else 'off'}, {n_planes} planes.")
+        loop = os.environ.get("NETT_DECISION_LOOP", "").strip()
+        if not (loop.isdigit() and int(loop) >= 3):
+            raise ValueError(f"NETT_DVS_TRANSIENT={raw} needs NETT_DECISION_LOOP=P >= 3 (got {loop!r}): the agent sees "
+                             f"the decision's last tick, and its last three ticks carry no action only when P >= 3.")
+        named = [n for n, v in (("NETT_DVS_WINDOW", window), ("NETT_DVS_MOVE_GAIN", move_gain),
+                                ("NETT_DVS_MOTION_COMP", motion_comp), ("NETT_DVS_GATE_K", gate_k),
+                                ("NETT_DVS_GLOBAL_SUB", global_sub)) if v is not None]
+        if named:
+            raise ValueError(f"NETT_DVS_TRANSIENT with {' and '.join(named)}: the transient map is its own 3-frame "
+                             f"rule. Refusing.")
+        print(f"[NETT dvs transient] {mode}: per colour, up = min(f2-f1, f2-f3), down = min(f1-f2, f3-f2) on the "
+              f"decision's last 3 ticks (P={int(loop)}), kept where >= threshold, "
+              f"{'the value (uint8)' if mode == 'mag' else '255'}; layout R+,R-,G+,G-,B+,B- (FINDINGS add. 420)",
+              flush=True)
+        return mode
+
+    def _transient_map(self, y: torch.Tensor, chw: bool) -> torch.Tensor:
+        """This tick's blurred colour planes (..., 3, H, W) -> the (..., 6, ...) transient map (uint8), and the buffer."""
+        n = y.shape[0] if self._batched else 1
+        if self._tbuf and self._tbuf[-1].shape != y.shape:
+            self._tbuf, self._tcount = [], None
+        if self._tcount is None or int(self._tcount.numel()) != n:
+            self._tcount = torch.zeros(n, dtype=torch.long)
+        self._tbuf.append(y)
+        if len(self._tbuf) > 3:
+            self._tbuf.pop(0)
+        self._tcount += 1
+        if len(self._tbuf) < 3:
+            up = down = torch.zeros_like(y)
+            one = None
+        else:
+            f1, f2, f3 = self._tbuf
+            a, b = f2 - f1, f3 - f2             # into the middle frame, out of it
+            up, down = torch.minimum(a, -b), torch.minimum(-a, b)
+            one = (b.abs() >= self.threshold)   # the single-tick DVS events of the last pair (diagnostic only)
+            ok = (self._tcount >= 3).to(y.device)
+            if self._batched:
+                ok = ok.view(-1, *([1] * (y.ndim - 1)))
+            else:
+                ok = ok.view(*([1] * y.ndim))
+            for name in ("up", "down"):
+                v = up if name == "up" else down
+                keep = (v >= self.threshold) & ok
+                v = torch.where(keep, v.round().clamp(0, 255) if self.transient == "mag" else torch.full_like(v, 255.0),
+                                torch.zeros_like(v))
+                if name == "up":
+                    up = v
+                else:
+                    down = v
+            one = one & ok
+        out = torch.stack((up.to(torch.uint8), down.to(torch.uint8)), dim=-3).flatten(-4, -3)
+        self._density_transient(out, one)
+        if not chw:
+            out = out.movedim(-3, -1)
+        return out
+
+    def _density_transient(self, out: torch.Tensor, one) -> None:
+        """Diagnostic only (never changes an output): at decision ticks (maps 1 + kP since reset, 3 frames in hand), the
+        transient map's non-zero fraction beside the single-tick DVS6 event fraction of its last pair (same frames, same
+        threshold), averaged over the first DENSITY_DECISIONS decisions and printed once (FINDINGS add. 420)."""
+        self._phase_c += 1
+        if len(self._tdens) >= self.DENSITY_DECISIONS:
+            return
+        p = int(os.environ["NETT_DECISION_LOOP"])
+        if (self._phase_c - 1) % p != 0 or one is None:
+            return
+        self._tdens.append((float((out > 0).float().mean()), float(one.float().mean())))
+        if len(self._tdens) == self.DENSITY_DECISIONS:
+            nz, sd = (sum(x[i] for x in self._tdens) / len(self._tdens) for i in range(2))
+            print(f"[NETT dvs transient] density over the first {len(self._tdens)} decisions (decision ticks, P={p}): "
+                  f"transient non-zero {nz:.6f}; single-tick DVS6 events of the last pair, same frames and threshold: "
+                  f"non-zero {sd:.6f} (fractions of pixels x channels)", flush=True)
 
     @staticmethod
     def _ego_knobs(window, move_gain):
@@ -579,6 +691,11 @@ class DVSPolarity(gym.Wrapper):
         self._prev = y
         if self.motion_comp is not None:
             self._pose = pose
+        if self.transient is not None:
+            out = self._transient_map(y, chw)
+            if not as_tensor:
+                return out.cpu().numpy().astype(np.uint8)
+            return out
         on = (d >= self.threshold).to(torch.uint8) * 255
         off = (d <= -self.threshold).to(torch.uint8) * 255
         if self.color:
@@ -603,6 +720,7 @@ class DVSPolarity(gym.Wrapper):
         self._prev = None
         self._hist = []
         self._phase_c = 0
+        self._tbuf, self._tcount = [], None
         obs, info = self.env.reset(**kwargs)
         pose = self._mc_pose() if self.motion_comp is not None else None
         return _replace_policy_obs(obs, self._events(_policy_obs(obs), pose)), info
@@ -634,6 +752,8 @@ class DVSPolarity(gym.Wrapper):
                     events[idx] = 0
                 if self.window is not None:
                     self._clear_hist(torch.as_tensor(idx, dtype=torch.long))
+                if self.transient is not None and self._tcount is not None:
+                    self._tcount[torch.as_tensor(idx, dtype=torch.long)] = 1
         return _replace_policy_obs(obs, events), reward, terminated, truncated, info
 
 
