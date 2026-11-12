@@ -1595,6 +1595,13 @@ MODELS["CNN-D512P+DVS+CLTT-Ref"] = {**MODELS["CNN-D512P+DVS"], "aux": "cltt_ref"
 MODELS["ViT-P8-666K+DVS+CLTT-Ref"] = {**MODELS["ViT-P8-666K+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
 MODELS["CNN-D512P+Fovea+DVS"] = {**MODELS["CNN-D512P"], "pre": ("fovea_mask", "dvs_polarity")}
 MODELS["CNN-D512P+Fovea+DVS+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea+DVS"], "aux": "cltt_ref", "aux_weight": 1.0}
+# owner 2026-11-12 (presenter relay; workspace FINDINGS add. 417, BL2 FILL phase 2 "any combination of DVS and/or CLTTA" on
+# the four core models): the ViT-P8 video twin on COLOUR DVS events without CLTT = "ViViT-P8-T2" + channels_per_frame 6 +
+# pre=["dvs_polarity"], NOTHING ELSE (asserted), the ViViT analogue of "3DCNN-DVS6"; ViViT-P8-T2+CLTT-Ref-DVS6 is exactly this
+# plus the attached cltt_ref. ⛔ MODELS HAS NO ENV FIELD: rows set NETT_DVS_COLOR=1 and NETT_DVS_THRESHOLD / NETT_DVS_BLUR.
+MODELS["ViViT-P8-T2+DVS6"] = {**MODELS["ViViT-P8-T2"], "cfg": {**MODELS["ViViT-P8-T2"]["cfg"], "channels_per_frame": 6}, "pre": ["dvs_polarity"]}
+assert "pre" not in MODELS["ViViT-P8-T2"] and "aux" not in MODELS["ViViT-P8-T2+DVS6"]
+assert MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"] == {**MODELS["ViViT-P8-T2+DVS6"], "aux": "cltt_ref", "aux_weight": 1.0}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
