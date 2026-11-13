@@ -76,6 +76,8 @@ SYN1108_LABELS = {"ViViT-P8-T2+CLTT-Ref-DVS6"}
 BL2DVS1109_LABELS = {"CNN-D512P+DVS+CLTT-Ref", "ViT-P8-666K+DVS+CLTT-Ref", "CNN-D512P+Fovea+DVS", "CNN-D512P+Fovea+DVS+CLTT-Ref"}
 #: owner 2026-11-12 (workspace FINDINGS add. 417, BL2 FILL phase 2): the ViT-P8 video twin on colour DVS, no CLTT.
 BL2FILL1112_LABELS = {"ViViT-P8-T2+DVS6"}
+#: owner 2026-11-13 (workspace FINDINGS add. 421, CHICK-CONE step 2): the BL2 core four + the chick-cone colour input.
+CONE1113_LABELS = {"CNN-D512P+Cone", "3DCNN+Cone", "ViT-P8-666K+Cone", "ViViT-P8-T2+Cone"}
 BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-11-03, BASELINE wave 2 EMBDIV: the two embdiv terms on the four BL2 trunks (tests/test_bl2_embdiv_labels.py);
 #: embdiv_aux.py (EMBDIV1101_FILES) admits the three new trunks.
@@ -1132,7 +1134,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
@@ -1151,7 +1153,7 @@ def test_existing_models_and_registries_are_unchanged(campaign):
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
                                 ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2", "cltt_ref+embdiv_unif"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
-                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness", "fovea_4ch"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04; fovea_4ch: 2026-11-09
+                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness", "fovea_4ch", "chick_cone"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04; fovea_4ch: 2026-11-09; chick_cone: 2026-11-13
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         after = keys((_SRC / rel).read_text(), opener)
         assert before and after - before == gained and before <= after, rel

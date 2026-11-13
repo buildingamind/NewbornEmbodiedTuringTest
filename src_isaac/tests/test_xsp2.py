@@ -988,6 +988,7 @@ FOVEA1030_LABELS = {"CNN-D512P+Fovea", "ViT-P8-666K+Fovea", "3DCNN+Fovea", "ViVi
 FOVEA1030_FILES = ("nett_skrl/body/wrappers/fovea_mask.py",)
 #: owner 2026-11-09 (presenter): FOVEA-4CH pilot wrapper (body/wrappers/fovea_4ch.py)
 FOVEA4CH1109_FILES = ("nett_skrl/body/wrappers/fovea_4ch.py",)
+CONE1113_FILES = ("nett_skrl/body/wrappers/chick_cone.py",)
 #: owner 2026-11-01 (presenter): ViT + an embedding-spread aux on the encoder output (test_embdiv_aux.py); ppo_aux.py
 #: gains the "embdiv_unif" / "embdiv_cos2" entries and the additive per-update `after_update` hook.
 EMBDIV1101_LABELS = {"ViT+UNIF", "ViT+COS2"}
@@ -1002,6 +1003,8 @@ SYN1108_LABELS = {"ViViT-P8-T2+CLTT-Ref-DVS6"}
 BL2DVS1109_LABELS = {"CNN-D512P+DVS+CLTT-Ref", "ViT-P8-666K+DVS+CLTT-Ref", "CNN-D512P+Fovea+DVS", "CNN-D512P+Fovea+DVS+CLTT-Ref"}
 #: owner 2026-11-12 (workspace FINDINGS add. 417, BL2 FILL phase 2): the ViT-P8 video twin on colour DVS, no CLTT.
 BL2FILL1112_LABELS = {"ViViT-P8-T2+DVS6"}
+#: owner 2026-11-13 (workspace FINDINGS add. 421, CHICK-CONE step 2): the BL2 core four + the chick-cone colour input.
+CONE1113_LABELS = {"CNN-D512P+Cone", "3DCNN+Cone", "ViT-P8-666K+Cone", "ViViT-P8-T2+Cone"}
 BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-11-03, BASELINE wave 2 EMBDIV: the two embdiv terms on the four BL2 trunks (tests/test_bl2_embdiv_labels.py);
 #: embdiv_aux.py (EMBDIV1101_FILES) admits the three new trunks.
@@ -1102,7 +1105,7 @@ def test_init_helper_is_additive_and_xsp_files_untouched():
     allowed = {f"src_isaac/{p}" for p in (*NEW_FILES, *ADDITIVE, *EDITED, *SMALL3D_FILES, *ABORT_GATE_FILES, *MATCHED_FILES,
                                           *UINT8_FILES, *DP108_FILES, *DP110_FILES, *DP111_FILES, *DP114_FILES, *UPP117_FILES, *JEPA_FILES, *FP16_FILES, *DETERMINISM_FILES, *CHECKPOINT_FILES, *DVS6_FILES, *DVS134_FILES, *XCONV135_FILES, *S162_FILES, *STP170_FILES,
                                           *MIRROR187_FILES, *SIGMA187_FILES, *SEED187_FILES, *TEXGUARD187_FILES, "nett_skrl/brain/models/utils/init.py",
-                                          *BASELINE_FILES, *FOVEA1030_FILES, *INITCKPT1030_FILES, *EMBDIV1101_FILES, *BL2_1102_FILES, *BL2_1104_FILES, *LRP2_1106_FILES, *CLTTUNIF1109_FILES, *FOVEA4CH1109_FILES)}
+                                          *BASELINE_FILES, *FOVEA1030_FILES, *INITCKPT1030_FILES, *EMBDIV1101_FILES, *BL2_1102_FILES, *BL2_1104_FILES, *LRP2_1106_FILES, *CLTTUNIF1109_FILES, *FOVEA4CH1109_FILES, *CONE1113_FILES)}
     assert changed - allowed == set(), sorted(changed - allowed)
 
 
@@ -1112,7 +1115,7 @@ def test_existing_labels_resolve_to_the_identical_spec(campaign):
     old = importlib.util.module_from_spec(spec)
     old.__dict__["__file__"] = str(_TRAIN)
     exec(compile(src, "campaign_train@pre-xsp2", "exec"), old.__dict__)
-    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == {"XSP2", "XSP2-MAP20x32", "XSP2-WHAT", "XSP2-WHAT-S4", "XSP2-WHAT-S2", "XSP2-MAP40x64", "XSP2-MAP20x32-F3", "XSP2-MAP40x64-F3"} | SMALL3D_LABELS | MATCHED_LABELS | UPP117_LABELS | JEPA_LABELS | FP16_LABELS | P28_LABELS | DVS134_LABELS | XCONV135_LABELS | XMLP138_LABELS | XMAP151_LABELS | S162_LABELS | STP170_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
     assert campaign.EXPERIMENTS == old.EXPERIMENTS

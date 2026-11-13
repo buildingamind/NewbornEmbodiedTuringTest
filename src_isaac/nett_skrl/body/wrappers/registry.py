@@ -73,6 +73,10 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # Four-channel foveated eye (owner 2026-11-09, FOVEA-4CH pilot): ch0-2 = the fovea_mask window x RGB (0 outside),
     # ch3 = BT.601 grey of the whole frame. Same NETT_FOVEAM_* knobs. ⚠ `pre`, innermost.
     "fovea_4ch": ("nett_skrl.body.wrappers.fovea_4ch", "Fovea4ch"),
+    # Chick-cone colour input (owner 2026-11-13, workspace FINDINGS add. 421 CHICK-CONE): per pixel u8 sRGB -> linear ->
+    # T3 (chicken LWS, MWS, VS+SWS white-normalised catches) -> sRGB-encode -> u8, from a fixed 2^24 lookup table; greys
+    # unchanged. No knobs. ⚠ `pre`, innermost.
+    "chick_cone": ("nett_skrl.body.wrappers.chick_cone", "ChickCone"),
     # STP-E (workspace DECISIONS §170): one extra image row per frame carrying the step's pose change as
     # float32 bytes, for brain/encoders/stp_e.py to strip and decode. "exec" = the EXECUTED change (motor pose
     # after physics), "cmd" = the COMMANDED [turn, move]. One entry per source so the model name says which ran

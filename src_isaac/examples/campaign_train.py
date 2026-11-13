@@ -1602,6 +1602,17 @@ MODELS["CNN-D512P+Fovea+DVS+CLTT-Ref"] = {**MODELS["CNN-D512P+Fovea+DVS"], "aux"
 MODELS["ViViT-P8-T2+DVS6"] = {**MODELS["ViViT-P8-T2"], "cfg": {**MODELS["ViViT-P8-T2"]["cfg"], "channels_per_frame": 6}, "pre": ["dvs_polarity"]}
 assert "pre" not in MODELS["ViViT-P8-T2"] and "aux" not in MODELS["ViViT-P8-T2+DVS6"]
 assert MODELS["ViViT-P8-T2+CLTT-Ref-DVS6"] == {**MODELS["ViViT-P8-T2+DVS6"], "aux": "cltt_ref", "aux_weight": 1.0}
+# owner 2026-11-13 (presenter relay; workspace FINDINGS add. 421, CHICK-CONE step 2): "just do it for the core four without
+# CLTT, DVS, or Fovea". Each label is its BL2 core-four twin verbatim plus the chick-cone colour input
+# (body/wrappers/chick_cone.py) as the only `pre`, so the video encoders stack cone frames. Written out per label:
+# tools/launch_arm.sh checks for the literal entry.
+for _twin in ("CNN-D512P", "3DCNN", "ViT-P8-666K", "ViViT-P8-T2"):
+    assert "pre" not in MODELS[_twin] and "aux" not in MODELS[_twin], _twin
+del _twin
+MODELS["CNN-D512P+Cone"] = {**MODELS["CNN-D512P"], "pre": ("chick_cone",)}
+MODELS["3DCNN+Cone"] = {**MODELS["3DCNN"], "pre": ("chick_cone",)}
+MODELS["ViT-P8-666K+Cone"] = {**MODELS["ViT-P8-666K"], "pre": ("chick_cone",)}
+MODELS["ViViT-P8-T2+Cone"] = {**MODELS["ViViT-P8-T2"], "pre": ("chick_cone",)}
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
