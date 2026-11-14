@@ -1633,6 +1633,22 @@ MODELS["CNN-K3"] = dict(encoder="compact_3dcnn", cfg={**_3DCNN_BASE_CFG, "num_fr
 MODELS["CNN-K3+CLTT-Ref"] = {**MODELS["CNN-K3"], "aux": "cltt_ref", "aux_weight": 1.0}
 assert MODELS["CNN-D512P"] == dict(encoder="nature_cnn", cfg=dict(BASELINE_D512P_CFG), framestack=False)
 assert MODELS["3DCNN"]["cfg"] == _3DCNN_BASE_CFG and MODELS["3DCNN-CLTT-Ref"]["cfg"] == _3DCNN_BASE_CFG
+# owner 2026-11-14 ~18:10Z (first-hand to researcher2; workspace FINDINGS add. 426a): "when we run the new 3DCNN runs, we
+# will also need to run the full rows ... for the CLTT, DVS, and CLTT+DVS runs across experiments as well as the Fovea,
+# Fovea+CLTT, Fovea+DVS, and Fovea+DVS+CLTT runs across binding." Each label is D512P-T2 (+CLTT-Ref) plus exactly the
+# fields of the BL2 "3DCNN" cell it replaces: colour DVS = pre dvs_polarity + channels_per_frame 6 (as "3DCNN-DVS6" /
+# "3DCNN-CLTT-Ref-DVS6"; rows set NETT_DVS_* and NETT_AUX_CLTT_CHANNELS_PER_FRAME=6), Fovea = pre fovea_mask (as
+# "3DCNN+Fovea" / "3DCNN-CLTT-Ref+Fovea"), Fovea+DVS = pre (fovea_mask, dvs_polarity) (as "CNN-D512P+Fovea+DVS").
+_T2_DVS6_CFG = {**MODELS["D512P-T2"]["cfg"], "channels_per_frame": 6}
+MODELS["D512P-T2+DVS6"] = {**MODELS["D512P-T2"], "cfg": _T2_DVS6_CFG, "pre": ("dvs_polarity",)}
+MODELS["D512P-T2+CLTT-Ref-DVS6"] = {**MODELS["D512P-T2+DVS6"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["D512P-T2+Fovea"] = {**MODELS["D512P-T2"], "pre": ("fovea_mask",)}
+MODELS["D512P-T2+CLTT-Ref+Fovea"] = {**MODELS["D512P-T2+CLTT-Ref"], "pre": ("fovea_mask",)}
+MODELS["D512P-T2+Fovea+DVS6"] = {**MODELS["D512P-T2"], "cfg": _T2_DVS6_CFG, "pre": ("fovea_mask", "dvs_polarity")}
+MODELS["D512P-T2+Fovea+DVS6+CLTT-Ref"] = {**MODELS["D512P-T2+Fovea+DVS6"], "aux": "cltt_ref", "aux_weight": 1.0}
+del _T2_DVS6_CFG
+assert "channels_per_frame" not in MODELS["D512P-T2"]["cfg"] and "pre" not in MODELS["D512P-T2+CLTT-Ref"]
+assert MODELS["CNN-D512P+Fovea+DVS"]["pre"] == MODELS["D512P-T2+Fovea+DVS6"]["pre"]
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =

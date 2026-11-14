@@ -115,6 +115,10 @@ class NatureCNN(HWCFeatureExtractor):
     ``temporal_frames`` (T, the video twin "D512P-T2") replaces conv1 alone with a TemporalStem: a Conv3d (T, 8, 8),
     stride (1, 4, 4) over the whole T-frame stack. Every later layer, the pool grid and the head are unchanged.
     None (default) leaves conv1 a Conv2d -- and every existing arm's modules and checkpoint keys -- as before.
+
+    ``channels_per_frame`` (only with ``temporal_frames``; FINDINGS add. 426a "D512P-T2+DVS6"): the per-frame depth when it
+    is not an image depth (colour DVS = 6). It makes the stack check EXACT (total == channels_per_frame * T), as on
+    compact_3dcnn. None (default) keeps the 1/3/4 image-depth check; nothing is built from it.
     """
 
     #: The precision knob this encoder's forward reads (brain/amp.py refuses fp16 on a knob the
@@ -136,6 +140,7 @@ class NatureCNN(HWCFeatureExtractor):
         extra_mlp: int = 0,
         pool_grid: tuple[int, int] | list[int] | None = None,
         temporal_frames: int | None = None,
+        channels_per_frame: int | None = None,
         **_,
     ):
         super().__init__(observation_space, features_dim)
@@ -145,7 +150,9 @@ class NatureCNN(HWCFeatureExtractor):
                 raise ValueError(f"NatureCNN temporal_frames must be an integer >= 2, got {temporal_frames!r}")
             if input_frames is not None:
                 raise ValueError("NatureCNN temporal_frames and input_frames are exclusive")
-            validate_framestack_depth(channels, temporal_frames, type(self).__name__)
+            validate_framestack_depth(channels, temporal_frames, type(self).__name__, channels_per_frame)
+        elif channels_per_frame is not None:
+            raise ValueError("NatureCNN channels_per_frame is only read with temporal_frames")
         self.temporal_frames = temporal_frames
         if input_frames is not None:
             if type(input_frames) is not int or input_frames < 1:
