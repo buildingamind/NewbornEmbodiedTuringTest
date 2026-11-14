@@ -53,6 +53,7 @@ import torch.nn as nn
 from ...body.observation import image_channels_hw
 from .hwc_feature_extractor import HWCFeatureExtractor
 from .utils.pool import DeterministicAvgPool2d, pool_grid_for
+from .utils.temporal import validate_framestack_depth
 
 
 #: The NETT_AMP / NETT_MATCHED_AMP spellings that select float16 autocast. fp16 has a 5-bit exponent, so
@@ -82,11 +83,38 @@ def _amp_dtype() -> torch.dtype | None:
     return torch.bfloat16
 
 
+class TemporalStem(nn.Module):
+    """conv1 of the video twin ``temporal_frames`` (owner 2026-11-14, workspace FINDINGS add. 426, "D512P-T2"): ONE
+    Conv3d with kernel (T, k, k) and stride (1, s, s), no padding, so it collapses the whole stack to one map of the
+    shape the 2-D conv1 (k, stride s) gives on one frame. Input and output are the Sequential's 4-D tensors.
+
+    ⛔ The framestack wrapper builds the channel axis T-MAJOR ([t-1 R, t-1 G, t-1 B, t R, t G, t B]); the stack is viewed
+    T-major and then transposed to (B, C, T, H, W), exactly as Compact3DCNN._temporal_stem (whose comment records the
+    C-major scramble a plain view causes). Kernel slice [:, :, -1] reads the CURRENT frame, [:, :, 0] the oldest.
+    """
+
+    def __init__(self, base_channels: int, out_channels: int, num_frames: int, kernel_size: int, stride: int):
+        super().__init__()
+        self.num_frames = num_frames
+        self.base_channels = base_channels
+        self.conv3d = nn.Conv3d(base_channels, out_channels, kernel_size=(num_frames, kernel_size, kernel_size),
+                                stride=(1, stride, stride), padding=0)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        B, _, H, W = x.shape
+        x = x.view(B, self.num_frames, self.base_channels, H, W).permute(0, 2, 1, 3, 4).contiguous()
+        return self.conv3d(x).squeeze(2)
+
+
 class NatureCNN(HWCFeatureExtractor):
     """Three-layer CNN with optional deterministic spatial pooling.
 
     ``input_frames`` selects the last N RGB frames from a channel stack and
     builds conv1 for 3*N channels. None preserves the full-input architecture.
+
+    ``temporal_frames`` (T, the video twin "D512P-T2") replaces conv1 alone with a TemporalStem: a Conv3d (T, 8, 8),
+    stride (1, 4, 4) over the whole T-frame stack. Every later layer, the pool grid and the head are unchanged.
+    None (default) leaves conv1 a Conv2d -- and every existing arm's modules and checkpoint keys -- as before.
     """
 
     #: The precision knob this encoder's forward reads (brain/amp.py refuses fp16 on a knob the
@@ -107,10 +135,18 @@ class NatureCNN(HWCFeatureExtractor):
         extra_convs: int = 0,
         extra_mlp: int = 0,
         pool_grid: tuple[int, int] | list[int] | None = None,
+        temporal_frames: int | None = None,
         **_,
     ):
         super().__init__(observation_space, features_dim)
         channels, height, width = image_channels_hw(observation_space)
+        if temporal_frames is not None:
+            if type(temporal_frames) is not int or temporal_frames < 2:
+                raise ValueError(f"NatureCNN temporal_frames must be an integer >= 2, got {temporal_frames!r}")
+            if input_frames is not None:
+                raise ValueError("NatureCNN temporal_frames and input_frames are exclusive")
+            validate_framestack_depth(channels, temporal_frames, type(self).__name__)
+        self.temporal_frames = temporal_frames
         if input_frames is not None:
             if type(input_frames) is not int or input_frames < 1:
                 raise ValueError("NatureCNN input_frames must be a positive integer")
@@ -128,8 +164,10 @@ class NatureCNN(HWCFeatureExtractor):
         # flatten size and thus the dominant Linear's params, so it scales
         # encoder capacity WITHOUT touching features_dim (the policy head
         # input stays fixed). Default 64 preserves the original architecture.
+        conv1 = (nn.Conv2d(channels, 32, kernel_size=8, stride=4, padding=0) if temporal_frames is None
+                 else TemporalStem(channels // temporal_frames, 32, temporal_frames, kernel_size=8, stride=4))
         layers: list[nn.Module] = [
-            nn.Conv2d(channels, 32, kernel_size=8, stride=4, padding=0),
+            conv1,
             nn.ReLU(),
             nn.Conv2d(32, 64, kernel_size=4, stride=2, padding=0),
             nn.ReLU(),

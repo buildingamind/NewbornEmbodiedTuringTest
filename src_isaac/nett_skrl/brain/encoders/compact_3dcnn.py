@@ -50,6 +50,7 @@ class Compact3DCNN(HWCFeatureExtractor):
         channels_per_frame: int | None = None,
         temporal_kernel_depth: int | None = None,
         stem_layernorm: bool = False,
+        stem_2d: bool = False,
         **_,
     ) -> None:
         super().__init__(observation_space, features_dim)
@@ -104,14 +105,28 @@ class Compact3DCNN(HWCFeatureExtractor):
                              f"would stack {self.num_frames} copies of one frame's stem; refusing.")
         self.temporal_kernel_depth = depth
         stem_out = stem_dim * (self.num_frames - depth + 1)    # stem_dim, or T * stem_dim at depth 1
+        # ⭐ SINGLE-FRAME 2-D STEM (owner 2026-11-14, workspace FINDINGS add. 426, "CNN-K3": "the 3DCNN trunk on one
+        # frame with a real Conv2d"). stem_2d=True runs WITHOUT framestack (num_frames 1) and the stem is an nn.Conv2d
+        # (k, k), stride 2, padding k//2 -- the Conv3d stem with its time axis removed, so the stem grid and every later
+        # layer equal "3DCNN"'s. False (every existing arm) creates the Conv3d below exactly as before.
+        self.stem_2d = bool(stem_2d)
+        if self.stem_2d:
+            if self.duplicate_frame or temporal_kernel_depth is not None or stem_layernorm or self.num_frames != 1:
+                raise ValueError(f"{type(self).__name__}: stem_2d needs num_frames=1 and no duplicate_frame / "
+                                 f"temporal_kernel_depth / stem_layernorm; got num_frames={self.num_frames}.")
+            if k % 2 == 0:
+                raise ValueError(f"{type(self).__name__}: stem_2d needs an odd stem_kernel_hw; got {k}.")
 
-        # Temporal-spatial convolution: T×H×W kernel collapses time to 1
-        self.conv3d = nn.Conv3d(
-            self.base_channels, stem_dim,
-            kernel_size=(depth, k, k),
-            stride=(1, 2, 2),
-            padding=(0, k // 2, k // 2) if k % 2 else (0, 0, 0),
-        )
+        if self.stem_2d:
+            self.stem2d = nn.Conv2d(self.base_channels, stem_dim, kernel_size=k, stride=2, padding=k // 2)
+        else:
+            # Temporal-spatial convolution: T×H×W kernel collapses time to 1
+            self.conv3d = nn.Conv3d(
+                self.base_channels, stem_dim,
+                kernel_size=(depth, k, k),
+                stride=(1, 2, 2),
+                padding=(0, k // 2, k // 2) if k % 2 else (0, 0, 0),
+            )
         if k != 3:
             # Same output grid as the original (T, 3, 3) / padding 1 stem: ((H - 1) // 2 + 1).
             want = ((height - 1) // 2 + 1, (width - 1) // 2 + 1)
@@ -136,8 +151,11 @@ class Compact3DCNN(HWCFeatureExtractor):
 
         # Compute flat size dynamically
         with torch.no_grad():
-            dummy = torch.zeros(1, self.base_channels, self.num_frames, height, width)
-            stem = self._fold_time(self._stem_conv(dummy))
+            if self.stem_2d:
+                stem = self.stem2d(torch.zeros(1, self.base_channels, height, width))
+            else:
+                dummy = torch.zeros(1, self.base_channels, self.num_frames, height, width)
+                stem = self._fold_time(self._stem_conv(dummy))
             assert tuple(stem.shape[-2:]) == ((height - 1) // 2 + 1, (width - 1) // 2 + 1), stem.shape
             n_flat = self.cnn2d(stem).shape[1]
 
@@ -191,6 +209,8 @@ class Compact3DCNN(HWCFeatureExtractor):
         layout than the policy (the C-major scramble above was exactly such a drift). Same ops in
         the same order as the inline code it replaced, so `forward` is unchanged bitwise.
         """
+        if self.stem_2d:
+            return self.stem2d(x)              # one frame (B, C, H, W): the Conv2d stem, no time axis
         B, _, H, W = x.shape
         x = x.view(B, self.num_frames, self.base_channels, H, W)
         x = x.permute(0, 2, 1, 3, 4).contiguous()

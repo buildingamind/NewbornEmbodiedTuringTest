@@ -1619,6 +1619,20 @@ MODELS["ViViT-P8-T2+Cone"] = {**MODELS["ViViT-P8-T2"], "pre": ("chick_cone",)}
 # W), so the stem grid and every later shape equal "3DCNN"'s (asserted in the encoder). Nothing else moves (asserted).
 MODELS["3DCNN-K8"] = {**MODELS["3DCNN"], "cfg": {**MODELS["3DCNN"]["cfg"], "stem_kernel_hw": 8}}
 assert "stem_kernel_hw" not in MODELS["3DCNN"]["cfg"] and "pre" not in MODELS["3DCNN"] and "aux" not in MODELS["3DCNN"]
+# owner 2026-11-14 (first-hand to researcher2; workspace FINDINGS add. 426): "We would need to have the 3DCNN use a 2x8x8
+# kernel for it to be a proper comparison" -> the exact video twin of CNN-D512P ("keep 4x4 = exact D512P twin"), and "test a
+# 3x3 first layer kernel for CNN+CLTTA" -> the 3DCNN trunk on one frame with a real Conv2d. Every other field is the twin's:
+#   D512P-T2  "CNN-D512P" with conv1 alone a Conv3d (T, 8, 8), stride (1, 4, 4) over the T-frame stack (nature_cnn
+#             temporal_frames); conv2 4x4/2, conv3 3x3, the 3x6 pool and Linear(1152, 512) unchanged. 672,416 at 128x80.
+#   CNN-K3    "3DCNN" on ONE frame: stem Conv2d 3x3, stride 2, padding 1 (compact_3dcnn stem_2d), then 3DCNN's cnn2d and
+#             head unchanged. 695,117 at 128x80.
+# +CLTT-Ref = the attached cltt_ref, as 3DCNN-CLTT-Ref / CNN-D512P+CLTT-Ref. Counts pinned in tests/test_d512p_t2_cnn_k3.py.
+MODELS["D512P-T2"] = dict(encoder="nature_cnn", cfg={**BASELINE_D512P_CFG, "temporal_frames": _FRAMESTACK_N}, framestack=True)
+MODELS["D512P-T2+CLTT-Ref"] = {**MODELS["D512P-T2"], "aux": "cltt_ref", "aux_weight": 1.0}
+MODELS["CNN-K3"] = dict(encoder="compact_3dcnn", cfg={**_3DCNN_BASE_CFG, "num_frames": 1, "stem_2d": True}, framestack=False)
+MODELS["CNN-K3+CLTT-Ref"] = {**MODELS["CNN-K3"], "aux": "cltt_ref", "aux_weight": 1.0}
+assert MODELS["CNN-D512P"] == dict(encoder="nature_cnn", cfg=dict(BASELINE_D512P_CFG), framestack=False)
+assert MODELS["3DCNN"]["cfg"] == _3DCNN_BASE_CFG and MODELS["3DCNN-CLTT-Ref"]["cfg"] == _3DCNN_BASE_CFG
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
