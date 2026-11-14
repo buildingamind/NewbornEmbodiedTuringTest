@@ -1613,6 +1613,12 @@ MODELS["CNN-D512P+Cone"] = {**MODELS["CNN-D512P"], "pre": ("chick_cone",)}
 MODELS["3DCNN+Cone"] = {**MODELS["3DCNN"], "pre": ("chick_cone",)}
 MODELS["ViT-P8-666K+Cone"] = {**MODELS["ViT-P8-666K"], "pre": ("chick_cone",)}
 MODELS["ViViT-P8-T2+Cone"] = {**MODELS["ViViT-P8-T2"], "pre": ("chick_cone",)}
+# owner 2026-11-14 (presenter relay; workspace FINDINGS add. 423, 3DCNN-K8): "(a) First layer only. 3DCNN first layer goes
+# to 8x8. CNN Base is left as is, since its first layer is already 8x8." "3DCNN" verbatim with the stem's SPATIAL kernel 8:
+# Conv3d (T, 8, 8), the same (1, 2, 2) stride, and the even-k asymmetric zero pad of DECISIONS §89 (3 before, 4 after on H and
+# W), so the stem grid and every later shape equal "3DCNN"'s (asserted in the encoder). Nothing else moves (asserted).
+MODELS["3DCNN-K8"] = {**MODELS["3DCNN"], "cfg": {**MODELS["3DCNN"]["cfg"], "stem_kernel_hw": 8}}
+assert "stem_kernel_hw" not in MODELS["3DCNN"]["cfg"] and "pre" not in MODELS["3DCNN"] and "aux" not in MODELS["3DCNN"]
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
