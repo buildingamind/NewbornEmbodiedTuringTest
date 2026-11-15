@@ -84,6 +84,8 @@ K8_1114_LABELS = {"3DCNN-K8"}
 T2K3_1114_LABELS = {"D512P-T2", "D512P-T2+CLTT-Ref", "CNN-K3", "CNN-K3+CLTT-Ref"}
 #: owner 2026-11-14 ~18:10Z (workspace FINDINGS add. 426a): D512P-T2 full rows with DVS6 / Fovea / Fovea+DVS6 (+CLTT-Ref).
 T2ROWS_1114_LABELS = {"D512P-T2+DVS6", "D512P-T2+CLTT-Ref-DVS6", "D512P-T2+Fovea", "D512P-T2+CLTT-Ref+Fovea", "D512P-T2+Fovea+DVS6", "D512P-T2+Fovea+DVS6+CLTT-Ref"}
+#: owner 2026-11-15 ~03:30Z (workspace FINDINGS add. 430): ViViT-P8-T2 Fovea+DVS6 (+CLTT-Ref) full rows for binding.
+VIVFD_1115_LABELS = {"ViViT-P8-T2+Fovea+DVS6", "ViViT-P8-T2+Fovea+DVS6+CLTT-Ref"}
 BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-11-03, BASELINE wave 2 EMBDIV: the two embdiv terms on the four BL2 trunks (tests/test_bl2_embdiv_labels.py);
 #: embdiv_aux.py (EMBDIV1101_FILES) admits the three new trunks.
@@ -1140,7 +1142,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS | K8_1114_LABELS | T2K3_1114_LABELS | T2ROWS_1114_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS | K8_1114_LABELS | T2K3_1114_LABELS | T2ROWS_1114_LABELS | VIVFD_1115_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label

@@ -1649,6 +1649,15 @@ MODELS["D512P-T2+Fovea+DVS6+CLTT-Ref"] = {**MODELS["D512P-T2+Fovea+DVS6"], "aux"
 del _T2_DVS6_CFG
 assert "channels_per_frame" not in MODELS["D512P-T2"]["cfg"] and "pre" not in MODELS["D512P-T2+CLTT-Ref"]
 assert MODELS["CNN-D512P+Fovea+DVS"]["pre"] == MODELS["D512P-T2+Fovea+DVS6"]["pre"]
+# owner 2026-11-15 ~03:30Z (workspace FINDINGS add. 430): "Schedule ViViT Fovea+DVS and ViViT Fovea+DVS+CLTT full rows for
+# binding." Each label is "ViViT-P8-T2+DVS6" (channels_per_frame 6) with the fovea added innermost, pre (fovea_mask,
+# dvs_polarity) as "ViT-P8-666K+Fovea+DVS" / "D512P-T2+Fovea+DVS6" (the events are computed on the foveated frame); the
+# +CLTT-Ref label adds the attached cltt_ref. Rows set NETT_DVS_* and, on +CLTT-Ref, NETT_AUX_CLTT_CHANNELS_PER_FRAME=6.
+MODELS["ViViT-P8-T2+Fovea+DVS6"] = {**MODELS["ViViT-P8-T2+DVS6"], "pre": ("fovea_mask", "dvs_polarity")}
+MODELS["ViViT-P8-T2+Fovea+DVS6+CLTT-Ref"] = {**MODELS["ViViT-P8-T2+Fovea+DVS6"], "aux": "cltt_ref", "aux_weight": 1.0}
+assert MODELS["ViViT-P8-T2+DVS6"]["pre"] == ["dvs_polarity"] and "aux" not in MODELS["ViViT-P8-T2+DVS6"]
+assert MODELS["ViViT-P8-T2+DVS6"]["cfg"] == {**MODELS["ViViT-P8-T2"]["cfg"], "channels_per_frame": 6}
+assert MODELS["CNN-D512P+Fovea+DVS"]["pre"] == MODELS["ViViT-P8-T2+Fovea+DVS6"]["pre"] == MODELS["ViT-P8-666K+Fovea+DVS"]["pre"]
 
 # ══ SLIDE-3 n=7 WAVE (owner 2026-10-30; workspace FINDINGS §4dh.44h.211 add. 219) ════════════════════════════════════
 # "I would like to run the following encoders (n=7) using the standard for those runs": the slide-3 BACKBONES (CNN =
