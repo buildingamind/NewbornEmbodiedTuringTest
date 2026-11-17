@@ -66,6 +66,12 @@ def _build_cltt_ref(encoder):
     return CLTTReferenceAuxLoss(encoder)
 
 
+def _build_cltt_win(encoder):
+    # CLTT-WINDOW program (owner 2026-11-17): cltt_ref with a sampled positive window (NETT_AUX_CLTT_WIN).
+    from .cltt_win_aux import CLTTWindowAuxLoss
+    return CLTTWindowAuxLoss(encoder)
+
+
 def _build_cltt_ref_stack(encoder):
     from .cltt_ref_stack_aux import CLTTReferenceStackAuxLoss
     return CLTTReferenceStackAuxLoss(encoder)
@@ -254,6 +260,7 @@ AUX_LOSSES = {
     "cltt": _build_cltt,
     "cltt_ref": _build_cltt_ref,
     "cltt_ref_stack": _build_cltt_ref_stack,
+    "cltt_win": _build_cltt_win,
     "cltt_schneider": _build_cltt_schneider,
     "vicreg": _build_vicreg,
     "vicreg_tt": _build_vicreg_tt,

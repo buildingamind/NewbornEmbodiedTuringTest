@@ -1509,6 +1509,10 @@ BASELINE_VITP8_CFG = {**VIT_CFG, "patch_size": 8, "embed_dim": 148}
 MODELS["CNN-D512P"] = dict(encoder="nature_cnn", cfg=dict(BASELINE_D512P_CFG), framestack=False)
 MODELS["ViT-P8-666K"] = dict(encoder="compact_vit", cfg=dict(BASELINE_VITP8_CFG), framestack=False)
 MODELS["CNN-D512P+DVS"] = {**MODELS["CNN-D512P"], "pre": ("dvs_polarity",)}
+# RETINA program (owner 2026-11-17): the D512P trunk on a retina_temporal front-end (mode = NETT_RETINA; 3, 5, 6 or 9 ch),
+# plus the ViT-P8 twin. No framestack: the filter carries its own temporal state across ticks.
+MODELS["CNN-D512P+RET"] = {**MODELS["CNN-D512P"], "pre": ("retina_temporal",)}
+MODELS["ViT-P8-666K+RET"] = {**MODELS["ViT-P8-666K"], "pre": ("retina_temporal",)}
 # FINDINGS add. 351 (owner 2026-11-06, egomotion DVS pilot head-bob; "all CNNs we are running should be the D512P variety"):
 # the D512P trunk on a 2-frame DVS stack, early fusion as CNN2F (dvs_polarity, then framestack: 2 x 6 = 12 channels under
 # NETT_DVS_COLOR=1). With NETT_DECISION_LOOP=2 + NETT_DECISION_PHASE=last the stack is [hold events, move events].
@@ -1546,6 +1550,12 @@ for _twin in ("CNN-D512P", "ViT-P8-666K", "3DCNN", "ViViT-P8-T2"):
 del _twin
 # owner 2026-11-02, BASELINE wave 2, binding: video / fovea CLTT-Ref twins (detached or attached is the launcher's NETT_DECOUPLE_ENCODER) and the ViT-P8 token-mixer ablation.
 MODELS["ViViT-P8-T2+CLTT-Ref"] = {**MODELS["ViViT-P8-T2"], "aux": "cltt_ref", "aux_weight": 1.0}
+# CLTT-WINDOW program (owner 2026-11-17): each +CLTT-Win label = its +CLTT-Ref twin with aux "cltt_win" (positive window =
+# NETT_AUX_CLTT_WIN), nothing else.
+MODELS["ViViT-P8-T2+CLTT-Win"] = {**MODELS["ViViT-P8-T2+CLTT-Ref"], "aux": "cltt_win"}
+MODELS["ViT-P8-666K+CLTT-Win"] = {**MODELS["ViT-P8-666K+CLTT-Ref"], "aux": "cltt_win"}
+MODELS["CNN-D512P+CLTT-Win"] = {**MODELS["CNN-D512P+CLTT-Ref"], "aux": "cltt_win"}
+MODELS["3DCNN-CLTT-Win"] = {**MODELS["3DCNN-CLTT-Ref"], "aux": "cltt_win"}
 # owner 2026-11-08 (workspace FINDINGS add. 379 / 379b, DVS settings pilot; label approved): the ViT-P8 video twin with
 # attached CLTT-Ref on COLOUR DVS events = "ViViT-P8-T2+CLTT-Ref" + pre=["dvs_polarity"] + channels_per_frame 6, NOTHING
 # ELSE (asserted below), as the §162 "-DVS6" twins are built. ⛔ MODELS HAS NO ENV FIELD: rows set NETT_DVS_COLOR=1,

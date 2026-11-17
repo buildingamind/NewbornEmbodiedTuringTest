@@ -13,6 +13,8 @@ Two failure modes dominate and both are silent:
 """
 from __future__ import annotations
 
+import os
+
 import random
 import statistics
 from pathlib import Path
@@ -514,6 +516,10 @@ def test_every_registered_aux_kind_exposes_a_head():
         space = gym.spaces.Box(low=0, high=255, shape=(81, 128, 6), dtype="uint8")
         return encoder_mapping["stp_e"](space, features_dim=32, fov_deg=150.0)
 
+    # cltt_win (owner 2026-11-17) REFUSES to build without its window scheme by design; give it one for the sweep.
+    _set_win = "NETT_AUX_CLTT_WIN" not in os.environ
+    if _set_win:
+        os.environ["NETT_AUX_CLTT_WIN"] = "uni:4"
     for kind, build in sorted(AUX_LOSSES.items()):
         aux = None
         for host in (lambda: _encoder(channels=3), lambda: _encoder(channels=6),
@@ -529,6 +535,8 @@ def test_every_registered_aux_kind_exposes_a_head():
         elif not hasattr(aux, "head"):
             missing.append(kind)
 
+    if _set_win:
+        del os.environ["NETT_AUX_CLTT_WIN"]
     assert not missing, f"registered aux kinds with no .head: {missing}"
     assert not unbuilt, (
         "the sweep could not construct these, so it did NOT check them: " + "; ".join(unbuilt)

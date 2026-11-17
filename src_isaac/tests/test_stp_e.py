@@ -86,6 +86,9 @@ T2K3_1114_LABELS = {"D512P-T2", "D512P-T2+CLTT-Ref", "CNN-K3", "CNN-K3+CLTT-Ref"
 T2ROWS_1114_LABELS = {"D512P-T2+DVS6", "D512P-T2+CLTT-Ref-DVS6", "D512P-T2+Fovea", "D512P-T2+CLTT-Ref+Fovea", "D512P-T2+Fovea+DVS6", "D512P-T2+Fovea+DVS6+CLTT-Ref"}
 #: owner 2026-11-15 ~03:30Z (workspace FINDINGS add. 430): ViViT-P8-T2 Fovea+DVS6 (+CLTT-Ref) full rows for binding.
 VIVFD_1115_LABELS = {"ViViT-P8-T2+Fovea+DVS6", "ViViT-P8-T2+Fovea+DVS6+CLTT-Ref"}
+#: owner 2026-11-17 (RETINA + CLTT-WINDOW programs): the retina_temporal front-end twins and the cltt_win aux twins.
+RETCW_1117_LABELS = {"CNN-D512P+RET", "ViT-P8-666K+RET", "ViViT-P8-T2+CLTT-Win", "ViT-P8-666K+CLTT-Win", "CNN-D512P+CLTT-Win", "3DCNN-CLTT-Win"}
+RETCW_1117_FILES = ("nett_skrl/body/wrappers/retina_temporal.py", "nett_skrl/brain/aux/cltt_win_aux.py")
 BL2_1102_FILES = ("nett_skrl/body/wrappers/framestack.py",)
 #: owner 2026-11-03, BASELINE wave 2 EMBDIV: the two embdiv terms on the four BL2 trunks (tests/test_bl2_embdiv_labels.py);
 #: embdiv_aux.py (EMBDIV1101_FILES) admits the three new trunks.
@@ -1142,7 +1145,7 @@ def test_labels_and_registries(campaign):
 def test_existing_models_and_registries_are_unchanged(campaign):
     base = _base()
     old = _old_module(_git("show", f"{base}:src_isaac/examples/campaign_train.py"), "_campaign_train_pre_stp")
-    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS | K8_1114_LABELS | T2K3_1114_LABELS | T2ROWS_1114_LABELS | VIVFD_1115_LABELS
+    assert set(campaign.MODELS) - set(old.MODELS) == NEW_LABELS | VIVSP173_LABELS | BIND16_LABELS | BASELINE_LABELS | S3W_LABELS | FOVEA1030_LABELS | EMBDIV1101_LABELS | BINDCTL1102_LABELS | BL2_1102_LABELS | BL2_1103_EMBDIV_LABELS | BL2_1104_RBLN1_LABELS | EGO1106_LABELS | CLTTUNIF1109_LABELS | FOVDVS1109_LABELS | FOVEA4CH1109_LABELS | F4CDVS1109_LABELS | BL2FULL1109_LABELS | SYN1108_LABELS | BL2DVS1109_LABELS | BL2FILL1112_LABELS | CONE1113_LABELS | K8_1114_LABELS | T2K3_1114_LABELS | T2ROWS_1114_LABELS | VIVFD_1115_LABELS | RETCW_1117_LABELS
     assert set(old.MODELS) <= set(campaign.MODELS)
     for label, spec_old in old.MODELS.items():
         assert campaign.MODELS[label] == spec_old, label
@@ -1159,9 +1162,9 @@ def test_existing_models_and_registries_are_unchanged(campaign):
         return {ln.split('"')[1] for ln in body.splitlines() if ln.strip().startswith('"')}
 
     for rel, opener, gained in (("nett_skrl/brain/registry.py", "encoder_mapping: dict", {"stp_e"}),
-                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2", "cltt_ref+embdiv_unif"}),
+                                ("nett_skrl/brain/aux/ppo_aux.py", "AUX_LOSSES = {", {"stp", "slot_contrast_257", "embdiv_unif", "embdiv_cos2", "cltt_ref+embdiv_unif", "cltt_win"}),
                                 ("nett_skrl/body/wrappers/registry.py", "_WRAPPER_SPECS: dict",
-                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness", "fovea_4ch", "chick_cone"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04; fovea_4ch: 2026-11-09; chick_cone: 2026-11-13
+                                 {"stp_pose_exec", "stp_pose_cmd", "fovea_mask", "random_brightness", "fovea_4ch", "chick_cone", "retina_temporal"})):   # fovea_mask: owner 2026-10-30; random_brightness: owner 2026-11-04; fovea_4ch: 2026-11-09; chick_cone: 2026-11-13; retina_temporal: 2026-11-17
         before = keys(_git("show", f"{base}:src_isaac/{rel}"), opener)
         after = keys((_SRC / rel).read_text(), opener)
         assert before and after - before == gained and before <= after, rel

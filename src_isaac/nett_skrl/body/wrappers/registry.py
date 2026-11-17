@@ -77,6 +77,9 @@ _WRAPPER_SPECS: dict[str, tuple[str, str]] = {
     # T3 (chicken LWS, MWS, VS+SWS white-normalised catches) -> sRGB-encode -> u8, from a fixed 2^24 lookup table; greys
     # unchanged. No knobs. ⚠ `pre`, innermost.
     "chick_cone": ("nett_skrl.body.wrappers.chick_cone", "ChickCone"),
+    # RETINA program (owner 2026-11-17): stateful temporal front-ends (NETT_RETINA = tr<K> | mtap<K> | edr | edrrgb |
+    # tsurf | smear | sustrans). ⚠ ORDER MATTERS: consumes raw RGB, so it goes in `pre` innermost, before framestack.
+    "retina_temporal": ("nett_skrl.body.wrappers.retina_temporal", "RetinaTemporal"),
     # STP-E (workspace DECISIONS §170): one extra image row per frame carrying the step's pose change as
     # float32 bytes, for brain/encoders/stp_e.py to strip and decode. "exec" = the EXECUTED change (motor pose
     # after physics), "cmd" = the COMMANDED [turn, move]. One entry per source so the model name says which ran
