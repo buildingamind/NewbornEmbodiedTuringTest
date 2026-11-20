@@ -155,3 +155,62 @@ def test_diag_writes_flow_and_channel_stats(monkeypatch, tmp_path):
 def test_every_mode_responds_to_a_moving_object(mode, monkeypatch):
     _, outs = run(scene(list(range(8, 8 + 2 * 10, 2)), size=8), mode, monkeypatch)
     assert outs[-1][..., 3:].astype(float).sum() > 0, mode
+
+
+# -- MOTION-ONLY pilot (presenter 2026-11-20): <mode>-only drops the 3 colour channels --------------------------------
+
+@pytest.mark.parametrize("mode", MOTION_MODES)
+def test_only_space_and_static_silence(mode, monkeypatch):
+    assert parse_mode(mode + "-only") == (mode, None)
+    fr = scene([10] * 6, n_env=2)
+    env, outs = run(fr, mode + "-only", monkeypatch)
+    n = N_OUT[mode] - 3
+    assert env.observation_space["policy"].shape == (2, H, W, n)
+    for o in outs:
+        assert o.shape == (2, H, W, n) and o.dtype == np.uint8
+        assert (o == 0).all(), f"{mode}-only: a static scene must emit nothing (no sustained channel)"
+
+
+@pytest.mark.parametrize("mode", MOTION_MODES)
+def test_only_carries_no_colour(mode, monkeypatch):
+    # a static scene in two different colours, with no motion: the output is identical (all zero), so no static
+    # appearance leaks into the observation
+    a = scene([10] * 4, val=220)
+    b = [np.clip(f.astype(int) * [1, 0, 0] + [0, 90, 30], 0, 255).astype(np.uint8) for f in scene([10] * 4, val=60)]
+    _, oa = run(a, mode + "-only", monkeypatch)
+    _, ob = run(b, mode + "-only", monkeypatch)
+    for x, y in zip(oa, ob):
+        np.testing.assert_array_equal(x, y)
+
+
+@pytest.mark.parametrize("mode", MOTION_MODES)
+def test_only_equals_the_motion_channels_of_the_full_mode(mode, monkeypatch):
+    fr = scene(list(range(8, 8 + 2 * 10, 2)), size=8)
+    _, full = run(fr, mode, monkeypatch)
+    _, only = run(fr, mode + "-only", monkeypatch)
+    for f, o in zip(full, only):
+        np.testing.assert_array_equal(f[..., 3:], o)
+    assert only[-1].astype(float).sum() > 0, mode
+
+
+@pytest.mark.parametrize("mode,pos,neg", [("emd", 0, 1), ("me", 0, 1), ("flow", 0, 1)])
+def test_only_direction_selective(mode, pos, neg, monkeypatch):
+    xs = list(range(8, 8 + 2 * 12, 2))
+    _, outs = run(scene(xs), mode + "-only", monkeypatch)
+    o = outs[-1][0].astype(float)
+    assert o[..., pos].sum() > 3 * o[..., neg].sum() and o[..., pos].sum() > 0, mode
+
+
+def test_only_diag_reports_every_channel(monkeypatch, tmp_path):
+    import json
+    p = tmp_path / "diag.jsonl"
+    monkeypatch.setenv("NETT_RETINA_DIAG", str(p))
+    run(scene(list(range(4, 34)), n_env=2, size=12), "emd-only", monkeypatch)
+    rec = json.loads(p.read_text().splitlines()[0])
+    assert len(rec["chan_mean"][0]) == 4                                # all 4 sensor channels, none dropped
+
+
+def test_only_refuses_non_motion_modes():
+    for bad in ("edr-only", "tr5-only", "rgb-only", "only"):
+        with pytest.raises(ValueError):
+            parse_mode(bad)

@@ -101,8 +101,17 @@ def parse_mode(raw: str):
         return m.group(1), k
     if s in ("edr", "edrrgb", "tsurf", "smear", "sustrans") + MOTION_MODES:
         return s, None
+    if s.endswith("-only") and s[:-5] in MOTION_MODES:   # MOTION-ONLY pilot: the sensor maps without RGB
+        return s[:-5], None
     raise ValueError(f"NETT_RETINA={raw!r}: expected one of tr<K>, mtap<K>, edr, edrrgb, tsurf, smear, sustrans, "
-                     f"{', '.join(MOTION_MODES)}.")
+                     f"{', '.join(MOTION_MODES)}, or a motion mode with -only.")
+
+
+def motion_only(raw: str) -> bool:
+    """``NETT_RETINA=<motion mode>-only``: emit the motion maps alone, without the 3 colour channels (MOTION-ONLY
+    pilot, presenter 2026-11-20: tests whether removing every sustained input channel is what lets the agent parse)."""
+    s = (raw or "").strip().lower()
+    return s.endswith("-only") and s[:-5] in MOTION_MODES
 
 
 def _float_knob(name: str, default: float, lo: float, hi: float) -> float:
@@ -188,10 +197,11 @@ class RetinaTemporal(gym.Wrapper):
         if raw is None or raw.strip() == "":
             raise ValueError("retina_temporal needs NETT_RETINA (tr<K> | mtap<K> | edr | edrrgb | tsurf | smear | sustrans).")
         self.mode, self.k = parse_mode(raw)
+        self.only = motion_only(raw)
         self.threshold = _float_knob("NETT_RETINA_THRESHOLD", 4.0, 0.5, 255.0)
         self.tau = _float_knob("NETT_RETINA_TAU", 2.0, 0.25, 64.0)
         self.half = _float_knob("NETT_RETINA_HALF", 2.0, 0.25, 64.0)
-        self.n_out = N_OUT[self.mode]
+        self.n_out = N_OUT[self.mode] - (3 if self.only else 0)
         if self.mode == "mtap":
             w = [0.6 ** (j - 1) for j in range(1, self.k)]
             self._mtap_w = [x / sum(w) for x in w]          # j = 1 (previous tick) first
@@ -219,6 +229,8 @@ class RetinaTemporal(gym.Wrapper):
             "dvsgm": f"RGB + luma change minus its frame mean, ON/OFF, threshold {self.threshold:g} (control)",
             "rand": "RGB + 4 fixed random spatiotemporal filters, rectified (capacity control, seed 20261120)",
         }[self.mode]
+        if self.only:
+            desc = desc.replace("RGB + ", "NO RGB, ", 1)
         print(f"[NETT retina] mode {raw.strip()} -> {self.n_out} ch: {desc} ({'MOTION program, owner 2026-11-20' if self.mode in MOTION_MODES else 'RETINA program, owner 2026-11-17'})", flush=True)
 
     # -- spaces --------------------------------------------------------------------------
@@ -358,7 +370,8 @@ class RetinaTemporal(gym.Wrapper):
             st["ema"] = st["ema"] + _alpha(self.half) * (y - st["ema"])
             return st["ema"]
         if self.mode in MOTION_MODES:
-            return torch.cat((y, getattr(self, "_m_" + self.mode)(self._lum(y))), -3)
+            m = getattr(self, "_m_" + self.mode)(self._lum(y))
+            return m if self.only else torch.cat((y, m), -3)
         # sustrans
         st["ema3"] = st["ema3"] + _alpha(3.0) * (y - st["ema3"])
         lum = self._lum(y)
@@ -476,7 +489,7 @@ class RetinaTemporal(gym.Wrapper):
             return
         u, v = _lk(prev, cur)
         mag = (u * u + v * v).sqrt().reshape(*u.shape[:-3], -1)
-        ch = out[..., 3:, :, :].mean(dim=(-2, -1)) if out.shape[-3] > 3 else out.mean(dim=(-2, -1))
+        ch = out[..., 3:, :, :].mean(dim=(-2, -1)) if (out.shape[-3] > 3 and not self.only) else out.mean(dim=(-2, -1))
         rec = {"tick": self._diag_tick, "mode": self.mode,
                "flow_median": mag.median(-1).values.reshape(-1).tolist(),
                "flow_p95": mag.quantile(0.95, dim=-1).reshape(-1).tolist(),

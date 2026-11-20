@@ -238,8 +238,8 @@ site is listed rather than collapsed, because a knob with two defaults is a real
 | `NETT_RETEST_DIR` | `str(ROOT / "_retest")` | `examples/campaign_retest_launch.py:45` |
 | `NETT_RETEST_EXPECT_ROWS` | `"0"` | `examples/campaign_retest.py:89` |
 | `NETT_RETEST_GLOB` | `str(ROOT / "*" / "*_off*")` | `examples/campaign_retest_launch.py:50` |
-| `NETT_RETINA` | *(required / no literal default)* | `nett_skrl/body/wrappers/retina_temporal.py:187` |
-| `NETT_RETINA_DIAG` | *(required / no literal default)* | `nett_skrl/body/wrappers/retina_temporal.py:200` |
+| `NETT_RETINA` | *(required / no literal default)* | `nett_skrl/body/wrappers/retina_temporal.py:196` |
+| `NETT_RETINA_DIAG` | *(required / no literal default)* | `nett_skrl/body/wrappers/retina_temporal.py:210` |
 | `NETT_REWARD_TYPES` | `"closeness"` | `examples/campaign_train.py:2334` |
 | `NETT_RL_ENCODER_NO_GRAD` | `""` | `nett_skrl/brain/models/utils/features.py:72` |
 | `NETT_ROLLOUTS` | `"8000"` | `nett_skrl/body/wrappers/segmentation.py:85`<br>`examples/campaign_train.py:2392`<br>`examples/campaign_train.py:2548` |
